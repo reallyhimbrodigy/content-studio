@@ -387,19 +387,25 @@ struct EditorView: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.white)
                     .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
             }
+            .accessibilityLabel("Add video")
             .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
 
             TextField("Describe your edit...", text: $inputText, axis: .vertical)
                 .focused($isInputFocused)
                 .lineLimit(1...6)
                 .foregroundColor(.white)
-                .font(.system(size: 16))
+                // Dynamic Type — input scales with user preference,
+                // capped to keep the chat input from eating the screen.
+                .font(.body)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .tint(.white)
                 .submitLabel(.send)
                 .onSubmit { send() }
                 .padding(.vertical, 9)
                 .padding(.trailing, 4)
+                .accessibilityLabel("Describe your edit")
 
             Button(action: send) {
                 Image(systemName: "arrow.up")
@@ -408,6 +414,7 @@ struct EditorView: View {
                     .frame(width: 30, height: 30)
                     .background(Color.white)
                     .clipShape(Circle())
+                    .accessibilityHidden(true)
             }
             .padding(.trailing, 5)
             .padding(.bottom, 5)
@@ -415,6 +422,7 @@ struct EditorView: View {
             .scaleEffect(canSend ? 1 : 0.5)
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
             .disabled(!canSend)
+            .accessibilityLabel("Send")
             .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
         }
         .background(
@@ -527,7 +535,17 @@ struct EditorView: View {
                                 throw APIError.uploadFailed
                             }
                             firePrewarmOnce.fire(pub)
-                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
+                            // Single PUT routes through the background URLSession
+                            // — survives app suspend (and kill, when paired
+                            // with the orphan-reconcile path in ChatStore).
+                            try await APIService.shared.uploadFileToS3(
+                                url: uploadUrl,
+                                fileUrl: uploadSourceUrl,
+                                mimeType: "video/mp4",
+                                messageId: pending.id.uuidString,
+                                chatId: chatStore.activeChatId,
+                                publicUrl: pub
+                            ) { progress in
                                 pending.uploadProgress = progress
                             }
                             publicUrl = pub
@@ -948,6 +966,9 @@ struct PendingVideoThumb: View {
                         .scaleEffect(0.7)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Attached video")
+            .accessibilityValue(isUploading ? "Uploading, \(Int(video.uploadProgress * 100)) percent" : (video.uploadedUrl != nil ? "Ready" : "Loading"))
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
@@ -956,7 +977,9 @@ struct PendingVideoThumb: View {
                     .frame(width: 18, height: 18)
                     .background(Color.black.opacity(0.7))
                     .clipShape(Circle())
+                    .accessibilityHidden(true)
             }
+            .accessibilityLabel("Remove video")
             .offset(x: 5, y: -5)
         }
     }

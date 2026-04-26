@@ -24,6 +24,25 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
         #endif
         return false
     }
+
+    /// iOS calls this when the OS finishes a background URLSession's
+    /// pending events. We stash the completion handler on the
+    /// BackgroundUploadManager and call it back from the session's
+    /// `urlSessionDidFinishEvents(forBackgroundURLSession:)` so iOS
+    /// knows it can suspend us again.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        // Touching the singleton instantiates its background URLSession
+        // with the matching identifier, which lets iOS deliver the
+        // queued delegate callbacks for tasks that completed while we
+        // were terminated.
+        Task { @MainActor in
+            BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
+        }
+    }
 }
 
 @main

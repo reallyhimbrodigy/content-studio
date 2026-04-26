@@ -417,12 +417,17 @@ struct ChatListView: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(Color(.tertiaryLabel))
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Account")
+        .accessibilityValue("\(displayName), \(emailDisplay)")
+        .accessibilityHint("Opens account settings")
     }
 
     private var emailDisplay: String {
@@ -481,5 +486,9 @@ private struct ChatRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(chat.title)
+        .accessibilityHint(chat.preview.isEmpty ? "" : chat.preview)
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }

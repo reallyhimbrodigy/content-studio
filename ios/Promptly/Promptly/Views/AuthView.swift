@@ -51,6 +51,7 @@ struct AuthView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: "g.circle.fill")
                                     .font(.system(size: 20))
+                                    .accessibilityHidden(true)
                                 Text(isSignUp ? "Sign up with Google" : "Sign in with Google")
                                     .font(.system(size: 17, weight: .semibold))
                             }
@@ -60,6 +61,7 @@ struct AuthView: View {
                             .foregroundColor(.black)
                             .cornerRadius(14)
                         }
+                        .accessibilityLabel(isSignUp ? "Sign up with Google" : "Sign in with Google")
                     }
 
                     // Divider
@@ -86,6 +88,7 @@ struct AuthView: View {
                                 .cornerRadius(12)
                                 .foregroundColor(.white)
                                 .font(.system(size: 16))
+                                .accessibilityLabel("Email")
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -100,6 +103,7 @@ struct AuthView: View {
                                 .cornerRadius(12)
                                 .foregroundColor(.white)
                                 .font(.system(size: 16))
+                                .accessibilityLabel("Password")
                         }
                     }
 

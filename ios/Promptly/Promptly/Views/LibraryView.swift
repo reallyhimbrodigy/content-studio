@@ -195,10 +195,14 @@ struct EditRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .accessibilityLabel("More options")
             }
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(edit.vibe_input ?? "Video edit")
+        .accessibilityValue("\(statusText), \(formatDate(edit.created_at ?? ""))")
     }
 
     private var statusColor: Color {

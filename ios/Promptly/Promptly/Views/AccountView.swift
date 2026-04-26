@@ -162,6 +162,7 @@ struct AccountView: View {
                         )
                 }
             }
+            .accessibilityLabel("Change profile photo")
             .onChange(of: selectedPhoto) { _, item in uploadAvatar(item) }
 
             VStack(alignment: .leading, spacing: 3) {
@@ -232,12 +233,16 @@ struct AccountView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(.tertiaryLabel))
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 20)
             .frame(height: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityValue(badge ?? value ?? "")
     }
 
     private var divider: some View {

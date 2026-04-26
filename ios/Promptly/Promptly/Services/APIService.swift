@@ -203,11 +203,43 @@ class APIService {
         }
     }
 
-    /// Upload directly from a file URL with progress tracking and retry
-    func uploadFileToS3(url: String, fileUrl: URL, mimeType: String, onProgress: ((Double) -> Void)? = nil) async throws {
+    /// Upload directly from a file URL with progress tracking and retry.
+    ///
+    /// When `messageId` is provided, the upload runs through the
+    /// background URLSession (`BackgroundUploadManager`) so iOS will
+    /// continue the transfer even if the user backgrounds or
+    /// terminates the app. When nil, falls back to the in-app
+    /// foreground session — used for uploads that don't have a chat
+    /// message attached (rare).
+    func uploadFileToS3(
+        url: String,
+        fileUrl: URL,
+        mimeType: String,
+        messageId: String? = nil,
+        chatId: String? = nil,
+        publicUrl: String? = nil,
+        onProgress: ((Double) -> Void)? = nil
+    ) async throws {
         let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
         let host = URL(string: url)?.host ?? "unknown"
-        print("[perf] upload path=single fileSize=\(size) endpoint=\(host)")
+        print("[perf] upload path=single fileSize=\(size) endpoint=\(host) bg=\(messageId != nil)")
+
+        // Background-eligible path: hand off to BackgroundUploadManager.
+        // Survives app suspend + termination. The OS finishes the
+        // transfer and re-launches the app to deliver the result.
+        if let messageId, let publicUrl, let remoteUrl = URL(string: url) {
+            _ = try await BackgroundUploadManager.shared.upload(
+                fileUrl: fileUrl,
+                toRemote: remoteUrl,
+                mimeType: mimeType,
+                messageId: messageId,
+                chatId: chatId,
+                publicUrl: publicUrl,
+                onProgress: { progress in onProgress?(progress) }
+            )
+            return
+        }
+
         let uploadStart = Date()
 
         var request = URLRequest(url: URL(string: url)!)

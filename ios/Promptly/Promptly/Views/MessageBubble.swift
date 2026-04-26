@@ -33,6 +33,7 @@ struct MessageBubble: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 172, height: 229)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .accessibilityLabel("Attached video")
                 } else if let thumbUrlStr = attachment.remoteThumbnailUrl, let thumbUrl = URL(string: thumbUrlStr) {
                     AsyncImage(url: thumbUrl) { phase in
                         if let image = phase.image {
@@ -43,12 +44,18 @@ struct MessageBubble: View {
                     }
                     .frame(width: 172, height: 229)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .accessibilityLabel("Attached video")
                 }
             }
 
             if !message.content.isEmpty {
                 Text(message.content)
-                    .font(.system(size: 16))
+                    // Use Dynamic Type for chat content so it scales with
+                    // the user's accessibility text-size preference.
+                    // Capped at .accessibility3 so the bubble doesn't
+                    // bloat at the largest sizes.
+                    .font(.body)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -56,6 +63,10 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
+        // Combine the video + text into a single VoiceOver element with
+        // a "You said: ..." prefix so it's clear who's speaking.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(message.videoAttachment != nil ? [] : [])
     }
 
     // MARK: - Assistant (flat, no bubble)
@@ -81,7 +92,8 @@ struct MessageBubble: View {
 
             if !message.content.isEmpty {
                 Text(message.content)
-                    .font(.system(size: 16))
+                    .font(.body)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -737,6 +749,31 @@ struct VideoActionRow: View {
         }
         .buttonStyle(.plain)
         .disabled(state == .loading)
+        // Combine the icon + text into one VoiceOver element with a
+        // dedicated label per action and a value reflecting in-flight
+        // state. Stops VoiceOver from reading the SF symbol name.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(for: label))
+        .accessibilityValue(accessibilityValue(for: state))
+    }
+
+    private func accessibilityLabel(for label: String) -> String {
+        switch label {
+        case "Re-edit":   return "Re-edit this video"
+        case "Save":      return "Save video to Photos"
+        case "TikTok":    return "Share to TikTok"
+        case "Instagram": return "Share to Instagram"
+        default:          return label
+        }
+    }
+
+    private func accessibilityValue(for state: VideoExporter.ActionState) -> String {
+        switch state {
+        case .idle:     return ""
+        case .loading:  return "in progress"
+        case .success:  return "done"
+        case .error:    return "failed"
+        }
     }
 
     @ViewBuilder
@@ -801,12 +838,15 @@ struct VideoActionRow: View {
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(.white)
                                 .symbolRenderingMode(.hierarchical)
+                                .accessibilityHidden(true)
                         }
                     Text("Share")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(.secondaryLabel))
                 }
             }
+            .accessibilityLabel("Share video")
+            .accessibilityAddTraits(.isButton)
             .simultaneousGesture(TapGesture().onEnded {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             })
@@ -869,11 +909,14 @@ struct CompletedVideoView: View {
                                 .font(.system(size: 22, weight: .semibold))
                                 .foregroundColor(.white)
                                 .offset(x: 2)
+                                .accessibilityHidden(true)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Play your edited video")
+            .accessibilityAddTraits(.isButton)
             .contextMenu {
                 if let url = URL(string: videoUrlStr) {
                     ShareLink(item: url) {

@@ -56,6 +56,7 @@ struct TabBarButton: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 20))
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
             }
@@ -63,5 +64,7 @@ struct TabBarButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 44)
         }
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }
