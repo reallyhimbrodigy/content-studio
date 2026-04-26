@@ -268,55 +268,42 @@ struct EditorView: View {
 
     // MARK: - Empty State
 
-    /// Hero empty state — Promptly is a video-first app, so unlike a
-    /// general chat assistant the primary CTA is "upload a video", not
-    /// "start typing." The hero gives the user a clear target.
-    /// Native-iOS treatment: SF Symbol over a tinted circle, headline
-    /// in `.title2`/.semibold, body in `.subheadline` secondary, glass
-    /// upload button.
+    /// Empty state. Apple HIG-shaped: thin SF Symbol in secondary color
+    /// (no decorative tinted background), a brand-name title, a single
+    /// concise subtitle, and a borderless prominent button. Avoids the
+    /// "AI startup hero" feel — no accent-color circles, no marketing
+    /// copy, no white capsule. Reads like a native iOS app.
     private var emptyState: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 0) {
             Spacer()
 
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.18))
-                    .frame(width: 86, height: 86)
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 38, weight: .regular))
-                    .foregroundStyle(.tint)
-            }
+            Image(systemName: "video.badge.plus")
+                .font(.system(size: 56, weight: .thin))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 22)
 
-            VStack(spacing: 8) {
-                Text("Edit videos with one tap")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                Text("Upload a clip and describe the vibe.\nPromptly handles cuts, captions, and pacing.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-            }
-            .padding(.horizontal, 36)
+            Text("Promptly")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(.primary)
+                .padding(.bottom, 6)
+
+            Text("Upload a video to start editing.")
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 28)
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showVideoPicker = true
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Upload Video")
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .foregroundStyle(.black)
-                .frame(height: 50)
-                .frame(maxWidth: 260)
-                .background(Color.white, in: Capsule(style: .continuous))
+                Text("Upload Video")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 220, height: 48)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 6)
+            .buttonStyle(.borderedProminent)
+            .tint(.white)
+            .foregroundStyle(.black)
+            .controlSize(.large)
 
             Spacer()
             Spacer()
@@ -659,8 +646,7 @@ struct EditorView: View {
 
     @ViewBuilder
     private var vibeChipsBar: some View {
-        if !pendingVideos.isEmpty,
-           inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            reeditSession == nil {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {

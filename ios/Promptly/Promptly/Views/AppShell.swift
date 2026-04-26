@@ -104,7 +104,18 @@ struct AppShell: View {
             EditorView.dismissKeyboard()
             if isOpen {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Re-pull whenever the sidebar opens, so a chat created
+                // on another device (or just-applied SQL migration)
+                // shows up without needing to relaunch the app.
+                Task { await chatStore.loadChats() }
             }
+        }
+        // Auto-retry on app foreground. Common case: user just ran
+        // the chats migration in their browser and tabbed back to the
+        // app — the cached "404 / table missing" error should clear
+        // automatically on focus, not require a manual "Try again".
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await chatStore.loadChats() }
         }
         .task {
             if chatStore.chats.isEmpty {

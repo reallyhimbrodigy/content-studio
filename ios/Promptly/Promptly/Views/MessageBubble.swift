@@ -829,6 +829,8 @@ struct CompletedVideoView: View {
     let thumbnailUrlStr: String?
     let onReedit: (() -> Void)?
 
+    @State private var fallbackThumb: UIImage?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
@@ -890,14 +892,38 @@ struct CompletedVideoView: View {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image.resizable().aspectRatio(contentMode: .fit)
+                } else if phase.error != nil {
+                    // Server thumbnail URL failed (CDN miss, expired, deleted) —
+                    // fall back to grabbing a frame from the rendered video URL
+                    // and cache it on this view's lifetime.
+                    fallbackThumbView
                 } else {
                     Color(.tertiarySystemBackground)
                         .aspectRatio(9/16, contentMode: .fit)
                 }
             }
         } else {
+            // No thumbnail URL was ever set (server didn't deliver one in
+            // the SSE complete event, or the message was restored from a
+            // pre-thumbnail-era chat). Generate from the video file.
+            fallbackThumbView
+        }
+    }
+
+    @ViewBuilder
+    private var fallbackThumbView: some View {
+        if let img = fallbackThumb {
+            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+        } else {
             Color(.tertiarySystemBackground)
                 .aspectRatio(9/16, contentMode: .fit)
+                .task(id: videoUrlStr) {
+                    guard fallbackThumb == nil,
+                          let url = URL(string: videoUrlStr) else { return }
+                    if let img = await ThumbnailGenerator.generate(from: url) {
+                        await MainActor.run { fallbackThumb = img }
+                    }
+                }
         }
     }
 }
@@ -910,31 +936,18 @@ struct CompletedVideoView: View {
 // conflicting UI layers. Audio session is configured for .playback so the
 // silent switch and interruptions don't kill audio.
 
-enum VideoPlayerPresenter {
-    // Holding box for the KVO observer — without this, the observation is
-    // deallocated the moment present() returns and we lose all status
-    // callbacks. Keyed by ObjectIdentifier(item) so multiple presentations
-    // don't trample each other.
-    private static var observers: [ObjectIdentifier: NSKeyValueObservation] = [:]
+/// AVPlayerViewController subclass that owns the diagnostic observers
+/// and tears them down on dismiss. The earlier static-dict approach
+/// leaked: every video play stacked four NotificationCenter
+/// observers + one KVO that never got cleaned up. After many plays
+/// memory + main-thread observer dispatch piled up, which manifested
+/// as choppy or stuck playback — the regression the user noticed.
+final class PromptlyPlayerVC: AVPlayerViewController {
+    private var statusKVO: NSKeyValueObservation?
+    private var notificationTokens: [NSObjectProtocol] = []
 
-    @MainActor
-    static func present(urlString: String) {
-        print("[player] present url=\(urlString)")
-        guard let url = URL(string: urlString) else {
-            print("[player] FAILED: invalid URL")
-            return
-        }
-
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        try? AVAudioSession.sharedInstance().setActive(true)
-
-        let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 10
-
-        // Observe status and surface any decode/network failure. AVPlayer
-        // silently swallows playback errors otherwise — modal opens with a
-        // black frame and the user has no idea what went wrong.
-        let token = item.observe(\.status, options: [.new, .initial]) { item, _ in
+    func attachDiagnostics(item: AVPlayerItem) {
+        statusKVO = item.observe(\.status, options: [.new, .initial]) { item, _ in
             switch item.status {
             case .readyToPlay:
                 print("[player] readyToPlay")
@@ -949,46 +962,64 @@ enum VideoPlayerPresenter {
                 break
             }
         }
-        observers[ObjectIdentifier(item)] = token
-
-        // Also surface stall + access-log info. Stalls explain a black frame
-        // that "almost" plays, while errorLog catches network 403/404s.
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemPlaybackStalled,
-            object: item,
-            queue: .main
+        notificationTokens.append(NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled, object: item, queue: .main
         ) { _ in
             print("[player] stalled")
-        }
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemNewErrorLogEntry,
-            object: item,
-            queue: .main
+        })
+        notificationTokens.append(NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemNewErrorLogEntry, object: item, queue: .main
         ) { _ in
             if let log = item.errorLog(), let last = log.events.last {
                 print("[player] errorLog code=\(last.errorStatusCode) domain=\(last.errorDomain) comment=\(last.errorComment ?? "")")
             }
-        }
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemFailedToPlayToEndTime,
-            object: item,
-            queue: .main
+        })
+        notificationTokens.append(NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main
         ) { note in
             let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             print("[player] failedToPlayToEnd error=\(err?.localizedDescription ?? "unknown")")
+        })
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        player?.pause()
+    }
+
+    deinit {
+        statusKVO?.invalidate()
+        notificationTokens.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+}
+
+enum VideoPlayerPresenter {
+    @MainActor
+    static func present(urlString: String) {
+        print("[player] present url=\(urlString)")
+        guard let url = URL(string: urlString) else {
+            print("[player] FAILED: invalid URL")
+            return
         }
+
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 10
 
         let player = AVPlayer(playerItem: item)
         player.automaticallyWaitsToMinimizeStalling = true
         player.actionAtItemEnd = .pause
 
-        let playerVC = AVPlayerViewController()
+        let playerVC = PromptlyPlayerVC()
         playerVC.player = player
         playerVC.allowsPictureInPicturePlayback = true
         playerVC.videoGravity = .resizeAspect
         playerVC.entersFullScreenWhenPlaybackBegins = false
         playerVC.modalPresentationStyle = .overFullScreen
         playerVC.modalTransitionStyle = .crossDissolve
+        playerVC.attachDiagnostics(item: item)
 
         guard let topVC = topmostViewController() else {
             print("[player] FAILED: no topmost view controller")
