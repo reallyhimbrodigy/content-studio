@@ -15888,18 +15888,11 @@ if (process.env.CALENDAR_PARSE_SELFTEST === '1') {
 const PORT = process.env.PORT || 8000;
 
 if (require.main === module) {
-  const shouldRunVideoWorker = process.env.NODE_ENV !== 'test' && process.env.DISABLE_VIDEO_WORKER !== '1';
-  if (shouldRunVideoWorker) {
-    try {
-      const { runWorker } = require('./worker');
-      console.log('[VideoWorker] Booting background worker...');
-      runWorker().catch((error) => {
-        console.error('[VideoWorker] Failed to start:', error);
-      });
-    } catch (error) {
-      console.error('[VideoWorker] Startup import error:', error);
-    }
-  }
+  // (Removed: legacy `./worker` background-process boot. The worker
+  // module doesn't exist in this codebase — video jobs are dispatched
+  // straight to Modal via dispatch-to-modal.js. The require was
+  // throwing on every startup and the catch was swallowing the error,
+  // producing harmless but noisy log output.)
 
   // Daily analytics sync (06:00 America/Los_Angeles)
   cron.schedule(
