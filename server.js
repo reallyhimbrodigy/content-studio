@@ -490,6 +490,54 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+// ─── Rate limiter ──────────────────────────────────────────────────────────
+//
+// In-memory token-bucket per (key, scope). Used for cheap abuse-prevention
+// on expensive endpoints (video-job creation, re-edits, refresh URLs). Not
+// a hard security boundary — process restart drops state — but enough to
+// catch a runaway client without dragging Modal/AWS into the open.
+//
+// Scopes (chosen to be generous for normal use, tight for abuse):
+//   video-job-create:  10 / 15 min  per user
+//   video-job-reedit:  10 / 15 min  per user
+//   refresh-urls:      60 / 1 min   per user
+//
+const _rateBuckets = new Map(); // `${scope}:${key}` -> { tokens, lastRefill }
+
+function _consumeRateToken(scope, key, capacity, refillSeconds) {
+  const id = `${scope}:${key}`;
+  const now = Date.now();
+  const refillRateMs = (refillSeconds * 1000) / capacity; // ms per single token
+  const bucket = _rateBuckets.get(id) || { tokens: capacity, lastRefill: now };
+  // Refill based on elapsed time
+  const elapsed = now - bucket.lastRefill;
+  if (elapsed > 0) {
+    const refilled = elapsed / refillRateMs;
+    bucket.tokens = Math.min(capacity, bucket.tokens + refilled);
+    bucket.lastRefill = now;
+  }
+  if (bucket.tokens < 1) {
+    _rateBuckets.set(id, bucket);
+    const retryAfterMs = Math.ceil((1 - bucket.tokens) * refillRateMs);
+    return { ok: false, retryAfterSeconds: Math.ceil(retryAfterMs / 1000) };
+  }
+  bucket.tokens -= 1;
+  _rateBuckets.set(id, bucket);
+  return { ok: true };
+}
+
+/// Check rate limit. Returns true if allowed, false (and writes 429) if blocked.
+function checkRateLimit(res, scope, key, capacity, refillSeconds) {
+  const result = _consumeRateToken(scope, key, capacity, refillSeconds);
+  if (result.ok) return true;
+  res.setHeader('Retry-After', String(result.retryAfterSeconds));
+  sendJson(res, 429, {
+    error: 'Too many requests. Slow down and try again shortly.',
+    retry_after_seconds: result.retryAfterSeconds,
+  });
+  return false;
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 const DEBUG_ANALYTICS = process.env.DEBUG_ANALYTICS === 'true';
 const DEBUG_ENTITLEMENTS = process.env.DEBUG_ENTITLEMENTS === 'true';
@@ -10318,6 +10366,12 @@ const server = http.createServer((req, res) => {
         }
         const authUser = await requireSupabaseUser(req);
         console.log('  ✅ Auth user:', authUser.id);
+
+        // Rate limit: 10 video jobs per 15 minutes per user. Generous for
+        // legitimate use (re-edits, multiple variants) but catches a
+        // runaway client before it floods Modal.
+        if (!checkRateLimit(res, 'video-job-create', authUser.id, 10, 900)) return;
+
         const body = await readJsonBody(req);
         console.log('  Request body:', body);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
@@ -10385,6 +10439,8 @@ const server = http.createServer((req, res) => {
       try {
         if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
         const authUser = await requireSupabaseUser(req);
+        // Same budget as create — re-edits are equally expensive.
+        if (!checkRateLimit(res, 'video-job-reedit', authUser.id, 10, 900)) return;
         const body = await readJsonBody(req);
         const originalJobId = String(body?.original_job_id || body?.originalJobId || '').trim();
         const changeRequest = String(body?.change_request || body?.changeRequest || '').trim();
@@ -10600,6 +10656,78 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][JobStatus] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/video-jobs/:jobId/refresh-urls
+  // Returns fresh signed video + thumbnail URLs for an existing job.
+  // AWS SigV4 caps signed URLs at 7 days, so any chat older than a week
+  // has dead URLs without this. Client calls this when AsyncImage /
+  // AVPlayer hits a 403/expired error and re-tries with the fresh URL.
+  const refreshUrlsMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/refresh-urls$/i);
+  if (refreshUrlsMatch && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        // Cheap endpoint but easy to abuse — cap at 60/min per user.
+        if (!checkRateLimit(res, 'refresh-urls', authUser.id, 60, 60)) return;
+        const jobId = decodeURIComponent(refreshUrlsMatch[1] || '').trim();
+        if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
+
+        const { data: job, error } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, user_id, rendered_video_url, thumbnail_url')
+          .eq('id', jobId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[refresh-urls] DB error:', error);
+          return sendJson(res, 500, { error: 'Failed to load job' });
+        }
+        if (!job) return sendJson(res, 404, { error: 'Job not found' });
+        if (job.user_id !== authUser.id) return sendJson(res, 403, { error: 'Forbidden' });
+
+        // Extract the underlying S3 key from a signed URL by stripping
+        // hostname and query string. Falls back to null for non-S3 URLs
+        // (e.g. legacy Supabase Storage URLs from old renders) — those
+        // get returned as-is since Supabase signed URLs run for 1 year.
+        const extractS3Key = (urlStr) => {
+          if (!urlStr) return null;
+          try {
+            const u = new URL(urlStr);
+            // Only refresh URLs that point at OUR S3 bucket (any endpoint
+            // pattern: regional, accelerate, CloudFront).
+            const isOurBucket =
+              u.hostname.includes(s3.S3_BUCKET) ||
+              (process.env.CLOUDFRONT_DOMAIN && u.hostname.endsWith(process.env.CLOUDFRONT_DOMAIN));
+            if (!isOurBucket) return null;
+            return u.pathname.replace(/^\/+/, '') || null;
+          } catch {
+            return null;
+          }
+        };
+
+        const videoKey = extractS3Key(job.rendered_video_url);
+        const thumbKey = extractS3Key(job.thumbnail_url);
+
+        let videoUrl = job.rendered_video_url || null;
+        let thumbnailUrl = job.thumbnail_url || null;
+
+        if (videoKey) {
+          videoUrl = await s3.createPresignedGetUrl(videoKey, 60 * 60 * 24 * 7);
+        }
+        if (thumbKey) {
+          thumbnailUrl = await s3.createPresignedGetUrl(thumbKey, 60 * 60 * 24 * 7);
+        }
+
+        return sendJson(res, 200, { videoUrl, thumbnailUrl });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[refresh-urls] error:', error?.message);
         return sendJson(res, status, { error: error?.message || 'Internal server error' });
       }
     })();
