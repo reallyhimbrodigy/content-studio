@@ -162,37 +162,120 @@ struct ChatListView: View {
         .multilineTextAlignment(.center)
     }
 
-    /// Backend-error state. Shown when ChatStore.loadChats() failed
-    /// (typically: the Supabase `chats` table doesn't exist yet, or
-    /// the network is down). Inline + recoverable, matching the
-    /// pattern Apple's Mail / Messages use for CloudKit failures.
+    /// Backend-error state. The most common cause is "the chats table
+    /// doesn't exist yet" — Supabase returns 404 from PostgREST for
+    /// tables it doesn't know about. We detect that case (404 in the
+    /// message) and surface a one-tap fix: copy the migration SQL,
+    /// open the Supabase dashboard, paste, run.
     private func errorState(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 28))
+        let isMissingTable = message.contains("404")
+        return VStack(spacing: 12) {
+            Image(systemName: isMissingTable ? "wrench.and.screwdriver" : "exclamationmark.triangle")
+                .font(.system(size: 30))
                 .foregroundColor(.orange)
-            Text("Can't load chats")
-                .font(.system(size: 15, weight: .semibold))
+            Text(isMissingTable ? "Chat sync needs setup" : "Can't load chats")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.primary)
-            Text(message)
+            Text(isMissingTable
+                 ? "Run the chats migration in Supabase, then come back."
+                 : message)
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
                 .padding(.horizontal, 12)
-            Button {
-                Task { await store.loadChats() }
-            } label: {
-                Text("Try again")
-                    .font(.system(size: 14, weight: .medium))
+
+            if isMissingTable {
+                VStack(spacing: 8) {
+                    Button {
+                        UIPasteboard.general.string = Self.chatsMigrationSQL
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } label: {
+                        Label("Copy migration SQL", systemImage: "doc.on.doc")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+
+                    Button {
+                        if let url = URL(string: "https://supabase.com/dashboard/project/ejxkzsfruykvgeouymfy/sql/new") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("Open Supabase SQL editor", systemImage: "arrow.up.right.square")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+
+                    Button {
+                        Task { await store.loadChats() }
+                    } label: {
+                        Text("I've run it — try again")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            } else {
+                Button {
+                    Task { await store.loadChats() }
+                } label: {
+                    Text("Try again")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .padding(.top, 4)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .padding(.top, 4)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 24)
     }
+
+    /// Inlined for one-tap copy. Mirrors `migrations/2026-04-25-chats.sql`.
+    private static let chatsMigrationSQL = """
+    CREATE TABLE IF NOT EXISTS chats (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+      title       TEXT NOT NULL DEFAULT 'New Chat',
+      messages    JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS chats_user_updated_idx
+      ON chats (user_id, updated_at DESC);
+
+    ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
+
+    DROP POLICY IF EXISTS "chats_select_own"   ON chats;
+    DROP POLICY IF EXISTS "chats_insert_own"   ON chats;
+    DROP POLICY IF EXISTS "chats_update_own"   ON chats;
+    DROP POLICY IF EXISTS "chats_delete_own"   ON chats;
+
+    CREATE POLICY "chats_select_own" ON chats
+      FOR SELECT USING (auth.uid() = user_id);
+    CREATE POLICY "chats_insert_own" ON chats
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+    CREATE POLICY "chats_update_own" ON chats
+      FOR UPDATE USING (auth.uid() = user_id);
+    CREATE POLICY "chats_delete_own" ON chats
+      FOR DELETE USING (auth.uid() = user_id);
+
+    CREATE OR REPLACE FUNCTION touch_updated_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = now();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS chats_touch_updated_at ON chats;
+    CREATE TRIGGER chats_touch_updated_at
+      BEFORE UPDATE ON chats
+      FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+    """
 
     private var noMatchesView: some View {
         VStack(spacing: 8) {

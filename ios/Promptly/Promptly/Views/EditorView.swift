@@ -31,6 +31,8 @@ struct EditorView: View {
 
                 reeditChip
 
+                vibeChipsBar
+
                 inputBar
             }
             .background(Color(.systemBackground))
@@ -266,20 +268,57 @@ struct EditorView: View {
 
     // MARK: - Empty State
 
-    /// Minimal centered greeting. The "+" attach button in the input
-    /// bar is the CTA for picking video — same pattern ChatGPT / Claude
-    /// / Gemini iOS use. No big hero CTA competing with the input.
+    /// Hero empty state — Promptly is a video-first app, so unlike a
+    /// general chat assistant the primary CTA is "upload a video", not
+    /// "start typing." The hero gives the user a clear target.
+    /// Native-iOS treatment: SF Symbol over a tinted circle, headline
+    /// in `.title2`/.semibold, body in `.subheadline` secondary, glass
+    /// upload button.
     private var emptyState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "sparkles")
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.white)
-                .opacity(0.85)
-            Text("What do you want to edit?")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.center)
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.18))
+                    .frame(width: 86, height: 86)
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 38, weight: .regular))
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(spacing: 8) {
+                Text("Edit videos with one tap")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                Text("Upload a clip and describe the vibe.\nPromptly handles cuts, captions, and pacing.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, 36)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showVideoPicker = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Upload Video")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundStyle(.black)
+                .frame(height: 50)
+                .frame(maxWidth: 260)
+                .background(Color.white, in: Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 6)
+
+            Spacer()
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -594,6 +633,61 @@ struct EditorView: View {
         guard acceptableExtensions.contains(ext) else { return false }
         let maxSkippableBytes: Int64 = 300 * 1024 * 1024
         return size > 0 && size <= maxSkippableBytes
+    }
+
+    // MARK: - Vibe chips
+    //
+    // Quick-tap suggestions that drop a vibe into the input. Shows only
+    // when there's a video staged + the input is empty + we're not in a
+    // re-edit. Mirrors the "smart reply" chip pattern in iMessage and
+    // the suggestion row in ChatGPT iOS. Horizontal scroll, capsule
+    // styling, glass-fill background. Tap a chip → fill input + light
+    // haptic, leave keyboard up so the user can edit if they want.
+
+    private static let vibeSuggestions: [String] = [
+        "Cinematic",
+        "Punchy and fast",
+        "Aesthetic and dreamy",
+        "Hype edit with bass drops",
+        "Vlog-style storytelling",
+        "Documentary feel",
+        "TikTok viral style",
+        "Cozy and warm",
+        "High-energy montage",
+        "Slow and emotional"
+    ]
+
+    @ViewBuilder
+    private var vibeChipsBar: some View {
+        if !pendingVideos.isEmpty,
+           inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           reeditSession == nil {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.vibeSuggestions, id: \.self) { vibe in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            inputText = vibe
+                        } label: {
+                            Text(vibe)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color(.tertiarySystemFill))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+            .frame(height: 44)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     // MARK: - Send
