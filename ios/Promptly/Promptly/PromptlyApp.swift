@@ -122,11 +122,14 @@ struct PromptlyApp: App {
                 let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
                 let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
                 options.releaseName = "promptly-ios@\(version)+\(build)"
-                options.tracesSampleRate = 0.1
                 options.attachStacktrace = true
-                options.enableAutoPerformanceTracing = true
-                options.enableNetworkTracking = true
-                options.enableUIViewControllerTracing = true
+                // Crash + hang + watchdog tracking only. Sentry's network
+                // and auto-performance swizzling can interfere with the
+                // background URLSession used for video uploads — leave it
+                // off until we have a controlled test confirming it's safe.
+                options.enableAutoPerformanceTracing = false
+                options.enableNetworkTracking = false
+                options.enableUIViewControllerTracing = false
                 options.enableAppHangTracking = true
                 options.enableWatchdogTerminationTracking = true
             }

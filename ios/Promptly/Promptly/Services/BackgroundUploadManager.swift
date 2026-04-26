@@ -133,6 +133,12 @@ final class BackgroundUploadManager: NSObject {
 
         let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
         let success = error == nil && (200...299).contains(httpStatus)
+        if !success {
+            let nsErr = error as NSError?
+            print("[BgUpload] task=\(taskId) FAILED status=\(httpStatus) " +
+                  "domain=\(nsErr?.domain ?? "-") code=\(nsErr?.code ?? 0) " +
+                  "desc=\(nsErr?.localizedDescription ?? "no error object")")
+        }
 
         if let cont {
             // Caller is still alive — resume the await.
