@@ -678,33 +678,31 @@ struct EditorView: View {
             processingMsg.stageTimeline = StageTimeline(mode: "tweak")
             processingMsg.originalVibe = activeSession.oldVibe.isEmpty ? changeRequest : activeSession.oldVibe
             messages.append(processingMsg)
-            let msgIndex = messages.count - 1
+            let msgId = processingMsg.id
 
-            Task {
-                // Make sure this re-edit lives inside an active chat so the
-                // user can find it again. If they triggered re-edit from the
-                // Library tab (no chat selected), this lazy-creates one.
+            Task { @MainActor in
+                func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
                 _ = await ensureActiveChat()
-                await MainActor.run { persistMessages() }
+                persistMessages()
 
                 do {
                     let newJobId = try await APIService.shared.reeditFromJob(
                         originalJobId: activeSession.originalJobId,
                         changeRequest: changeRequest
                     )
-                    await MainActor.run {
-                        messages[msgIndex].jobId = newJobId
-                        startSSE(jobId: newJobId, messageIndex: msgIndex)
+                    if let i = idx() {
+                        messages[i].jobId = newJobId
+                        startSSE(jobId: newJobId, messageIndex: i)
                         persistMessages()
                     }
                 } catch {
-                    await MainActor.run {
-                        messages[msgIndex].jobStatus = "failed"
-                        messages[msgIndex].error = error.localizedDescription
+                    if let i = idx() {
+                        messages[i].jobStatus = "failed"
+                        messages[i].error = error.localizedDescription
                         persistMessages()
                     }
                 }
-                await MainActor.run { isSending = false }
+                isSending = false
             }
             return
         }
@@ -716,9 +714,11 @@ struct EditorView: View {
         inputText = ""
         withAnimation { pendingVideos = [] }
 
-        Task {
-            // Lazy-create a chat the first time the user sends. After this,
-            // every message in this session lives in that chat.
+        // Pin everything to the main actor explicitly. Swift 5 mode does
+        // NOT auto-inherit @MainActor for `Task {}` and StageTimeline +
+        // ChatMessage mutations are MainActor-isolated, so a non-isolated
+        // task body would crash on first @MainActor call.
+        Task { @MainActor in
             _ = await ensureActiveChat()
 
             if hasVideos {
@@ -732,27 +732,31 @@ struct EditorView: View {
                     processingMsg.stageTimeline = StageTimeline(mode: "full")
                     processingMsg.originalVibe = vibe
                     messages.append(processingMsg)
-                    let msgIndex = messages.count - 1
+                    let msgId = processingMsg.id  // capture id, not index — safer if messages get mutated externally
 
-                    // Persist the user's message + placeholder right away so
-                    // the chat shows up correctly in the sidebar even if the
-                    // upload takes 30s and the user backgrounds the app.
                     persistMessages()
 
-                    Task {
+                    Task { @MainActor in
+                        // Helper: find the live index of the processing
+                        // message by id. Returns nil if it's been removed
+                        // (chat switch, delete, etc.) so we silently no-op
+                        // instead of crashing on out-of-bounds.
+                        func indexOfProcessingMsg() -> Int? {
+                            messages.firstIndex(where: { $0.id == msgId })
+                        }
                         do {
                             var videoUrl = video.uploadedUrl
 
-                            // Wait for the background upload (started when user attached the video)
-                            // instead of starting a new one. Mirror its progress into the message.
                             if videoUrl == nil, let task = video.uploadTask {
-                                await MainActor.run { messages[msgIndex].stepMessage = "Uploading..." }
+                                if let i = indexOfProcessingMsg() { messages[i].stepMessage = "Uploading..." }
 
                                 let mirror = Task { @MainActor in
                                     while !Task.isCancelled {
-                                        let pct = max(1, Int(video.uploadProgress * 30))
-                                        if pct > (messages[msgIndex].jobProgress ?? 0) {
-                                            messages[msgIndex].jobProgress = pct
+                                        if let i = indexOfProcessingMsg() {
+                                            let pct = max(1, Int(video.uploadProgress * 30))
+                                            if pct > (messages[i].jobProgress ?? 0) {
+                                                messages[i].jobProgress = pct
+                                            }
                                         }
                                         try? await Task.sleep(nanoseconds: 100_000_000)
                                     }
@@ -763,28 +767,23 @@ struct EditorView: View {
                                 videoUrl = video.uploadedUrl
                             }
 
-                            // No fallback path. The upload was started when
-                            // the user attached the video; if it didn't
-                            // produce a public URL by send time, the upload
-                            // task failed. Surface the failure rather than
-                            // silently kicking off a fresh attempt.
                             guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
-                            await MainActor.run {
-                                messages[msgIndex].stepMessage = "Starting your edit..."
-                                if (messages[msgIndex].jobProgress ?? 0) < 35 {
-                                    messages[msgIndex].jobProgress = 35
+                            if let i = indexOfProcessingMsg() {
+                                messages[i].stepMessage = "Starting your edit..."
+                                if (messages[i].jobProgress ?? 0) < 35 {
+                                    messages[i].jobProgress = 35
                                 }
                             }
                             let jobId = try await APIService.shared.createVideoJob(videoUrl: finalUrl, vibe: vibe)
-                            await MainActor.run {
-                                messages[msgIndex].jobId = jobId
-                                startSSE(jobId: jobId, messageIndex: msgIndex)
+                            if let i = indexOfProcessingMsg() {
+                                messages[i].jobId = jobId
+                                startSSE(jobId: jobId, messageIndex: i)
                                 persistMessages()
                             }
                         } catch {
-                            await MainActor.run {
-                                messages[msgIndex].jobStatus = "failed"
-                                messages[msgIndex].error = error.localizedDescription
+                            if let i = indexOfProcessingMsg() {
+                                messages[i].jobStatus = "failed"
+                                messages[i].error = error.localizedDescription
                                 persistMessages()
                             }
                         }
@@ -793,16 +792,21 @@ struct EditorView: View {
             } else {
                 let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
                 messages.append(thinkingMsg)
-                let msgIndex = messages.count - 1
+                let msgId = thinkingMsg.id
+                func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
 
                 do {
                     let reply = try await APIService.shared.chat(message: text, history: Array(conversationHistory.suffix(20)))
-                    messages[msgIndex] = ChatMessage(role: .assistant, content: reply)
-                    conversationHistory.append(["role": "assistant", "content": reply])
-                    persistMessages()
+                    if let i = idx() {
+                        messages[i] = ChatMessage(role: .assistant, content: reply)
+                        conversationHistory.append(["role": "assistant", "content": reply])
+                        persistMessages()
+                    }
                 } catch {
-                    messages[msgIndex] = ChatMessage(role: .assistant, content: "Sorry, I couldn't respond right now.")
-                    persistMessages()
+                    if let i = idx() {
+                        messages[i] = ChatMessage(role: .assistant, content: "Sorry, I couldn't respond right now.")
+                        persistMessages()
+                    }
                 }
             }
             isSending = false
