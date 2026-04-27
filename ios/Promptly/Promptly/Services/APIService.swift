@@ -24,6 +24,55 @@ class APIService {
         return URLSession(configuration: config)
     }()
 
+    /// Dedicated session for our own API server (everything not S3).
+    /// `waitsForConnectivity = true` means a request fired during a
+    /// momentary blip queues until the network is back instead of
+    /// failing fast — which is what URLSession.shared would do.
+    /// Combined with `requestData()` retry-on-transient, server calls
+    /// survive connection drops, brief Wi-Fi-to-cellular handoffs,
+    /// and stale HTTP/2 connections that the server has already closed.
+    lazy var apiSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 120
+        config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        return URLSession(configuration: config)
+    }()
+
+    /// Send a request with retry on transient network errors. Retries
+    /// up to twice with backoff (1s, 3s) on:
+    ///   -1001 NSURLErrorTimedOut         — request didn't complete in time
+    ///   -1005 NSURLErrorNetworkConnectionLost — established TCP dropped
+    ///   -1009 NSURLErrorNotConnectedToInternet — momentary offline
+    /// All three are recoverable: -1005 most often happens because the
+    /// server closed an idle HTTP/2 connection that URLSession was about
+    /// to reuse — the next attempt opens a fresh connection and works.
+    /// Non-transient errors (4xx response, malformed URL) throw immediately.
+    func requestData(_ request: URLRequest, retries: Int = 2) async throws -> (Data, URLResponse) {
+        let transientCodes: Set<Int> = [
+            NSURLErrorTimedOut,
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet,
+        ]
+        var attempt = 0
+        while true {
+            do {
+                return try await apiSession.data(for: request)
+            } catch let error as URLError where transientCodes.contains(error.code.rawValue) {
+                attempt += 1
+                if attempt > retries {
+                    print("[apiSession] giving up after \(attempt) attempts: \(error.code.rawValue)")
+                    throw error
+                }
+                let delaySec: UInt64 = attempt == 1 ? 1 : 3
+                print("[apiSession] transient error \(error.code.rawValue), retrying in \(delaySec)s (attempt \(attempt + 1))")
+                try? await Task.sleep(nanoseconds: delaySec * 1_000_000_000)
+            }
+        }
+    }
+
     /// Get a valid token, auto-refreshing if expired
     private func validToken() async -> String? {
         await AuthService.shared.getValidToken()
@@ -48,7 +97,7 @@ class APIService {
             "vibe_input": vibe
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Unknown error")
@@ -79,7 +128,7 @@ class APIService {
                 var request = await authorizedRequest("/api/prewarm", method: "POST")
                 request.httpBody = try JSONEncoder().encode(["video_url": videoUrl])
                 request.timeoutInterval = 5
-                let (_, response) = try await URLSession.shared.data(for: request)
+                let (_, response) = try await requestData(request)
                 if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
                     print("[prewarm] dispatched (attempt \(attempt + 1))")
                     return
@@ -107,7 +156,7 @@ class APIService {
             "change_request": changeRequest,
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Re-edit failed")
@@ -134,7 +183,7 @@ class APIService {
     func refreshUrls(jobId: String) async -> RefreshUrlsResponse? {
         do {
             let request = await authorizedRequest("/api/video-jobs/\(jobId)/refresh-urls", method: "POST")
-            let (data, resp) = try await URLSession.shared.data(for: request)
+            let (data, resp) = try await requestData(request)
             guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 print("[refresh] failed status=\((resp as? HTTPURLResponse)?.statusCode ?? -1)")
                 return nil
@@ -158,7 +207,7 @@ class APIService {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await requestData(request)
         return try JSONDecoder().decode([VideoJob].self, from: data)
     }
 
@@ -175,7 +224,7 @@ class APIService {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, http.statusCode < 300 else {
             throw APIError.deleteFailed
         }
@@ -187,7 +236,7 @@ class APIService {
         var request = await authorizedRequest("/api/upload-url", method: "POST")
         request.httpBody = try JSONEncoder().encode(["fileName": fileName])
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await requestData(request)
         return try JSONDecoder().decode(UploadUrlResponse.self, from: data)
     }
 
@@ -197,7 +246,7 @@ class APIService {
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         request.httpBody = videoData
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw APIError.uploadFailed
         }
@@ -343,7 +392,7 @@ class APIService {
             "fileName": fileName,
             "partCount": partCount,
         ])
-        let (initData, initResp) = try await URLSession.shared.data(for: initRequest)
+        let (initData, initResp) = try await requestData(initRequest)
         guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
             throw APIError.uploadFailed
         }
@@ -427,7 +476,7 @@ class APIService {
                 "uploadId": initResponse.uploadId,
                 "parts": parts.map { ["PartNumber": $0.PartNumber, "ETag": $0.ETag] },
             ])
-            let (completeData, completeResp) = try await URLSession.shared.data(for: completeRequest)
+            let (completeData, completeResp) = try await requestData(completeRequest)
             guard let http = completeResp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 throw APIError.uploadFailed
             }
@@ -606,7 +655,7 @@ class APIService {
                 "fileName": fileName,
                 "partCount": partCount,
             ])
-            let (initData, initResp) = try await URLSession.shared.data(for: initRequest)
+            let (initData, initResp) = try await requestData(initRequest)
             guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
                 throw APIError.uploadFailed
             }
@@ -755,7 +804,7 @@ class APIService {
                     .sorted { $0.PartNumber < $1.PartNumber }
                     .map { ["PartNumber": $0.PartNumber, "ETag": $0.ETag] },
             ])
-            let (completeData, completeResp) = try await URLSession.shared.data(for: completeRequest)
+            let (completeData, completeResp) = try await requestData(completeRequest)
             guard let http = completeResp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 throw APIError.uploadFailed
             }
@@ -800,7 +849,7 @@ class APIService {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (responseData, _) = try await URLSession.shared.data(for: request)
+        let (responseData, _) = try await requestData(request)
         let result = try JSONDecoder().decode(UploadResponse.self, from: responseData)
         guard let videoUrl = result.videoUrl else {
             throw APIError.uploadFailed
@@ -825,7 +874,7 @@ class APIService {
         let payload: [String: Any] = ["message": message, "history": history]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await requestData(request)
         let result = try JSONDecoder().decode(ChatResponse.self, from: data)
         return result.reply ?? "No response"
     }
