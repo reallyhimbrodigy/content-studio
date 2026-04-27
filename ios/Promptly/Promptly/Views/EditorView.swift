@@ -464,10 +464,19 @@ struct EditorView: View {
                 pendingVideos.append(pending)
             }
 
+            // Pause prefetch downloads NOW — before strategy probes,
+            // compression, or any server roundtrip. Otherwise prefetches
+            // saturate the connection pool during the 1-3s window between
+            // pick and the first upload byte. Released in `defer` below.
+            VideoCache.shared.setUserUploadActive(true)
+
             // Resolve → (maybe compress) → upload pipeline. Heavy lifting
             // runs in the background; the pending tile and upload progress
             // appear immediately on the main thread.
             pending.uploadTask = Task {
+                defer {
+                    Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
+                }
                 do {
                     let t0 = Date()
 

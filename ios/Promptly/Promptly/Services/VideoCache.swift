@@ -38,11 +38,15 @@ final class VideoCache {
     /// pool and starved user uploads (build 96 regression).
     private var prefetchTail: Task<Void, Never>?
 
-    /// Set true while a user-initiated upload is in flight. Prefetch
-    /// downloads await this gate before starting, so background work
-    /// never competes with the bytes the user is actively trying to
-    /// send. The user-tier path (cache miss on tap) bypasses this.
-    private var userUploadActive = false
+    /// Ref-counted gate. Each user-initiated upload increments on start
+    /// and decrements on finish. Prefetch downloads await `userUploadActive`
+    /// before starting, so background work never competes with the bytes
+    /// the user is actively trying to send. The user-tier path (cache
+    /// miss on tap) bypasses this. Ref-counted so an early activate at
+    /// pick-time + the per-upload activate inside APIService both work,
+    /// and concurrent multi-video uploads each maintain their own slot.
+    private var uploadActiveCount = 0
+    private var userUploadActive: Bool { uploadActiveCount > 0 }
     private var uploadGateWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Caller-facing priority hint. `.userInitiated` skips the upload
@@ -61,12 +65,18 @@ final class VideoCache {
         }
     }
 
-    /// Called by APIService at the start/end of any user-initiated
-    /// upload. While true, prefetch downloads pause — the user's
-    /// outbound bytes own the connection.
+    /// Called at the start (`true`) and end (`false`) of any user-initiated
+    /// upload. While the count is non-zero, prefetch downloads pause — the
+    /// user's outbound bytes own the connection. Safe to call multiple
+    /// times: ref-counted so concurrent uploads + early-activation patterns
+    /// don't release the gate until everyone is done.
     func setUserUploadActive(_ active: Bool) {
-        userUploadActive = active
-        if !active {
+        if active {
+            uploadActiveCount += 1
+            return
+        }
+        uploadActiveCount = max(0, uploadActiveCount - 1)
+        if uploadActiveCount == 0 {
             let waiters = uploadGateWaiters
             uploadGateWaiters.removeAll()
             for cont in waiters { cont.resume() }
