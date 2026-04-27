@@ -223,6 +223,13 @@ class APIService {
         let host = URL(string: url)?.host ?? "unknown"
         print("[perf] upload path=single fileSize=\(size) endpoint=\(host)")
 
+        // Tell VideoCache to pause prefetches — they'd otherwise saturate
+        // the connection pool and starve this user-initiated upload.
+        await MainActor.run { VideoCache.shared.setUserUploadActive(true) }
+        defer {
+            Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
+        }
+
         let uploadStart = Date()
 
         var request = URLRequest(url: URL(string: url)!)
@@ -314,6 +321,14 @@ class APIService {
         let attrs = try FileManager.default.attributesOfItem(atPath: fileUrl.path)
         let fileSize = (attrs[.size] as? Int64) ?? 0
         guard fileSize > 0 else { throw APIError.uploadFailed }
+
+        // Pause prefetches for the duration — multipart uploads run 4
+        // parallel parts already, and prefetch contention here is even
+        // more painful than for single PUT.
+        await MainActor.run { VideoCache.shared.setUserUploadActive(true) }
+        defer {
+            Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
+        }
 
         let chunkSize = Self.multipartChunkSize
         let partCount = Int((fileSize + chunkSize - 1) / chunkSize)
@@ -566,6 +581,10 @@ class APIService {
         onPublicUrlKnown: ((String) -> Void)? = nil,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> String {
+        await MainActor.run { VideoCache.shared.setUserUploadActive(true) }
+        defer {
+            Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
+        }
         let t0 = Date()
         // 5MB parts — S3's non-final minimum. Smaller parts = first part
         // ships after just 5MB of iCloud bytes have arrived (vs 16MB),

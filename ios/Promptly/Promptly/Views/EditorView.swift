@@ -929,7 +929,11 @@ struct EditorView: View {
                     if let videoUrl {
                         await withTaskGroup(of: Void.self) { group in
                             group.addTask {
-                                _ = await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: videoUrl)
+                                _ = await VideoCache.shared.downloadIfNeeded(
+                                    jobId: jobId,
+                                    from: videoUrl,
+                                    priority: .userInitiated
+                                )
                             }
                             group.addTask {
                                 try? await Task.sleep(for: .seconds(30))

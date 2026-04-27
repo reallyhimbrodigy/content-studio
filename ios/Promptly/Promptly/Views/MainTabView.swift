@@ -5,14 +5,21 @@ struct MainTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content
-            Group {
-                switch appState.selectedTab {
-                case 0: EditorView()
-                case 1: LibraryView()
-                case 2: AccountView()
-                default: EditorView()
-                }
+            // Keep all three tab views alive via ZStack + opacity. UITabBarController
+            // does this — switching tabs preserves view state, in-flight uploads,
+            // chat history, scroll position, etc. The previous `switch` rebuilt
+            // the entire view tree on every tab change, wiping @State.
+            // `allowsHitTesting` ensures inactive tabs don't intercept touches.
+            ZStack {
+                EditorView()
+                    .opacity(appState.selectedTab == 0 ? 1 : 0)
+                    .allowsHitTesting(appState.selectedTab == 0)
+                LibraryView()
+                    .opacity(appState.selectedTab == 1 ? 1 : 0)
+                    .allowsHitTesting(appState.selectedTab == 1)
+                AccountView()
+                    .opacity(appState.selectedTab == 2 ? 1 : 0)
+                    .allowsHitTesting(appState.selectedTab == 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 

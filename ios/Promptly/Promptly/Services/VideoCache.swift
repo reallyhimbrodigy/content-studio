@@ -26,11 +26,31 @@ final class VideoCache {
     private let maxAgeDays: Double = 30
 
     private let cacheDir: URL
-    private let queue = DispatchQueue(label: "promptly.videoCache.io")
 
     /// Active download tasks keyed by jobId, so concurrent
     /// `downloadIfNeeded(jobId:)` calls coalesce into one network request.
     private var inflight: [String: Task<URL?, Never>] = [:]
+
+    /// Chained tail of the prefetch download queue. Each new prefetch
+    /// `await`s the previous one before starting its network call, so at
+    /// most ONE prefetch download runs at a time. Without this, 6+
+    /// parallel prefetches saturated `URLSession.shared`'s connection
+    /// pool and starved user uploads (build 96 regression).
+    private var prefetchTail: Task<Void, Never>?
+
+    /// Set true while a user-initiated upload is in flight. Prefetch
+    /// downloads await this gate before starting, so background work
+    /// never competes with the bytes the user is actively trying to
+    /// send. The user-tier path (cache miss on tap) bypasses this.
+    private var userUploadActive = false
+    private var uploadGateWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Caller-facing priority hint. `.userInitiated` skips the upload
+    /// gate AND the prefetch queue — used when the user has tapped a
+    /// thumbnail and is staring at a loading spinner. `.prefetch`
+    /// queues serially behind any in-flight prefetches and waits out
+    /// the upload gate.
+    enum Priority { case userInitiated, prefetch }
 
     private init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -38,6 +58,26 @@ final class VideoCache {
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
         Task { [weak self] in
             await self?.evictIfNeeded()
+        }
+    }
+
+    /// Called by APIService at the start/end of any user-initiated
+    /// upload. While true, prefetch downloads pause — the user's
+    /// outbound bytes own the connection.
+    func setUserUploadActive(_ active: Bool) {
+        userUploadActive = active
+        if !active {
+            let waiters = uploadGateWaiters
+            uploadGateWaiters.removeAll()
+            for cont in waiters { cont.resume() }
+        }
+    }
+
+    private func waitForUploadGate() async {
+        while userUploadActive {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                uploadGateWaiters.append(cont)
+            }
         }
     }
 
@@ -58,17 +98,50 @@ final class VideoCache {
     /// file URL on success, or nil if the download failed (caller falls
     /// back to streaming).
     @discardableResult
-    func downloadIfNeeded(jobId: String, from remoteUrlString: String) async -> URL? {
+    func downloadIfNeeded(
+        jobId: String,
+        from remoteUrlString: String,
+        priority: Priority = .prefetch
+    ) async -> URL? {
         if let cached = localUrl(forJobId: jobId) { return cached }
         if let existing = inflight[jobId] { return await existing.value }
 
         guard let remoteUrl = URL(string: remoteUrlString) else { return nil }
+
+        // Prefetch path: wait for any prior prefetch to finish (single-
+        // file serialization) AND for any active user upload (don't
+        // compete for outbound bandwidth). User-initiated path skips
+        // both — the user is waiting on a spinner, get them their bytes.
+        let isPrefetch = priority == .prefetch
+        let predecessor = isPrefetch ? prefetchTail : nil
+        let downloadTask = Task<URL?, Never> { [weak self] in
+            if isPrefetch {
+                await predecessor?.value
+                await self?.waitForUploadGate()
+            }
+            return await self?.performDownload(jobId: jobId, remoteUrl: remoteUrl)
+        }
+
+        if isPrefetch {
+            // The tail is a dependency-chain anchor — voids the URL
+            // result so subsequent waits don't unnecessarily hold a
+            // strong reference to the download return.
+            prefetchTail = Task { _ = await downloadTask.value }
+        }
+
+        inflight[jobId] = downloadTask
+        let result = await downloadTask.value
+        inflight[jobId] = nil
+        return result
+    }
+
+    private func performDownload(jobId: String, remoteUrl: URL) async -> URL? {
         let dest = fileUrl(forJobId: jobId)
         let staging = cacheDir.appendingPathComponent("\(jobId).downloading")
 
         // Detached so file I/O doesn't run on MainActor — these moves can
         // touch hundreds of MB and would briefly stall the UI otherwise.
-        let task = Task.detached(priority: .utility) { () -> URL? in
+        let work = Task.detached(priority: .utility) { () -> URL? in
             do {
                 let (tmpFile, response) = try await URLSession.shared.download(from: remoteUrl)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -76,8 +149,6 @@ final class VideoCache {
                     try? FileManager.default.removeItem(at: tmpFile)
                     return nil
                 }
-                // Atomic move via staging path. Avoids partially-written
-                // files at the canonical path if the process dies mid-move.
                 try? FileManager.default.removeItem(at: staging)
                 try FileManager.default.moveItem(at: tmpFile, to: staging)
                 try? FileManager.default.removeItem(at: dest)
@@ -89,12 +160,7 @@ final class VideoCache {
                 return nil
             }
         }
-
-        let trackingTask = Task<URL?, Never> { await task.value }
-        inflight[jobId] = trackingTask
-        let result = await trackingTask.value
-        inflight[jobId] = nil
-        return result
+        return await work.value
     }
 
     /// Delete a single cached file. Called on chat-deletion + sign-out
