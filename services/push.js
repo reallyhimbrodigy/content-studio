@@ -114,24 +114,25 @@ function derToJose(der) {
 /**
  * Send a single APNs push.
  *   to: device token (hex string from iOS client)
- *   alert: { title, body }
+ *   alert: { title, body } — omit for silent (content-available) pushes
  *   data: extra payload merged into the JSON
+ *   opts.silent: true → background prefetch push (no banner, no sound).
+ *     iOS wakes the app for ~30s in didReceiveRemoteNotification so it
+ *     can pre-warm caches before the user sees the alert variant.
  * Returns { ok, status, reason }. ok=true on 200, false otherwise.
  */
-async function sendOne(token, alert, data = {}) {
+async function sendOne(token, alert, data = {}, opts = {}) {
   if (!configured()) return { ok: false, status: 0, reason: 'not_configured' };
 
   const host = process.env.APNS_USE_SANDBOX === '1' ? SANDBOX_HOST : PROD_HOST;
   const client = http2.connect(host);
 
-  const body = JSON.stringify({
-    aps: {
-      alert,
-      sound: 'default',
-      'mutable-content': 1,
-    },
-    ...data,
-  });
+  const silent = Boolean(opts.silent);
+  const aps = silent
+    ? { 'content-available': 1 }
+    : { alert, sound: 'default', 'mutable-content': 1 };
+
+  const body = JSON.stringify({ aps, ...data });
 
   return new Promise((resolve) => {
     const headers = {
@@ -139,8 +140,12 @@ async function sendOne(token, alert, data = {}) {
       ':path': `/3/device/${token}`,
       'authorization': `bearer ${buildAuthToken()}`,
       'apns-topic': process.env.APNS_BUNDLE_ID,
-      'apns-push-type': 'alert',
-      'apns-priority': '10',
+      // 'background' is REQUIRED for content-available-only pushes —
+      // Apple drops them silently if you send as 'alert'. Priority 5
+      // (rather than 10) is also required for background push and lets
+      // the OS schedule delivery for power efficiency.
+      'apns-push-type': silent ? 'background' : 'alert',
+      'apns-priority': silent ? '5' : '10',
       'content-type': 'application/json',
       'content-length': Buffer.byteLength(body),
     };
@@ -176,8 +181,9 @@ async function sendOne(token, alert, data = {}) {
  *   userId: Supabase auth user id
  *   alert: { title, body }
  *   data: extra payload (e.g. { jobId, type: 'render-complete' })
+ *   opts: { silent: true } for content-available background pushes
  */
-async function sendToUser(userId, alert, data = {}) {
+async function sendToUser(userId, alert, data = {}, opts = {}) {
   if (!configured()) return { sent: 0, skipped: 'not_configured' };
   if (!supabaseAdmin) return { sent: 0, skipped: 'no_supabase' };
 
@@ -194,7 +200,7 @@ async function sendToUser(userId, alert, data = {}) {
   if (!tokens || tokens.length === 0) return { sent: 0, skipped: 'no_tokens' };
 
   const results = await Promise.all(tokens.map((row) =>
-    sendOne(row.token, alert, data).then((r) => ({ ...r, row }))
+    sendOne(row.token, alert, data, opts).then((r) => ({ ...r, row }))
   ));
 
   let sent = 0;

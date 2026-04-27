@@ -94,6 +94,22 @@ struct LibraryView: View {
     private func loadEdits() async {
         do { edits = try await APIService.shared.getUserEdits() } catch {}
         isLoading = false
+        // Eager prefetch: warm the local cache for the most-recent
+        // completed edits so taps in the Library are Photos-app instant.
+        // Bounded to top 10 to avoid burst-downloading 100+ videos at
+        // once and to keep cache pressure under the 1 GB ceiling.
+        let toPrefetch: [(id: String, url: String)] = edits
+            .prefix(10)
+            .compactMap { edit in
+                guard edit.status == "completed",
+                      let url = edit.rendered_video_url else { return nil }
+                return (edit.id, url)
+            }
+        for entry in toPrefetch {
+            Task.detached(priority: .background) {
+                await VideoCache.shared.downloadIfNeeded(jobId: entry.id, from: entry.url)
+            }
+        }
     }
 
     private func deleteEdit(_ edit: VideoJob) {

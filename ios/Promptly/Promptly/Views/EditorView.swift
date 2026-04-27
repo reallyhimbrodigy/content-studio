@@ -864,7 +864,13 @@ struct EditorView: View {
 
         client.onEvent = { event in
             guard messageIndex < messages.count else { return }
-            if let status = event.status { messages[messageIndex].jobStatus = status }
+            // Pass through every status EXCEPT "completed". The completed
+            // flip is gated on the local video cache being warm — see the
+            // dedicated branch below — so the play UI never appears until
+            // the file is on disk and tapping is guaranteed instant.
+            if let status = event.status, status != "completed", status != "complete" {
+                messages[messageIndex].jobStatus = status
+            }
             if let progress = event.progress {
                 // Server reports render progress 0-100. Upload takes 0-35 client-side,
                 // so map render into the 35-100 band and never go backwards.
@@ -873,7 +879,15 @@ struct EditorView: View {
                     messages[messageIndex].jobProgress = mapped
                 }
             }
-            if let msg = event.message { messages[messageIndex].stepMessage = msg }
+            // Suppress the server-provided stepMessage during the post-render
+            // "finalizing" phase below — we own the copy there ("Finalizing
+            // your video...") and don't want a stale render-stage message
+            // overwriting it on a late SSE tick.
+            let isCompletedEvent = event.status == "completed" || event.status == "complete"
+            let alreadyFinalizing = messages[messageIndex].stepMessage == "Finalizing your video..."
+            if let msg = event.message, !isCompletedEvent, !alreadyFinalizing {
+                messages[messageIndex].stepMessage = msg
+            }
             if let err = event.error { messages[messageIndex].error = err }
 
             // Feed the authoritative step token into the stage timeline. Unknown
@@ -884,20 +898,12 @@ struct EditorView: View {
                 messages[messageIndex].stageTimeline?.receive(stepToken: step)
             }
 
-            if event.status == "completed" || event.status == "complete" {
-                messages[messageIndex].jobStatus = "completed"
-                messages[messageIndex].content = "Your video is ready!"
+            if isCompletedEvent {
+                // Stash URLs immediately so the player + push handler can
+                // reach them — but DON'T flip jobStatus to "completed" yet.
                 if let url = event.videoUrl {
                     messages[messageIndex].renderedVideoUrl = url
                     print("[sse] videoUrl=\(url)")
-                    // Eagerly cache the rendered video to disk so the
-                    // user's first tap plays from local storage with
-                    // zero buffering. Fire-and-forget — playback
-                    // streaming still works as a fallback if this
-                    // doesn't finish before they tap.
-                    Task.detached(priority: .background) {
-                        await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: url)
-                    }
                 } else {
                     print("[sse] WARNING: completion event missing videoUrl")
                 }
@@ -907,9 +913,41 @@ struct EditorView: View {
                 } else {
                     print("[sse] WARNING: completion event missing thumbnailUrl")
                 }
-                messages[messageIndex].stageTimeline?.finish()
+                messages[messageIndex].stepMessage = "Finalizing your video..."
                 persistMessages()
-                if event.final == true { client.disconnect(); sseClients.removeValue(forKey: jobId) }
+
+                // Spawn the cache-then-flip task. Capped at 30s — if the
+                // download still hasn't landed by then we flip to playable
+                // anyway and let AVPlayer stream (8M cap means a watchable
+                // fallback). For the typical 30-60s clip on Wi-Fi, the
+                // download finishes in 3-10s and the user never notices
+                // anything beyond a slightly-longer "rendering" spinner.
+                let videoUrl = event.videoUrl
+                let messageId = messages[messageIndex].id
+                let isFinalEvent = event.final == true
+                Task { @MainActor in
+                    if let videoUrl {
+                        await withTaskGroup(of: Void.self) { group in
+                            group.addTask {
+                                _ = await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: videoUrl)
+                            }
+                            group.addTask {
+                                try? await Task.sleep(for: .seconds(30))
+                            }
+                            await group.next()
+                            group.cancelAll()
+                        }
+                    }
+                    guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                    messages[idx].jobStatus = "completed"
+                    messages[idx].content = "Your video is ready!"
+                    messages[idx].stageTimeline?.finish()
+                    persistMessages()
+                    if isFinalEvent {
+                        client.disconnect()
+                        sseClients.removeValue(forKey: jobId)
+                    }
+                }
             }
 
             if event.status == "failed" || event.status == "error" {

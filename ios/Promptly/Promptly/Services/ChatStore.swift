@@ -37,10 +37,36 @@ final class ChatStore: ObservableObject {
             // If the user has no chats at all, leave activeChatId nil — the
             // editor's first send will lazily create one.
             isLoading = false
+            // Retry-on-launch: walk every completed message and prefetch
+            // any rendered video that isn't already on disk. Closes the
+            // "previous app run's eager download failed" gap. Bounded to
+            // most-recent ~30 across all chats to keep launch traffic sane.
+            prefetchUncachedVideos(limit: 30)
         } catch {
             self.loadError = error.localizedDescription
             isLoading = false
             print("[chats] loadChats failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func prefetchUncachedVideos(limit: Int) {
+        struct Candidate { let jobId: String; let url: String }
+        var queue: [Candidate] = []
+        for chat in chats {
+            for msg in chat.messages {
+                guard let jobId = msg.jobId,
+                      let url = msg.renderedVideoUrl,
+                      msg.jobStatus == "completed" else { continue }
+                if VideoCache.shared.localUrl(forJobId: jobId) != nil { continue }
+                queue.append(Candidate(jobId: jobId, url: url))
+                if queue.count >= limit { break }
+            }
+            if queue.count >= limit { break }
+        }
+        for candidate in queue {
+            Task.detached(priority: .background) {
+                await VideoCache.shared.downloadIfNeeded(jobId: candidate.jobId, from: candidate.url)
+            }
         }
     }
 

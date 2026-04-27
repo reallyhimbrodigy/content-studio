@@ -65,6 +65,51 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
     ) {
         print("[Push] APNs registration failed: \(error.localizedDescription)")
     }
+
+    /// Silent push (content-available) handler. iOS calls this when a
+    /// background-priority push arrives — including when the app is
+    /// suspended or fully terminated, in which case iOS launches the
+    /// app for up to 30 seconds to do the work.
+    ///
+    /// We use this to pre-warm the local video cache the moment a render
+    /// finishes, so by the time the user taps the alert push the file
+    /// is already on disk and playback is Photos-app instant.
+    ///
+    /// CRITICAL: must call completionHandler within ~30s or iOS kills
+    /// the app and counts it against future background runtime budget.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        let type = userInfo["type"] as? String
+        guard type == "render-complete-prefetch",
+              let jobId = userInfo["jobId"] as? String,
+              let videoUrl = userInfo["videoUrl"] as? String else {
+            completionHandler(.noData)
+            return
+        }
+        print("[Push] silent prefetch for jobId=\(jobId)")
+        Task { @MainActor in
+            // 25s budget — leave a few seconds of headroom under iOS's
+            // 30s background runtime limit so we always get the
+            // completion handler back to the OS.
+            let result: UIBackgroundFetchResult = await withTaskGroup(of: UIBackgroundFetchResult.self) { group in
+                group.addTask {
+                    let url = await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: videoUrl)
+                    return url == nil ? .failed : .newData
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(25))
+                    return .noData
+                }
+                let first = await group.next() ?? .noData
+                group.cancelAll()
+                return first
+            }
+            completionHandler(result)
+        }
+    }
 }
 
 /// Foreground-presentation behavior for incoming pushes. By default iOS
