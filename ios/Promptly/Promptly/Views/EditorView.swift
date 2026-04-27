@@ -766,28 +766,37 @@ struct EditorView: View {
         inputText = ""
         withAnimation { pendingVideos = [] }
 
+        // Append the user/processing messages NOW, before we await
+        // ensureActiveChat. The chat ID is only needed for persistence;
+        // the UI can render messages immediately. Otherwise the chat
+        // looks blank for 200-800ms while createChat round-trips
+        // Supabase, which feels broken.
+        var pendingMsgIds: [(video: PendingVideo, msgId: UUID)] = []
+        if hasVideos {
+            for video in videos {
+                var userMsg = ChatMessage(role: .user, content: vibe)
+                userMsg.videoAttachment = VideoAttachment(localUrl: video.fileUrl ?? URL(fileURLWithPath: ""), fileName: video.fileName, thumbnail: video.thumbnail)
+                messages.append(userMsg)
+                conversationHistory.append(["role": "user", "content": vibe])
+
+                var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
+                processingMsg.stageTimeline = StageTimeline(mode: "full")
+                processingMsg.originalVibe = vibe
+                messages.append(processingMsg)
+                pendingMsgIds.append((video, processingMsg.id))
+            }
+        }
+
         // Pin everything to the main actor explicitly. Swift 5 mode does
         // NOT auto-inherit @MainActor for `Task {}` and StageTimeline +
         // ChatMessage mutations are MainActor-isolated, so a non-isolated
         // task body would crash on first @MainActor call.
         Task { @MainActor in
             _ = await ensureActiveChat()
+            persistMessages()
 
             if hasVideos {
-                for video in videos {
-                    var userMsg = ChatMessage(role: .user, content: vibe)
-                    userMsg.videoAttachment = VideoAttachment(localUrl: video.fileUrl ?? URL(fileURLWithPath: ""), fileName: video.fileName, thumbnail: video.thumbnail)
-                    messages.append(userMsg)
-                    conversationHistory.append(["role": "user", "content": vibe])
-
-                    var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
-                    processingMsg.stageTimeline = StageTimeline(mode: "full")
-                    processingMsg.originalVibe = vibe
-                    messages.append(processingMsg)
-                    let msgId = processingMsg.id  // capture id, not index — safer if messages get mutated externally
-
-                    persistMessages()
-
+                for (video, msgId) in pendingMsgIds {
                     Task { @MainActor in
                         // Helper: find the live index of the processing
                         // message by id. Returns nil if it's been removed
@@ -814,8 +823,31 @@ struct EditorView: View {
                                     }
                                 }
 
-                                await task.value
+                                // Hard ceiling on the upload-await. Without
+                                // this, a stalled chunk takes URLSession's
+                                // 30s stall × 2 retries × N parts to finally
+                                // fail — feels like a forever timeout. 90s
+                                // is generous for typical mobile uploads
+                                // and lets the user retry quickly when
+                                // something is actually wrong.
+                                let timedOut = await withTaskGroup(of: Bool.self) { group in
+                                    group.addTask {
+                                        await task.value
+                                        return false
+                                    }
+                                    group.addTask {
+                                        try? await Task.sleep(for: .seconds(90))
+                                        return true
+                                    }
+                                    let result = await group.next() ?? true
+                                    group.cancelAll()
+                                    return result
+                                }
                                 mirror.cancel()
+                                if timedOut {
+                                    video.uploadTask?.cancel()
+                                    throw APIError.uploadFailed
+                                }
                                 videoUrl = video.uploadedUrl
                             }
 
@@ -1004,7 +1036,13 @@ struct PendingVideoThumb: View {
     let onRemove: () -> Void
 
     private var isUploading: Bool {
-        video.uploadedUrl == nil && video.uploadProgress > 0 && video.uploadProgress < 1
+        // Show the progress ring the instant the upload Task is in flight
+        // (uploadTask non-nil and not yet done). Previously gated on
+        // uploadProgress > 0, which meant the tile sat blank for the 1-2s
+        // between picker dismiss and first-byte-shipped — that "waits to
+        // start loading" feeling. Now: indeterminate (low-percentage) ring
+        // appears immediately, fills in as bytes flow.
+        video.uploadedUrl == nil && video.uploadTask != nil
     }
 
     var body: some View {

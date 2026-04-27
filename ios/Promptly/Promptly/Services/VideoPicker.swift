@@ -194,7 +194,7 @@ enum PHAssetResolver {
     /// iCloud-only assets, so local-only is correct here. For sharp final
     /// thumbnails we regenerate from the actual video file via
     /// AVAssetImageGenerator once it's resolved.
-    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 320, height: 320)) async -> UIImage? {
+    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 200, height: 200)) async -> UIImage? {
         await withCheckedContinuation { continuation in
             var hasResumed = false
             let options = PHImageRequestOptions()

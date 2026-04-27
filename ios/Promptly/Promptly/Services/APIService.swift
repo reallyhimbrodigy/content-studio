@@ -15,7 +15,11 @@ class APIService {
     /// handshake + slow-start tax, tanking aggregate throughput).
     lazy var s3UploadSession: URLSession = {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
+        // timeoutIntervalForRequest is the STALL timeout (no bytes flowing
+        // for X seconds → fail). 30s is plenty for any healthy connection
+        // — bytes flow continuously even on slow 3G. Was 120s, which made
+        // a stalled chunk take 240s+ to fail (2 retries × 120s).
+        config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 600
         config.waitsForConnectivity = true
         config.allowsCellularAccess = true
