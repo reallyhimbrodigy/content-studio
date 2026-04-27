@@ -258,7 +258,7 @@ struct VideoDetailSheet: View {
                 // (no embedded AVPlayerViewController = no overlapping UI).
                 if let urlStr = edit.rendered_video_url {
                     Button {
-                        VideoPlayerPresenter.present(urlString: urlStr)
+                        VideoPlayerPresenter.present(urlString: urlStr, jobId: edit.id)
                     } label: {
                         ZStack {
                             if let thumbStr = edit.thumbnail_url, let thumbUrl = URL(string: thumbStr) {

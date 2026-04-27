@@ -162,6 +162,11 @@ class AuthService {
         Task { @MainActor in
             await PushService.shared.unregisterCurrentDevice()
         }
+        // Wipe cached videos so the next user on this device can't see
+        // the previous user's content.
+        Task { @MainActor in
+            VideoCache.shared.purgeAll()
+        }
         refreshTask?.cancel()
         refreshTask = nil
         UserDefaults.standard.removeObject(forKey: tokenKey)

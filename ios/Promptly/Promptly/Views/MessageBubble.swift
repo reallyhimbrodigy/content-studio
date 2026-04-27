@@ -887,6 +887,7 @@ struct CompletedVideoView: View {
             Button {
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
+                    jobId: jobId,
                     onRefreshNeeded: { await self.refreshAndReturnVideoUrl() }
                 )
             } label: {
@@ -1060,16 +1061,23 @@ final class PromptlyPlayerVC: AVPlayerViewController {
 }
 
 enum VideoPlayerPresenter {
-    /// Present the player. Optional `onRefreshNeeded` is called when
-    /// the URL fails a pre-flight HEAD check (or AVPlayer reports a
-    /// 403/expired error during load) so the caller can return a
-    /// freshly-signed URL and we present with that instead.
+    /// Present the player. When `jobId` is provided, the local cache is
+    /// checked first — if the video is on disk, AVPlayer plays from
+    /// `file://` and the result feels exactly like Apple Photos
+    /// (instant, no buffering, no stalls).
+    /// On cache miss, we fall back to streaming AND kick off a
+    /// background download so the next tap is local.
+    /// Optional `onRefreshNeeded` is called when the URL fails a
+    /// pre-flight HEAD check (or AVPlayer reports a 403/expired error
+    /// during load) so the caller can return a freshly-signed URL and
+    /// we present with that instead.
     @MainActor
     static func present(
         urlString: String,
+        jobId: String? = nil,
         onRefreshNeeded: (() async -> String?)? = nil
     ) {
-        print("[player] present url=\(urlString)")
+        print("[player] present url=\(urlString) jobId=\(jobId ?? "-")")
         guard URL(string: urlString) != nil else {
             print("[player] FAILED: invalid URL")
             return
@@ -1077,6 +1085,21 @@ enum VideoPlayerPresenter {
 
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+
+        // Cache hit → straight to file:// playback. No HEAD, no refresh.
+        if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
+            print("[player] cache HIT for \(jobId)")
+            doPresent(urlString: local.absoluteString)
+            return
+        }
+
+        // Cache miss → preflight signed URL + stream. In parallel, kick
+        // off a background download so subsequent taps go local.
+        if let jobId {
+            Task.detached(priority: .background) {
+                await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: urlString)
+            }
+        }
 
         // Pre-flight HEAD to verify the URL is still valid before
         // committing to AVPlayer. If we get 4xx (most commonly 403 on

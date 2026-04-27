@@ -890,6 +890,14 @@ struct EditorView: View {
                 if let url = event.videoUrl {
                     messages[messageIndex].renderedVideoUrl = url
                     print("[sse] videoUrl=\(url)")
+                    // Eagerly cache the rendered video to disk so the
+                    // user's first tap plays from local storage with
+                    // zero buffering. Fire-and-forget — playback
+                    // streaming still works as a fallback if this
+                    // doesn't finish before they tap.
+                    Task.detached(priority: .background) {
+                        await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: url)
+                    }
                 } else {
                     print("[sse] WARNING: completion event missing videoUrl")
                 }

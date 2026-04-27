@@ -136,13 +136,17 @@ final class ChatStore: ObservableObject {
     /// we don't leak disk space.
     func deleteChat(id: String) async {
         let prior = chats
-        let messageIdsToCleanup: [String] = chats.first(where: { $0.id == id })?.messages.map(\.id) ?? []
+        let chatToDelete = chats.first(where: { $0.id == id })
+        let messageIdsToCleanup: [String] = chatToDelete?.messages.map(\.id) ?? []
+        let jobIdsToCleanup: [String] = chatToDelete?.messages.compactMap { $0.jobId } ?? []
         chats.removeAll { $0.id == id }
         if activeChatId == id { activeChatId = nil }
         do {
             try await ChatService.shared.deleteChat(id: id)
-            // Server delete succeeded — purge the thumbnail disk cache too.
+            // Server delete succeeded — purge thumbnail + video disk caches
+            // for this chat's messages so the user's storage doesn't leak.
             ThumbnailCache.shared.delete(forMessageIds: messageIdsToCleanup)
+            for jobId in jobIdsToCleanup { VideoCache.shared.remove(jobId: jobId) }
         } catch {
             print("[chats] deleteChat \(id) failed: \(error.localizedDescription)")
             self.chats = prior
