@@ -10240,8 +10240,13 @@ const server = http.createServer((req, res) => {
         // Add current message
         contents.push({ role: 'user', parts: [{ text: message }] });
 
+        // Flash model for the chat path. The pro/preview model burns
+        // 5-15s on simple replies — fine for the analysis pipeline,
+        // unacceptable for an in-app chat where the value of an AI reply
+        // is its instant feel. 2.5-flash returns in ~500-1500ms with
+        // identical helpfulness for short mobile-chat answers.
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -10249,8 +10254,14 @@ const server = http.createServer((req, res) => {
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents,
               generationConfig: {
-                maxOutputTokens: 512,
+                // 256 is plenty for 1-3 sentence chat replies and shaves
+                // tail latency on the rare verbose answer.
+                maxOutputTokens: 256,
                 temperature: 0.8,
+                // Disable thinking — it adds 1-3s of latency for
+                // negligible quality gain on chit-chat. Flash defaults
+                // to a small thinking budget; explicitly zero it out.
+                thinkingConfig: { thinkingBudget: 0 },
               },
             }),
           }

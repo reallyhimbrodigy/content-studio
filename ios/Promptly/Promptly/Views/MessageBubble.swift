@@ -69,13 +69,20 @@ struct MessageBubble: View {
         .accessibilityAddTraits(message.videoAttachment != nil ? [] : [])
     }
 
-    // MARK: - Assistant (flat, no bubble)
+    // MARK: - Assistant (left-aligned bubble, iMessage-style)
 
     @ViewBuilder
     private var assistantContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             if message.isThinking {
+                // Typing indicator wrapped in the same bubble shape as a
+                // real reply, so the transition from "thinking" to "answer"
+                // feels like the bubble's content morphing in place.
                 ThinkingDots()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
             if let status = message.jobStatus,
@@ -96,6 +103,10 @@ struct MessageBubble: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
@@ -111,6 +122,10 @@ struct MessageBubble: View {
                 Text(message.error ?? "Something went wrong.")
                     .font(.system(size: 14))
                     .foregroundColor(.red)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
     }
