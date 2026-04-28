@@ -302,9 +302,11 @@ struct EditorView: View {
                 .foregroundStyle(.primary)
                 .padding(.bottom, 6)
 
-            Text("Upload a video to start editing.")
+            Text("AI editor for short-form talking head videos.\nUpload a clip, describe the vibe, and let Promptly do the rest.")
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
                 .padding(.bottom, 28)
 
             Button {
@@ -698,6 +700,22 @@ struct EditorView: View {
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
+
+        // Nudge: a video with no vibe is unrenderable — without a
+        // creative direction the worker has nothing to optimize for.
+        // Instead of silently substituting a generic prompt and burning
+        // a render slot, ask the user for a vibe (and surface the
+        // chip suggestions). Re-edit is exempt — it operates on the
+        // existing edit recipe so empty text means "no further change."
+        if hasVideos && text.isEmpty && !reeditActive {
+            let nudge = ChatMessage(
+                role: .assistant,
+                content: "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words."
+            )
+            messages.append(nudge)
+            isInputFocused = true
+            return
+        }
 
         // First-edit moment is the ideal time to ask for notification
         // permission — the user is about to wait 30–90s for a render and
