@@ -310,14 +310,21 @@ enum PipelineCatalog {
     // fall on the floor without side effects. First stage the user ever sees
     // is whatever lands after download — transcribe, face_detect, or (for
     // prewarm-cached jobs) straight to plan.
+    // Order matches the server's actual emission order so that as each
+    // token arrives over SSE, the stage that comes alive in the UI is
+    // genuinely the next one. Stages the server doesn't currently emit
+    // (`beats`, `hook` from a previous pipeline design) have been
+    // removed — they were the "not needed" tags polluting the expanded
+    // view, since they'd flip to skipped the moment any later token
+    // arrived.
     static let all: [PipelineStage] = [
+        PipelineStage(id: "analyze",      title: "Preparing your footage",        icon: "magnifyingglass",           authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "transcribe",   title: "Transcribing every word",       icon: "waveform",                  authoritative: true,  parent: nil,      modes: ["full"]),
         PipelineStage(id: "face_detect",  title: "Tracking faces frame-by-frame", icon: "face.smiling",              authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "beats",        title: "Detecting beat and rhythm",     icon: "metronome",                 authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "shots",        title: "Detecting shot changes",        icon: "rectangle.split.3x1",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "trend",        title: "Matching viral style patterns", icon: "chart.line.uptrend.xyaxis", authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "plan_diff",    title: "Figuring out what to change",   icon: "wand.and.stars",            authoritative: true,  parent: nil,      modes: ["tweak"]),
         PipelineStage(id: "plan",         title: "Writing your edit recipe",      icon: "pencil.and.outline",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "hook",         title: "Finding the perfect hook",      icon: "bolt.circle",               authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "broll_search", title: "Sourcing B-roll cutaways",      icon: "film.stack",                authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "render",       title: "Rendering your edit",           icon: "sparkles",                  authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "timing",       title: "Timing cuts to the beat",       icon: "timer",                     authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
@@ -356,8 +363,11 @@ final class StageTimeline: ObservableObject {
         self.states = Dictionary(uniqueKeysWithValues: filtered.map { ($0.id, StageState.upcoming) })
     }
 
-    /// Called when the worker emits an authoritative `step` token. Infers skips
-    /// and completions from the ordering in the filtered catalog.
+    /// Called when the worker emits an authoritative `step` token. Earlier
+    /// stages get marked completed (not skipped) so out-of-order arrivals
+    /// don't paint them as "not needed" — the server runs every catalog
+    /// stage on the success path, so the user shouldn't see anything
+    /// labeled skipped during a successful render.
     func receive(stepToken token: String) {
         guard !isFinished else { return }
         guard let idx = stages.firstIndex(where: { $0.id == token }) else {
@@ -368,18 +378,24 @@ final class StageTimeline: ObservableObject {
         }
         let stage = stages[idx]
 
-        // Walk earlier stages: upcoming → skipped, in_progress → completed.
+        // Walk earlier stages: anything not already completed → completed.
+        // Includes `.skipped` so a stage that was wrongly auto-skipped by
+        // a previous out-of-order token gets corrected when its own token
+        // finally arrives. Upcoming → completed (not skipped) because the
+        // server's success path runs every stage in the catalog; missing
+        // a token usually means SSE delivered events out of order, not
+        // that the stage was actually skipped.
         for i in 0..<idx {
             let prev = stages[i]
-            switch states[prev.id] ?? .upcoming {
-            case .upcoming:    states[prev.id] = .skipped
-            case .inProgress:  states[prev.id] = .completed
-            default:           break
+            let cur = states[prev.id] ?? .upcoming
+            if cur != .completed {
+                states[prev.id] = .completed
             }
         }
 
-        // Start this one (if not already past)
-        if states[stage.id] == .upcoming || states[stage.id] == nil {
+        // Start this one (unless we've already moved past it).
+        let curState = states[stage.id] ?? .upcoming
+        if curState != .completed {
             states[stage.id] = .inProgress
         }
         currentStageId = stage.id
@@ -417,15 +433,18 @@ final class StageTimeline: ObservableObject {
     }
 
     /// Called on final SSE event (completed / failed / needs_clarification).
-    /// Closes out the timeline: any in_progress → completed; upcoming → skipped.
+    /// On a successful render, every catalog stage genuinely ran on the
+    /// server — close all of them out as completed even if the SSE feed
+    /// dropped some intermediate tokens. The "skipped" state is reserved
+    /// for failure paths that explicitly mark stages skipped, not for
+    /// gaps in the SSE stream.
     func finish() {
         derivedTask?.cancel()
         derivedTask = nil
         for stage in stages {
-            switch states[stage.id] ?? .upcoming {
-            case .inProgress: states[stage.id] = .completed
-            case .upcoming:   states[stage.id] = .skipped
-            default: break
+            let cur = states[stage.id] ?? .upcoming
+            if cur != .completed && cur != .skipped {
+                states[stage.id] = .completed
             }
         }
         currentDerivedId = nil
