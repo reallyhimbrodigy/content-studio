@@ -648,17 +648,16 @@ struct EditorView: View {
     // styling, glass-fill background. Tap a chip → fill input + light
     // haptic, leave keyboard up so the user can edit if they want.
 
+    // Outcome-shaped vibes for short-form talking head. Order matters —
+    // "Engaging fast-paced" leads as the safe-bet default for users who'd
+    // otherwise type "make it good." Four chips fits cleanly without
+    // visual clutter and avoids hiding options behind an off-screen scroll
+    // on standard iPhone widths.
     private static let vibeSuggestions: [String] = [
-        "Cinematic",
-        "Punchy and fast",
-        "Aesthetic and dreamy",
-        "Hype edit with bass drops",
-        "Vlog-style storytelling",
-        "Documentary feel",
-        "TikTok viral style",
-        "Cozy and warm",
-        "High-energy montage",
-        "Slow and emotional"
+        "Engaging fast-paced",
+        "Sales pitch",
+        "Viral hype",
+        "Storytime"
     ]
 
     @ViewBuilder
@@ -673,22 +672,26 @@ struct EditorView: View {
                             inputText = vibe
                         } label: {
                             Text(vibe)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 13.5, weight: .medium))
                                 .foregroundStyle(.primary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
                                 .background(
                                     Capsule(style: .continuous)
                                         .fill(Color(.tertiarySystemFill))
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
                                 )
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
             }
-            .frame(height: 44)
+            .frame(height: 40)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }
