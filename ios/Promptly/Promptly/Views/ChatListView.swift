@@ -46,9 +46,14 @@ struct ChatListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Tapping anywhere in the chat-list area dismisses the
-            // search keyboard (mirrors ChatGPT's "tap to dismiss" feel).
+            // search keyboard. Goes through Keyboard.dismiss() for the
+            // synchronous, non-jumpy hide path; clearing searchFocused
+            // keeps the @FocusState in sync.
             .simultaneousGesture(
-                TapGesture().onEnded { searchFocused = false }
+                TapGesture().onEnded {
+                    searchFocused = false
+                    Keyboard.dismiss()
+                }
             )
 
             Divider()

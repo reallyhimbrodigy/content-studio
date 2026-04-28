@@ -112,6 +112,8 @@ struct AccountView: View {
             }
             .background(Color(.systemBackground))
             .toolbar(.hidden, for: .navigationBar)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .task { await loadProfile() }
             .alert("Edit name", isPresented: $showNameEdit) {
                 TextField("Name", text: $newName)
