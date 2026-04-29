@@ -9,6 +9,24 @@ struct LibraryView: View {
     @State private var showDeleteConfirm = false
     @State private var selectedEdit: VideoJob?
 
+    // Multi-select / bulk delete. Mirrors the Photos / Files / Mail
+    // selection pattern: trailing "Select" → "Done"; leading "Select All"
+    // when active; bottom action bar slides in showing the live count.
+    @State private var isSelecting = false
+    @State private var selectedIds: Set<String> = []
+    @State private var showBulkDeleteConfirm = false
+    @State private var isDeletingBulk = false
+
+    private var navTitle: String {
+        if isSelecting {
+            if selectedIds.isEmpty { return "Select Items" }
+            return "\(selectedIds.count) Selected"
+        }
+        return "Library"
+    }
+
+    private var allSelectableIds: [String] { edits.map { $0.id } }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -21,22 +39,166 @@ struct LibraryView: View {
                 } else {
                     editList
                 }
+
+                // Bottom action bar — slides in when selection mode is on.
+                // Native Photos pattern: pinned to the bottom safe area,
+                // ultraThinMaterial blur, large red Delete title with the
+                // live count, disabled when nothing is selected.
+                if isSelecting {
+                    VStack {
+                        Spacer()
+                        bulkActionBar
+                    }
+                    .ignoresSafeArea(.keyboard)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            .navigationTitle("Library")
+            .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .refreshable { await loadEdits() }
+            .toolbar {
+                // Leading: "Select All" / "Deselect All" while selecting.
+                ToolbarItem(placement: .topBarLeading) {
+                    if isSelecting {
+                        Button(selectedIds.count == allSelectableIds.count ? "Deselect All" : "Select All") {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if selectedIds.count == allSelectableIds.count {
+                                selectedIds.removeAll()
+                            } else {
+                                selectedIds = Set(allSelectableIds)
+                            }
+                        }
+                        .foregroundColor(.white)
+                    }
+                }
+                // Trailing: "Select" enters mode; "Done" exits.
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isSelecting {
+                        Button("Done") { exitSelectMode() }
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    } else if !edits.isEmpty {
+                        Button("Select") {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                isSelecting = true
+                            }
+                        }
+                        .foregroundColor(.white)
+                    }
+                }
+            }
+            .refreshable { if !isSelecting { await loadEdits() } }
             .task { await loadEdits() }
             .confirmationDialog("Delete this edit?", isPresented: $showDeleteConfirm, presenting: editToDelete) { edit in
                 Button("Delete", role: .destructive) { deleteEdit(edit) }
+            }
+            .confirmationDialog(
+                bulkConfirmMessage,
+                isPresented: $showBulkDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(selectedIds.count) \(selectedIds.count == 1 ? "Edit" : "Edits")", role: .destructive) {
+                    bulkDelete()
+                }
+                Button("Cancel", role: .cancel) { }
             }
             .sheet(item: $selectedEdit) { edit in
                 VideoDetailSheet(edit: edit, onDelete: {
                     selectedEdit = nil
                     Task { await loadEdits() }
                 })
+            }
+        }
+    }
+
+    private var bulkConfirmMessage: String {
+        let n = selectedIds.count
+        return n == 1
+            ? "Delete this edit? It will be removed from your library."
+            : "Delete \(n) edits? They will be removed from your library."
+    }
+
+    @ViewBuilder
+    private var bulkActionBar: some View {
+        HStack {
+            Spacer()
+            Button {
+                guard !selectedIds.isEmpty else { return }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showBulkDeleteConfirm = true
+            } label: {
+                Group {
+                    if isDeletingBulk {
+                        ProgressView().tint(.red)
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text(selectedIds.isEmpty ? "Delete" : "Delete (\(selectedIds.count))")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                    }
+                }
+                .foregroundColor(selectedIds.isEmpty ? Color(.tertiaryLabel) : .red)
+                .frame(height: 44)
+                .frame(maxWidth: .infinity)
+            }
+            .disabled(selectedIds.isEmpty || isDeletingBulk)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .padding(.top, 10)
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Color(.separator).opacity(0.6))
+                        .frame(height: 0.5)
+                }
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    private func toggleSelection(_ id: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if selectedIds.contains(id) {
+            selectedIds.remove(id)
+        } else {
+            selectedIds.insert(id)
+        }
+    }
+
+    private func exitSelectMode() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            isSelecting = false
+            selectedIds.removeAll()
+        }
+    }
+
+    /// Fan out deletes in parallel — typical user picks 5-20 items, doing
+    /// them serially would feel laggy. APIService.deleteEdit is idempotent
+    /// server-side so any racing duplicates are safe.
+    private func bulkDelete() {
+        let ids = selectedIds
+        guard !ids.isEmpty else { return }
+        isDeletingBulk = true
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for id in ids {
+                    group.addTask {
+                        try? await APIService.shared.deleteEdit(id: id)
+                        await VideoCache.shared.remove(jobId: id)
+                    }
+                }
+            }
+            await loadEdits()
+            await MainActor.run {
+                isDeletingBulk = false
+                exitSelectMode()
             }
         }
     }
@@ -61,16 +223,26 @@ struct LibraryView: View {
     private var editList: some View {
         List {
             ForEach(edits) { edit in
-                EditRow(edit: edit, onTap: {
-                    if edit.status == "completed" { selectedEdit = edit }
-                }, onShare: {
-                    // Handled via ShareLink in the row
-                }, onDelete: {
-                    editToDelete = edit
-                    showDeleteConfirm = true
-                }, onReedit: {
-                    startReedit(edit)
-                })
+                EditRow(
+                    edit: edit,
+                    isSelecting: isSelecting,
+                    isSelected: selectedIds.contains(edit.id),
+                    onTap: {
+                        if isSelecting {
+                            toggleSelection(edit.id)
+                        } else if edit.status == "completed" {
+                            selectedEdit = edit
+                        }
+                    },
+                    onShare: {},
+                    onDelete: {
+                        editToDelete = edit
+                        showDeleteConfirm = true
+                    },
+                    onReedit: {
+                        startReedit(edit)
+                    }
+                )
                 .listRowBackground(Color(.secondarySystemBackground))
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowSeparatorTint(Color(.separator))
@@ -79,6 +251,13 @@ struct LibraryView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
+        // Reserve space for the floating action bar so the last row
+        // never sits underneath it.
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting {
+                Color.clear.frame(height: 50)
+            }
+        }
     }
 
     private func startReedit(_ edit: VideoJob) {
@@ -124,6 +303,8 @@ struct LibraryView: View {
 
 struct EditRow: View {
     let edit: VideoJob
+    let isSelecting: Bool
+    let isSelected: Bool
     let onTap: () -> Void
     let onShare: () -> Void
     let onDelete: () -> Void
@@ -133,6 +314,19 @@ struct EditRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 14) {
+                // Selection circle slides in from the leading edge when
+                // selection mode activates. Native Photos pattern: empty
+                // circle at tertiary, filled checkmark at accent when on.
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(isSelected ? Color.accentColor : Color(.tertiaryLabel))
+                        .symbolRenderingMode(.hierarchical)
+                        .frame(width: 22, height: 22)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
+
                 // Thumbnail
                 if let thumbUrl = edit.thumbnail_url, let url = URL(string: thumbUrl) {
                     AsyncImage(url: url) { phase in
@@ -182,43 +376,49 @@ struct EditRow: View {
 
                 Spacer()
 
-                // Three-dot menu
-                Menu {
-                    if edit.status == "completed" {
-                        Button(action: onReedit) {
-                            Label("Re-edit", systemImage: "wand.and.stars")
+                // Three-dot menu — hidden during selection mode so the
+                // entire row becomes a clean toggle target.
+                if !isSelecting {
+                    Menu {
+                        if edit.status == "completed" {
+                            Button(action: onReedit) {
+                                Label("Re-edit", systemImage: "wand.and.stars")
+                            }
                         }
-                    }
-                    if edit.status == "completed", let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                        ShareLink(item: url) {
-                            Label("Share", systemImage: "square.and.arrow.up")
+                        if edit.status == "completed", let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                            ShareLink(item: url) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+
+                            Button {
+                                UIApplication.shared.open(url)
+                            } label: {
+                                Label("Download", systemImage: "arrow.down.circle")
+                            }
                         }
 
-                        Button {
-                            UIApplication.shared.open(url)
-                        } label: {
-                            Label("Download", systemImage: "arrow.down.circle")
+                        Button(role: .destructive, action: onDelete) {
+                            Label("Delete", systemImage: "trash")
                         }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
-
-                    Button(role: .destructive, action: onDelete) {
-                        Label("Delete", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    .accessibilityLabel("More options")
+                    .transition(.opacity)
                 }
-                .accessibilityLabel("More options")
             }
             .padding(.vertical, 4)
+            .animation(.easeInOut(duration: 0.22), value: isSelecting)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(edit.vibe_input ?? "Video edit")
-        .accessibilityValue("\(statusText), \(formatDate(edit.created_at ?? ""))")
+        .accessibilityValue("\(statusText), \(formatDate(edit.created_at ?? ""))" + (isSelecting ? (isSelected ? ", selected" : ", not selected") : ""))
+        .accessibilityAddTraits(isSelecting && isSelected ? [.isSelected] : [])
     }
 
     private var statusColor: Color {

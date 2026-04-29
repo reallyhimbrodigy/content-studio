@@ -328,8 +328,6 @@ enum PipelineCatalog {
         PipelineStage(id: "broll_search", title: "Sourcing B-roll cutaways",      icon: "film.stack",                authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "render",       title: "Rendering your edit",           icon: "sparkles",                  authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "timing",       title: "Timing cuts to the beat",       icon: "timer",                     authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "color",        title: "Applying your color grade",     icon: "paintpalette",              authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "speed",        title: "Composing speed ramps",         icon: "speedometer",               authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "captions",     title: "Placing captions word-by-word", icon: "text.bubble",               authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "sfx",          title: "Layering sound effects",        icon: "speaker.wave.2",            authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "transitions",  title: "Stitching transitions",         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
