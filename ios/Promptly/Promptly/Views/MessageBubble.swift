@@ -1075,13 +1075,74 @@ final class PromptlyPlayerVC: AVPlayerViewController {
     }
 }
 
+/// Full-screen loader shown while downloading a video on a cache miss.
+/// Black backdrop, centered spinner, "Preparing video..." subtitle,
+/// top-left X to cancel. Same modal style as the player so the
+/// transition from loader → player feels like the same surface.
+final class VideoLoaderVC: UIViewController {
+    private let spinner = UIActivityIndicatorView(style: .large)
+    private let label = UILabel()
+    private let cancelButton = UIButton(type: .system)
+    var onCancel: (() -> Void)?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+
+        spinner.color = .white
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.startAnimating()
+        view.addSubview(spinner)
+
+        label.text = "Preparing video..."
+        label.textColor = UIColor.white.withAlphaComponent(0.7)
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        cancelButton.setImage(UIImage(systemName: "xmark", withConfiguration: cfg), for: .normal)
+        cancelButton.tintColor = .white
+        cancelButton.backgroundColor = UIColor.white.withAlphaComponent(0.15)
+        cancelButton.layer.cornerRadius = 18
+        cancelButton.layer.cornerCurve = .continuous
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
+        cancelButton.accessibilityLabel = "Cancel"
+        view.addSubview(cancelButton)
+
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
+
+            cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            cancelButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            cancelButton.widthAnchor.constraint(equalToConstant: 36),
+            cancelButton.heightAnchor.constraint(equalToConstant: 36),
+        ])
+    }
+
+    @objc private func handleCancel() {
+        onCancel?()
+        dismiss(animated: true)
+    }
+}
+
 enum VideoPlayerPresenter {
     /// Present the player. When `jobId` is provided, the local cache is
     /// checked first — if the video is on disk, AVPlayer plays from
     /// `file://` and the result feels exactly like Apple Photos
     /// (instant, no buffering, no stalls).
-    /// On cache miss, we fall back to streaming AND kick off a
-    /// background download so the next tap is local.
+    /// On cache miss, we present a loader and download the full file
+    /// before playback so the player ALWAYS reads from disk. Streaming
+    /// over a signed URL was producing constant mid-playback freezes
+    /// even on healthy Wi-Fi (AVPlayer's automaticallyWaitsToMinimizeStalling
+    /// rebuffers every time bandwidth dips), and the user's expectation
+    /// is "should play even with no internet" — only local files
+    /// satisfy that.
     /// Optional `onRefreshNeeded` is called when the URL fails a
     /// pre-flight HEAD check (or AVPlayer reports a 403/expired error
     /// during load) so the caller can return a freshly-signed URL and
@@ -1108,26 +1169,86 @@ enum VideoPlayerPresenter {
             return
         }
 
-        // Cache miss → preflight signed URL + stream. In parallel, kick
-        // off a background download so subsequent taps go local.
+        // Cache miss path. If we have a jobId, do download-then-play so
+        // playback runs from a complete local file (no streaming stalls).
+        // If we don't have a jobId we can't cache, so fall back to the
+        // legacy preflight + stream path.
         if let jobId {
-            Task.detached(priority: .background) {
-                await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: urlString)
+            presentWithDownload(jobId: jobId, urlString: urlString, onRefreshNeeded: onRefreshNeeded)
+        } else {
+            Task { @MainActor in
+                let resolvedUrl = await preflightOrRefresh(
+                    urlString: urlString,
+                    onRefreshNeeded: onRefreshNeeded
+                )
+                doPresent(urlString: resolvedUrl)
             }
         }
+    }
 
-        // Pre-flight HEAD to verify the URL is still valid before
-        // committing to AVPlayer. If we get 4xx (most commonly 403 on
-        // an expired SigV4 URL), call the refresh callback and use the
-        // returned fresh URL. This costs 100-300ms on the happy path
-        // but eliminates the "tap → modal opens to a black frame and
-        // stays there" failure mode.
+    /// Cache-miss flow: present a loader, resolve the URL (refreshing
+    /// the SigV4 signature if needed), download to disk with userInitiated
+    /// priority, then transition to the player from the local file. On
+    /// download failure or user cancel, the loader dismisses. On a
+    /// hard timeout (90s) we fall back to streaming as a last resort
+    /// so the user doesn't get stuck staring at a spinner.
+    @MainActor
+    private static func presentWithDownload(
+        jobId: String,
+        urlString: String,
+        onRefreshNeeded: (() async -> String?)?
+    ) {
+        guard let topVC = topmostViewController() else { return }
+
+        let loader = VideoLoaderVC()
+        loader.modalPresentationStyle = .fullScreen
+        var cancelled = false
+        loader.onCancel = { cancelled = true }
+        topVC.present(loader, animated: true)
+
         Task { @MainActor in
             let resolvedUrl = await preflightOrRefresh(
                 urlString: urlString,
                 onRefreshNeeded: onRefreshNeeded
             )
-            doPresent(urlString: resolvedUrl)
+            if cancelled { return }
+
+            // Race the download against a 90s hard timeout — if the
+            // network is genuinely too slow to deliver the file in
+            // 90s, we'd rather try streaming than leave the user
+            // staring at a spinner indefinitely.
+            let result: URL? = await withTaskGroup(of: URL?.self) { group in
+                group.addTask {
+                    await VideoCache.shared.downloadIfNeeded(
+                        jobId: jobId,
+                        from: resolvedUrl,
+                        priority: .userInitiated
+                    )
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(90))
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+
+            if cancelled { return }
+
+            // Dismiss loader without animation, then immediately hand off
+            // to the player so the visible transition feels like a swap.
+            loader.dismiss(animated: false) {
+                if let local = result {
+                    doPresent(urlString: local.absoluteString)
+                } else {
+                    // Download didn't land in time — try streaming as a
+                    // fallback so SOMETHING happens. AVPlayer will surface
+                    // its own error UI if even that fails.
+                    print("[player] download timed out, falling back to streaming")
+                    doPresent(urlString: resolvedUrl)
+                }
+            }
         }
     }
 

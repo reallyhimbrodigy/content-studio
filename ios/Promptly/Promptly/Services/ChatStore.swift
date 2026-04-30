@@ -40,8 +40,10 @@ final class ChatStore: ObservableObject {
             // Retry-on-launch: walk every completed message and prefetch
             // any rendered video that isn't already on disk. Closes the
             // "previous app run's eager download failed" gap. Bounded to
-            // most-recent ~30 across all chats to keep launch traffic sane.
-            prefetchUncachedVideos(limit: 30)
+            // most-recent ~50 across all chats — enough to cover an
+            // active user's recent history; serialized inside VideoCache
+            // so it doesn't burst the network.
+            prefetchUncachedVideos(limit: 50)
         } catch {
             self.loadError = error.localizedDescription
             isLoading = false

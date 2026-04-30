@@ -275,10 +275,12 @@ struct LibraryView: View {
         isLoading = false
         // Eager prefetch: warm the local cache for the most-recent
         // completed edits so taps in the Library are Photos-app instant.
-        // Bounded to top 10 to avoid burst-downloading 100+ videos at
-        // once and to keep cache pressure under the 1 GB ceiling.
+        // Up to 50 — the cache eviction at 1 GB is the real ceiling, and
+        // serialized downloads inside VideoCache mean these don't burst
+        // the network even at 50 concurrent calls. Anything older than
+        // the 50 most-recent gets fetched lazily on first tap.
         let toPrefetch: [(id: String, url: String)] = edits
-            .prefix(10)
+            .prefix(50)
             .compactMap { edit in
                 guard edit.status == "completed",
                       let url = edit.rendered_video_url else { return nil }
