@@ -312,6 +312,18 @@ struct EditRow: View {
     let onDelete: () -> Void
     let onReedit: () -> Void
     @State private var showMenu = false
+    @ObservedObject private var cache = VideoCache.shared
+
+    /// True when the actual rendered video file is on local disk and
+    /// playback would be instant. Until then, the row's tap is disabled
+    /// (outside selection mode) and a small spinner sits over the
+    /// thumbnail to signal "downloading."
+    private var isCached: Bool {
+        edit.status == "completed" && cache.cachedIds.contains(edit.id)
+    }
+    private var isDownloading: Bool {
+        edit.status == "completed" && !cache.cachedIds.contains(edit.id)
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -329,27 +341,42 @@ struct EditRow: View {
                         .accessibilityHidden(true)
                 }
 
-                // Thumbnail
-                if let thumbUrl = edit.thumbnail_url, let url = URL(string: thumbUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        default:
-                            Color(.tertiarySystemBackground)
+                // Thumbnail with download state overlay. While the video
+                // file is still being pulled down, the row dims the
+                // thumbnail and spins a small indicator on top so the
+                // user can see exactly which rows are loading.
+                ZStack {
+                    if let thumbUrl = edit.thumbnail_url, let url = URL(string: thumbUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                Color(.tertiarySystemBackground)
+                            }
                         }
-                    }
-                    .frame(width: 64, height: 80)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(.tertiarySystemBackground))
                         .frame(width: 64, height: 80)
-                        .overlay {
-                            Image(systemName: "video.fill")
-                                .foregroundColor(Color(.separator))
-                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.tertiarySystemBackground))
+                            .frame(width: 64, height: 80)
+                            .overlay {
+                                Image(systemName: "video.fill")
+                                    .foregroundColor(Color(.separator))
+                            }
+                    }
+
+                    if isDownloading {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black.opacity(0.45))
+                            .frame(width: 64, height: 80)
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                    }
                 }
+                .animation(.easeInOut(duration: 0.18), value: isCached)
 
                 // Info
                 VStack(alignment: .leading, spacing: 6) {
@@ -417,9 +444,25 @@ struct EditRow: View {
             .animation(.easeInOut(duration: 0.22), value: isSelecting)
         }
         .buttonStyle(.plain)
+        // Outside selection mode, completed rows aren't tappable until
+        // the video file is on disk — matches the "thumbnail loads, then
+        // becomes playable" pattern. In selection mode, every row is
+        // always tappable so the user can include in-flight videos in
+        // a bulk delete.
+        .disabled(!isSelecting && edit.status == "completed" && !isCached)
+        .task(id: edit.id) {
+            // Auto-warm this row's cache the moment it appears. No-op
+            // for already-cached rows or rows still processing on the
+            // server. Coalesces with the bulk Library prefetch via
+            // VideoCache's in-flight task map.
+            guard edit.status == "completed",
+                  let url = edit.rendered_video_url,
+                  !cache.cachedIds.contains(edit.id) else { return }
+            _ = await VideoCache.shared.downloadIfNeeded(jobId: edit.id, from: url)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(edit.vibe_input ?? "Video edit")
-        .accessibilityValue("\(statusText), \(formatDate(edit.created_at ?? ""))" + (isSelecting ? (isSelected ? ", selected" : ", not selected") : ""))
+        .accessibilityValue("\(statusText), \(formatDate(edit.created_at ?? ""))" + (isSelecting ? (isSelected ? ", selected" : ", not selected") : "") + (isDownloading ? ", downloading" : ""))
         .accessibilityAddTraits(isSelecting && isSelected ? [.isSelected] : [])
     }
 

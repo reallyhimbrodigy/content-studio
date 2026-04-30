@@ -15,8 +15,14 @@ import Foundation
 ///   - Eviction runs on launch: anything older than 30 days is deleted,
 ///     then the oldest files are pruned until total bytes fit under 1 GB.
 @MainActor
-final class VideoCache {
+final class VideoCache: ObservableObject {
     static let shared = VideoCache()
+
+    /// SwiftUI-observable set of cached job ids. Views bind their
+    /// "is this thumbnail playable?" state to this so the UI flips
+    /// from "downloading" → "ready to play" the instant the file
+    /// lands on disk, without polling.
+    @Published private(set) var cachedIds: Set<String> = []
 
     /// Hard ceiling. ~125 typical 8Mbps × 60s clips. Eviction kicks in
     /// before this is reached so the device doesn't surprise-fill.
@@ -60,6 +66,14 @@ final class VideoCache {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         cacheDir = caches.appendingPathComponent("promptly-videos", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        // Seed cachedIds from disk so views know which videos are
+        // already playable on first render (e.g., relaunch).
+        if let urls = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) {
+            for url in urls where url.pathExtension == "mp4" {
+                let jobId = url.deletingPathExtension().lastPathComponent
+                cachedIds.insert(jobId)
+            }
+        }
         Task { [weak self] in
             await self?.evictIfNeeded()
         }
@@ -142,6 +156,12 @@ final class VideoCache {
         inflight[jobId] = downloadTask
         let result = await downloadTask.value
         inflight[jobId] = nil
+        // Publish the cache-state change so observing views (chat
+        // thumbnails, library rows) flip from loading → playable
+        // without any polling or manual refresh.
+        if result != nil {
+            cachedIds.insert(jobId)
+        }
         return result
     }
 
@@ -177,6 +197,7 @@ final class VideoCache {
     /// so user-deleted content actually leaves the device.
     func remove(jobId: String) {
         try? FileManager.default.removeItem(at: fileUrl(forJobId: jobId))
+        cachedIds.remove(jobId)
     }
 
     /// Wipe the entire cache. Called on sign-out so the next user on the
@@ -184,6 +205,7 @@ final class VideoCache {
     func purgeAll() {
         try? FileManager.default.removeItem(at: cacheDir)
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        cachedIds.removeAll()
     }
 
     // MARK: - Internals
@@ -227,6 +249,7 @@ final class VideoCache {
         for entry in entries {
             if entry.date < cutoff {
                 try? FileManager.default.removeItem(at: entry.url)
+                cachedIds.remove(entry.url.deletingPathExtension().lastPathComponent)
             } else {
                 alive.append(entry)
             }
@@ -238,6 +261,7 @@ final class VideoCache {
         var idx = 0
         while total > maxBytes && idx < alive.count {
             try? FileManager.default.removeItem(at: alive[idx].url)
+            cachedIds.remove(alive[idx].url.deletingPathExtension().lastPathComponent)
             total -= alive[idx].size
             idx += 1
         }

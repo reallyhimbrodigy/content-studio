@@ -894,12 +894,21 @@ struct CompletedVideoView: View {
     @State private var liveThumbnailUrl: String?
     @State private var refreshAttempted = false
 
+    /// Drives the loading-vs-playable thumbnail state. Updates the
+    /// instant `VideoCache.shared.cachedIds` flips for this jobId.
+    @ObservedObject private var cache = VideoCache.shared
+
     private var effectiveVideoUrl: String { liveVideoUrl ?? videoUrlStr }
     private var effectiveThumbnailUrl: String? { liveThumbnailUrl ?? thumbnailUrlStr }
+    private var isCached: Bool {
+        guard let jobId else { return false }
+        return cache.cachedIds.contains(jobId)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
+                guard isCached else { return }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
                     jobId: jobId,
@@ -916,25 +925,28 @@ struct CompletedVideoView: View {
                         )
                         .allowsHitTesting(false)
                     }
-                    .overlay {
-                        ZStack {
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .frame(width: 62, height: 62)
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(.white)
-                                .offset(x: 2)
-                                .accessibilityHidden(true)
-                        }
-                    }
+                    .overlay { thumbnailOverlay }
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Play your edited video")
+            .disabled(!isCached)
+            .accessibilityLabel(isCached ? "Play your edited video" : "Preparing your edited video")
             .accessibilityAddTraits(.isButton)
+            .task(id: jobId) {
+                // Auto-download the moment this thumbnail comes on screen
+                // (no-op if already cached or in flight). Once it lands,
+                // VideoCache flips cachedIds and the overlay swaps to
+                // the play button without any user action.
+                guard let jobId else { return }
+                if cache.cachedIds.contains(jobId) { return }
+                _ = await VideoCache.shared.downloadIfNeeded(
+                    jobId: jobId,
+                    from: effectiveVideoUrl,
+                    priority: .userInitiated
+                )
+            }
             .contextMenu {
-                if let url = URL(string: videoUrlStr) {
+                if isCached, let url = URL(string: videoUrlStr) {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
@@ -956,7 +968,38 @@ struct CompletedVideoView: View {
                 thumbnailUrlStr: thumbnailUrlStr,
                 onReedit: onReedit
             )
+            .opacity(isCached ? 1 : 0.4)
+            .disabled(!isCached)
         }
+    }
+
+    /// The play-button or loading-spinner overlay sits on top of the
+    /// thumbnail. Crossfades between states when the cache flips.
+    @ViewBuilder
+    private var thumbnailOverlay: some View {
+        ZStack {
+            if isCached {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 62, height: 62)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white)
+                    .offset(x: 2)
+                    .accessibilityHidden(true)
+            } else {
+                // Dim the thumbnail and show a centered spinner while the
+                // file is downloading. iMessage uses this exact pattern
+                // for video attachments before they've been pulled down.
+                Color.black.opacity(0.45)
+                    .allowsHitTesting(false)
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.white)
+                    .scaleEffect(1.2)
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: isCached)
     }
 
     @ViewBuilder
