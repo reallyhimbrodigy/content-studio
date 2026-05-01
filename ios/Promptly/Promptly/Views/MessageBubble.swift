@@ -53,10 +53,10 @@ struct MessageBubble: View {
                     .font(.body)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, Theme.Space.sm)
+                    .padding(.vertical, Theme.Space.xs)
+                    .background(Theme.Surface.surface2)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
         // Combine the video + text into a single VoiceOver element with
@@ -75,10 +75,10 @@ struct MessageBubble: View {
                 // real reply, so the transition from "thinking" to "answer"
                 // feels like the bubble's content morphing in place.
                 ThinkingDots()
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, Theme.Space.sm)
+                    .padding(.vertical, Theme.Space.xs)
+                    .background(Theme.Surface.surface2)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
             if let status = message.jobStatus,
@@ -99,10 +99,10 @@ struct MessageBubble: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, Theme.Space.sm)
+                    .padding(.vertical, Theme.Space.xs)
+                    .background(Theme.Surface.surface2)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
@@ -118,10 +118,10 @@ struct MessageBubble: View {
                 Text(message.error ?? "Something went wrong.")
                     .font(.system(size: 14))
                     .foregroundColor(.red)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, Theme.Space.sm)
+                    .padding(.vertical, Theme.Space.xs)
                     .background(Color.red.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }

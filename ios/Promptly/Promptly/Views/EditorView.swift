@@ -363,8 +363,12 @@ struct EditorView: View {
     // MARK: - Pending Attachments
 
     private var pendingAttachments: some View {
+        // Explicit height — without it, ScrollView in a VStack expands
+        // to whatever vertical space is available and produces an empty
+        // black band between the tiles and the input bar. 72pt = the
+        // tile (56) + vertical padding (8 × 2).
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Space.xs) {
                 ForEach(pendingVideos) { video in
                     PendingVideoThumb(video: video) {
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -373,11 +377,13 @@ struct EditorView: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.Space.sm)
+            .padding(.top, Theme.Space.xs)
+            .padding(.bottom, Theme.Space.xxs)
         }
+        .frame(height: 72)
         .background(Color(.systemBackground))
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     // MARK: - Input Bar
@@ -431,14 +437,20 @@ struct EditorView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.tertiarySystemBackground))
         )
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+        .padding(.horizontal, Theme.Space.sm)
+        .padding(.top, Theme.Space.xxs)
+        .padding(.bottom, Theme.Space.xs)
         .background(Color(.systemBackground))
+        // Hairline separator only when there's no pending video / chip
+        // row above — otherwise we're stacking borders that compete
+        // for attention. The composer should read as one connected
+        // surface.
         .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color(.separator))
-                .frame(height: 0.5)
+            if pendingVideos.isEmpty && reeditSession == nil {
+                Rectangle()
+                    .fill(Theme.Border.hairline)
+                    .frame(height: 0.5)
+            }
         }
     }
 
@@ -662,7 +674,11 @@ struct EditorView: View {
 
     @ViewBuilder
     private var vibeChipsBar: some View {
+        // Show only when there's no input text, no pending video, and
+        // no re-edit session. Once the user has committed to a video,
+        // the chips are visual noise and just inflate the composer.
         if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           pendingVideos.isEmpty,
            reeditSession == nil {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
