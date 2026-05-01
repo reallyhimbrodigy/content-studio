@@ -13,55 +13,6 @@
 			<string>app.usepromptly.ios</string>
 		</dict>
 	</array>
-	<!--
-		TIKTOK OPEN SDK SETUP:
-		After registering at https://developers.tiktok.com/ and obtaining a
-		Client Key, add TWO more entries to CFBundleURLTypes above:
-
-			<dict>
-				<key>CFBundleURLName</key><string>tiktok-opensdk</string>
-				<key>CFBundleURLSchemes</key>
-				<array><string>tiktokopensdk{CLIENT_KEY}</string></array>
-			</dict>
-			<dict>
-				<key>CFBundleURLName</key><string>tiktok-sharesdk</string>
-				<key>CFBundleURLSchemes</key>
-				<array><string>tiktoksharesdk{CLIENT_KEY}</string></array>
-			</dict>
-
-		Replace {CLIENT_KEY} with the raw client key (letters and digits only,
-		no braces). App Store Connect validates URL schemes against RFC 1738
-		so these entries cannot exist with placeholder text; they must be
-		added only after you have the real key.
-	-->
-
-	<!--
-		Schemes this app needs to canOpenURL against. Without these,
-		UIApplication.canOpenURL returns false for the target app and the
-		export buttons would silently degrade.
-	-->
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>tiktokopensdk</string>
-		<string>tiktoksharesdk</string>
-		<string>snssdk1233</string>
-		<string>instagram</string>
-		<string>instagram-stories</string>
-	</array>
-	<!--
-		TikTok Open SDK client key — register at https://developers.tiktok.com/
-		Leave empty to disable SDK-based sharing (falls back to opening TikTok
-		app via URL scheme, which works but skips the direct-to-composer flow).
-	-->
-	<key>TikTokClientKey</key>
-	<string></string>
-	<!--
-		Facebook App ID — register at https://developers.facebook.com/
-		Required only for Instagram Stories pasteboard sharing. Leave empty to
-		disable Stories share (Feed/Reel share still works via URL scheme).
-	-->
-	<key>FacebookAppID</key>
-	<string></string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

@@ -2,10 +2,6 @@ import SwiftUI
 import AVKit
 import Photos
 
-#if canImport(TikTokOpenShareSDK)
-import TikTokOpenShareSDK
-#endif
-
 struct MessageBubble: View {
     let message: ChatMessage
 
@@ -461,27 +457,19 @@ struct PipelineProgressView: View {
     }
 }
 
-// MARK: - Video Exporter (Save to Photos + TikTok + Instagram)
+// MARK: - Video Exporter (Save to Photos)
 //
 // One VideoExporter per completed video message (via @StateObject on the
 // VideoActionRow). Manages:
 //   - Single download of the remote MP4 to a temp file (cached for the
 //     session so re-taps don't re-download).
-//   - Single save to Photos (cached PHAsset localIdentifier so repeated
-//     TikTok/Instagram shares reuse the same asset).
-//   - Per-action state machines (idle / loading / success / error) so each
-//     button can animate independently.
+//   - Save-to-Photos with idle / loading / success / error state.
 //
-// TikTok path: if TikTokOpenShareSDK is linked, uses TikTokShareRequest to
-// hand off directly to TikTok's upload composer. Without the SDK the code
-// falls back to opening TikTok via URL scheme (still useful — the video
-// is pre-saved in Photos so the user just taps + in TikTok).
-//
-// Instagram path: uses URL schemes officially documented by Meta. There is
-// no Instagram SDK for third-party share on iOS — URL schemes + pasteboard
-// IS the production approach (same method used by Canva, Adobe Express,
-// etc.). Feed/Reel flow is instagram://library?LocalIdentifier=... and
-// drops the user into Instagram's media picker with the asset preselected.
+// All other share destinations go through the iOS share sheet
+// (`shareLinkPill` → `ShareLink`), which handles AirDrop, Messages,
+// Mail, copy-to-pasteboard, and any third-party app the user has
+// installed (TikTok, Instagram, etc.) without us having to maintain
+// per-app SDKs.
 
 @MainActor
 final class VideoExporter: ObservableObject {
@@ -489,8 +477,6 @@ final class VideoExporter: ObservableObject {
     let thumbnailUrlStr: String?
 
     @Published var saveState: ActionState = .idle
-    @Published var tiktokState: ActionState = .idle
-    @Published var instagramState: ActionState = .idle
 
     private var cachedLocalUrl: URL?
     private var cachedAssetId: String?
@@ -578,77 +564,6 @@ final class VideoExporter: ObservableObject {
         }
     }
 
-    func shareToTikTok() {
-        Task {
-            tiktokState = .loading
-            do {
-                let assetId = try await ensureSavedToPhotos()
-
-                #if canImport(TikTokOpenShareSDK)
-                // Production SDK path — direct-to-composer handoff.
-                let request = TikTokShareRequest(
-                    localIdentifiers: [assetId],
-                    mediaType: .video,
-                    redirectURI: "app.usepromptly.ios://tiktok-share-callback"
-                )
-                _ = request.send { _ in }
-                tiktokState = .success
-                #else
-                // SDK not linked — fall back to opening TikTok app. The video is
-                // already saved to Photos above, so the user just has to tap +
-                // once inside TikTok and pick the fresh clip from their library.
-                guard let url = URL(string: "snssdk1233://") else {
-                    throw ExportError.invalidUrl
-                }
-                if await UIApplication.shared.canOpenURL(url) {
-                    await UIApplication.shared.open(url)
-                    tiktokState = .success
-                } else if let storeUrl = URL(string: "https://apps.apple.com/app/id835599320") {
-                    await UIApplication.shared.open(storeUrl)
-                    throw ExportError.appNotInstalled("TikTok")
-                }
-                #endif
-
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if tiktokState == .success { tiktokState = .idle }
-                _ = assetId  // keep capture live
-            } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                tiktokState = .error(error.localizedDescription)
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                if case .error = tiktokState { tiktokState = .idle }
-            }
-        }
-    }
-
-    func shareToInstagram() {
-        Task {
-            instagramState = .loading
-            do {
-                let assetId = try await ensureSavedToPhotos()
-                // Instagram's library deep link opens its picker with the
-                // specific video preselected — user picks Feed / Reel / Story.
-                guard let url = URL(string: "instagram://library?LocalIdentifier=\(assetId)") else {
-                    throw ExportError.invalidUrl
-                }
-                if await UIApplication.shared.canOpenURL(url) {
-                    await UIApplication.shared.open(url)
-                    instagramState = .success
-                } else if let storeUrl = URL(string: "https://apps.apple.com/app/id389801252") {
-                    await UIApplication.shared.open(storeUrl)
-                    throw ExportError.appNotInstalled("Instagram")
-                }
-
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if instagramState == .success { instagramState = .idle }
-            } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                instagramState = .error(error.localizedDescription)
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                if case .error = instagramState { instagramState = .idle }
-            }
-        }
-    }
 }
 
 // MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
@@ -666,21 +581,6 @@ struct VideoActionRow: View {
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
     }
 
-    // Brand gradients — pulled from Instagram + TikTok brand kits
-    private static let instagramGradient = LinearGradient(
-        colors: [
-            Color(red: 0.996, green: 0.855, blue: 0.459),  // #FEDA75
-            Color(red: 0.980, green: 0.494, blue: 0.118),  // #FA7E1E
-            Color(red: 0.839, green: 0.161, blue: 0.463),  // #D62976
-            Color(red: 0.588, green: 0.184, blue: 0.749),  // #962FBF
-            Color(red: 0.310, green: 0.357, blue: 0.835)   // #4F5BD5
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-    private static let tiktokBlack = Color.black
-    private static let tiktokAccent = Color(red: 0.996, green: 0.173, blue: 0.333)  // #FE2C55
-
     var body: some View {
         HStack(spacing: 14) {
             if let onReedit {
@@ -688,7 +588,6 @@ struct VideoActionRow: View {
                     icon: "wand.and.stars",
                     label: "Re-edit",
                     state: .idle,
-                    fill: .neutral,
                     action: onReedit
                 )
             }
@@ -697,24 +596,7 @@ struct VideoActionRow: View {
                 icon: "square.and.arrow.down",
                 label: "Save",
                 state: exporter.saveState,
-                fill: .neutral,
                 action: exporter.save
-            )
-
-            pill(
-                icon: "music.note",
-                label: "TikTok",
-                state: exporter.tiktokState,
-                fill: .tiktok,
-                action: exporter.shareToTikTok
-            )
-
-            pill(
-                icon: "camera",
-                label: "Instagram",
-                state: exporter.instagramState,
-                fill: .instagram,
-                action: exporter.shareToInstagram
             )
 
             shareLinkPill
@@ -726,18 +608,11 @@ struct VideoActionRow: View {
 
     // MARK: - Pill subviews
 
-    private enum PillFill {
-        case neutral
-        case tiktok
-        case instagram
-    }
-
     @ViewBuilder
     private func pill(
         icon: String,
         label: String,
         state: VideoExporter.ActionState,
-        fill: PillFill,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
@@ -746,8 +621,8 @@ struct VideoActionRow: View {
         }) {
             VStack(spacing: 6) {
                 ZStack {
-                    pillBackground(fill: fill)
-                    pillSymbol(icon: icon, state: state, fill: fill)
+                    Circle().fill(Color(.tertiarySystemBackground))
+                    pillSymbol(icon: icon, state: state)
                 }
                 .frame(width: 48, height: 48)
                 .overlay(
@@ -774,11 +649,9 @@ struct VideoActionRow: View {
 
     private func accessibilityLabel(for label: String) -> String {
         switch label {
-        case "Re-edit":   return "Re-edit this video"
-        case "Save":      return "Save video to Photos"
-        case "TikTok":    return "Share to TikTok"
-        case "Instagram": return "Share to Instagram"
-        default:          return label
+        case "Re-edit": return "Re-edit this video"
+        case "Save":    return "Save video to Photos"
+        default:        return label
         }
     }
 
@@ -792,38 +665,24 @@ struct VideoActionRow: View {
     }
 
     @ViewBuilder
-    private func pillBackground(fill: PillFill) -> some View {
-        switch fill {
-        case .neutral:
-            Circle().fill(Color(.tertiarySystemBackground))
-        case .tiktok:
-            Circle().fill(Self.tiktokBlack)
-        case .instagram:
-            Circle().fill(Self.instagramGradient)
-        }
-    }
-
-    @ViewBuilder
     private func pillSymbol(
         icon: String,
-        state: VideoExporter.ActionState,
-        fill: PillFill
+        state: VideoExporter.ActionState
     ) -> some View {
-        let color: Color = fill == .neutral ? .white : .white
         switch state {
         case .idle:
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .medium))
-                .foregroundColor(color)
+                .foregroundColor(.white)
                 .symbolRenderingMode(.hierarchical)
         case .loading:
             ProgressView()
                 .controlSize(.small)
-                .tint(color)
+                .tint(.white)
         case .success:
             Image(systemName: "checkmark")
                 .font(.system(size: 18, weight: .bold))
-                .foregroundColor(color)
+                .foregroundColor(.white)
                 .transition(.scale.combined(with: .opacity))
         case .error:
             Image(systemName: "exclamationmark")
