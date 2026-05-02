@@ -18,38 +18,39 @@ struct EditorView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Scroll area fills the available space above the composer.
-                // `.frame(maxHeight: .infinity)` is critical — without it
-                // the VStack distributes by natural sizes and the
-                // ScrollView ends up shorter than the screen, leaving the
-                // visible black band that users were reporting between
-                // their messages and the input bar.
-                Group {
-                    if messages.isEmpty {
-                        emptyState
-                    } else {
-                        messagesList
-                    }
+            // SwiftUI's native pattern for "scroll content above a pinned
+            // bottom toolbar." The composer is attached as a bottom safe-
+            // area inset, which means:
+            //   - The scroll view's frame ends exactly where the composer
+            //     starts. No VStack distribution math, no leftover black
+            //     band between the bottom message and the composer.
+            //   - The system handles keyboard avoidance automatically — the
+            //     composer rises with the keyboard and the scroll content
+            //     adjusts insets to match.
+            //   - Same architecture as iMessage / Photos / Mail / WhatsApp.
+            // Three previous builds tried VStack-based fixes; all failed
+            // because SwiftUI's vertical distribution interacts with
+            // ScrollView in subtle ways that produce empty space.
+            Group {
+                if messages.isEmpty {
+                    emptyState
+                } else {
+                    messagesList
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // Composer (pending tiles + re-edit chip + chips + input).
-                // Wrapped so the whole bundle reads as one connected
-                // surface and the scroll area cleanly hands off to it.
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     if !pendingVideos.isEmpty {
                         pendingAttachments
                     }
-
                     reeditChip
-
                     vibeChipsBar
-
                     inputBar
                 }
+                .background(Color(.systemBackground))
             }
-            .background(Color(.systemBackground))
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(.systemBackground), for: .navigationBar)
