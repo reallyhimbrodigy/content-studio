@@ -349,15 +349,18 @@ struct EditorView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // Color.clear with maxHeight infinity acts as a top spacer:
-                // it pushes the messages to the bottom of the scroll area
-                // when content is shorter than the viewport. Combined with
-                // .defaultScrollAnchor(.bottom), short conversations sit
-                // flush against the composer instead of leaving empty
-                // space (the visible "black bar" between bubbles and the
-                // input bar that users were reporting).
+                // `containerRelativeFrame(.vertical)` sizes the wrapper
+                // VStack to the ScrollView's container height (visible
+                // bounds), and the Spacer inside takes the remaining
+                // vertical space — pushing the LazyVStack to the bottom
+                // when content is shorter than the viewport. When
+                // messages overflow, the Spacer collapses to 0 and
+                // content scrolls naturally. iOS 17+ API. Replaces an
+                // earlier `Color.clear.frame(maxHeight: .infinity)`
+                // approach that collapsed to 0 inside ScrollView's
+                // unbounded vertical space.
                 VStack(spacing: 0) {
-                    Color.clear.frame(maxHeight: .infinity)
+                    Spacer(minLength: 0)
                     LazyVStack(spacing: 8) {
                         ForEach(messages) { message in
                             MessageBubble(message: message)
@@ -367,7 +370,7 @@ struct EditorView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity)
                 }
-                .frame(minHeight: 0, maxHeight: .infinity)
+                .containerRelativeFrame(.vertical)
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
@@ -380,6 +383,30 @@ struct EditorView: View {
             .onChange(of: messages.count) { oldCount, newCount in
                 if newCount > oldCount, let lastId = messages.last?.id {
                     proxy.scrollTo(lastId, anchor: .bottom)
+                }
+            }
+            // Re-pin to bottom when the composer grows (pending video
+            // attached) or shrinks (removed). `defaultScrollAnchor`
+            // only sets the INITIAL position — without these, adding a
+            // pending tile slides the bottom messages off-screen
+            // beneath the expanded composer and the user reads it as
+            // "the bubbles disappeared."
+            .onChange(of: pendingVideos.count) { _, _ in
+                if let lastId = messages.last?.id {
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: isInputFocused) { _, focused in
+                guard focused, let lastId = messages.last?.id else { return }
+                // Defer past the keyboard-rise animation so the scroll
+                // position lands on the new visible bounds, not the
+                // pre-keyboard ones.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
                 }
             }
         }

@@ -85,7 +85,7 @@ struct MessageBubble: View {
                 ThinkingDots()
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(Theme.Surface.surface1)
+                    .background(Color.white.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
@@ -109,10 +109,14 @@ struct MessageBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    // Assistant bubble uses the darker surface so the
-                    // sender vs receiver split reads at a glance,
-                    // matching iMessage's quieter "received" treatment.
-                    .background(Theme.Surface.surface1)
+                    // Translucent white overlay against the page's pure
+                    // black gives a clearly distinct "received" treatment
+                    // vs the user's solid `tertiarySystemBackground` fill.
+                    // The two semantic system grays were only ~16 RGB
+                    // points apart in dark mode — visually invisible.
+                    // 6% white reads as a soft lift off black with
+                    // ~50+ effective RGB difference from the user bubble.
+                    .background(Color.white.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
