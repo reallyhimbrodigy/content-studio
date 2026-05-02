@@ -53,10 +53,18 @@ struct MessageBubble: View {
                     .font(.body)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
-                    .padding(.horizontal, Theme.Space.sm)
-                    .padding(.vertical, Theme.Space.xs)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    // User bubble uses the lighter surface to read as the
+                    // "active" / outgoing message — paired with the darker
+                    // assistant bubble below, this gives a clear visual
+                    // distinction without resorting to accent color.
                     .background(Theme.Surface.surface2)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
         // Combine the video + text into a single VoiceOver element with
@@ -75,10 +83,10 @@ struct MessageBubble: View {
                 // real reply, so the transition from "thinking" to "answer"
                 // feels like the bubble's content morphing in place.
                 ThinkingDots()
-                    .padding(.horizontal, Theme.Space.sm)
-                    .padding(.vertical, Theme.Space.xs)
-                    .background(Theme.Surface.surface2)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Theme.Surface.surface1)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
             if let status = message.jobStatus,
@@ -99,10 +107,13 @@ struct MessageBubble: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.Space.sm)
-                    .padding(.vertical, Theme.Space.xs)
-                    .background(Theme.Surface.surface2)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    // Assistant bubble uses the darker surface so the
+                    // sender vs receiver split reads at a glance,
+                    // matching iMessage's quieter "received" treatment.
+                    .background(Theme.Surface.surface1)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
@@ -118,10 +129,10 @@ struct MessageBubble: View {
                 Text(message.error ?? "Something went wrong.")
                     .font(.system(size: 14))
                     .foregroundColor(.red)
-                    .padding(.horizontal, Theme.Space.sm)
-                    .padding(.vertical, Theme.Space.xs)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
                     .background(Color.red.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
     }

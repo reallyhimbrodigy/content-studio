@@ -19,21 +19,35 @@ struct EditorView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if messages.isEmpty && pendingVideos.isEmpty {
-                    emptyState
-                } else {
-                    messagesList
+                // Scroll area fills the available space above the composer.
+                // `.frame(maxHeight: .infinity)` is critical — without it
+                // the VStack distributes by natural sizes and the
+                // ScrollView ends up shorter than the screen, leaving the
+                // visible black band that users were reporting between
+                // their messages and the input bar.
+                Group {
+                    if messages.isEmpty {
+                        emptyState
+                    } else {
+                        messagesList
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if !pendingVideos.isEmpty {
-                    pendingAttachments
+                // Composer (pending tiles + re-edit chip + chips + input).
+                // Wrapped so the whole bundle reads as one connected
+                // surface and the scroll area cleanly hands off to it.
+                VStack(spacing: 0) {
+                    if !pendingVideos.isEmpty {
+                        pendingAttachments
+                    }
+
+                    reeditChip
+
+                    vibeChipsBar
+
+                    inputBar
                 }
-
-                reeditChip
-
-                vibeChipsBar
-
-                inputBar
             }
             .background(Color(.systemBackground))
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
@@ -335,14 +349,25 @@ struct EditorView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                // Color.clear with maxHeight infinity acts as a top spacer:
+                // it pushes the messages to the bottom of the scroll area
+                // when content is shorter than the viewport. Combined with
+                // .defaultScrollAnchor(.bottom), short conversations sit
+                // flush against the composer instead of leaving empty
+                // space (the visible "black bar" between bubbles and the
+                // input bar that users were reporting).
+                VStack(spacing: 0) {
+                    Color.clear.frame(maxHeight: .infinity)
+                    LazyVStack(spacing: 8) {
+                        ForEach(messages) { message in
+                            MessageBubble(message: message)
+                                .id(message.id)
+                        }
                     }
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity)
+                .frame(minHeight: 0, maxHeight: .infinity)
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
