@@ -1043,43 +1043,75 @@ struct EditorView: View {
                 } else {
                     print("[sse] WARNING: completion event missing thumbnailUrl")
                 }
-                messages[messageIndex].stepMessage = "Finalizing your video..."
-                persistMessages()
-
-                // Spawn the cache-then-flip task. Capped at 30s — if the
-                // download still hasn't landed by then we flip to playable
-                // anyway and let AVPlayer stream (8M cap means a watchable
-                // fallback). For the typical 30-60s clip on Wi-Fi, the
-                // download finishes in 3-10s and the user never notices
-                // anything beyond a slightly-longer "rendering" spinner.
                 let videoUrl = event.videoUrl
                 let messageId = messages[messageIndex].id
                 let isFinalEvent = event.final == true
-                Task { @MainActor in
-                    if let videoUrl {
-                        await withTaskGroup(of: Void.self) { group in
-                            group.addTask {
-                                _ = await VideoCache.shared.downloadIfNeeded(
-                                    jobId: jobId,
-                                    from: videoUrl,
-                                    priority: .userInitiated
-                                )
-                            }
-                            group.addTask {
-                                try? await Task.sleep(for: .seconds(30))
-                            }
-                            await group.next()
-                            group.cancelAll()
-                        }
-                    }
-                    guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
-                    messages[idx].jobStatus = "completed"
-                    messages[idx].content = "Your video is ready!"
-                    messages[idx].stageTimeline?.finish()
+
+                // CDN-backed URLs (CloudFront) flip to the playable state
+                // IMMEDIATELY. The video streams smoothly from the edge,
+                // so there's no reason to make the user wait for a full
+                // download before showing the play button. This is the
+                // production-grade flow that Loom / Runway / iMessage use.
+                //
+                // S3-origin URLs keep the cache-then-flip wait because raw
+                // S3 throughput is too bursty for smooth AVPlayer streaming
+                // — without a CDN, the player rebuffers constantly. The
+                // download-first path was the original workaround.
+                let streaming = videoUrl.map { isStreamingReadyUrl($0) } ?? false
+
+                if streaming {
+                    messages[messageIndex].jobStatus = "completed"
+                    messages[messageIndex].content = "Your video is ready!"
+                    messages[messageIndex].stageTimeline?.finish()
                     persistMessages()
                     if isFinalEvent {
                         client.disconnect()
                         sseClients.removeValue(forKey: jobId)
+                    }
+                    // Background prefetch so offline replay works after
+                    // first watch — same as iMessage / WhatsApp's pattern.
+                    if let videoUrl {
+                        Task.detached(priority: .background) {
+                            await VideoCache.shared.downloadIfNeeded(
+                                jobId: jobId,
+                                from: videoUrl,
+                                priority: .prefetch
+                            )
+                        }
+                    }
+                } else {
+                    messages[messageIndex].stepMessage = "Finalizing your video..."
+                    persistMessages()
+
+                    // Legacy cache-then-flip path. Used until CloudFront is
+                    // configured. 30s cap before flipping anyway to avoid
+                    // stranding the user on a stuck spinner.
+                    Task { @MainActor in
+                        if let videoUrl {
+                            await withTaskGroup(of: Void.self) { group in
+                                group.addTask {
+                                    _ = await VideoCache.shared.downloadIfNeeded(
+                                        jobId: jobId,
+                                        from: videoUrl,
+                                        priority: .userInitiated
+                                    )
+                                }
+                                group.addTask {
+                                    try? await Task.sleep(for: .seconds(30))
+                                }
+                                await group.next()
+                                group.cancelAll()
+                            }
+                        }
+                        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                        messages[idx].jobStatus = "completed"
+                        messages[idx].content = "Your video is ready!"
+                        messages[idx].stageTimeline?.finish()
+                        persistMessages()
+                        if isFinalEvent {
+                            client.disconnect()
+                            sseClients.removeValue(forKey: jobId)
+                        }
                     }
                 }
             }

@@ -321,8 +321,16 @@ struct EditRow: View {
     private var isCached: Bool {
         edit.status == "completed" && cache.cachedIds.contains(edit.id)
     }
+    /// CDN-backed URLs stream smoothly from the edge — tap is enabled
+    /// immediately. Cache fills in the background for offline replay.
+    private var isStreamingReady: Bool {
+        guard edit.status == "completed",
+              let url = edit.rendered_video_url else { return false }
+        return isStreamingReadyUrl(url)
+    }
+    private var isPlayable: Bool { isCached || isStreamingReady }
     private var isDownloading: Bool {
-        edit.status == "completed" && !cache.cachedIds.contains(edit.id)
+        edit.status == "completed" && !isPlayable
     }
 
     var body: some View {
@@ -445,11 +453,11 @@ struct EditRow: View {
         }
         .buttonStyle(.plain)
         // Outside selection mode, completed rows aren't tappable until
-        // the video file is on disk — matches the "thumbnail loads, then
-        // becomes playable" pattern. In selection mode, every row is
-        // always tappable so the user can include in-flight videos in
-        // a bulk delete.
-        .disabled(!isSelecting && edit.status == "completed" && !isCached)
+        // the video is playable — either cached locally OR served from
+        // the CDN (which streams smoothly without needing a local file).
+        // In selection mode, every row is always tappable so the user
+        // can include in-flight videos in a bulk delete.
+        .disabled(!isSelecting && edit.status == "completed" && !isPlayable)
         .task(id: edit.id) {
             // Auto-warm this row's cache the moment it appears. No-op
             // for already-cached rows or rows still processing on the

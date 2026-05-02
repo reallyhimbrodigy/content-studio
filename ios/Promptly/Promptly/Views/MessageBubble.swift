@@ -778,11 +778,23 @@ struct CompletedVideoView: View {
         guard let jobId else { return false }
         return cache.cachedIds.contains(jobId)
     }
+    /// CDN-backed URLs are safe to play directly — AVPlayer streams
+    /// from the edge with consistent throughput. No need to wait for
+    /// a local cache. Origin S3 URLs require the cache-first path.
+    private var isStreamingReady: Bool {
+        isStreamingReadyUrl(effectiveVideoUrl)
+    }
+    /// The play button (and tap) unlock when EITHER the file is
+    /// already cached OR the URL points at our CDN. Background
+    /// download still runs for offline replay either way.
+    private var isPlayable: Bool {
+        isCached || isStreamingReady
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
-                guard isCached else { return }
+                guard isPlayable else { return }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
                     jobId: jobId,
@@ -803,8 +815,8 @@ struct CompletedVideoView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(!isCached)
-            .accessibilityLabel(isCached ? "Play your edited video" : "Preparing your edited video")
+            .disabled(!isPlayable)
+            .accessibilityLabel(isPlayable ? "Play your edited video" : "Preparing your edited video")
             .accessibilityAddTraits(.isButton)
             .task(id: jobId) {
                 // Auto-download the moment this thumbnail comes on screen
@@ -820,7 +832,7 @@ struct CompletedVideoView: View {
                 )
             }
             .contextMenu {
-                if isCached, let url = URL(string: videoUrlStr) {
+                if isPlayable, let url = URL(string: videoUrlStr) {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
@@ -842,8 +854,8 @@ struct CompletedVideoView: View {
                 thumbnailUrlStr: thumbnailUrlStr,
                 onReedit: onReedit
             )
-            .opacity(isCached ? 1 : 0.4)
-            .disabled(!isCached)
+            .opacity(isPlayable ? 1 : 0.4)
+            .disabled(!isPlayable)
         }
     }
 
@@ -852,7 +864,7 @@ struct CompletedVideoView: View {
     @ViewBuilder
     private var thumbnailOverlay: some View {
         ZStack {
-            if isCached {
+            if isPlayable {
                 Circle()
                     .fill(.ultraThinMaterial)
                     .frame(width: 62, height: 62)
@@ -863,8 +875,9 @@ struct CompletedVideoView: View {
                     .accessibilityHidden(true)
             } else {
                 // Dim the thumbnail and show a centered spinner while the
-                // file is downloading. iMessage uses this exact pattern
-                // for video attachments before they've been pulled down.
+                // file is downloading. Only reached for legacy (non-CDN)
+                // URLs where streaming isn't smooth — CDN URLs flip to
+                // the play button immediately.
                 Color.black.opacity(0.45)
                     .allowsHitTesting(false)
                 ProgressView()
@@ -873,7 +886,7 @@ struct CompletedVideoView: View {
                     .scaleEffect(1.2)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: isCached)
+        .animation(.easeInOut(duration: 0.18), value: isPlayable)
     }
 
     @ViewBuilder
@@ -1083,13 +1096,35 @@ enum VideoPlayerPresenter {
         if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
             print("[player] cache HIT for \(jobId)")
             doPresent(urlString: local.absoluteString)
+            // Background prefetch is a no-op since this jobId is already
+            // cached; nothing more to do.
             return
         }
 
-        // Cache miss path. If we have a jobId, do download-then-play so
-        // playback runs from a complete local file (no streaming stalls).
-        // If we don't have a jobId we can't cache, so fall back to the
-        // legacy preflight + stream path.
+        // CDN-backed URLs stream directly. AVPlayer + CloudFront edge =
+        // first frame in 1-2s, no rebuffering. Same engine that
+        // Loom / Runway / Twitch / iMessage use. Background download
+        // still runs so subsequent watches are local-instant.
+        if isStreamingReadyUrl(urlString) {
+            print("[player] streaming directly from CDN: \(urlString)")
+            if let jobId {
+                Task.detached(priority: .background) {
+                    await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: urlString)
+                }
+            }
+            Task { @MainActor in
+                let resolvedUrl = await preflightOrRefresh(
+                    urlString: urlString,
+                    onRefreshNeeded: onRefreshNeeded
+                )
+                doPresent(urlString: resolvedUrl)
+            }
+            return
+        }
+
+        // Legacy non-CDN cache miss. Without an edge cache, raw S3
+        // streaming rebuffered constantly — fall back to the
+        // download-then-play loader so playback is at least smooth.
         if let jobId {
             presentWithDownload(jobId: jobId, urlString: urlString, onRefreshNeeded: onRefreshNeeded)
         } else {

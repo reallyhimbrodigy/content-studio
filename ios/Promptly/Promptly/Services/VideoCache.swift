@@ -14,6 +14,17 @@ import Foundation
 ///     so subsequent taps land in the cache.
 ///   - Eviction runs on launch: anything older than 30 days is deleted,
 ///     then the oldest files are pruned until total bytes fit under 1 GB.
+/// True when a video URL points at our CloudFront CDN (or any
+/// `cloudfront.net` host). CDN-backed URLs sustain consistent
+/// throughput from edge caches, so AVPlayer can stream them
+/// directly without rebuffering — no need to download-then-play.
+/// Origin S3 URLs keep the download-first behavior because raw
+/// S3 throughput is too bursty for smooth streaming.
+func isStreamingReadyUrl(_ urlString: String) -> Bool {
+    guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
+    return host.hasSuffix("cloudfront.net")
+}
+
 @MainActor
 final class VideoCache: ObservableObject {
     static let shared = VideoCache()

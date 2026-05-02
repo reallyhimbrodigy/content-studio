@@ -10,6 +10,7 @@ const {
   HeadBucketCommand,
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const cloudfront = require('./cloudfront');
 
 const AWS_REGION = process.env.AWS_REGION || 'us-west-1';
 const S3_BUCKET = process.env.S3_BUCKET_NAME || '';
@@ -210,9 +211,22 @@ async function abortMultipartUpload(key, uploadId) {
  */
 const SIGV4_MAX_EXPIRES = 60 * 60 * 24 * 7;
 async function createPresignedGetUrl(key, expiresIn = SIGV4_MAX_EXPIRES) {
+  const safeExpires = Math.min(Math.max(1, expiresIn), SIGV4_MAX_EXPIRES);
+
+  // Prefer CloudFront when the CDN is configured. The signed URL points
+  // at the edge cache, so iOS reads bytes from a POP near the user
+  // (sub-100ms first byte, sustained 50+ Mbps from the edge) instead
+  // of the origin S3 endpoint (~500ms first byte, bursty throughput).
+  // iOS detects the CloudFront host on the URL and switches to
+  // streaming-first playback for those URLs — no full-file download
+  // gate before the play button unlocks.
+  const cfUrl = cloudfront.createSignedUrl(key, safeExpires);
+  if (cfUrl) return cfUrl;
+
+  // Fallback: signed S3 URL via the accelerate endpoint. Same behavior
+  // as before. iOS keeps its download-first playback path for these.
   const client = s3SigningClient || s3Client;
   if (!client) throw new Error('S3 client not configured');
-  const safeExpires = Math.min(Math.max(1, expiresIn), SIGV4_MAX_EXPIRES);
   return getSignedUrl(client, new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
