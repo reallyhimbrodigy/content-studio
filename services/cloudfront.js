@@ -1,21 +1,14 @@
-// CloudFront signed URL helper. When the CDN is configured via env
-// vars, this module signs and returns CloudFront URLs that point at
-// the S3 origin via the edge cache. When env vars are missing, it
-// returns null and the caller falls back to S3 origin signed URLs.
+// CloudFront URL helper. Two modes:
+//   - SIGNED  — when CLOUDFRONT_KEY_PAIR_ID + CLOUDFRONT_PRIVATE_KEY
+//               are set, returns time-limited signed URLs via Trusted
+//               Key Groups. Best for private content.
+//   - UNSIGNED — when only CLOUDFRONT_DOMAIN is set, returns plain
+//                CloudFront URLs (no expiry). Works with public
+//                distributions / OAC-backed buckets where the
+//                distribution itself is the access boundary.
 //
-// Required environment variables (all four for CloudFront to activate):
-//   CLOUDFRONT_DOMAIN          — the dXXXXXXXX.cloudfront.net hostname
-//   CLOUDFRONT_KEY_PAIR_ID     — the public-key id from the trusted key
-//                                group attached to the distribution
-//   CLOUDFRONT_PRIVATE_KEY     — full PEM contents of the matching
-//                                private key (-----BEGIN PRIVATE KEY-----
-//                                ... -----END PRIVATE KEY-----), pasted
-//                                with literal newlines OR with `\n`
-//                                escape sequences — both are normalized.
-//
-// Once these are set, every signed-GET URL the app produces routes
-// through CloudFront. iOS detects the CloudFront host and switches
-// to streaming-first playback (no full-file download wait).
+// Either mode, the URL host is the CloudFront domain so iOS detects
+// it as CDN-backed and switches to streaming-first playback.
 
 const cloudFrontDomain = (process.env.CLOUDFRONT_DOMAIN || '').trim();
 const keyPairId = (process.env.CLOUDFRONT_KEY_PAIR_ID || '').trim();
@@ -23,42 +16,48 @@ const keyPairId = (process.env.CLOUDFRONT_KEY_PAIR_ID || '').trim();
 // `\n`-escaped sequences. Normalize either form to real newlines.
 const privateKey = (process.env.CLOUDFRONT_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim();
 
-const enabled = Boolean(cloudFrontDomain && keyPairId && privateKey);
+const signedMode = Boolean(cloudFrontDomain && keyPairId && privateKey);
+const unsignedMode = Boolean(cloudFrontDomain && !signedMode);
+const enabled = signedMode || unsignedMode;
 
 let signer = null;
-if (enabled) {
+if (signedMode) {
   try {
-    // Lazy require so the package isn't loaded when the CDN is not in use.
     signer = require('@aws-sdk/cloudfront-signer');
-    console.log(`[cloudfront] signer enabled for ${cloudFrontDomain}`);
+    console.log(`[cloudfront] signed URLs enabled for ${cloudFrontDomain}`);
   } catch (err) {
     console.warn(`[cloudfront] @aws-sdk/cloudfront-signer not loadable: ${err.message}`);
   }
+} else if (unsignedMode) {
+  console.log(`[cloudfront] unsigned URLs enabled for ${cloudFrontDomain}`);
 }
 
 /**
- * Sign a CloudFront URL for the given S3 key. Returns null if the CDN
- * is not configured or signing fails — caller should fall back.
+ * Build a CloudFront URL for the given S3 key. Returns null when the
+ * CDN is not configured at all — caller falls back to S3 signed URL.
  *
- * `expiresInSeconds` is the lifetime of the URL. CloudFront accepts up
- * to ~1 year, but matching the existing S3 SigV4 7-day cap keeps the
- * fallback path predictable.
+ * `expiresInSeconds` is honored by the signed mode only; unsigned URLs
+ * have no expiry. (CloudFront's distribution-level access controls and
+ * the unguessable S3 key path are the access boundary in unsigned mode.)
  */
 function createSignedUrl(key, expiresInSeconds) {
-  if (!enabled || !signer) return null;
-  try {
-    const url = `https://${cloudFrontDomain}/${encodeURIPath(key)}`;
-    const dateLessThan = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
-    return signer.getSignedUrl({
-      url,
-      keyPairId,
-      privateKey,
-      dateLessThan,
-    });
-  } catch (err) {
-    console.warn(`[cloudfront] sign failed for key=${key}: ${err.message}`);
-    return null;
+  if (!enabled) return null;
+  const path = `https://${cloudFrontDomain}/${encodeURIPath(key)}`;
+  if (signedMode && signer) {
+    try {
+      const dateLessThan = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+      return signer.getSignedUrl({
+        url: path,
+        keyPairId,
+        privateKey,
+        dateLessThan,
+      });
+    } catch (err) {
+      console.warn(`[cloudfront] sign failed for key=${key}: ${err.message}`);
+      return null;
+    }
   }
+  return path;
 }
 
 // Encode path segments individually so slashes are preserved but

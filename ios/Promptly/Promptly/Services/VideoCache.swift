@@ -14,15 +14,18 @@ import Foundation
 ///     so subsequent taps land in the cache.
 ///   - Eviction runs on launch: anything older than 30 days is deleted,
 ///     then the oldest files are pruned until total bytes fit under 1 GB.
-/// True when a video URL points at our CloudFront CDN (or any
-/// `cloudfront.net` host). CDN-backed URLs sustain consistent
-/// throughput from edge caches, so AVPlayer can stream them
-/// directly without rebuffering — no need to download-then-play.
-/// Origin S3 URLs keep the download-first behavior because raw
-/// S3 throughput is too bursty for smooth streaming.
+/// True when a video URL points at a CDN-backed host (CloudFront
+/// default `*.cloudfront.net`, a custom CloudFront alias domain, or
+/// any other CDN we wire up later). Detection is by exclusion —
+/// anything NOT served from S3 origin (`*.amazonaws.com`) is
+/// assumed CDN-backed, which means AVPlayer can stream it directly
+/// without rebuffering. Raw S3 throughput is bursty so origin URLs
+/// keep the download-first playback path as a safety net.
 func isStreamingReadyUrl(_ urlString: String) -> Bool {
     guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
-    return host.hasSuffix("cloudfront.net")
+    if host.hasSuffix(".amazonaws.com") { return false }
+    if host.hasSuffix("supabase.co") { return false } // legacy storage URLs
+    return true
 }
 
 @MainActor
