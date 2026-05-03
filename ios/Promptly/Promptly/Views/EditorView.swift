@@ -41,10 +41,13 @@ struct EditorView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.systemBackground))
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                // The pending-video tiles now live INSIDE inputBar's
+                // rounded surface (iMessage / ChatGPT pattern), so the
+                // composer is just a tight stack: re-edit chip (when
+                // active) + vibe chips (when empty) + the input bar
+                // bubble. No more full-width black "pending row" sitting
+                // above the input field covering the chat content.
                 VStack(spacing: 0) {
-                    if !pendingVideos.isEmpty {
-                        pendingAttachments
-                    }
                     reeditChip
                     vibeChipsBar
                     inputBar
@@ -413,78 +416,79 @@ struct EditorView: View {
         }
     }
 
-    // MARK: - Pending Attachments
-
-    private var pendingAttachments: some View {
-        // Explicit height — without it, ScrollView in a VStack expands
-        // to whatever vertical space is available and produces an empty
-        // black band between the tiles and the input bar. 72pt = the
-        // tile (56) + vertical padding (8 × 2).
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Space.xs) {
-                ForEach(pendingVideos) { video in
-                    PendingVideoThumb(video: video) {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            pendingVideos.removeAll { $0.id == video.id }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, Theme.Space.sm)
-            .padding(.top, Theme.Space.xs)
-            .padding(.bottom, Theme.Space.xxs)
-        }
-        .frame(height: 72)
-        .background(Color(.systemBackground))
-        .transition(.opacity)
-    }
-
     // MARK: - Input Bar
+    //
+    // Pending video tiles now live INSIDE the input bar's rounded
+    // surface — same architecture as iMessage's photo attachments and
+    // ChatGPT's image attachments. One unified composer bubble: tiles
+    // stack at the top, input row sits below. Eliminates the previous
+    // full-width black "pending row" that was visually covering the
+    // bottom message bubble when keyboard was up.
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            Button { showVideoPicker = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .medium))
+        VStack(alignment: .leading, spacing: 0) {
+            if !pendingVideos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Space.xs) {
+                        ForEach(pendingVideos) { video in
+                            PendingVideoThumb(video: video) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    pendingVideos.removeAll { $0.id == video.id }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+                }
+                .frame(height: 72)
+            }
+
+            HStack(alignment: .bottom, spacing: 0) {
+                Button { showVideoPicker = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .accessibilityHidden(true)
+                }
+                .accessibilityLabel("Add video")
+                .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
+
+                TextField("Describe your edit...", text: $inputText, axis: .vertical)
+                    .focused($isInputFocused)
+                    .lineLimit(1...6)
                     .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-                    .accessibilityHidden(true)
-            }
-            .accessibilityLabel("Add video")
-            .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
+                    // Dynamic Type — input scales with user preference,
+                    // capped to keep the chat input from eating the screen.
+                    .font(.body)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .tint(.white)
+                    .submitLabel(.send)
+                    .onSubmit { send() }
+                    .padding(.vertical, 9)
+                    .padding(.trailing, 4)
+                    .accessibilityLabel("Describe your edit")
 
-            TextField("Describe your edit...", text: $inputText, axis: .vertical)
-                .focused($isInputFocused)
-                .lineLimit(1...6)
-                .foregroundColor(.white)
-                // Dynamic Type — input scales with user preference,
-                // capped to keep the chat input from eating the screen.
-                .font(.body)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                .tint(.white)
-                .submitLabel(.send)
-                .onSubmit { send() }
-                .padding(.vertical, 9)
-                .padding(.trailing, 4)
-                .accessibilityLabel("Describe your edit")
-
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(width: 30, height: 30)
-                    .background(Color.white)
-                    .clipShape(Circle())
-                    .accessibilityHidden(true)
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .accessibilityHidden(true)
+                }
+                .padding(.trailing, 5)
+                .padding(.bottom, 5)
+                .opacity(canSend ? 1 : 0)
+                .scaleEffect(canSend ? 1 : 0.5)
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
+                .disabled(!canSend)
+                .accessibilityLabel("Send")
+                .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
             }
-            .padding(.trailing, 5)
-            .padding(.bottom, 5)
-            .opacity(canSend ? 1 : 0)
-            .scaleEffect(canSend ? 1 : 0.5)
-            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
-            .disabled(!canSend)
-            .accessibilityLabel("Send")
-            .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -493,18 +497,7 @@ struct EditorView: View {
         .padding(.horizontal, Theme.Space.sm)
         .padding(.top, Theme.Space.xxs)
         .padding(.bottom, Theme.Space.xs)
-        .background(Color(.systemBackground))
-        // Hairline separator only when there's no pending video / chip
-        // row above — otherwise we're stacking borders that compete
-        // for attention. The composer should read as one connected
-        // surface.
-        .overlay(alignment: .top) {
-            if pendingVideos.isEmpty && reeditSession == nil {
-                Rectangle()
-                    .fill(Theme.Border.hairline)
-                    .frame(height: 0.5)
-            }
-        }
+        .animation(.easeOut(duration: 0.22), value: pendingVideos.count)
     }
 
     private var canSend: Bool {
