@@ -353,28 +353,27 @@ struct EditorView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // `containerRelativeFrame(.vertical)` sizes the wrapper
-                // VStack to the ScrollView's container height (visible
-                // bounds), and the Spacer inside takes the remaining
-                // vertical space — pushing the LazyVStack to the bottom
-                // when content is shorter than the viewport. When
-                // messages overflow, the Spacer collapses to 0 and
-                // content scrolls naturally. iOS 17+ API. Replaces an
-                // earlier `Color.clear.frame(maxHeight: .infinity)`
-                // approach that collapsed to 0 inside ScrollView's
-                // unbounded vertical space.
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    LazyVStack(spacing: 8) {
-                        ForEach(messages) { message in
-                            MessageBubble(message: message)
-                                .id(message.id)
-                        }
+                // Plain LazyVStack — let it size naturally. Wrapping in
+                // a containerRelativeFrame(.vertical) forced content to
+                // the scroll-view's container height, which under a
+                // .safeAreaInset(.bottom) composer meant tall messages
+                // (video card + action row ~500pt) had their bottom
+                // pushed UNDER the composer with no way to scroll to it.
+                // The action row was rendered but unreachable.
+                //
+                // Tradeoff: short conversations now sit at the TOP of
+                // the visible scroll area with empty space below them,
+                // rather than floating against the composer. Worth it
+                // — being able to actually scroll to the action row is
+                // strictly more important than aesthetic anchoring.
+                LazyVStack(spacing: 8) {
+                    ForEach(messages) { message in
+                        MessageBubble(message: message)
+                            .id(message.id)
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity)
                 }
-                .containerRelativeFrame(.vertical)
+                .padding(16)
+                .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
