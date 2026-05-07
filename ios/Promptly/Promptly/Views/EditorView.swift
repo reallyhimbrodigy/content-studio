@@ -654,7 +654,10 @@ struct EditorView: View {
                     }
 
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
-                } catch {}
+                } catch {
+                    print("[perf] upload task failed: \(error.localizedDescription)")
+                    await MainActor.run { pending.uploadFailed = true }
+                }
             }
         }
     }
@@ -1149,15 +1152,15 @@ struct PendingVideoThumb: View {
     @ObservedObject var video: PendingVideo
     let onRemove: () -> Void
 
-    private var isUploading: Bool {
-        // Show the progress ring the instant the upload Task is in flight
-        // (uploadTask non-nil and not yet done). Previously gated on
-        // uploadProgress > 0, which meant the tile sat blank for the 1-2s
-        // between picker dismiss and first-byte-shipped — that "waits to
-        // start loading" feeling. Now: indeterminate (low-percentage) ring
-        // appears immediately, fills in as bytes flow.
-        video.uploadedUrl == nil && video.uploadTask != nil
-    }
+    /// Show the upload error indicator only when the upload Task threw
+    /// AND the user hasn't dismissed the tile. We never show "uploading
+    /// progress" — that state was making attachments feel stuck on slow
+    /// networks (especially iCloud-only assets) when the file transfer
+    /// is happening invisibly in the background. iMessage / WhatsApp /
+    /// ChatGPT all just show the thumbnail cleanly while upload runs;
+    /// the user can hit send any time and the message takes over showing
+    /// progress in the chat from there.
+    private var didFail: Bool { video.uploadFailed }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -1169,27 +1172,34 @@ struct PendingVideoThumb: View {
                         .frame(width: 56, height: 56)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
+                    // No thumbnail yet — neutral surface, no spinner. The
+                    // PHAsset thumbnail loads in milliseconds for cached
+                    // tiles; the rare cases where it doesn't (iCloud-only
+                    // with no cached thumb) just show the surface until
+                    // it arrives. No "loading" spinner that the user
+                    // would read as "stuck."
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color(.tertiarySystemBackground))
                         .frame(width: 56, height: 56)
+                        .overlay {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(Color(.tertiaryLabel))
+                        }
                 }
 
-                if isUploading {
+                if didFail {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(Color.red.opacity(0.18))
                         .frame(width: 56, height: 56)
-
-                    CircularProgressRing(progress: video.uploadProgress)
-                        .frame(width: 22, height: 22)
-                } else if video.thumbnail == nil {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(0.7)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.red)
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Attached video")
-            .accessibilityValue(isUploading ? "Uploading, \(Int(video.uploadProgress * 100)) percent" : (video.uploadedUrl != nil ? "Ready" : "Loading"))
+            .accessibilityValue(didFail ? "Upload failed" : "Ready")
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")

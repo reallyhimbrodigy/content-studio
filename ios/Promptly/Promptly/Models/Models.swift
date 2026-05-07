@@ -58,6 +58,11 @@ class PendingVideo: Identifiable, ObservableObject {
     @Published var uploadedUrl: String?
     @Published var uploadProgress: Double = 0
     @Published var isLoading = true
+    /// Set true when the upload Task throws. The pending tile shows a
+    /// red error overlay; otherwise the tile is clean — upload progress
+    /// is no longer surfaced on the tile (matches iMessage / WhatsApp
+    /// behavior where attachments don't show transfer state).
+    @Published var uploadFailed = false
     var fileName: String = "video.mp4"
     var uploadTask: Task<Void, Never>?
 }
