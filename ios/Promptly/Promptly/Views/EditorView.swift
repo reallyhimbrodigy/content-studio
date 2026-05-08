@@ -123,8 +123,22 @@ struct EditorView: View {
             .onChange(of: chatStore.activeChatId) { oldId, newId in
                 handleActiveChatChange(oldId: oldId, newId: newId)
             }
+            // Reconcile any in-progress job's status against the database
+            // when the app foregrounds. iOS suspends the app aggressively;
+            // SSE sockets are killed on suspension, and the server may
+            // complete a render entirely during background. Without this,
+            // the chat is stuck on "processing" or, worse, marked failed
+            // by an SSE transport error even though the render succeeded.
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                Task { @MainActor in
+                    await reconcileInProgressJobs()
+                }
+            }
         }
     }
+
+    @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - Keyboard
 
@@ -1134,15 +1148,102 @@ struct EditorView: View {
             }
         }
         client.onError = { errorMsg in
-            guard messageIndex < messages.count else { return }
-            messages[messageIndex].jobStatus = "failed"
-            messages[messageIndex].error = errorMsg
-            messages[messageIndex].content = ""
-            persistMessages()
+            // SSE connection had a transport problem (backgrounded, network
+            // blip, server restart, etc.) — that's NOT the same as "the
+            // render failed." Don't mark the message as failed here.
+            // Reconcile against the actual database state so we know
+            // whether the job genuinely failed, completed (we just missed
+            // the event), or is still running.
+            //
+            // Previous behavior: any SSE drop ≥ "Connection lost" marked
+            // the message permanently failed even when the server-side
+            // pipeline succeeded. Common case: user backgrounds the app
+            // for a minute, render completes during suspension, app
+            // foregrounds → SSE shows error → message stuck on failed.
+            print("[sse] connection error: \(errorMsg) — reconciling against DB before declaring failure")
             sseClients.removeValue(forKey: jobId)
+            Task { @MainActor in
+                await reconcileJobStatus(jobId: jobId)
+            }
         }
 
         client.connect()
+    }
+
+    /// Query the database for a job's authoritative status and update the
+    /// local message accordingly. Used as the recovery path when SSE drops
+    /// (transport error, app backgrounded long enough that the server
+    /// finished without us listening, etc.) and on app foreground for any
+    /// message still in `processing` state.
+    private func reconcileJobStatus(jobId: String) async {
+        guard let token = await AuthService.shared.getValidToken() else { return }
+
+        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
+        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
+
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,thumbnail_url,error_message") else { return }
+
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+
+        struct JobStatusRow: Codable {
+            let status: String?
+            let rendered_video_url: String?
+            let thumbnail_url: String?
+            let error_message: String?
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let row = (try? JSONDecoder().decode([JobStatusRow].self, from: data))?.first else { return }
+            guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
+
+            switch row.status {
+            case "completed", "complete":
+                messages[idx].jobStatus = "completed"
+                messages[idx].content = "Your video is ready!"
+                messages[idx].error = nil
+                if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
+                if let t = row.thumbnail_url { messages[idx].thumbnailUrl = t }
+                messages[idx].stageTimeline?.finish()
+                print("[reconcile] \(jobId) → completed")
+            case "failed":
+                messages[idx].jobStatus = "failed"
+                messages[idx].error = row.error_message ?? "Something went wrong."
+                messages[idx].stageTimeline?.finish()
+                print("[reconcile] \(jobId) → failed")
+            default:
+                // Still processing or unknown — don't touch the message.
+                // SSE auto-reconnect will pick up live updates again.
+                print("[reconcile] \(jobId) → still \(row.status ?? "?"), keeping in-progress state")
+                return
+            }
+            persistMessages()
+        } catch {
+            // Reconcile itself failed — silent. Either SSE will reconnect
+            // and resume normally, or the next foreground transition
+            // gets another chance.
+            print("[reconcile] \(jobId) lookup failed: \(error.localizedDescription) — leaving message untouched")
+        }
+    }
+
+    /// Walk every in-progress message across the active chat and reconcile
+    /// each one's status with the database. Called when the app comes to
+    /// foreground — covers the case where the user backgrounded the app
+    /// during a render, the server completed it while we were suspended,
+    /// and we need to catch up on any final events we missed.
+    func reconcileInProgressJobs() async {
+        let inFlightJobIds: [String] = messages.compactMap { msg in
+            let isProcessing = msg.jobStatus == "processing" ||
+                               msg.jobStatus == "queued" ||
+                               (msg.jobStatus == nil && msg.jobId != nil)
+            return isProcessing ? msg.jobId : nil
+        }
+        for jobId in inFlightJobIds {
+            await reconcileJobStatus(jobId: jobId)
+        }
     }
 }
 
