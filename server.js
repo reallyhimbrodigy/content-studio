@@ -10302,7 +10302,28 @@ const server = http.createServer((req, res) => {
         await requireSupabaseUser(req);  // auth check, don't care about the user object
         const body = await readJsonBody(req);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
-        if (!videoUrl) return sendJson(res, 400, { error: 'video_url is required' });
+
+        // Empty video_url is treated as a keep-alive ping — iOS fires
+        // these on app foreground to reset Modal's idle timer so the
+        // next real render lands on a warm container. We forward an
+        // empty body to Modal's /prewarm endpoint, which returns fast
+        // (`missing video_url` short-circuit) but still wakes up /
+        // refreshes the container. Skips registry registration since
+        // there's no real video to prewarm.
+        if (!videoUrl) {
+          const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
+          const modalPrewarmUrl = process.env.MODAL_PREWARM_URL
+            || modalRunUrl.replace(/-run-job(\.|$)/, '-prewarm$1');
+          if (modalPrewarmUrl) {
+            // Fire-and-forget — keep-alive doesn't need to wait
+            fetch(modalPrewarmUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }).catch(() => {});
+          }
+          return sendJson(res, 200, { status: 'keepalive' });
+        }
 
         // Derive the prewarm endpoint URL from the main run-job URL unless
         // overridden. Modal URLs follow the pattern:

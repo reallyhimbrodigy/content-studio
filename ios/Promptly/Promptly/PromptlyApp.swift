@@ -178,6 +178,7 @@ struct PromptlyApp: App {
     }
 
     @StateObject private var appState = AppState.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -200,6 +201,18 @@ struct PromptlyApp: App {
                 // the first send.
                 if PushService.shared.hasAskedForPermission && auth.isAuthenticated {
                     await PushService.shared.requestPermissionIfNeeded()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                // Foreground keep-alive ping. Resets Modal's prewarm
+                // container idle timer so the next render the user
+                // dispatches lands on a warm container — eliminating the
+                // 30-90s cold-start when they've been idle in the app
+                // (typing the vibe, browsing library) without rendering.
+                // No-cost ping; Modal short-circuits on empty payload.
+                guard newPhase == .active, auth.isAuthenticated else { return }
+                Task.detached(priority: .background) {
+                    await APIService.shared.keepWarm()
                 }
             }
         }
