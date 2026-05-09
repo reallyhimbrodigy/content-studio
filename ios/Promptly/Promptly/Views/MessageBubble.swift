@@ -125,6 +125,7 @@ struct MessageBubble: View {
                     videoUrlStr: videoUrlStr,
                     thumbnailUrlStr: message.thumbnailUrl,
                     jobId: message.jobId,
+                    title: message.originalVibe,
                     onReedit: buildReeditHandler(for: message)
                 )
             }
@@ -758,6 +759,7 @@ struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     let jobId: String?
+    let title: String?
     let onReedit: (() -> Void)?
 
     /// When AsyncImage hits a 403 (signed URL expired past 7 days),
@@ -798,6 +800,8 @@ struct CompletedVideoView: View {
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
                     jobId: jobId,
+                    title: title,
+                    onReedit: onReedit,
                     onRefreshNeeded: { await self.refreshAndReturnVideoUrl() }
                 )
             } label: {
@@ -824,12 +828,28 @@ struct CompletedVideoView: View {
                 // VideoCache flips cachedIds and the overlay swaps to
                 // the play button without any user action.
                 guard let jobId else { return }
-                if cache.cachedIds.contains(jobId) { return }
+                // Pre-warm the AVAsset so that when the user taps Play,
+                // tracks/duration are already loaded and first-frame paint
+                // is sub-100ms instead of the 300-800ms cold-load window.
+                // For streaming-ready URLs this is a small metadata fetch
+                // (~moov atom); for cached file URLs the warm hits disk.
+                if isStreamingReady {
+                    PlayerAssetPrewarm.shared.warm(effectiveVideoUrl)
+                }
+                if cache.cachedIds.contains(jobId) {
+                    if let local = VideoCache.shared.localUrl(forJobId: jobId)?.absoluteString {
+                        PlayerAssetPrewarm.shared.warm(local)
+                    }
+                    return
+                }
                 _ = await VideoCache.shared.downloadIfNeeded(
                     jobId: jobId,
                     from: effectiveVideoUrl,
                     priority: .userInitiated
                 )
+                if let local = VideoCache.shared.localUrl(forJobId: jobId)?.absoluteString {
+                    PlayerAssetPrewarm.shared.warm(local)
+                }
             }
             .contextMenu {
                 if isPlayable, let url = URL(string: videoUrlStr) {
@@ -940,70 +960,12 @@ struct CompletedVideoView: View {
     }
 }
 
-// MARK: - Video Player Presenter (UIKit-native fullscreen)
+// MARK: - Video Player Presenter
 //
-// AVPlayerViewController presented directly via the key window's topmost
-// controller, giving iOS's built-in "immersive video" modal — the same style
-// Safari + Photos + Messages use. No SwiftUI wrapping means no overlapping or
-// conflicting UI layers. Audio session is configured for .playback so the
-// silent switch and interruptions don't kill audio.
-
-/// AVPlayerViewController subclass that owns the diagnostic observers
-/// and tears them down on dismiss. The earlier static-dict approach
-/// leaked: every video play stacked four NotificationCenter
-/// observers + one KVO that never got cleaned up. After many plays
-/// memory + main-thread observer dispatch piled up, which manifested
-/// as choppy or stuck playback — the regression the user noticed.
-final class PromptlyPlayerVC: AVPlayerViewController {
-    private var statusKVO: NSKeyValueObservation?
-    private var notificationTokens: [NSObjectProtocol] = []
-
-    func attachDiagnostics(item: AVPlayerItem) {
-        statusKVO = item.observe(\.status, options: [.new, .initial]) { item, _ in
-            switch item.status {
-            case .readyToPlay:
-                print("[player] readyToPlay")
-            case .failed:
-                let err = item.error?.localizedDescription ?? "unknown"
-                let underlying = (item.error as NSError?)?.userInfo[NSUnderlyingErrorKey] as? NSError
-                let code = (item.error as NSError?)?.code ?? 0
-                print("[player] FAILED code=\(code) error=\(err) underlying=\(underlying?.localizedDescription ?? "none")")
-            case .unknown:
-                print("[player] status=unknown (still loading)")
-            @unknown default:
-                break
-            }
-        }
-        notificationTokens.append(NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemPlaybackStalled, object: item, queue: .main
-        ) { _ in
-            print("[player] stalled")
-        })
-        notificationTokens.append(NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemNewErrorLogEntry, object: item, queue: .main
-        ) { _ in
-            if let log = item.errorLog(), let last = log.events.last {
-                print("[player] errorLog code=\(last.errorStatusCode) domain=\(last.errorDomain) comment=\(last.errorComment ?? "")")
-            }
-        })
-        notificationTokens.append(NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main
-        ) { note in
-            let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-            print("[player] failedToPlayToEnd error=\(err?.localizedDescription ?? "unknown")")
-        })
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        player?.pause()
-    }
-
-    deinit {
-        statusKVO?.invalidate()
-        notificationTokens.forEach { NotificationCenter.default.removeObserver($0) }
-    }
-}
+// Presents the custom Promptly player (PromptlyPlayerHostVC). Path
+// selection (cache hit / CDN streaming / download-then-play) and SigV4
+// refresh logic live here; the actual playback chrome lives in
+// PromptlyVideoPlayer.swift.
 
 /// Full-screen loader shown while downloading a video on a cache miss.
 /// Black backdrop, centered spinner, "Preparing video..." subtitle,
@@ -1081,6 +1043,8 @@ enum VideoPlayerPresenter {
     static func present(
         urlString: String,
         jobId: String? = nil,
+        title: String? = nil,
+        onReedit: (() -> Void)? = nil,
         onRefreshNeeded: (() async -> String?)? = nil
     ) {
         print("[player] present url=\(urlString) jobId=\(jobId ?? "-")")
@@ -1095,7 +1059,7 @@ enum VideoPlayerPresenter {
         // Cache hit → straight to file:// playback. No HEAD, no refresh.
         if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
             print("[player] cache HIT for \(jobId)")
-            doPresent(urlString: local.absoluteString)
+            doPresent(urlString: local.absoluteString, title: title, onReedit: onReedit)
             // Background prefetch is a no-op since this jobId is already
             // cached; nothing more to do.
             return
@@ -1117,7 +1081,7 @@ enum VideoPlayerPresenter {
                     urlString: urlString,
                     onRefreshNeeded: onRefreshNeeded
                 )
-                doPresent(urlString: resolvedUrl)
+                doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
             }
             return
         }
@@ -1126,14 +1090,20 @@ enum VideoPlayerPresenter {
         // streaming rebuffered constantly — fall back to the
         // download-then-play loader so playback is at least smooth.
         if let jobId {
-            presentWithDownload(jobId: jobId, urlString: urlString, onRefreshNeeded: onRefreshNeeded)
+            presentWithDownload(
+                jobId: jobId,
+                urlString: urlString,
+                title: title,
+                onReedit: onReedit,
+                onRefreshNeeded: onRefreshNeeded
+            )
         } else {
             Task { @MainActor in
                 let resolvedUrl = await preflightOrRefresh(
                     urlString: urlString,
                     onRefreshNeeded: onRefreshNeeded
                 )
-                doPresent(urlString: resolvedUrl)
+                doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
             }
         }
     }
@@ -1148,6 +1118,8 @@ enum VideoPlayerPresenter {
     private static func presentWithDownload(
         jobId: String,
         urlString: String,
+        title: String?,
+        onReedit: (() -> Void)?,
         onRefreshNeeded: (() async -> String?)?
     ) {
         guard let topVC = topmostViewController() else { return }
@@ -1192,43 +1164,40 @@ enum VideoPlayerPresenter {
             // to the player so the visible transition feels like a swap.
             loader.dismiss(animated: false) {
                 if let local = result {
-                    doPresent(urlString: local.absoluteString)
+                    doPresent(urlString: local.absoluteString, title: title, onReedit: onReedit)
                 } else {
                     // Download didn't land in time — try streaming as a
                     // fallback so SOMETHING happens. AVPlayer will surface
                     // its own error UI if even that fails.
                     print("[player] download timed out, falling back to streaming")
-                    doPresent(urlString: resolvedUrl)
+                    doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
                 }
             }
         }
     }
 
     @MainActor
-    private static func doPresent(urlString: String) {
+    private static func doPresent(urlString: String, title: String?, onReedit: (() -> Void)?) {
         guard let url = URL(string: urlString) else {
             print("[player] FAILED: invalid URL after refresh")
             return
         }
-        let item = AVPlayerItem(url: url)
-        let player = AVPlayer(playerItem: item)
-        player.automaticallyWaitsToMinimizeStalling = true
-        player.actionAtItemEnd = .pause
-
-        let playerVC = PromptlyPlayerVC()
-        playerVC.player = player
-        playerVC.allowsPictureInPicturePlayback = true
-        playerVC.videoGravity = .resizeAspect
-        playerVC.modalPresentationStyle = .fullScreen
-        playerVC.attachDiagnostics(item: item)
+        // Custom Promptly player. Drops AVPlayerViewController so the
+        // chrome is intentional — branded glass overlay, frame-strip
+        // scrubber, speed pill, loop, re-edit pill, swipe-to-dismiss.
+        // The pre-warmed AVPlayerItem (loaded when the thumbnail came
+        // on screen) is handed to the player here for sub-100ms
+        // first-frame paint.
+        let item = PlayerAssetPrewarm.shared.takePlayerItem(for: urlString)
+            ?? AVPlayerItem(url: url)
+        let session = PromptlyPlayerSession(item: item, urlString: urlString)
+        let host = PromptlyPlayerHostVC(session: session, title: title, onReedit: onReedit)
 
         guard let topVC = topmostViewController() else {
             print("[player] FAILED: no topmost view controller")
             return
         }
-        topVC.present(playerVC, animated: true) {
-            player.play()
-        }
+        topVC.present(host, animated: true)
     }
 
     /// HEAD the URL with a tight 5s timeout. On any 4xx response (or a
