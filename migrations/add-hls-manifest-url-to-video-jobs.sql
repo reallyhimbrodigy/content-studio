@@ -1,0 +1,11 @@
+-- Add hls_manifest_url column to video_jobs for HLS streaming.
+--
+-- The worker generates an HLS variant ladder (4 bitrates) alongside the
+-- progressive MP4 and uploads the master manifest (.m3u8) to S3. The
+-- iOS player prefers HLS when present because AVPlayer's fastest path
+-- is HLS — first segment is independently playable, adaptive bitrate
+-- handles network changes gracefully, no whole-file metadata to load.
+--
+-- Column is nullable so older rows (pre-HLS rollout) continue to work
+-- via the rendered_video_url MP4 fallback.
+ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS hls_manifest_url TEXT;

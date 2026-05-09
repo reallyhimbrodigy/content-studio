@@ -141,6 +141,12 @@ final class VideoCache: ObservableObject {
         from remoteUrlString: String,
         priority: Priority = .prefetch
     ) async -> URL? {
+        // HLS streams are segment-based and adaptive — caching them as
+        // a single file makes no sense (you'd lose the bitrate ladder).
+        // The player streams them directly via AVPlayer, which has its
+        // own segment cache. Skip the download entirely.
+        if remoteUrlString.contains(".m3u8") { return nil }
+
         if let cached = localUrl(forJobId: jobId) { return cached }
         if let existing = inflight[jobId] { return await existing.value }
 

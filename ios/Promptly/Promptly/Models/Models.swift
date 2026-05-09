@@ -30,7 +30,8 @@ struct ChatMessage: Identifiable {
     var jobStatus: String?
     var jobProgress: Int?
     var stepMessage: String?
-    var renderedVideoUrl: String?
+    var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
+    var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
     var error: String?
     var isThinking: Bool = false
@@ -99,6 +100,7 @@ struct SerializedMessage: Codable, Hashable {
     var jobId: String?
     var jobStatus: String?        // final state only ("completed" / "failed" / "needs_clarification")
     var renderedVideoUrl: String?
+    var hlsManifestUrl: String?
     var thumbnailUrl: String?
     var attachmentThumbnailUrl: String?  // for re-edit / "you sent a video" rows
     var attachmentFileName: String?
@@ -136,6 +138,7 @@ struct SerializedMessage: Codable, Hashable {
         self.jobId = message.jobId
         self.jobStatus = message.jobStatus
         self.renderedVideoUrl = message.renderedVideoUrl
+        self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
         self.attachmentThumbnailUrl = message.videoAttachment?.remoteThumbnailUrl
         self.attachmentFileName = message.videoAttachment?.fileName
@@ -163,6 +166,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.jobId = jobId
         msg.jobStatus = jobStatus
         msg.renderedVideoUrl = renderedVideoUrl
+        msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
         msg.error = error
         msg.originalVibe = originalVibe
@@ -220,6 +224,7 @@ struct VideoJob: Identifiable, Codable {
     let status: String
     let vibe_input: String?
     let rendered_video_url: String?
+    let hls_manifest_url: String?
     let thumbnail_url: String?
     let created_at: String?
     let error_message: String?

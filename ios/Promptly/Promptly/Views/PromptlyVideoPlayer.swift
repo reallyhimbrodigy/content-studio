@@ -56,6 +56,10 @@ final class PlayerAssetPrewarm {
 //
 // AVAssetImageGenerator extracts ~24 thumbnails sampled across the full
 // duration. Memo'd per URL so re-opening the player is instant.
+//
+// HLS URLs are skipped — the segment-based format makes per-frame
+// extraction unreliable and we don't want to fall back to a slower
+// scrubber on streaming videos.
 
 @MainActor
 final class FrameStripCache {
@@ -114,43 +118,100 @@ final class FrameStripCache {
     }
 }
 
+// MARK: - Shared persistent AVPlayer
+//
+// One AVPlayer instance kept alive for the entire app session. Sessions
+// hand items to it via `replaceCurrentItem`; tearing down a session
+// pauses the player but doesn't dispose it. This kills the ~50-150ms
+// init cost of cold AVPlayer creation on every present, and lets us
+// keep buffering / hardware-decoder context across video opens.
+
+@MainActor
+final class SharedAVPlayer {
+    static let shared = SharedAVPlayer()
+    let player: AVPlayer
+
+    private init() {
+        self.player = AVPlayer()
+        // We control buffering via pre-warm + preroll. The default
+        // automaticallyWaitsToMinimizeStalling adds ~300ms of stall-
+        // avoidance buffering before first paint, which we don't need
+        // when the asset is already loaded.
+        self.player.automaticallyWaitsToMinimizeStalling = false
+        self.player.actionAtItemEnd = .pause
+    }
+}
+
 // MARK: - AVPlayerLayer wrapped for SwiftUI
+//
+// Forwards the layer's `isReadyForDisplay` signal up to SwiftUI so we
+// know exactly when the first frame is decoded and ready to paint —
+// that's the moment we crossfade the poster image out.
 
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    let onReadyForDisplay: () -> Void
 
     func makeUIView(context: Context) -> _PlayerLayerHostView {
         let v = _PlayerLayerHostView()
         v.playerLayer.player = player
         v.playerLayer.videoGravity = .resizeAspect
         v.backgroundColor = .black
+        v.onReadyForDisplay = onReadyForDisplay
+        v.bindReadyObservation()
         return v
     }
 
     func updateUIView(_ uiView: _PlayerLayerHostView, context: Context) {
         if uiView.playerLayer.player !== player {
             uiView.playerLayer.player = player
+            uiView.bindReadyObservation()
         }
     }
 
     final class _PlayerLayerHostView: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+        var onReadyForDisplay: (() -> Void)?
+        private var readyObservation: NSKeyValueObservation?
+
+        func bindReadyObservation() {
+            readyObservation?.invalidate()
+            // Already painting? Fire immediately so the poster can fade
+            // even if the layer was ready before SwiftUI mounted.
+            if playerLayer.isReadyForDisplay {
+                onReadyForDisplay?()
+                return
+            }
+            readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] _, change in
+                if change.newValue == true {
+                    DispatchQueue.main.async { self?.onReadyForDisplay?() }
+                }
+            }
+        }
+
+        deinit {
+            readyObservation?.invalidate()
+        }
     }
 }
 
 // MARK: - Player session
 //
-// Single owner of the AVPlayer + observers. The hosting view controller
-// keeps a strong ref; SwiftUI views observe via @ObservedObject. Deinit
-// cleans up time observers, KVO, and notification tokens — leaks here
-// were the source of the choppy-after-many-plays regression in the old
-// AVPlayerViewController path.
+// Owns the per-presentation state — the AVPlayerItem, observers, and
+// scrubber/UI bindings. The AVPlayer itself is shared (see
+// SharedAVPlayer); we attach observers in init and remove them in
+// deinit so observer count stays at most 1 between presents.
+//
+// HLS-aware: `isHLS` reports whether the URL is a segmented stream so
+// the UI can hide the frame-thumbnail strip (segment-based extraction
+// is unreliable) and we can skip on-disk caching for HLS URLs.
 
 @MainActor
 final class PromptlyPlayerSession: ObservableObject {
     let player: AVPlayer
     let urlString: String
+    let isHLS: Bool
 
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0
@@ -161,17 +222,22 @@ final class PromptlyPlayerSession: ObservableObject {
     @Published var isScrubbing: Bool = false
     @Published private(set) var frameStrip: [UIImage] = []
 
+    private let item: AVPlayerItem
     private var timeObserver: Any?
     private var statusKVO: NSKeyValueObservation?
     private var endNotificationToken: NSObjectProtocol?
+    private var prerollDone = false
 
     init(item: AVPlayerItem, urlString: String) {
-        self.player = AVPlayer(playerItem: item)
+        self.item = item
+        self.player = SharedAVPlayer.shared.player
         self.urlString = urlString
-        self.player.actionAtItemEnd = .pause
-        // Asset is pre-warmed; don't let AVPlayer add another 300ms of
-        // stall-avoidance buffering before first paint.
-        self.player.automaticallyWaitsToMinimizeStalling = false
+        self.isHLS = urlString.hasSuffix(".m3u8") || urlString.contains(".m3u8?")
+
+        // Hand the freshly-warmed item to the persistent player. Any
+        // prior item is replaced cleanly — no leak, no overlap.
+        player.replaceCurrentItem(with: item)
+        player.rate = 0  // wait until we explicitly play()
 
         // Periodic progress for the scrubber. 1/30s is enough resolution
         // for a 60fps UI without burning main-thread cycles.
@@ -192,6 +258,14 @@ final class PromptlyPlayerSession: ObservableObject {
                     if d.isFinite, d > 0 {
                         self.duration = d
                     }
+                    // Decode first frame BEFORE play() — kills the
+                    // first-frame stutter that AVPlayer would otherwise
+                    // pay on play(). preroll completes in ~10-50ms when
+                    // the item is already ready.
+                    if !self.prerollDone {
+                        self.prerollDone = true
+                        self.player.preroll(atRate: 1) { _ in /* fire-and-forget */ }
+                    }
                 }
             }
         }
@@ -210,9 +284,8 @@ final class PromptlyPlayerSession: ObservableObject {
             }
         }
 
-        // If the asset was pre-warmed, duration may already be loaded —
-        // surface it immediately so the scrubber doesn't render with zero
-        // width on the first frame.
+        // Surface duration eagerly if the asset is already loaded
+        // (pre-warm path) so the scrubber doesn't paint with zero width.
         Task { @MainActor [weak self] in
             guard let self else { return }
             if let d = try? await item.asset.load(.duration), d.seconds.isFinite, d.seconds > 0 {
@@ -220,12 +293,16 @@ final class PromptlyPlayerSession: ObservableObject {
             }
         }
 
-        // Frame strip generation off-thread.
-        Task { [weak self] in
-            guard let self else { return }
-            let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
-            await MainActor.run {
-                self.frameStrip = images
+        // Frame strip generation off-thread. HLS URLs skipped —
+        // AVAssetImageGenerator on streaming manifests is slow and
+        // unreliable; the scrubber falls back to a thin progress line.
+        if !isHLS {
+            Task { [weak self] in
+                guard let self else { return }
+                let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
+                await MainActor.run {
+                    self.frameStrip = images
+                }
             }
         }
     }
@@ -270,6 +347,11 @@ final class PromptlyPlayerSession: ObservableObject {
         if let t = timeObserver { player.removeTimeObserver(t) }
         statusKVO?.invalidate()
         if let token = endNotificationToken { NotificationCenter.default.removeObserver(token) }
+        // Stop playback but leave the persistent player alive for the
+        // next session. replaceCurrentItem(nil) here would clear our
+        // own item even after a new session has loaded its own — race
+        // on rapid open/close. Pause-only is the safe choice; the next
+        // session's replaceCurrentItem in init swaps cleanly.
         player.pause()
     }
 }
@@ -281,27 +363,55 @@ struct PromptlyPlayerView: View {
     let onClose: () -> Void
     let onReedit: (() -> Void)?
     let title: String?
+    let posterUrl: String?
 
     @State private var showControls: Bool = true
     @State private var hideTask: Task<Void, Never>?
     @State private var dismissOffset: CGFloat = 0
+    @State private var firstFrameReady: Bool = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // Poster — instant first paint surface. Sits BEHIND the
+            // video layer and fades out when the AVPlayerLayer reports
+            // its first frame is ready to display. This is the trick
+            // that makes the player feel instant: the user never sees
+            // a black flash between tap and video start, even though
+            // AVPlayer is technically still warming up underneath.
+            if !firstFrameReady, let posterUrl, let url = URL(string: posterUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .ignoresSafeArea()
+                    default:
+                        Color.black
+                    }
+                }
+                .transition(.opacity)
+            }
+
             // Video. Tap toggles controls; drag-down rubber-bands and dismisses.
-            PlayerLayerView(player: session.player)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { toggleControls() }
-                .scaleEffect(1 - min(abs(dismissOffset) / 1500, 0.15), anchor: .center)
-                .offset(y: dismissOffset)
-                .gesture(swipeDownDismiss)
+            PlayerLayerView(player: session.player) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    firstFrameReady = true
+                }
+            }
+            .ignoresSafeArea()
+            .opacity(firstFrameReady ? 1 : 0)
+            .contentShape(Rectangle())
+            .onTapGesture { toggleControls() }
+            .scaleEffect(1 - min(abs(dismissOffset) / 1500, 0.15), anchor: .center)
+            .offset(y: dismissOffset)
+            .gesture(swipeDownDismiss)
 
             // Subtle vignette during fullscreen playback (controls hidden).
             // Pulls focus toward subject without muddying the picture.
-            if session.isPlaying && !showControls {
+            if session.isPlaying && !showControls && firstFrameReady {
                 LinearGradient(
                     colors: [.black.opacity(0.04), .clear, .clear, .black.opacity(0.18)],
                     startPoint: .top, endPoint: .bottom
@@ -567,6 +677,10 @@ struct SpeedPill: View {
 // Active (touched): expands to a 44pt frame strip with 16pt thumb, like
 // Spotify's scrubber growing on touch. Live-seeks the player on every
 // drag tick — frame visually follows the thumb.
+//
+// On HLS streams the frame strip is empty (extraction is unreliable),
+// and the scrubber falls back to a thin-line scrubber that still
+// supports live-seeking — just without the thumbnail preview.
 
 struct FrameStripScrubber: View {
     @ObservedObject var session: PromptlyPlayerSession
@@ -582,11 +696,11 @@ struct FrameStripScrubber: View {
                 : 0
             let thumbX = CGFloat(progress) * width
             let thumbSize: CGFloat = isActive ? 16 : 11
-            let trackHeight: CGFloat = isActive ? 44 : 14
+            let hasFrameStrip = !session.frameStrip.isEmpty
+            let trackHeight: CGFloat = (isActive && hasFrameStrip) ? 44 : 14
 
             ZStack(alignment: .leading) {
-                if isActive && !session.frameStrip.isEmpty {
-                    // Frame strip — equally-sized cells filling the track
+                if isActive && hasFrameStrip {
                     HStack(spacing: 1) {
                         ForEach(Array(session.frameStrip.enumerated()), id: \.offset) { _, img in
                             Image(uiImage: img)
@@ -604,22 +718,11 @@ struct FrameStripScrubber: View {
                             .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
-
-                    // Played-portion overlay tint so the user sees how far along
-                    Rectangle()
-                        .fill(Color.black.opacity(0.0))
-                        .overlay(alignment: .leading) {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.0))
-                                .frame(width: thumbX)
-                        }
-                        .frame(height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .allowsHitTesting(false)
                 }
 
-                if !isActive {
-                    // Thin track at rest
+                if !isActive || !hasFrameStrip {
+                    // Thin track at rest — also the fallback scrubber for
+                    // HLS streams where we can't generate a frame strip.
                     Capsule()
                         .fill(Color.white.opacity(0.18))
                         .frame(height: 3)
@@ -628,7 +731,6 @@ struct FrameStripScrubber: View {
                         .frame(width: max(thumbX, 3), height: 3)
                 }
 
-                // Thumb
                 Circle()
                     .fill(Color.white)
                     .frame(width: thumbSize, height: thumbSize)
@@ -668,7 +770,7 @@ struct FrameStripScrubber: View {
                     }
             )
         }
-        .frame(height: isActive ? 44 : 14)
+        .frame(height: (isActive && !session.frameStrip.isEmpty) ? 44 : 14)
         .animation(.spring(response: 0.32, dampingFraction: 0.85), value: isActive)
     }
 }
@@ -707,12 +809,14 @@ struct ControlButton: View {
 final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
     let session: PromptlyPlayerSession
 
-    init(session: PromptlyPlayerSession, title: String?, onReedit: (() -> Void)?) {
+    init(session: PromptlyPlayerSession, title: String?, posterUrl: String?, onReedit: (() -> Void)?) {
         self.session = session
-        // Initialize with a placeholder closure; rewrite rootView below
-        // with one that captures self weakly to call dismiss.
         let placeholder = PromptlyPlayerView(
-            session: session, onClose: {}, onReedit: onReedit, title: title
+            session: session,
+            onClose: {},
+            onReedit: onReedit,
+            title: title,
+            posterUrl: posterUrl
         )
         super.init(rootView: placeholder)
         self.modalPresentationStyle = .fullScreen
@@ -722,7 +826,8 @@ final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
             session: session,
             onClose: { [weak self] in self?.dismiss(animated: true) },
             onReedit: onReedit,
-            title: title
+            title: title,
+            posterUrl: posterUrl
         )
     }
 

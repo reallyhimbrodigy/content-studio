@@ -522,12 +522,18 @@ struct VideoDetailSheet: View {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Large thumbnail + tap-to-play card — the actual video opens in
-                // iOS's native fullscreen video modal via VideoPlayerPresenter
-                // (no embedded AVPlayerViewController = no overlapping UI).
+                // Large thumbnail + tap-to-play card — opens the custom
+                // PromptlyPlayer (poster-first, glass overlay, frame strip,
+                // HLS-preferred when the variant ladder is available).
                 if let urlStr = edit.rendered_video_url {
                     Button {
-                        VideoPlayerPresenter.present(urlString: urlStr, jobId: edit.id)
+                        VideoPlayerPresenter.present(
+                            urlString: urlStr,
+                            hlsManifestUrl: edit.hls_manifest_url,
+                            thumbnailUrl: edit.thumbnail_url,
+                            jobId: edit.id,
+                            title: edit.vibe_input
+                        )
                     } label: {
                         ZStack {
                             if let thumbStr = edit.thumbnail_url, let thumbUrl = URL(string: thumbStr) {

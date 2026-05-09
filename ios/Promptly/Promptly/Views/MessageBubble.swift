@@ -124,6 +124,7 @@ struct MessageBubble: View {
                 CompletedVideoView(
                     videoUrlStr: videoUrlStr,
                     thumbnailUrlStr: message.thumbnailUrl,
+                    hlsManifestUrl: message.hlsManifestUrl,
                     jobId: message.jobId,
                     title: message.originalVibe,
                     onReedit: buildReeditHandler(for: message)
@@ -744,20 +745,20 @@ struct VideoActionRow: View {
     }
 }
 
-// MARK: - Completed Video (iOS-native card — clean thumbnail + in-chat quick actions)
+// MARK: - Completed Video (clean thumbnail tile + in-chat quick actions)
 //
-// Tapping the thumbnail presents AVPlayerViewController as a true UIKit modal
-// via UIWindowScene — no SwiftUI fullScreenCover wrapper, no custom X button,
-// no NativeVideoPlayer representable. This uses iOS's standard video-modal
-// presentation style (the same one Apple's own apps use): swipe-down to
-// dismiss, native scrubber + PiP + AirPlay + Done button, nothing layered on top.
+// Tapping the thumbnail presents PromptlyPlayerHostVC — the custom
+// player with poster-first rendering, glass overlay, frame-strip
+// scrubber, and HLS-preferred streaming. Pre-warms the AVAsset on
+// thumbnail mount so first-frame paint after tap is sub-100 ms.
 //
-// Below the thumbnail: VideoActionRow — Re-edit / Save / TikTok / Instagram /
-// Share pill buttons so the user never has to leave the chat for common tasks.
+// Below the thumbnail: VideoActionRow — Re-edit / Save / Share pill
+// buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    let hlsManifestUrl: String?
     let jobId: String?
     let title: String?
     let onReedit: (() -> Void)?
@@ -799,6 +800,8 @@ struct CompletedVideoView: View {
                 guard isPlayable else { return }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
+                    hlsManifestUrl: hlsManifestUrl,
+                    thumbnailUrl: effectiveThumbnailUrl,
                     jobId: jobId,
                     title: title,
                     onReedit: onReedit,
@@ -1042,12 +1045,14 @@ enum VideoPlayerPresenter {
     @MainActor
     static func present(
         urlString: String,
+        hlsManifestUrl: String? = nil,
+        thumbnailUrl: String? = nil,
         jobId: String? = nil,
         title: String? = nil,
         onReedit: (() -> Void)? = nil,
         onRefreshNeeded: (() async -> String?)? = nil
     ) {
-        print("[player] present url=\(urlString) jobId=\(jobId ?? "-")")
+        print("[player] present url=\(urlString) hls=\(hlsManifestUrl ?? "-") jobId=\(jobId ?? "-")")
         guard URL(string: urlString) != nil else {
             print("[player] FAILED: invalid URL")
             return
@@ -1056,18 +1061,42 @@ enum VideoPlayerPresenter {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        // Cache hit → straight to file:// playback. No HEAD, no refresh.
-        if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
-            print("[player] cache HIT for \(jobId)")
-            doPresent(urlString: local.absoluteString, title: title, onReedit: onReedit)
-            // Background prefetch is a no-op since this jobId is already
-            // cached; nothing more to do.
+        // HLS preferred when available. AVPlayer's fastest path is HLS —
+        // first segment is independently playable in <100ms, adaptive
+        // bitrate handles network changes gracefully, no whole-file
+        // metadata to load. Skip the cache-hit branch since HLS is
+        // designed to stream and our cache is MP4-shaped.
+        if let hlsManifestUrl, !hlsManifestUrl.isEmpty {
+            print("[player] streaming HLS: \(hlsManifestUrl)")
+            Task { @MainActor in
+                let resolvedUrl = await preflightOrRefresh(
+                    urlString: hlsManifestUrl,
+                    onRefreshNeeded: onRefreshNeeded
+                )
+                doPresent(
+                    urlString: resolvedUrl,
+                    title: title,
+                    posterUrl: thumbnailUrl,
+                    onReedit: onReedit
+                )
+            }
             return
         }
 
-        // CDN-backed URLs stream directly. AVPlayer + CloudFront edge =
-        // first frame in 1-2s, no rebuffering. Same engine that
-        // Loom / Runway / Twitch / iMessage use. Background download
+        // Cache hit → straight to file:// playback. No HEAD, no refresh.
+        if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
+            print("[player] cache HIT for \(jobId)")
+            doPresent(
+                urlString: local.absoluteString,
+                title: title,
+                posterUrl: thumbnailUrl,
+                onReedit: onReedit
+            )
+            return
+        }
+
+        // CDN-backed MP4 URLs stream directly. With pre-warm + faststart
+        // first frame is in 1-2s, no rebuffering. Background download
         // still runs so subsequent watches are local-instant.
         if isStreamingReadyUrl(urlString) {
             print("[player] streaming directly from CDN: \(urlString)")
@@ -1081,7 +1110,12 @@ enum VideoPlayerPresenter {
                     urlString: urlString,
                     onRefreshNeeded: onRefreshNeeded
                 )
-                doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
+                doPresent(
+                    urlString: resolvedUrl,
+                    title: title,
+                    posterUrl: thumbnailUrl,
+                    onReedit: onReedit
+                )
             }
             return
         }
@@ -1094,6 +1128,7 @@ enum VideoPlayerPresenter {
                 jobId: jobId,
                 urlString: urlString,
                 title: title,
+                thumbnailUrl: thumbnailUrl,
                 onReedit: onReedit,
                 onRefreshNeeded: onRefreshNeeded
             )
@@ -1103,7 +1138,12 @@ enum VideoPlayerPresenter {
                     urlString: urlString,
                     onRefreshNeeded: onRefreshNeeded
                 )
-                doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
+                doPresent(
+                    urlString: resolvedUrl,
+                    title: title,
+                    posterUrl: thumbnailUrl,
+                    onReedit: onReedit
+                )
             }
         }
     }
@@ -1119,6 +1159,7 @@ enum VideoPlayerPresenter {
         jobId: String,
         urlString: String,
         title: String?,
+        thumbnailUrl: String?,
         onReedit: (() -> Void)?,
         onRefreshNeeded: (() async -> String?)?
     ) {
@@ -1164,20 +1205,30 @@ enum VideoPlayerPresenter {
             // to the player so the visible transition feels like a swap.
             loader.dismiss(animated: false) {
                 if let local = result {
-                    doPresent(urlString: local.absoluteString, title: title, onReedit: onReedit)
+                    doPresent(
+                        urlString: local.absoluteString,
+                        title: title,
+                        posterUrl: thumbnailUrl,
+                        onReedit: onReedit
+                    )
                 } else {
                     // Download didn't land in time — try streaming as a
                     // fallback so SOMETHING happens. AVPlayer will surface
                     // its own error UI if even that fails.
                     print("[player] download timed out, falling back to streaming")
-                    doPresent(urlString: resolvedUrl, title: title, onReedit: onReedit)
+                    doPresent(
+                        urlString: resolvedUrl,
+                        title: title,
+                        posterUrl: thumbnailUrl,
+                        onReedit: onReedit
+                    )
                 }
             }
         }
     }
 
     @MainActor
-    private static func doPresent(urlString: String, title: String?, onReedit: (() -> Void)?) {
+    private static func doPresent(urlString: String, title: String?, posterUrl: String?, onReedit: (() -> Void)?) {
         guard let url = URL(string: urlString) else {
             print("[player] FAILED: invalid URL after refresh")
             return
@@ -1191,7 +1242,12 @@ enum VideoPlayerPresenter {
         let item = PlayerAssetPrewarm.shared.takePlayerItem(for: urlString)
             ?? AVPlayerItem(url: url)
         let session = PromptlyPlayerSession(item: item, urlString: urlString)
-        let host = PromptlyPlayerHostVC(session: session, title: title, onReedit: onReedit)
+        let host = PromptlyPlayerHostVC(
+            session: session,
+            title: title,
+            posterUrl: posterUrl,
+            onReedit: onReedit
+        )
 
         guard let topVC = topmostViewController() else {
             print("[player] FAILED: no topmost view controller")

@@ -1085,6 +1085,10 @@ struct EditorView: View {
                 } else {
                     print("[sse] WARNING: completion event missing videoUrl")
                 }
+                if let hls = event.hlsManifestUrl, !hls.isEmpty {
+                    messages[messageIndex].hlsManifestUrl = hls
+                    print("[sse] hlsManifestUrl=\(hls)")
+                }
                 if let thumb = event.thumbnailUrl {
                     messages[messageIndex].thumbnailUrl = thumb
                     print("[sse] thumbnailUrl=\(thumb)")
@@ -1092,8 +1096,22 @@ struct EditorView: View {
                     print("[sse] WARNING: completion event missing thumbnailUrl")
                 }
                 let videoUrl = event.videoUrl
+                let hlsUrl = event.hlsManifestUrl
                 let messageId = messages[messageIndex].id
                 let isFinalEvent = event.final == true
+
+                // Pre-warm AVPlayer items the moment the render lands.
+                // The user typically taps the thumbnail within seconds —
+                // by then the asset metadata is loaded and first-frame
+                // paint is sub-100ms instead of the cold 300-800ms read.
+                // HLS warming validates the manifest + caches the master
+                // playlist; MP4 warming pulls the moov atom from CDN.
+                if let hlsUrl, !hlsUrl.isEmpty {
+                    PlayerAssetPrewarm.shared.warm(hlsUrl)
+                }
+                if let videoUrl, isStreamingReadyUrl(videoUrl) {
+                    PlayerAssetPrewarm.shared.warm(videoUrl)
+                }
 
                 // CDN-backed URLs (CloudFront) flip to the playable state
                 // IMMEDIATELY. The video streams smoothly from the edge,
@@ -1241,7 +1259,7 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,thumbnail_url,error_message") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -1251,6 +1269,7 @@ struct EditorView: View {
         struct JobStatusRow: Codable {
             let status: String?
             let rendered_video_url: String?
+            let hls_manifest_url: String?
             let thumbnail_url: String?
             let error_message: String?
         }
@@ -1266,6 +1285,7 @@ struct EditorView: View {
                 messages[idx].content = "Your video is ready!"
                 messages[idx].error = nil
                 if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
+                if let h = row.hls_manifest_url { messages[idx].hlsManifestUrl = h }
                 if let t = row.thumbnail_url { messages[idx].thumbnailUrl = t }
                 messages[idx].stageTimeline?.finish()
                 print("[reconcile] \(jobId) → completed")

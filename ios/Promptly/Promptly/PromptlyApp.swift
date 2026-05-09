@@ -67,13 +67,28 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
             completionHandler(.noData)
             return
         }
-        print("[Push] silent prefetch for jobId=\(jobId)")
+        let hlsManifestUrl = userInfo["hlsManifestUrl"] as? String
+        print("[Push] silent prefetch for jobId=\(jobId) hls=\(hlsManifestUrl ?? "-")")
         Task { @MainActor in
+            // Warm the AVPlayer asset for whichever path we'll actually
+            // play (HLS preferred when available). This loads the manifest
+            // / moov atom up front so the next tap is sub-100ms even when
+            // the app was terminated and just woke for this push.
+            if let hlsManifestUrl, !hlsManifestUrl.isEmpty {
+                PlayerAssetPrewarm.shared.warm(hlsManifestUrl)
+            } else {
+                PlayerAssetPrewarm.shared.warm(videoUrl)
+            }
+
             // 25s budget — leave a few seconds of headroom under iOS's
             // 30s background runtime limit so we always get the
             // completion handler back to the OS.
             let result: UIBackgroundFetchResult = await withTaskGroup(of: UIBackgroundFetchResult.self) { group in
                 group.addTask {
+                    // MP4 still downloads to disk for offline replay; HLS
+                    // segments are intentionally NOT cached (they stream
+                    // adaptively, on-disk caching would defeat the bitrate
+                    // ladder). VideoCache itself skips HLS URLs.
                     let url = await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: videoUrl)
                     return url == nil ? .failed : .newData
                 }

@@ -164,7 +164,7 @@ class SSEClient {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        var request = URLRequest(url: URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,thumbnail_url,error_message")!)
+        var request = URLRequest(url: URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,hls_manifest_url,thumbnail_url,error_message")!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -174,6 +174,7 @@ class SSEClient {
             struct JobStatus: Codable {
                 let status: String?
                 let rendered_video_url: String?
+                let hls_manifest_url: String?
                 let thumbnail_url: String?
                 let error_message: String?
             }
@@ -192,12 +193,15 @@ class SSEClient {
                     self?.onEvent?(SSEEvent(
                         status: "completed", progress: 100, step: "complete",
                         message: "Your video is ready!", videoUrl: job.rendered_video_url,
+                        hlsManifestUrl: job.hls_manifest_url,
                         thumbnailUrl: job.thumbnail_url, error: nil, final: true
                     ))
                 } else if job.status == "failed" {
                     self?.onEvent?(SSEEvent(
                         status: "failed", progress: nil, step: nil,
-                        message: nil, videoUrl: nil, thumbnailUrl: nil,
+                        message: nil, videoUrl: nil,
+                        hlsManifestUrl: nil,
+                        thumbnailUrl: nil,
                         error: job.error_message ?? "Something went wrong. Please try again.", final: true
                     ))
                 }
@@ -218,6 +222,7 @@ struct SSEEvent: Codable {
     let step: String?
     let message: String?
     let videoUrl: String?
+    let hlsManifestUrl: String?
     let thumbnailUrl: String?
     let error: String?
     let final: Bool? // swiftlint:disable:this identifier_name
