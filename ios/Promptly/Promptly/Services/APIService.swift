@@ -149,26 +149,6 @@ class APIService {
         print("[prewarm] dispatch failed after retry (non-fatal): \(lastError?.localizedDescription ?? "unknown")")
     }
 
-    /// Keep-alive ping for the Modal prewarm container. Fired when the
-    /// app comes to foreground. The server forwards an empty payload to
-    /// Modal's /prewarm endpoint, which returns fast but resets the
-    /// container's idle timer — so by the time the user actually hits
-    /// send, the container is still warm and the next render skips the
-    /// 30-90s cold-start. No-op cost on the server, no Modal compute
-    /// (handler short-circuits on empty input). Fire-and-forget; never
-    /// retries, never blocks.
-    func keepWarm() async {
-        do {
-            var request = await authorizedRequest("/api/prewarm", method: "POST")
-            request.httpBody = try JSONEncoder().encode(["video_url": ""])
-            request.timeoutInterval = 5
-            _ = try? await requestData(request)
-            print("[keepwarm] ping sent")
-        } catch {
-            // Silent — keep-alive failure isn't user-visible.
-        }
-    }
-
     /// Kick off a re-edit derived from an existing completed job. Server loads
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.

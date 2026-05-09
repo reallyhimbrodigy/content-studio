@@ -878,8 +878,8 @@ struct EditorView: View {
                 messages.append(userMsg)
                 conversationHistory.append(["role": "user", "content": vibe])
 
-                var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
-                processingMsg.stageTimeline = StageTimeline(mode: "full")
+                var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: nil)
+                processingMsg.stageTimeline = StageTimeline(mode: "full", startWith: "upload_local")
                 processingMsg.originalVibe = vibe
                 messages.append(processingMsg)
                 pendingMsgIds.append((video, processingMsg.id))
@@ -908,12 +908,16 @@ struct EditorView: View {
                             var videoUrl = video.uploadedUrl
 
                             if videoUrl == nil, let task = video.uploadTask {
-                                if let i = indexOfProcessingMsg() { messages[i].stepMessage = "Uploading..." }
-
+                                // Upload owns the first 40% of the bar — the
+                                // active stage in the timeline is already
+                                // `upload_local` ("Uploading your video"),
+                                // primed when the message was created. The
+                                // mirror task just drives the bar forward in
+                                // real time as bytes leave the device.
                                 let mirror = Task { @MainActor in
                                     while !Task.isCancelled {
                                         if let i = indexOfProcessingMsg() {
-                                            let pct = max(1, Int(video.uploadProgress * 30))
+                                            let pct = max(1, Int(video.uploadProgress * 40))
                                             if pct > (messages[i].jobProgress ?? 0) {
                                                 messages[i].jobProgress = pct
                                             }
@@ -952,9 +956,14 @@ struct EditorView: View {
 
                             guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
                             if let i = indexOfProcessingMsg() {
-                                messages[i].stepMessage = "Starting your edit..."
-                                if (messages[i].jobProgress ?? 0) < 35 {
-                                    messages[i].jobProgress = 35
+                                // Upload finished. Advance the timeline to
+                                // the first server-driven stage (`analyze`)
+                                // so the active label flips immediately
+                                // instead of stalling on "Uploading…" while
+                                // we wait for the first SSE event.
+                                messages[i].stageTimeline?.receive(stepToken: "analyze")
+                                if (messages[i].jobProgress ?? 0) < 40 {
+                                    messages[i].jobProgress = 40
                                 }
                             }
                             let jobId = try await APIService.shared.createVideoJob(videoUrl: finalUrl, vibe: vibe)
@@ -1012,9 +1021,12 @@ struct EditorView: View {
                 messages[messageIndex].jobStatus = status
             }
             if let progress = event.progress {
-                // Server reports render progress 0-100. Upload takes 0-35 client-side,
-                // so map render into the 35-100 band and never go backwards.
-                let mapped = 35 + Int(Double(progress) * 0.65)
+                // Server reports render progress 0-100. Upload takes 0-40 client-side
+                // (with `upload_local` as the first stage in the timeline), so map
+                // render into the 40-100 band. Bar never goes backwards: the SSE
+                // mapping floor is exactly where upload's ceiling lands, so the
+                // first server tick continues the bar instead of resetting it.
+                let mapped = 40 + Int(Double(progress) * 0.6)
                 if mapped > (messages[messageIndex].jobProgress ?? 0) {
                     messages[messageIndex].jobProgress = mapped
                 }
@@ -1127,11 +1139,33 @@ struct EditorView: View {
             }
 
             if event.status == "failed" || event.status == "error" {
-                messages[messageIndex].jobStatus = "failed"
-                messages[messageIndex].error = event.error ?? "Something went wrong."
-                messages[messageIndex].stageTimeline?.finish()
-                persistMessages()
-                client.disconnect(); sseClients.removeValue(forKey: jobId)
+                // Don't trust a single "failed" signal — it can come from
+                // a transient DB read during a worker retry, an SSE poll
+                // that raced a status flip, or the iOS app waking up to
+                // a stale event from before the render actually succeeded.
+                // Tear down the SSE client and reconcile against the
+                // authoritative DB state. The reconcile path will mark
+                // failed only if Supabase actually says so; if the row is
+                // "completed" by the time we look, we recover with the
+                // success state instead of stranding a successful render
+                // on a "Connection lost" screen.
+                let liveError = event.error
+                client.disconnect()
+                sseClients.removeValue(forKey: jobId)
+                Task { @MainActor in
+                    let liveJobId = jobId
+                    await reconcileJobStatus(jobId: liveJobId)
+                    if let i = messages.firstIndex(where: { $0.jobId == liveJobId }),
+                       messages[i].jobStatus != "completed" && messages[i].jobStatus != "failed" {
+                        // DB said still-processing or lookup failed — fall
+                        // back to honoring the live failed event so we don't
+                        // strand the user on an infinite spinner.
+                        messages[i].jobStatus = "failed"
+                        messages[i].error = liveError ?? "Something went wrong."
+                        messages[i].stageTimeline?.finish()
+                        persistMessages()
+                    }
+                }
             }
 
             // Re-edit plan-diff asked for clarification — surface the question as a

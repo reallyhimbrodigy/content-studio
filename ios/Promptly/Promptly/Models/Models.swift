@@ -323,6 +323,7 @@ enum PipelineCatalog {
     // view, since they'd flip to skipped the moment any later token
     // arrived.
     static let all: [PipelineStage] = [
+        PipelineStage(id: "upload_local", title: "Uploading your video",          icon: "arrow.up.circle",           authoritative: true,  parent: nil,      modes: ["full"]),
         PipelineStage(id: "analyze",      title: "Preparing your footage",        icon: "magnifyingglass",           authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "transcribe",   title: "Transcribing every word",       icon: "waveform",                  authoritative: true,  parent: nil,      modes: ["full"]),
         PipelineStage(id: "face_detect",  title: "Tracking faces frame-by-frame", icon: "face.smiling",              authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
@@ -360,10 +361,14 @@ final class StageTimeline: ObservableObject {
 
     private var derivedTask: Task<Void, Never>?
 
-    init(mode: String) {
+    init(mode: String, startWith: String? = nil) {
         let filtered = PipelineCatalog.stages(for: mode)
         self.stages = filtered
         self.states = Dictionary(uniqueKeysWithValues: filtered.map { ($0.id, StageState.upcoming) })
+        if let startWith, filtered.contains(where: { $0.id == startWith }) {
+            self.states[startWith] = .inProgress
+            self.currentStageId = startWith
+        }
     }
 
     /// Called when the worker emits an authoritative `step` token. Earlier
