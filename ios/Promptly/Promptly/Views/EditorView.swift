@@ -135,6 +135,21 @@ struct EditorView: View {
                     await reconcileInProgressJobs()
                 }
             }
+            // Foreground heartbeat. SSE can silently die without iOS
+            // suspending the app (carrier handoff, server restart, idle
+            // timeout) — when that happens, neither scenePhase nor
+            // SSE.onError fire, and the chat would sit on "processing"
+            // until the user backgrounds and foregrounds. A cheap 15s
+            // poll closes that gap. Function short-circuits when nothing
+            // is in flight, so the cost is one no-op closure call when
+            // idle.
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15))
+                    if Task.isCancelled { break }
+                    await reconcileInProgressJobs()
+                }
+            }
         }
     }
 
@@ -196,6 +211,17 @@ struct EditorView: View {
         }
         loadedChatId = newId
         reeditSession = nil
+
+        // Heal anything older builds may have poisoned in storage. Earlier
+        // versions of the SSE error handler persisted `jobStatus = "failed"`
+        // with a "Connection lost" error for transport blips that didn't
+        // actually fail the render. Re-check every message that has a jobId
+        // against Supabase: if the DB says completed, we recover the success
+        // state (and the rendered video/thumbnail). Genuine failures stay
+        // failed because the DB row stays failed.
+        Task { @MainActor in
+            await reconcileInProgressJobs(includeFailed: true)
+        }
     }
 
     /// Snapshot the on-screen messages → SerializedMessage and hand them
@@ -1263,19 +1289,23 @@ struct EditorView: View {
         }
     }
 
-    /// Walk every in-progress message across the active chat and reconcile
-    /// each one's status with the database. Called when the app comes to
-    /// foreground — covers the case where the user backgrounded the app
-    /// during a render, the server completed it while we were suspended,
-    /// and we need to catch up on any final events we missed.
-    func reconcileInProgressJobs() async {
-        let inFlightJobIds: [String] = messages.compactMap { msg in
-            let isProcessing = msg.jobStatus == "processing" ||
-                               msg.jobStatus == "queued" ||
-                               (msg.jobStatus == nil && msg.jobId != nil)
-            return isProcessing ? msg.jobId : nil
+    /// Walk messages across the active chat and reconcile each one's
+    /// status with the database. Default mode reconciles only in-flight
+    /// jobs (processing/queued/no-status) — this is what foreground and
+    /// the heartbeat use. Pass `includeFailed: true` to also re-check
+    /// messages persisted as failed, used on chat load to heal "Connection
+    /// lost"-style poison written by older buggy builds: if Supabase says
+    /// the row is actually completed, we recover the success state.
+    func reconcileInProgressJobs(includeFailed: Bool = false) async {
+        let jobIds: [String] = messages.compactMap { msg in
+            guard let jobId = msg.jobId else { return nil }
+            let inFlight = msg.jobStatus == "processing" ||
+                           msg.jobStatus == "queued" ||
+                           msg.jobStatus == nil
+            let recheckFailed = includeFailed && (msg.jobStatus == "failed" || msg.jobStatus == "error")
+            return (inFlight || recheckFailed) ? jobId : nil
         }
-        for jobId in inFlightJobIds {
+        for jobId in jobIds {
             await reconcileJobStatus(jobId: jobId)
         }
     }
