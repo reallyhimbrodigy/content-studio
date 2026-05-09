@@ -966,78 +966,19 @@ struct CompletedVideoView: View {
 // MARK: - Video Player Presenter
 //
 // Presents the custom Promptly player (PromptlyPlayerHostVC). Path
-// selection (cache hit / CDN streaming / download-then-play) and SigV4
-// refresh logic live here; the actual playback chrome lives in
+// selection (HLS / cache hit / CDN streaming) and SigV4 refresh
+// logic live here; the actual playback chrome lives in
 // PromptlyVideoPlayer.swift.
-
-/// Full-screen loader shown while downloading a video on a cache miss.
-/// Black backdrop, centered spinner, "Preparing video..." subtitle,
-/// top-left X to cancel. Same modal style as the player so the
-/// transition from loader → player feels like the same surface.
-final class VideoLoaderVC: UIViewController {
-    private let spinner = UIActivityIndicatorView(style: .large)
-    private let label = UILabel()
-    private let cancelButton = UIButton(type: .system)
-    var onCancel: (() -> Void)?
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-
-        spinner.color = .white
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.startAnimating()
-        view.addSubview(spinner)
-
-        label.text = "Preparing video..."
-        label.textColor = UIColor.white.withAlphaComponent(0.7)
-        label.font = .systemFont(ofSize: 14, weight: .medium)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-
-        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-        cancelButton.setImage(UIImage(systemName: "xmark", withConfiguration: cfg), for: .normal)
-        cancelButton.tintColor = .white
-        cancelButton.backgroundColor = UIColor.white.withAlphaComponent(0.15)
-        cancelButton.layer.cornerRadius = 18
-        cancelButton.layer.cornerCurve = .continuous
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
-        cancelButton.accessibilityLabel = "Cancel"
-        view.addSubview(cancelButton)
-
-        NSLayoutConstraint.activate([
-            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
-
-            cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            cancelButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            cancelButton.widthAnchor.constraint(equalToConstant: 36),
-            cancelButton.heightAnchor.constraint(equalToConstant: 36),
-        ])
-    }
-
-    @objc private func handleCancel() {
-        onCancel?()
-        dismiss(animated: true)
-    }
-}
 
 enum VideoPlayerPresenter {
     /// Present the player. When `jobId` is provided, the local cache is
-    /// checked first — if the video is on disk, AVPlayer plays from
-    /// `file://` and the result feels exactly like Apple Photos
-    /// (instant, no buffering, no stalls).
-    /// On cache miss, we present a loader and download the full file
-    /// before playback so the player ALWAYS reads from disk. Streaming
-    /// over a signed URL was producing constant mid-playback freezes
-    /// even on healthy Wi-Fi (AVPlayer's automaticallyWaitsToMinimizeStalling
-    /// rebuffers every time bandwidth dips), and the user's expectation
-    /// is "should play even with no internet" — only local files
-    /// satisfy that.
+    /// Present the player. Selects the playback URL in priority order:
+    ///   1. HLS manifest — AVPlayer's fastest path (instant first
+    ///      segment, adaptive bitrate, sub-100 ms time-to-first-frame).
+    ///   2. Local cache file:// — when a previous play already cached
+    ///      the MP4 to disk, no network at all.
+    ///   3. CDN MP4 — direct streaming from CloudFront with poster-first
+    ///      and pre-warmed AVPlayerItem.
     /// Optional `onRefreshNeeded` is called when the URL fails a
     /// pre-flight HEAD check (or AVPlayer reports a 403/expired error
     /// during load) so the caller can return a freshly-signed URL and
@@ -1095,135 +1036,28 @@ enum VideoPlayerPresenter {
             return
         }
 
-        // CDN-backed MP4 URLs stream directly. With pre-warm + faststart
-        // first frame is in 1-2s, no rebuffering. Background download
-        // still runs so subsequent watches are local-instant.
-        if isStreamingReadyUrl(urlString) {
-            print("[player] streaming directly from CDN: \(urlString)")
-            if let jobId {
-                Task.detached(priority: .background) {
-                    await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: urlString)
-                }
-            }
-            Task { @MainActor in
-                let resolvedUrl = await preflightOrRefresh(
-                    urlString: urlString,
-                    onRefreshNeeded: onRefreshNeeded
-                )
-                doPresent(
-                    urlString: resolvedUrl,
-                    title: title,
-                    posterUrl: thumbnailUrl,
-                    onReedit: onReedit
-                )
-            }
-            return
-        }
-
-        // Legacy non-CDN cache miss. Without an edge cache, raw S3
-        // streaming rebuffered constantly — fall back to the
-        // download-then-play loader so playback is at least smooth.
-        if let jobId {
-            presentWithDownload(
-                jobId: jobId,
-                urlString: urlString,
-                title: title,
-                thumbnailUrl: thumbnailUrl,
-                onReedit: onReedit,
-                onRefreshNeeded: onRefreshNeeded
-            )
-        } else {
-            Task { @MainActor in
-                let resolvedUrl = await preflightOrRefresh(
-                    urlString: urlString,
-                    onRefreshNeeded: onRefreshNeeded
-                )
-                doPresent(
-                    urlString: resolvedUrl,
-                    title: title,
-                    posterUrl: thumbnailUrl,
-                    onReedit: onReedit
-                )
+        // CDN-backed MP4 (or HLS not present yet for legacy jobs).
+        // Stream directly through doPresent; pre-warm + faststart get
+        // first-frame paint in 1-2s. Background download still runs so
+        // subsequent watches are local-instant. Origin-S3 URLs get
+        // streamed too — every render now goes through CloudFront,
+        // so the old "download-spinner-then-play" path is dead and gone.
+        if let jobId, isStreamingReadyUrl(urlString) {
+            Task.detached(priority: .background) {
+                await VideoCache.shared.downloadIfNeeded(jobId: jobId, from: urlString)
             }
         }
-    }
-
-    /// Cache-miss flow: present a loader, resolve the URL (refreshing
-    /// the SigV4 signature if needed), download to disk with userInitiated
-    /// priority, then transition to the player from the local file. On
-    /// download failure or user cancel, the loader dismisses. On a
-    /// hard timeout (90s) we fall back to streaming as a last resort
-    /// so the user doesn't get stuck staring at a spinner.
-    @MainActor
-    private static func presentWithDownload(
-        jobId: String,
-        urlString: String,
-        title: String?,
-        thumbnailUrl: String?,
-        onReedit: (() -> Void)?,
-        onRefreshNeeded: (() async -> String?)?
-    ) {
-        guard let topVC = topmostViewController() else { return }
-
-        let loader = VideoLoaderVC()
-        loader.modalPresentationStyle = .fullScreen
-        var cancelled = false
-        loader.onCancel = { cancelled = true }
-        topVC.present(loader, animated: true)
-
         Task { @MainActor in
             let resolvedUrl = await preflightOrRefresh(
                 urlString: urlString,
                 onRefreshNeeded: onRefreshNeeded
             )
-            if cancelled { return }
-
-            // Race the download against a 90s hard timeout — if the
-            // network is genuinely too slow to deliver the file in
-            // 90s, we'd rather try streaming than leave the user
-            // staring at a spinner indefinitely.
-            let result: URL? = await withTaskGroup(of: URL?.self) { group in
-                group.addTask {
-                    await VideoCache.shared.downloadIfNeeded(
-                        jobId: jobId,
-                        from: resolvedUrl,
-                        priority: .userInitiated
-                    )
-                }
-                group.addTask {
-                    try? await Task.sleep(for: .seconds(90))
-                    return nil
-                }
-                let first = await group.next() ?? nil
-                group.cancelAll()
-                return first
-            }
-
-            if cancelled { return }
-
-            // Dismiss loader without animation, then immediately hand off
-            // to the player so the visible transition feels like a swap.
-            loader.dismiss(animated: false) {
-                if let local = result {
-                    doPresent(
-                        urlString: local.absoluteString,
-                        title: title,
-                        posterUrl: thumbnailUrl,
-                        onReedit: onReedit
-                    )
-                } else {
-                    // Download didn't land in time — try streaming as a
-                    // fallback so SOMETHING happens. AVPlayer will surface
-                    // its own error UI if even that fails.
-                    print("[player] download timed out, falling back to streaming")
-                    doPresent(
-                        urlString: resolvedUrl,
-                        title: title,
-                        posterUrl: thumbnailUrl,
-                        onReedit: onReedit
-                    )
-                }
-            }
+            doPresent(
+                urlString: resolvedUrl,
+                title: title,
+                posterUrl: thumbnailUrl,
+                onReedit: onReedit
+            )
         }
     }
 
