@@ -21,16 +21,35 @@ final class PlayerAssetPrewarm {
 
     /// Begin loading the asset for `urlString`. Idempotent — repeat calls
     /// while in flight or already cached are no-ops.
+    ///
+    /// Two paths:
+    ///   - MP4 / file:// — async-load tracks/duration off-thread so the
+    ///     metadata read happens before the user taps. Saves the cold
+    ///     300-800 ms moov-atom load.
+    ///   - HLS (.m3u8) — DO NOT call `asset.load(.tracks)`. That API
+    ///     is malformed for HLS master playlists; it can hang and the
+    ///     resulting AVPlayerItem ends up in a broken state. AVPlayer
+    ///     handles HLS manifest parsing internally on play(), and the
+    ///     first segment is small enough (~300 KB) that pre-warming
+    ///     doesn't move the needle. We just create the AVPlayerItem
+    ///     here so takePlayerItem can hand it off without re-creating.
     func warm(_ urlString: String) {
         guard items[urlString] == nil, !inFlight.contains(urlString),
               let url = URL(string: urlString) else { return }
+
+        if urlString.contains(".m3u8") {
+            let asset = AVURLAsset(url: url)
+            let item = AVPlayerItem(asset: asset)
+            items[urlString] = item
+            return
+        }
+
         inFlight.insert(urlString)
         let asset = AVURLAsset(url: url)
         Task.detached(priority: .userInitiated) {
             _ = try? await asset.load(.tracks, .duration, .preferredTransform)
             await MainActor.run {
                 let item = AVPlayerItem(asset: asset)
-                item.preferredForwardBufferDuration = 4
                 self.items[urlString] = item
                 self.inFlight.remove(urlString)
             }
@@ -39,16 +58,16 @@ final class PlayerAssetPrewarm {
 
     /// Hand off the cached item — or freshly create one if there's no warm
     /// hit. AVPlayerItem can only be in ONE player at a time, so we remove
-    /// from the cache on take.
+    /// from the cache on take. Buffer settings are LEFT AT DEFAULTS so
+    /// AVPlayer's adaptive logic can pick the right amount of look-ahead
+    /// for the network conditions.
     func takePlayerItem(for urlString: String) -> AVPlayerItem? {
         if let cached = items.removeValue(forKey: urlString) {
             return cached
         }
         guard let url = URL(string: urlString) else { return nil }
         let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = 4
-        return item
+        return AVPlayerItem(asset: asset)
     }
 }
 
@@ -133,11 +152,12 @@ final class SharedAVPlayer {
 
     private init() {
         self.player = AVPlayer()
-        // We control buffering via pre-warm + preroll. The default
-        // automaticallyWaitsToMinimizeStalling adds ~300ms of stall-
-        // avoidance buffering before first paint, which we don't need
-        // when the asset is already loaded.
-        self.player.automaticallyWaitsToMinimizeStalling = false
+        // CRITICAL: keep stall-avoidance ENABLED. Disabling it forced
+        // AVPlayer to start with an empty buffer, which on HLS made it
+        // pick the lowest variant (360p) trying to recover and then
+        // constantly rebuffer mid-playback. Default true is the right
+        // setting for VOD streaming.
+        self.player.automaticallyWaitsToMinimizeStalling = true
         self.player.actionAtItemEnd = .pause
     }
 }
@@ -226,7 +246,14 @@ final class PromptlyPlayerSession: ObservableObject {
     private var timeObserver: Any?
     private var statusKVO: NSKeyValueObservation?
     private var endNotificationToken: NSObjectProtocol?
-    private var prerollDone = false
+
+    /// Set when the user (or onAppear) requests playback before the item
+    /// has reached `.readyToPlay`. The status observer flips us into
+    /// playback state once the item is genuinely ready — calling `.play()`
+    /// on a not-yet-ready item is what made the player "freeze for a
+    /// minute": AVPlayer sits there with rate=1 and no buffer, never
+    /// painting a first frame.
+    private var wantsPlayWhenReady = false
 
     init(item: AVPlayerItem, urlString: String) {
         self.item = item
@@ -237,7 +264,7 @@ final class PromptlyPlayerSession: ObservableObject {
         // Hand the freshly-warmed item to the persistent player. Any
         // prior item is replaced cleanly — no leak, no overlap.
         player.replaceCurrentItem(with: item)
-        player.rate = 0  // wait until we explicitly play()
+        player.rate = 0  // wait until status flips to .readyToPlay
 
         // Periodic progress for the scrubber. 1/30s is enough resolution
         // for a 60fps UI without burning main-thread cycles.
@@ -258,13 +285,14 @@ final class PromptlyPlayerSession: ObservableObject {
                     if d.isFinite, d > 0 {
                         self.duration = d
                     }
-                    // Decode first frame BEFORE play() — kills the
-                    // first-frame stutter that AVPlayer would otherwise
-                    // pay on play(). preroll completes in ~10-50ms when
-                    // the item is already ready.
-                    if !self.prerollDone {
-                        self.prerollDone = true
-                        self.player.preroll(atRate: 1) { _ in /* fire-and-forget */ }
+                    // If a play() call landed before the item was ready,
+                    // honor it now. AVPlayer manages its own first-frame
+                    // decode and stall-avoidance buffering — we don't
+                    // need to preroll() manually.
+                    if self.wantsPlayWhenReady {
+                        self.wantsPlayWhenReady = false
+                        self.player.rate = self.rate
+                        self.isPlaying = true
                     }
                 }
             }
@@ -309,29 +337,54 @@ final class PromptlyPlayerSession: ObservableObject {
 
     func togglePlay() {
         if isPlaying {
-            player.pause()
-            isPlaying = false
+            pause()
         } else {
-            player.rate = rate
-            isPlaying = true
+            play()
         }
     }
 
+    /// Begin (or queue) playback. If the item isn't ready yet, we set a
+    /// flag and the status observer will start playback the moment
+    /// `.readyToPlay` fires. Calling `player.rate = 1` on an unready
+    /// item is a no-op at best and a "stuck on black with no first
+    /// frame" hang at worst.
     func play() {
-        player.rate = rate
-        isPlaying = true
+        if item.status == .readyToPlay {
+            player.rate = rate
+            isPlaying = true
+        } else {
+            wantsPlayWhenReady = true
+        }
     }
 
     func pause() {
+        wantsPlayWhenReady = false
         player.pause()
         isPlaying = false
     }
 
-    /// Live-scrub: seek with zero tolerance on every gesture tick so the
-    /// frame visually tracks the thumb. Photos.app pattern — most apps
-    /// settle for "seek on release" because zero-tolerance seeks are
-    /// expensive, but on modern devices it's smooth enough.
+    /// Seek during a scrubber drag. On MP4 we use zero tolerance so the
+    /// frame visually tracks the thumb (Photos.app pattern). On HLS,
+    /// zero-tolerance seeks force a fresh segment fetch on EVERY gesture
+    /// tick — that's what made scrubbing the streaming player thrash and
+    /// stall. We use a 0.5s tolerance window on HLS so AVPlayer can reuse
+    /// the buffered segment, then snap to the exact frame on release.
     func liveSeek(to seconds: Double) {
+        guard duration > 0 else { return }
+        let t = CMTime(seconds: max(0, min(seconds, duration)), preferredTimescale: 600)
+        currentTime = t.seconds
+        if isHLS {
+            let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
+            player.seek(to: t, toleranceBefore: tol, toleranceAfter: tol)
+        } else {
+            player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+
+    /// Final seek on scrubber release. Always frame-accurate — the user
+    /// stopped, so we can afford one expensive seek to land exactly
+    /// where they let go.
+    func finalSeek(to seconds: Double) {
         guard duration > 0 else { return }
         let t = CMTime(seconds: max(0, min(seconds, duration)), preferredTimescale: 600)
         currentTime = t.seconds
@@ -759,7 +812,11 @@ struct FrameStripScrubber: View {
                     }
                     .onEnded { v in
                         let frac = max(0, min(1, v.location.x / width))
-                        session.liveSeek(to: frac * session.duration)
+                        // Final frame-accurate seek on release. Live-seek
+                        // during the drag uses tolerance on HLS to avoid
+                        // segment thrash; this snap lands exactly where
+                        // the user let go.
+                        session.finalSeek(to: frac * session.duration)
                         session.isScrubbing = false
                         session.play()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
