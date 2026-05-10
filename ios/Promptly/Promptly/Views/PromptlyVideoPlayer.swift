@@ -173,58 +173,32 @@ enum AudioSession {
 
 // MARK: - Player pool
 //
-// Three pre-warmed AVQueuePlayer instances kept alive for the entire app
-// session. Each PromptlyPlayerSession acquires one on init and returns it
-// on deinit. This is the TikTok / Instagram Reels pattern — cold AVPlayer
-// init is 50-150 ms and `replaceCurrentItem(with: nil)` on dealloc is
-// expensive, so we keep instances warm.
-//
-// AVAudioSession activation is also bundled with acquire so audio is
-// always live by the time the first frame paints.
+// Three pre-warmed AVPlayer instances kept alive for the entire app
+// session. Industry standard for short-form video (TikTok / Reels /
+// CapCut). The only purpose is to avoid the ~50-150 ms cold-init cost
+// on every tap. Every other setting is AVPlayer's default — we don't
+// override stall avoidance, buffer duration, or end action because
+// those defaults are what production apps use.
 
 @MainActor
 final class PlayerPool {
     static let shared = PlayerPool()
-    private var pool: [AVQueuePlayer] = []
+    private var pool: [AVPlayer] = []
     private let capacity = 3
 
     private init() {
         for _ in 0..<capacity {
-            pool.append(Self.makePlayer())
+            pool.append(AVPlayer())
         }
     }
 
-    private static func makePlayer() -> AVQueuePlayer {
-        let p = AVQueuePlayer()
-        // Short-form MP4 doesn't need ABR-style buffering. Mingalev's
-        // numbers + our own short-clip profile both say `false` plus a
-        // small forward buffer is correct here.
-        p.automaticallyWaitsToMinimizeStalling = false
-        // We handle looping manually via didPlayToEndTime so we can
-        // re-seek to .zero with zero tolerance instead of letting
-        // AVPlayer's internal restart take a frame to settle.
-        p.actionAtItemEnd = .none
-        p.isMuted = false
-        p.volume = 1.0
-        return p
-    }
-
-    /// Take a warm player. Creates a fresh one if the pool is empty
-    /// (every previous player is still in flight) so we never block.
-    func acquire() -> AVQueuePlayer {
+    func acquire() -> AVPlayer {
         AudioSession.activatePlayback()
-        if pool.isEmpty { return Self.makePlayer() }
-        let p = pool.removeFirst()
-        // Defensive — audio could have been muted on the last release
-        // by an interruption notification or similar; reset to known good.
-        p.isMuted = false
-        p.volume = 1.0
-        return p
+        if pool.isEmpty { return AVPlayer() }
+        return pool.removeFirst()
     }
 
-    /// Return a player to the pool. Drops over-capacity instances so
-    /// memory doesn't grow if we hit the empty-pool path repeatedly.
-    func release(_ p: AVQueuePlayer) {
+    func release(_ p: AVPlayer) {
         p.pause()
         p.replaceCurrentItem(with: nil)
         if pool.count < capacity { pool.append(p) }
@@ -293,14 +267,12 @@ struct PlayerLayerView: UIViewRepresentable {
 
 @MainActor
 final class PromptlyPlayerSession: ObservableObject {
-    let player: AVQueuePlayer
+    let player: AVPlayer
     let urlString: String
 
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
-    @Published var isReady: Bool = false
-    @Published var rate: Float = 1.0
     @Published var isScrubbing: Bool = false
     @Published private(set) var frameStrip: [UIImage] = []
 
@@ -308,205 +280,94 @@ final class PromptlyPlayerSession: ObservableObject {
     private var timeObserver: Any?
     private var statusKVO: NSKeyValueObservation?
     private var endNotificationToken: NSObjectProtocol?
-    private var prerollDone = false
-
-    /// Set when the user (or onAppear) requests playback before the item
-    /// has reached `.readyToPlay`. The status observer flips us into
-    /// playback state once the item is genuinely ready — calling `.play()`
-    /// on a not-yet-ready item is what made the player "freeze for a
-    /// minute": AVPlayer sits there with rate=1 and no buffer, never
-    /// painting a first frame.
-    private var wantsPlayWhenReady = false
-
-    // Chase-seek state (Apple QA1820). Naive scrubbing fires a seek on
-    // every gesture tick (60+ Hz); each new seek cancels the previous
-    // one, so AVPlayer spends its time canceling instead of rendering.
-    // Result: scrub jank. The fix: only fire one seek at a time. When
-    // the user moves further, we update `chaseTime`; only when the
-    // current seek's completion handler fires do we kick the next one.
-    private var isSeekInProgress: Bool = false
-    private var chaseTime: CMTime = .invalid
 
     init(item: AVPlayerItem, urlString: String) {
         self.item = item
         self.player = PlayerPool.shared.acquire()
         self.urlString = urlString
 
-        // 2-second forward buffer is the sweet spot for short-form
-        // (<90s) MP4 — enough to absorb network jitter, small enough
-        // that AVPlayer doesn't pre-fetch a huge chunk we'll never use.
-        item.preferredForwardBufferDuration = 2.0
-
-        // Hand the item to the pool player. Pool already cleared the
-        // previous item via replaceCurrentItem(with: nil) on release.
         player.replaceCurrentItem(with: item)
-        player.isMuted = false
-        player.volume = 1.0
-        player.rate = 0  // wait until status flips to .readyToPlay
 
-        // Periodic progress for the scrubber. 1/30s is enough resolution
-        // for a 60fps UI without burning main-thread cycles.
-        let interval = CMTime(seconds: 1.0/30.0, preferredTimescale: 600)
+        // 1 Hz time observer — enough to update the time labels and the
+        // scrubber thumb without saturating SwiftUI with @Published
+        // updates. The thumb is interpolated visually between ticks via
+        // SwiftUI's implicit animation on the progress value.
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
         self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self else { return }
-            if !self.isScrubbing {
-                self.currentTime = time.seconds
-            }
+            guard let self, !self.isScrubbing else { return }
+            self.currentTime = time.seconds
         }
 
         statusKVO = item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self else { return }
                 if item.status == .readyToPlay {
-                    self.isReady = true
                     let d = item.duration.seconds
-                    if d.isFinite, d > 0 {
-                        self.duration = d
-                    }
-                    // Prime the playback buffer + decode the first frame
-                    // BEFORE play() rate is applied. preroll(atRate:) is
-                    // exactly what eliminates the "black-screen-then-frame"
-                    // hiccup that bare play() shows — TikTok / Reels both
-                    // use this pattern. Idempotent: only fires once per
-                    // session.
-                    if !self.prerollDone {
-                        self.prerollDone = true
-                        self.player.preroll(atRate: 1.0) { [weak self] _ in
-                            Task { @MainActor in
-                                guard let self else { return }
-                                if self.wantsPlayWhenReady {
-                                    self.wantsPlayWhenReady = false
-                                    self.player.rate = self.rate
-                                    self.isPlaying = true
-                                }
-                            }
-                        }
-                    } else if self.wantsPlayWhenReady {
-                        // Status flipped to ready again (e.g. recovered from
-                        // a stall) and preroll already completed earlier —
-                        // honor the queued play directly.
-                        self.wantsPlayWhenReady = false
-                        self.player.rate = self.rate
-                        self.isPlaying = true
-                    }
+                    if d.isFinite, d > 0 { self.duration = d }
+                    self.player.play()
+                    self.isPlaying = true
                 }
             }
         }
 
+        // Default `actionAtItemEnd = .pause` stops at the end frame. We
+        // loop manually by seeking to zero and resuming when the
+        // didPlayToEndTime notification fires — short clips, always loop.
         endNotificationToken = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                // Always loop. Chat clips are short — looping is the
-                // right default. We seek with zero tolerance so the
-                // restart lands on the exact first frame instead of the
-                // closest keyframe (which AVPlayer's built-in restart
-                // would drift to).
-                self.player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-                self.player.rate = self.rate
+                self.player.seek(to: .zero)
+                self.player.play()
                 self.isPlaying = true
             }
         }
 
-        // Surface duration eagerly if the asset is already loaded
-        // (pre-warm path) so the scrubber doesn't paint with zero width.
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if let d = try? await item.asset.load(.duration), d.seconds.isFinite, d.seconds > 0 {
-                self.duration = d.seconds
-            }
-        }
-
-        // Frame strip generation off-thread. With progressive MP4 the
-        // image generator works reliably (dense keyframes from the
-        // server-side encoder make this fast).
+        // Frame strip generation off-thread. AVAssetImageGenerator on
+        // a progressive MP4 with dense keyframes (server emits one per
+        // second) populates the strip within a few hundred ms.
         Task { [weak self] in
             guard let self else { return }
             let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
-            await MainActor.run {
-                self.frameStrip = images
-            }
+            await MainActor.run { self.frameStrip = images }
         }
     }
 
-    func togglePlay() {
-        if isPlaying {
-            pause()
-        } else {
-            play()
-        }
-    }
+    func togglePlay() { isPlaying ? pause() : play() }
 
-    /// Begin (or queue) playback. If the item isn't ready yet, we set a
-    /// flag and the status observer will start playback the moment
-    /// `.readyToPlay` fires. Calling `player.rate = 1` on an unready
-    /// item is a no-op at best and a "stuck on black with no first
-    /// frame" hang at worst.
     func play() {
-        if item.status == .readyToPlay {
-            player.rate = rate
-            isPlaying = true
-        } else {
-            wantsPlayWhenReady = true
-        }
+        player.play()
+        isPlaying = true
     }
 
     func pause() {
-        wantsPlayWhenReady = false
         player.pause()
         isPlaying = false
     }
 
-    /// Update the chase-seek target. Safe to call on every gesture tick
-    /// (60+ Hz) — only one seek is in flight at a time, so AVPlayer
-    /// never thrashes. The frame visually tracks the thumb because
-    /// completed seeks immediately fire the next one to the latest
-    /// target. This is Apple QA1820 verbatim.
+    /// Update the on-screen time during scrubber drag. We don't seek
+    /// the AVPlayer during the drag — that thrashes the decoder. The
+    /// frame strip is the visual preview; on release, we do ONE seek.
     func liveSeek(to seconds: Double) {
+        guard duration > 0 else { return }
+        currentTime = max(0, min(seconds, duration))
+    }
+
+    /// Single seek on scrubber release. Frame-accurate (zero tolerance).
+    func finalSeek(to seconds: Double) {
         guard duration > 0 else { return }
         let t = CMTime(seconds: max(0, min(seconds, duration)), preferredTimescale: 600)
         currentTime = t.seconds
-        chaseTime = t
-        if !isSeekInProgress {
-            trySeekToChaseTime()
-        }
-    }
-
-    /// Final-position seek on release. Same chase-seek pipeline; called
-    /// once with the user's release point so the last frame the player
-    /// settles on is exactly where they let go.
-    func finalSeek(to seconds: Double) {
-        liveSeek(to: seconds)
-    }
-
-    private func trySeekToChaseTime() {
-        guard chaseTime.isValid else { return }
-        let target = chaseTime
-        isSeekInProgress = true
-        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
-            // If the chase target moved while this seek was in flight,
-            // immediately fire the next one. Otherwise we're done.
-            if CMTimeCompare(target, self.chaseTime) != 0 {
-                self.trySeekToChaseTime()
-            } else {
-                self.isSeekInProgress = false
-            }
-        }
+        player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     deinit {
         if let t = timeObserver { player.removeTimeObserver(t) }
         statusKVO?.invalidate()
         if let token = endNotificationToken { NotificationCenter.default.removeObserver(token) }
-        // Return the player to the pool so the next session gets a warm
-        // instance instead of paying cold AVPlayer init. The pool's
-        // release() handles pause + replaceCurrentItem(nil).
         let p = player
-        Task { @MainActor in
-            PlayerPool.shared.release(p)
-        }
+        Task { @MainActor in PlayerPool.shared.release(p) }
     }
 }
 

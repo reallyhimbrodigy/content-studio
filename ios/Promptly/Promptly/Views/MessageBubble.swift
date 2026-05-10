@@ -46,25 +46,36 @@ struct MessageBubble: View {
 
             if !message.content.isEmpty {
                 Text(message.content)
-                    // Use Dynamic Type for chat content so it scales with
-                    // the user's accessibility text-size preference.
-                    // Capped at .accessibility3 so the bubble doesn't
-                    // bloat at the largest sizes.
-                    .font(.body)
+                    .font(.system(.body, design: .default).weight(.regular))
+                    .tracking(0.2)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    // User bubble uses the lighter surface to read as the
-                    // "active" / outgoing message — paired with the darker
-                    // assistant bubble below, this gives a clear visual
-                    // distinction without resorting to accent color.
-                    .background(Theme.Surface.surface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(
+                        // User bubble: brighter glass — vision-pro feel,
+                        // distinct from the assistant's softer treatment
+                        // below so the conversation flow is legible.
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.14),
+                                            Color.white.opacity(0.04)
+                                        ],
+                                        startPoint: .top, endPoint: .bottom
+                                    )
+                                )
+                        }
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
         }
         // Combine the video + text into a single VoiceOver element with
@@ -103,21 +114,29 @@ struct MessageBubble: View {
 
             if !message.content.isEmpty {
                 Text(message.content)
-                    .font(.body)
+                    .font(.system(.body, design: .default).weight(.regular))
+                    .tracking(0.2)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    // Translucent white overlay against the page's pure
-                    // black gives a clearly distinct "received" treatment
-                    // vs the user's solid `tertiarySystemBackground` fill.
-                    // The two semantic system grays were only ~16 RGB
-                    // points apart in dark mode — visually invisible.
-                    // 6% white reads as a soft lift off black with
-                    // ~50+ effective RGB difference from the user bubble.
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(
+                        // Assistant bubble: subtler glass — softer than
+                        // the user bubble so the conversation alternates
+                        // with clear visual rhythm.
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color.white.opacity(0.03))
+                        }
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
 
             if let videoUrlStr = message.renderedVideoUrl {

@@ -14,6 +14,7 @@ struct EditorView: View {
     @State private var sseClients: [String: SSEClient] = [:]
     @State private var reeditSession: ReeditSession?
     @State private var loadedChatId: String? = nil
+    @State private var ghostIndex: Int = 0
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -39,20 +40,21 @@ struct EditorView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
+            .background(luxuryBackdrop)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                // The pending-video tiles now live INSIDE inputBar's
-                // rounded surface (iMessage / ChatGPT pattern), so the
-                // composer is just a tight stack: re-edit chip (when
-                // active) + vibe chips (when empty) + the input bar
-                // bubble. No more full-width black "pending row" sitting
-                // above the input field covering the chat content.
+                // Tight composer stack: re-edit chip (when active) +
+                // input bar. The static vibe-chip row was removed in
+                // favor of in-bubble ghost-text rotation (see inputBar).
                 VStack(spacing: 0) {
                     reeditChip
-                    vibeChipsBar
                     inputBar
                 }
-                .background(Color(.systemBackground))
+                .background(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0), Color.black.opacity(0.5)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
             }
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
@@ -111,6 +113,19 @@ struct EditorView: View {
                 // even if the user never opens it. Idempotent in ChatStore.
                 if chatStore.chats.isEmpty {
                     await chatStore.loadChats()
+                }
+            }
+            .task {
+                // Ghost-text rotation. 3.2 s dwell per suggestion with a
+                // spring-driven fade-up between transitions. Runs for the
+                // lifetime of the view; SwiftUI cancels the .task when the
+                // view leaves the hierarchy.
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(3.2))
+                    if Task.isCancelled { break }
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        ghostIndex = (ghostIndex + 1) % Self.vibeSuggestions.count
+                    }
                 }
             }
             .onChange(of: appState.pendingReedit) { _, newSession in
@@ -495,20 +510,52 @@ struct EditorView: View {
                 .accessibilityLabel("Add video")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
 
-                TextField("Describe your edit...", text: $inputText, axis: .vertical)
-                    .focused($isInputFocused)
-                    .lineLimit(1...6)
-                    .foregroundColor(.white)
-                    // Dynamic Type — input scales with user preference,
-                    // capped to keep the chat input from eating the screen.
-                    .font(.body)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                    .tint(.white)
-                    .submitLabel(.send)
-                    .onSubmit { send() }
-                    .padding(.vertical, 9)
-                    .padding(.trailing, 4)
-                    .accessibilityLabel("Describe your edit")
+                ZStack(alignment: .leading) {
+                    // Ghost-text rotation. When the field is empty, the
+                    // placeholder cycles through outcome-shaped vibes —
+                    // dimmed, fading-up between transitions. Swipe right
+                    // on the input area to accept the current ghost; tap
+                    // also works. Old chip row is gone.
+                    if inputText.isEmpty && pendingVideos.isEmpty && reeditSession == nil {
+                        Text(Self.vibeSuggestions[ghostIndex])
+                            .font(.system(.body, design: .default).weight(.regular))
+                            .tracking(0.3)
+                            .foregroundColor(Color.white.opacity(0.35))
+                            .id(ghostIndex)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                removal: .move(edge: .top).combined(with: .opacity)
+                            ))
+                            .padding(.vertical, 9)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextField("", text: $inputText, axis: .vertical)
+                        .focused($isInputFocused)
+                        .lineLimit(1...6)
+                        .foregroundColor(.white)
+                        .font(.system(.body, design: .default))
+                        .tracking(0.3)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                        .tint(.white)
+                        .submitLabel(.send)
+                        .onSubmit { send() }
+                        .padding(.vertical, 9)
+                        .padding(.trailing, 4)
+                        .accessibilityLabel("Describe your edit")
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    // Swipe right (>= 80pt) accepts the current ghost.
+                    // Only fires when the field is empty so it doesn't
+                    // fight with text selection.
+                    DragGesture(minimumDistance: 30)
+                        .onEnded { v in
+                            guard inputText.isEmpty, v.translation.width > 80 else { return }
+                            inputText = Self.vibeSuggestions[ghostIndex]
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }
+                )
 
                 Button(action: send) {
                     Image(systemName: "arrow.up")
@@ -530,13 +577,54 @@ struct EditorView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(.tertiarySystemBackground))
+            ZStack {
+                // Vision-pro glass: ultra-thin material over a subtle
+                // top-to-bottom gradient. Replaces the flat
+                // tertiarySystemBackground fill that was reading "cheap."
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.06),
+                                Color.white.opacity(0.02)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+            }
         )
         .padding(.horizontal, Theme.Space.sm)
         .padding(.top, Theme.Space.xxs)
         .padding(.bottom, Theme.Space.xs)
-        .animation(.easeOut(duration: 0.22), value: pendingVideos.count)
+        .animation(.spring(response: 0.45, dampingFraction: 0.78), value: pendingVideos.count)
+    }
+
+    // MARK: - Luxurious backdrop
+    //
+    // Replaces flat `.systemBackground` with a subtle vertical gradient —
+    // soft warm-tinted white-fade-to-black at the top so the title /
+    // navigation bar reads with depth, plus a faint vignette at the
+    // bottom for the composer. Tiny but it's the difference between
+    // "default app" and "designed app."
+
+    private var luxuryBackdrop: some View {
+        ZStack {
+            Color.black
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.05),
+                    Color.white.opacity(0.0),
+                    Color.white.opacity(0.0),
+                    Color.black.opacity(0.4)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
     }
 
     private var canSend: Bool {
@@ -741,64 +829,17 @@ struct EditorView: View {
 
     // MARK: - Vibe chips
     //
-    // Quick-tap suggestions that drop a vibe into the input. Shows only
-    // when there's a video staged + the input is empty + we're not in a
-    // re-edit. Mirrors the "smart reply" chip pattern in iMessage and
-    // the suggestion row in ChatGPT iOS. Horizontal scroll, capsule
-    // styling, glass-fill background. Tap a chip → fill input + light
-    // haptic, leave keyboard up so the user can edit if they want.
-
-    // Outcome-shaped vibes for short-form talking head. Order matters —
-    // "Engaging fast-paced" leads as the safe-bet default for users who'd
-    // otherwise type "make it good." Four chips fits cleanly without
-    // visual clutter and avoids hiding options behind an off-screen scroll
-    // on standard iPhone widths.
-    private static let vibeSuggestions: [String] = [
+    // Outcome-shaped vibes for short-form talking head. Cycled inside
+    // the input bubble as ghost text — see inputBar above. Order
+    // matters: the first one is what users see in the static frame,
+    // so it should be the safe-bet default.
+    static let vibeSuggestions: [String] = [
         "Engaging fast-paced",
         "Sales pitch",
         "Viral hype",
-        "Storytime"
+        "Storytime",
+        "Make it good"
     ]
-
-    @ViewBuilder
-    private var vibeChipsBar: some View {
-        // Show only when there's no input text, no pending video, and
-        // no re-edit session. Once the user has committed to a video,
-        // the chips are visual noise and just inflate the composer.
-        if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           pendingVideos.isEmpty,
-           reeditSession == nil {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Self.vibeSuggestions, id: \.self) { vibe in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            inputText = vibe
-                        } label: {
-                            Text(vibe)
-                                .font(.system(size: 13.5, weight: .medium))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(Color(.tertiarySystemFill))
-                                )
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
-            }
-            .frame(height: 40)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-        }
-    }
 
     // MARK: - Send
 
