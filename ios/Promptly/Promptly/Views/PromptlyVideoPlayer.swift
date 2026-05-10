@@ -137,30 +137,97 @@ final class FrameStripCache {
     }
 }
 
-// MARK: - Shared persistent AVPlayer
+// MARK: - Audio session helper
 //
-// One AVPlayer instance kept alive for the entire app session. Sessions
-// hand items to it via `replaceCurrentItem`; tearing down a session
-// pauses the player but doesn't dispose it. This kills the ~50-150ms
-// init cost of cold AVPlayer creation on every present, and lets us
-// keep buffering / hardware-decoder context across video opens.
+// AVPlayer audio routing depends on the AVAudioSession being in `.playback`
+// category and ACTIVE. The previous flow used `try?` everywhere and silently
+// swallowed errors — if a prior session left things in a bad state, audio
+// would go missing on the next play with no log line. This wrapper logs
+// every error and is idempotent on the happy path.
 
 @MainActor
-final class SharedAVPlayer {
-    static let shared = SharedAVPlayer()
-    let player: AVPlayer
+enum AudioSession {
+    static func activatePlayback() {
+        let s = AVAudioSession.sharedInstance()
+        do {
+            try s.setCategory(.playback, mode: .moviePlayback, options: [])
+        } catch {
+            print("[audio-session] setCategory failed: \(error.localizedDescription)")
+        }
+        do {
+            try s.setActive(true, options: [])
+        } catch {
+            print("[audio-session] setActive(true) failed: \(error.localizedDescription)")
+        }
+    }
+
+    static func deactivate() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            // Common when other audio is being held — fine to ignore visibly.
+            print("[audio-session] setActive(false) failed: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Player pool
+//
+// Three pre-warmed AVQueuePlayer instances kept alive for the entire app
+// session. Each PromptlyPlayerSession acquires one on init and returns it
+// on deinit. This is the TikTok / Instagram Reels pattern — cold AVPlayer
+// init is 50-150 ms and `replaceCurrentItem(with: nil)` on dealloc is
+// expensive, so we keep instances warm.
+//
+// AVAudioSession activation is also bundled with acquire so audio is
+// always live by the time the first frame paints.
+
+@MainActor
+final class PlayerPool {
+    static let shared = PlayerPool()
+    private var pool: [AVQueuePlayer] = []
+    private let capacity = 3
 
     private init() {
-        self.player = AVPlayer()
-        // For progressive MP4 (which is what we play — see
-        // VideoPlayerPresenter), `false` is the right setting: we want
-        // AVPlayer to start as soon as the moov atom + first chunk
-        // are buffered, not wait for a much larger ABR-style window.
-        // Pair with `preferredForwardBufferDuration = 2` on the item
-        // (set in PromptlyPlayerSession.init) — Mingalev measured
-        // 37.8 → 0.2 Mb network load with this combo on short-form VOD.
-        self.player.automaticallyWaitsToMinimizeStalling = false
-        self.player.actionAtItemEnd = .pause
+        for _ in 0..<capacity {
+            pool.append(Self.makePlayer())
+        }
+    }
+
+    private static func makePlayer() -> AVQueuePlayer {
+        let p = AVQueuePlayer()
+        // Short-form MP4 doesn't need ABR-style buffering. Mingalev's
+        // numbers + our own short-clip profile both say `false` plus a
+        // small forward buffer is correct here.
+        p.automaticallyWaitsToMinimizeStalling = false
+        // We handle looping manually via didPlayToEndTime so we can
+        // re-seek to .zero with zero tolerance instead of letting
+        // AVPlayer's internal restart take a frame to settle.
+        p.actionAtItemEnd = .none
+        p.isMuted = false
+        p.volume = 1.0
+        return p
+    }
+
+    /// Take a warm player. Creates a fresh one if the pool is empty
+    /// (every previous player is still in flight) so we never block.
+    func acquire() -> AVQueuePlayer {
+        AudioSession.activatePlayback()
+        if pool.isEmpty { return Self.makePlayer() }
+        let p = pool.removeFirst()
+        // Defensive — audio could have been muted on the last release
+        // by an interruption notification or similar; reset to known good.
+        p.isMuted = false
+        p.volume = 1.0
+        return p
+    }
+
+    /// Return a player to the pool. Drops over-capacity instances so
+    /// memory doesn't grow if we hit the empty-pool path repeatedly.
+    func release(_ p: AVQueuePlayer) {
+        p.pause()
+        p.replaceCurrentItem(with: nil)
+        if pool.count < capacity { pool.append(p) }
     }
 }
 
@@ -221,20 +288,18 @@ struct PlayerLayerView: UIViewRepresentable {
 // MARK: - Player session
 //
 // Owns the per-presentation state — the AVPlayerItem, observers, and
-// scrubber/UI bindings. The AVPlayer itself is shared (see
-// SharedAVPlayer); we attach observers in init and remove them in
-// deinit so observer count stays at most 1 between presents.
+// scrubber/UI bindings. Acquires an AVPlayer from PlayerPool on init,
+// returns it on deinit so the pool stays warm across plays.
 
 @MainActor
 final class PromptlyPlayerSession: ObservableObject {
-    let player: AVPlayer
+    let player: AVQueuePlayer
     let urlString: String
 
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var isReady: Bool = false
-    @Published var isLooping: Bool = true
     @Published var rate: Float = 1.0
     @Published var isScrubbing: Bool = false
     @Published private(set) var frameStrip: [UIImage] = []
@@ -243,6 +308,7 @@ final class PromptlyPlayerSession: ObservableObject {
     private var timeObserver: Any?
     private var statusKVO: NSKeyValueObservation?
     private var endNotificationToken: NSObjectProtocol?
+    private var prerollDone = false
 
     /// Set when the user (or onAppear) requests playback before the item
     /// has reached `.readyToPlay`. The status observer flips us into
@@ -263,7 +329,7 @@ final class PromptlyPlayerSession: ObservableObject {
 
     init(item: AVPlayerItem, urlString: String) {
         self.item = item
-        self.player = SharedAVPlayer.shared.player
+        self.player = PlayerPool.shared.acquire()
         self.urlString = urlString
 
         // 2-second forward buffer is the sweet spot for short-form
@@ -271,9 +337,11 @@ final class PromptlyPlayerSession: ObservableObject {
         // that AVPlayer doesn't pre-fetch a huge chunk we'll never use.
         item.preferredForwardBufferDuration = 2.0
 
-        // Hand the freshly-warmed item to the persistent player. Any
-        // prior item is replaced cleanly — no leak, no overlap.
+        // Hand the item to the pool player. Pool already cleared the
+        // previous item via replaceCurrentItem(with: nil) on release.
         player.replaceCurrentItem(with: item)
+        player.isMuted = false
+        player.volume = 1.0
         player.rate = 0  // wait until status flips to .readyToPlay
 
         // Periodic progress for the scrubber. 1/30s is enough resolution
@@ -295,11 +363,28 @@ final class PromptlyPlayerSession: ObservableObject {
                     if d.isFinite, d > 0 {
                         self.duration = d
                     }
-                    // If a play() call landed before the item was ready,
-                    // honor it now. AVPlayer manages its own first-frame
-                    // decode and stall-avoidance buffering — we don't
-                    // need to preroll() manually.
-                    if self.wantsPlayWhenReady {
+                    // Prime the playback buffer + decode the first frame
+                    // BEFORE play() rate is applied. preroll(atRate:) is
+                    // exactly what eliminates the "black-screen-then-frame"
+                    // hiccup that bare play() shows — TikTok / Reels both
+                    // use this pattern. Idempotent: only fires once per
+                    // session.
+                    if !self.prerollDone {
+                        self.prerollDone = true
+                        self.player.preroll(atRate: 1.0) { [weak self] _ in
+                            Task { @MainActor in
+                                guard let self else { return }
+                                if self.wantsPlayWhenReady {
+                                    self.wantsPlayWhenReady = false
+                                    self.player.rate = self.rate
+                                    self.isPlaying = true
+                                }
+                            }
+                        }
+                    } else if self.wantsPlayWhenReady {
+                        // Status flipped to ready again (e.g. recovered from
+                        // a stall) and preroll already completed earlier —
+                        // honor the queued play directly.
                         self.wantsPlayWhenReady = false
                         self.player.rate = self.rate
                         self.isPlaying = true
@@ -313,12 +398,14 @@ final class PromptlyPlayerSession: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.isLooping {
-                    self.player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-                    self.player.play()
-                } else {
-                    self.isPlaying = false
-                }
+                // Always loop. Chat clips are short — looping is the
+                // right default. We seek with zero tolerance so the
+                // restart lands on the exact first frame instead of the
+                // closest keyframe (which AVPlayer's built-in restart
+                // would drift to).
+                self.player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+                self.player.rate = self.rate
+                self.isPlaying = true
             }
         }
 
@@ -409,21 +496,17 @@ final class PromptlyPlayerSession: ObservableObject {
         }
     }
 
-    func setSpeed(_ newRate: Float) {
-        rate = newRate
-        if isPlaying { player.rate = newRate }
-    }
-
     deinit {
         if let t = timeObserver { player.removeTimeObserver(t) }
         statusKVO?.invalidate()
         if let token = endNotificationToken { NotificationCenter.default.removeObserver(token) }
-        // Stop playback but leave the persistent player alive for the
-        // next session. replaceCurrentItem(nil) here would clear our
-        // own item even after a new session has loaded its own — race
-        // on rapid open/close. Pause-only is the safe choice; the next
-        // session's replaceCurrentItem in init swaps cleanly.
-        player.pause()
+        // Return the player to the pool so the next session gets a warm
+        // instance instead of paying cold AVPlayer init. The pool's
+        // release() handles pause + replaceCurrentItem(nil).
+        let p = player
+        Task { @MainActor in
+            PlayerPool.shared.release(p)
+        }
     }
 }
 
@@ -444,6 +527,11 @@ struct PromptlyPlayerView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+
+            // Unlock ProMotion 120Hz refresh while the player is mounted.
+            ProMotionFrameRateRequest()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
 
             // Poster — instant first paint surface. Sits BEHIND the
             // video layer and fades out when the AVPlayerLayer reports
@@ -602,15 +690,10 @@ struct ControlOverlay: View {
             }
 
             Spacer()
-
-            SpeedPill(rate: session.rate) { session.setSpeed($0) }
-
-            ControlButton(
-                systemName: session.isLooping ? "repeat.circle.fill" : "repeat",
-                size: 36
-            ) {
-                session.isLooping.toggle()
-            }
+            // Speed pill and loop toggle removed — short-form chat
+            // clips just auto-loop, and speed adjustment belongs in
+            // the editor view, not the playback surface. (Veed and
+            // captions.ai both do the same.)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
@@ -704,41 +787,42 @@ struct ControlOverlay: View {
     }
 }
 
-// MARK: - Speed pill (Menu)
+// MARK: - ProMotion frame-rate request
+//
+// SwiftUI / Core Animation default to a 60 Hz refresh on ProMotion iPhones
+// even when the device supports 120 Hz. Adding a CADisplayLink with an
+// explicit `preferredFrameRateRange` of 80-120 forces the compositor to
+// 120 Hz while this view is in the hierarchy — making the scrubber thumb,
+// fade transitions, and pinch gestures noticeably smoother. The link
+// callback is a no-op; the act of having a link with the right range is
+// what unlocks the high refresh rate.
 
-struct SpeedPill: View {
-    let rate: Float
-    let onChange: (Float) -> Void
-
-    var body: some View {
-        Menu {
-            ForEach([0.5, 1.0, 1.5, 2.0], id: \.self) { r in
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onChange(Float(r))
-                } label: {
-                    HStack {
-                        Text("\(formatRate(r))×")
-                        if abs(rate - Float(r)) < 0.01 {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            Text("\(formatRate(Double(rate)))×")
-                .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
-        }
+struct ProMotionFrameRateRequest: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(frame: .zero)
+        v.isUserInteractionEnabled = false
+        v.backgroundColor = .clear
+        context.coordinator.attach()
+        return v
     }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
-    private func formatRate(_ r: Double) -> String {
-        if r == floor(r) { return String(format: "%.0f", r) }
-        return String(format: "%.1f", r)
+    final class Coordinator: NSObject {
+        private var displayLink: CADisplayLink?
+
+        func attach() {
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        }
+
+        @objc private func tick() { /* no-op; presence is the signal */ }
+
+        deinit {
+            displayLink?.invalidate()
+        }
     }
 }
 
