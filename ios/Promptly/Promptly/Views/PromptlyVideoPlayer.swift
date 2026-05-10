@@ -152,12 +152,14 @@ final class SharedAVPlayer {
 
     private init() {
         self.player = AVPlayer()
-        // CRITICAL: keep stall-avoidance ENABLED. Disabling it forced
-        // AVPlayer to start with an empty buffer, which on HLS made it
-        // pick the lowest variant (360p) trying to recover and then
-        // constantly rebuffer mid-playback. Default true is the right
-        // setting for VOD streaming.
-        self.player.automaticallyWaitsToMinimizeStalling = true
+        // For progressive MP4 (which is what we play — see
+        // VideoPlayerPresenter), `false` is the right setting: we want
+        // AVPlayer to start as soon as the moov atom + first chunk
+        // are buffered, not wait for a much larger ABR-style window.
+        // Pair with `preferredForwardBufferDuration = 2` on the item
+        // (set in PromptlyPlayerSession.init) — Mingalev measured
+        // 37.8 → 0.2 Mb network load with this combo on short-form VOD.
+        self.player.automaticallyWaitsToMinimizeStalling = false
         self.player.actionAtItemEnd = .pause
     }
 }
@@ -222,16 +224,11 @@ struct PlayerLayerView: UIViewRepresentable {
 // scrubber/UI bindings. The AVPlayer itself is shared (see
 // SharedAVPlayer); we attach observers in init and remove them in
 // deinit so observer count stays at most 1 between presents.
-//
-// HLS-aware: `isHLS` reports whether the URL is a segmented stream so
-// the UI can hide the frame-thumbnail strip (segment-based extraction
-// is unreliable) and we can skip on-disk caching for HLS URLs.
 
 @MainActor
 final class PromptlyPlayerSession: ObservableObject {
     let player: AVPlayer
     let urlString: String
-    let isHLS: Bool
 
     @Published var isPlaying: Bool = false
     @Published var currentTime: Double = 0
@@ -255,11 +252,24 @@ final class PromptlyPlayerSession: ObservableObject {
     /// painting a first frame.
     private var wantsPlayWhenReady = false
 
+    // Chase-seek state (Apple QA1820). Naive scrubbing fires a seek on
+    // every gesture tick (60+ Hz); each new seek cancels the previous
+    // one, so AVPlayer spends its time canceling instead of rendering.
+    // Result: scrub jank. The fix: only fire one seek at a time. When
+    // the user moves further, we update `chaseTime`; only when the
+    // current seek's completion handler fires do we kick the next one.
+    private var isSeekInProgress: Bool = false
+    private var chaseTime: CMTime = .invalid
+
     init(item: AVPlayerItem, urlString: String) {
         self.item = item
         self.player = SharedAVPlayer.shared.player
         self.urlString = urlString
-        self.isHLS = urlString.hasSuffix(".m3u8") || urlString.contains(".m3u8?")
+
+        // 2-second forward buffer is the sweet spot for short-form
+        // (<90s) MP4 — enough to absorb network jitter, small enough
+        // that AVPlayer doesn't pre-fetch a huge chunk we'll never use.
+        item.preferredForwardBufferDuration = 2.0
 
         // Hand the freshly-warmed item to the persistent player. Any
         // prior item is replaced cleanly — no leak, no overlap.
@@ -321,16 +331,14 @@ final class PromptlyPlayerSession: ObservableObject {
             }
         }
 
-        // Frame strip generation off-thread. HLS URLs skipped —
-        // AVAssetImageGenerator on streaming manifests is slow and
-        // unreliable; the scrubber falls back to a thin progress line.
-        if !isHLS {
-            Task { [weak self] in
-                guard let self else { return }
-                let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
-                await MainActor.run {
-                    self.frameStrip = images
-                }
+        // Frame strip generation off-thread. With progressive MP4 the
+        // image generator works reliably (dense keyframes from the
+        // server-side encoder make this fast).
+        Task { [weak self] in
+            guard let self else { return }
+            let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
+            await MainActor.run {
+                self.frameStrip = images
             }
         }
     }
@@ -363,32 +371,42 @@ final class PromptlyPlayerSession: ObservableObject {
         isPlaying = false
     }
 
-    /// Seek during a scrubber drag. On MP4 we use zero tolerance so the
-    /// frame visually tracks the thumb (Photos.app pattern). On HLS,
-    /// zero-tolerance seeks force a fresh segment fetch on EVERY gesture
-    /// tick — that's what made scrubbing the streaming player thrash and
-    /// stall. We use a 0.5s tolerance window on HLS so AVPlayer can reuse
-    /// the buffered segment, then snap to the exact frame on release.
+    /// Update the chase-seek target. Safe to call on every gesture tick
+    /// (60+ Hz) — only one seek is in flight at a time, so AVPlayer
+    /// never thrashes. The frame visually tracks the thumb because
+    /// completed seeks immediately fire the next one to the latest
+    /// target. This is Apple QA1820 verbatim.
     func liveSeek(to seconds: Double) {
         guard duration > 0 else { return }
         let t = CMTime(seconds: max(0, min(seconds, duration)), preferredTimescale: 600)
         currentTime = t.seconds
-        if isHLS {
-            let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
-            player.seek(to: t, toleranceBefore: tol, toleranceAfter: tol)
-        } else {
-            player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+        chaseTime = t
+        if !isSeekInProgress {
+            trySeekToChaseTime()
         }
     }
 
-    /// Final seek on scrubber release. Always frame-accurate — the user
-    /// stopped, so we can afford one expensive seek to land exactly
-    /// where they let go.
+    /// Final-position seek on release. Same chase-seek pipeline; called
+    /// once with the user's release point so the last frame the player
+    /// settles on is exactly where they let go.
     func finalSeek(to seconds: Double) {
-        guard duration > 0 else { return }
-        let t = CMTime(seconds: max(0, min(seconds, duration)), preferredTimescale: 600)
-        currentTime = t.seconds
-        player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+        liveSeek(to: seconds)
+    }
+
+    private func trySeekToChaseTime() {
+        guard chaseTime.isValid else { return }
+        let target = chaseTime
+        isSeekInProgress = true
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            guard let self else { return }
+            // If the chase target moved while this seek was in flight,
+            // immediately fire the next one. Otherwise we're done.
+            if CMTimeCompare(target, self.chaseTime) != 0 {
+                self.trySeekToChaseTime()
+            } else {
+                self.isSeekInProgress = false
+            }
+        }
     }
 
     func setSpeed(_ newRate: Float) {

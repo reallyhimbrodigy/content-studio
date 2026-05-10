@@ -999,30 +999,16 @@ enum VideoPlayerPresenter {
             return
         }
 
+        _ = hlsManifestUrl  // accepted for source-compat; unused (see below)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        // HLS preferred when available. AVPlayer's fastest path is HLS —
-        // first segment is independently playable in <100ms, adaptive
-        // bitrate handles network changes gracefully, no whole-file
-        // metadata to load. Skip the cache-hit branch since HLS is
-        // designed to stream and our cache is MP4-shaped.
-        if let hlsManifestUrl, !hlsManifestUrl.isEmpty {
-            print("[player] streaming HLS: \(hlsManifestUrl)")
-            Task { @MainActor in
-                let resolvedUrl = await preflightOrRefresh(
-                    urlString: hlsManifestUrl,
-                    onRefreshNeeded: onRefreshNeeded
-                )
-                doPresent(
-                    urlString: resolvedUrl,
-                    title: title,
-                    posterUrl: thumbnailUrl,
-                    onReedit: onReedit
-                )
-            }
-            return
-        }
+        // Progressive MP4 with `+faststart` is the right playback format
+        // for short-form (<90s) VOD — Mux + Apple agree. HLS only earns
+        // its overhead at >2 min runtimes or when DRM/ABR matters. We
+        // generate the HLS variants server-side as a future-proofing
+        // hedge, but iOS plays the MP4 directly: faster first-frame,
+        // disk-cacheable, frame-accurate scrub via chase-seek.
 
         // Cache hit → straight to file:// playback. No HEAD, no refresh.
         if let jobId, let local = VideoCache.shared.localUrl(forJobId: jobId) {
