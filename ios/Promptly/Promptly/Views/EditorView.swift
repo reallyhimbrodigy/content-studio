@@ -686,7 +686,7 @@ struct EditorView: View {
 
                     switch strategy {
                     case .local(let sourceUrl):
-                        print("[perf] path=local")
+                        print("[perf] path=local dual-upload")
                         await MainActor.run { pending.fileUrl = sourceUrl }
                         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
 
@@ -697,60 +697,110 @@ struct EditorView: View {
                             }
                         }
 
-                        // Compression skip for typical camera-roll sources
-                        // (see shouldSkipCompression). Keeps quality byte-
-                        // identical for the 99% case.
-                        let uploadSourceUrl: URL
-                        let compressStart = Date()
+                        // Materialize source into NSTemporaryDirectory.
+                        // Background URLSession requires app-accessible
+                        // file URLs — Photos-library URLs work via
+                        // foreground sessions but fail in nsurlsessiond.
+                        let materializedSourceUrl: URL
                         if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
-                            uploadSourceUrl = sourceUrl
-                            print("[perf] compress skipped")
+                            // Quality-preserving copy. ~1-2s for 80 MB
+                            // on local SSD; needed so the background
+                            // session can read after the app suspends.
+                            let tmp = FileManager.default.temporaryDirectory
+                                .appendingPathComponent("src-\(UUID().uuidString).mp4")
+                            try FileManager.default.copyItem(at: sourceUrl, to: tmp)
+                            materializedSourceUrl = tmp
+                            print("[perf] compress skipped (copy-only)")
                         } else {
-                            uploadSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
-                            await MainActor.run { pending.fileUrl = uploadSourceUrl }
-                            print(String(format: "[perf] compress %.2fs", Date().timeIntervalSince(compressStart)))
+                            materializedSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
+                            print("[perf] compressed → tmp")
+                        }
+                        await MainActor.run { pending.fileUrl = materializedSourceUrl }
+
+                        // Get TWO presigned upload URLs in parallel —
+                        // one for the proxy (small, foreground), one
+                        // for the source (large, background).
+                        async let proxyUrlResp = APIService.shared.getUploadUrl(fileName: "proxy-\(UUID().uuidString).mp4")
+                        async let sourceUrlResp = APIService.shared.getUploadUrl(fileName: pending.fileName)
+                        let (proxyResp, sourceResp) = try await (proxyUrlResp, sourceUrlResp)
+                        guard let proxyPutUrl = proxyResp.uploadUrl,
+                              let proxyPub = proxyResp.publicUrl,
+                              let sourcePutUrl = sourceResp.uploadUrl,
+                              let sourcePub = sourceResp.publicUrl else {
+                            throw APIError.uploadFailed
                         }
 
-                        // Single deterministic upload path per file size. No
-                        // multipart-fail → single-PUT fallback: if multipart
-                        // fails, the upload fails. Same for sub-threshold
-                        // files: single PUT only, no recovery.
+                        // Fire prewarm with the SOURCE URL — worker polls
+                        // S3 until the source lands, then starts the
+                        // download + transcribe pipeline. Proxy is only
+                        // used by Gemini visual analysis (in the main
+                        // video-jobs path), so it doesn't need its own
+                        // prewarm.
+                        firePrewarmOnce.fire(sourcePub)
+
+                        // Publish the eventual source URL IMMEDIATELY so
+                        // send() can dispatch the job the moment the proxy
+                        // is ready — the worker polls S3 for the source
+                        // file regardless of whether bytes have arrived.
+                        // Upload progress (0→1) is tracked separately on
+                        // pending.uploadProgress so the UI still reflects
+                        // real byte movement.
+                        await MainActor.run { pending.uploadedUrl = sourcePub }
+
+                        // Extract proxy. ~3-5s on iPhone 13+ for a 50s
+                        // 1080p clip → ~3-6 MB output at 640x480.
+                        let proxyExtractStart = Date()
+                        let proxyFile = try await VideoProxyExtractor.extract(from: materializedSourceUrl)
+                        print(String(format: "[perf] proxy-extract %.2fs", Date().timeIntervalSince(proxyExtractStart)))
+
+                        // Parallel uploads:
+                        //   - Proxy via foreground URLSession (small,
+                        //     completes in 5-10s, blocks Send button).
+                        //   - Source via background URLSession (60-120s,
+                        //     survives app suspend / kill).
                         let uploadStart = Date()
-                        if APIService.shouldUseMultipart(fileUrl: uploadSourceUrl) {
-                            publicUrl = try await APIService.shared.uploadFileToS3Multipart(
-                                fileName: pending.fileName,
-                                fileUrl: uploadSourceUrl,
-                                onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
-                            ) { progress in
-                                pending.uploadProgress = progress
+                        async let proxyUpload: Void = {
+                            try await APIService.shared.uploadFileToS3Foreground(
+                                url: proxyPutUrl,
+                                fileUrl: proxyFile,
+                                mimeType: "video/mp4",
+                                onProgress: { p in
+                                    Task { @MainActor in pending.proxyUploadProgress = p }
+                                }
+                            )
+                            try? FileManager.default.removeItem(at: proxyFile)
+                            await MainActor.run {
+                                pending.proxyUploadProgress = 1.0
+                                pending.proxyUploadedUrl = proxyPub
                             }
-                        } else {
-                            let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
-                            guard let uploadUrl = urlResponse.uploadUrl,
-                                  let pub = urlResponse.publicUrl else {
-                                throw APIError.uploadFailed
-                            }
-                            firePrewarmOnce.fire(pub)
-                            // Single PUT routes through the background URLSession
-                            // — survives app suspend (and kill, when paired
-                            // with the orphan-reconcile path in ChatStore).
+                            print("[perf] proxy upload complete")
+                        }()
+
+                        async let sourceUpload: Void = {
                             try await APIService.shared.uploadFileToS3(
-                                url: uploadUrl,
-                                fileUrl: uploadSourceUrl,
+                                url: sourcePutUrl,
+                                fileUrl: materializedSourceUrl,
                                 mimeType: "video/mp4",
                                 messageId: pending.id.uuidString,
                                 chatId: chatStore.activeChatId,
-                                publicUrl: pub
-                            ) { progress in
-                                pending.uploadProgress = progress
+                                publicUrl: sourcePub
+                            ) { p in
+                                Task { @MainActor in pending.uploadProgress = p }
                             }
-                            publicUrl = pub
-                        }
-                        print(String(format: "[perf] upload-step %.2fs", Date().timeIntervalSince(uploadStart)))
+                            try? FileManager.default.removeItem(at: materializedSourceUrl)
+                            await MainActor.run {
+                                pending.uploadProgress = 1.0
+                                // uploadedUrl was already set early so the
+                                // job could dispatch on proxy-ready; this
+                                // is the byte-arrival signal.
+                            }
+                            print("[perf] source upload complete (background)")
+                        }()
 
-                        if uploadSourceUrl != sourceUrl {
-                            try? FileManager.default.removeItem(at: uploadSourceUrl)
-                        }
+                        _ = try await proxyUpload
+                        _ = try await sourceUpload
+                        print(String(format: "[perf] both-uploads-done %.2fs", Date().timeIntervalSince(uploadStart)))
+                        publicUrl = sourcePub
 
                     case .stream(let resource, let fileSize):
                         // iCloud-only path. Streams iCloud → S3 in parallel.
@@ -972,68 +1022,43 @@ struct EditorView: View {
                             messages.firstIndex(where: { $0.id == msgId })
                         }
                         do {
-                            var videoUrl = video.uploadedUrl
-
-                            if videoUrl == nil, let task = video.uploadTask {
-                                // Upload owns the first 40% of the bar — the
-                                // active stage in the timeline is already
-                                // `upload_local` ("Uploading your video"),
-                                // primed when the message was created. The
-                                // mirror task just drives the bar forward in
-                                // real time as bytes leave the device.
-                                let mirror = Task { @MainActor in
-                                    while !Task.isCancelled {
-                                        if let i = indexOfProcessingMsg() {
-                                            let pct = max(1, Int(video.uploadProgress * 40))
-                                            if pct > (messages[i].jobProgress ?? 0) {
-                                                messages[i].jobProgress = pct
-                                            }
-                                        }
-                                        try? await Task.sleep(nanoseconds: 100_000_000)
-                                    }
-                                }
-
-                                // Hard ceiling on the upload-await. Without
-                                // this, a stalled chunk takes URLSession's
-                                // 30s stall × 2 retries × N parts to finally
-                                // fail — feels like a forever timeout. 90s
-                                // is generous for typical mobile uploads
-                                // and lets the user retry quickly when
-                                // something is actually wrong.
-                                let timedOut = await withTaskGroup(of: Bool.self) { group in
-                                    group.addTask {
-                                        await task.value
-                                        return false
-                                    }
-                                    group.addTask {
-                                        try? await Task.sleep(for: .seconds(90))
-                                        return true
-                                    }
-                                    let result = await group.next() ?? true
-                                    group.cancelAll()
-                                    return result
-                                }
-                                mirror.cancel()
-                                if timedOut {
-                                    video.uploadTask?.cancel()
-                                    throw APIError.uploadFailed
-                                }
-                                videoUrl = video.uploadedUrl
+                            // Wait for the PROXY upload to finish (small,
+                            // 5-10s on cellular). Once proxy is up, the
+                            // job can dispatch — server uses proxy for
+                            // Gemini analysis while the worker polls S3
+                            // for the high-res source (which the client
+                            // is still uploading via background URLSession).
+                            // The high-res upload survives app suspend
+                            // and kill; user can close the app freely.
+                            while video.proxyUploadedUrl == nil && video.uploadedUrl == nil && !(video.uploadFailed) {
+                                try? await Task.sleep(nanoseconds: 100_000_000)
+                            }
+                            if video.uploadFailed {
+                                throw APIError.uploadFailed
                             }
 
-                            guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
+                            // uploadedUrl is set the moment we know the
+                            // eventual S3 URL (before bytes finish). That
+                            // URL goes into the job; the worker polls.
+                            guard let sourceUrl = video.uploadedUrl else {
+                                throw APIError.uploadFailed
+                            }
+                            let proxyUrl = video.proxyUploadedUrl
+
                             if let i = indexOfProcessingMsg() {
-                                // Upload finished. Advance the timeline to
-                                // the first server-driven stage (`analyze`)
-                                // so the active label flips immediately
-                                // instead of stalling on "Uploading…" while
-                                // we wait for the first SSE event.
+                                // Proxy is up → AI analysis is about to
+                                // run. Advance the timeline so the user
+                                // sees forward motion.
                                 messages[i].stageTimeline?.receive(stepToken: "analyze")
                                 if (messages[i].jobProgress ?? 0) < 40 {
                                     messages[i].jobProgress = 40
                                 }
                             }
-                            let jobId = try await APIService.shared.createVideoJob(videoUrl: finalUrl, vibe: vibe)
+                            let jobId = try await APIService.shared.createVideoJob(
+                                videoUrl: sourceUrl,
+                                proxyVideoUrl: proxyUrl,
+                                vibe: vibe
+                            )
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 startSSE(jobId: jobId, messageIndex: i)

@@ -56,13 +56,23 @@ class PendingVideo: Identifiable, ObservableObject {
     let id = UUID()
     @Published var thumbnail: UIImage?
     @Published var fileUrl: URL?
+    /// Public S3 URL of the high-res source upload (background URLSession,
+    /// 60-120s on cellular). Used for the actual render. Set the moment
+    /// we know the eventual URL — the upload may still be in flight.
     @Published var uploadedUrl: String?
+    /// Public S3 URL of the low-res proxy upload (foreground URLSession,
+    /// 5-10s). Used for cloud AI analysis (Gemini, transcript). When this
+    /// is set, the user can tap Send even though the source upload is
+    /// still going — the worker polls for the source while AI analyzes
+    /// the proxy in parallel.
+    @Published var proxyUploadedUrl: String?
+    /// 0…1, source upload progress (background, slow).
     @Published var uploadProgress: Double = 0
+    /// 0…1, proxy upload progress (foreground, fast).
+    @Published var proxyUploadProgress: Double = 0
     @Published var isLoading = true
     /// Set true when the upload Task throws. The pending tile shows a
-    /// red error overlay; otherwise the tile is clean — upload progress
-    /// is no longer surfaced on the tile (matches iMessage / WhatsApp
-    /// behavior where attachments don't show transfer state).
+    /// red error overlay; otherwise the tile is clean.
     @Published var uploadFailed = false
     var fileName: String = "video.mp4"
     var uploadTask: Task<Void, Never>?

@@ -10387,7 +10387,15 @@ const server = http.createServer((req, res) => {
         console.log('  Request body:', body);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
+        // Optional low-res proxy. When the client extracts a 640x480
+        // proxy on-device and uploads it ahead of the high-res source,
+        // pass the proxy URL here so the worker can run Gemini visual
+        // analysis on the small file while the source is still in
+        // flight. Quality of the FINAL render is unchanged — Gemini
+        // analyzes video at thumbnail resolution internally regardless.
+        const proxyVideoUrl = String(body?.proxy_video_url || body?.proxyVideoUrl || '').trim();
         console.log('  Video URL:', videoUrl);
+        console.log('  Proxy URL:', proxyVideoUrl || '(none)');
         console.log('  Vibe:', vibeInput);
 
         const entitlement = await assertProEntitled(authUser.id);
@@ -10412,6 +10420,7 @@ const server = http.createServer((req, res) => {
           pushProgressToSSE,
           jobId: job.id,
           videoUrl,
+          proxyVideoUrl: proxyVideoUrl || null,
           vibe: vibeInput,
           userId: authUser.id,
         });

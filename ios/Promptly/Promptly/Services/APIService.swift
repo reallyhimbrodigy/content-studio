@@ -94,12 +94,16 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, vibe: String) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
-        request.httpBody = try JSONEncoder().encode([
+        var body: [String: String] = [
             "video_url": videoUrl,
             "vibe_input": vibe
-        ])
+        ]
+        if let proxyVideoUrl, !proxyVideoUrl.isEmpty {
+            body["proxy_video_url"] = proxyVideoUrl
+        }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -256,13 +260,20 @@ class APIService {
         }
     }
 
-    /// Upload directly from a file URL with progress tracking and retry.
+    /// Upload directly from a file URL with progress tracking.
     ///
-    /// `messageId` / `chatId` / `publicUrl` are accepted for source-call
-    /// compatibility but currently unused — the background URLSession
-    /// path that consumed them was reverted in build 94 after immediate
-    /// upload-failures shipped in build 90–93. Re-introduce only after
-    /// a real-device test confirms `nsurlsessiond` accepts our file URLs.
+    /// Routes through `BackgroundUploadManager` — a real background
+    /// URLSession that survives app suspension AND app kill. iOS
+    /// relaunches the process in the background to deliver the final
+    /// callback when the upload completes (`handleEventsForBackground-
+    /// URLSession` wired in PromptlyApp.swift).
+    ///
+    /// The previous build-94 attempt failed because the file URL passed
+    /// in was a Photos-library URL that `nsurlsessiond` couldn't read.
+    /// This path now requires the caller to materialize the file inside
+    /// `NSTemporaryDirectory()` first (VideoCompressor + VideoProxy-
+    /// Extractor both already do this; the no-compression branch of
+    /// handlePickedVideos copies the source there before calling us).
     func uploadFileToS3(
         url: String,
         fileUrl: URL,
@@ -274,28 +285,48 @@ class APIService {
     ) async throws {
         let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
         let host = URL(string: url)?.host ?? "unknown"
-        print("[perf] upload path=single fileSize=\(size) endpoint=\(host)")
+        print("[perf] upload path=bg-single fileSize=\(size) endpoint=\(host)")
 
-        // Tell VideoCache to pause prefetches — they'd otherwise saturate
-        // the connection pool and starve this user-initiated upload.
         await MainActor.run { VideoCache.shared.setUserUploadActive(true) }
         defer {
             Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
         }
 
-        let uploadStart = Date()
+        guard let remoteUrl = URL(string: url) else { throw APIError.uploadFailed }
+        let pub = publicUrl ?? remoteUrl.absoluteString.components(separatedBy: "?").first ?? remoteUrl.absoluteString
+        let msgId = messageId ?? UUID().uuidString
 
+        let uploadStart = Date()
+        _ = try await BackgroundUploadManager.shared.upload(
+            fileUrl: fileUrl,
+            toRemote: remoteUrl,
+            mimeType: mimeType,
+            messageId: msgId,
+            chatId: chatId,
+            publicUrl: pub,
+            onProgress: { p in onProgress?(p) }
+        )
+        let elapsed = Date().timeIntervalSince(uploadStart)
+        let mbps = (Double(size) / 1_048_576.0) / max(elapsed, 0.001) * 8
+        print(String(format: "[perf] upload bg-single success elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
+    }
+
+    /// Foreground single-PUT for SMALL files (proxy uploads). The
+    /// background path's lifecycle overhead isn't worth it for files
+    /// that finish in 5-10s before the user even types their vibe.
+    /// File must still be readable by URLSession (use a temp file).
+    func uploadFileToS3Foreground(
+        url: String,
+        fileUrl: URL,
+        mimeType: String,
+        onProgress: ((Double) -> Void)? = nil
+    ) async throws {
         guard let remoteUrl = URL(string: url) else { throw APIError.uploadFailed }
         var request = URLRequest(url: remoteUrl)
         request.httpMethod = "PUT"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
 
-        // Shared session — reuses warm TCP + HTTP/2 multiplexing. No per-call
-        // handshake tax. `fromFile:` streams directly off disk without
-        // loading the whole file into RAM.
         let delegate = UploadProgressDelegate(onProgress: onProgress)
-
-        // Retry up to 2 times on failure
         var lastError: Error?
         for attempt in 1...2 {
             do {
@@ -303,15 +334,12 @@ class APIService {
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     throw APIError.uploadFailed
                 }
-                let elapsed = Date().timeIntervalSince(uploadStart)
-                let mbps = (Double(size) / 1_048_576.0) / max(elapsed, 0.001) * 8
-                print(String(format: "[perf] upload single success elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
-                return // Success
+                return
             } catch {
                 lastError = error
                 if attempt < 2 {
                     try? await Task.sleep(for: .seconds(2))
-                    onProgress?(0) // Reset progress for retry
+                    onProgress?(0)
                 }
             }
         }
