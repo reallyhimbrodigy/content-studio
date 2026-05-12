@@ -29,49 +29,88 @@ class AuthService {
             return
         }
 
-        // Check if token is expired or about to expire (within 5 min)
+        // Default state: ADOPT the cached session immediately so the
+        // app starts in the authenticated state even before we've
+        // talked to Supabase. If the verification calls below come
+        // back with a hard auth failure, we'll sign out then. Until
+        // then the user stays logged in — same behavior as every
+        // mobile app that doesn't kick you out on every launch.
+        accessToken = token
+
         let expiry = UserDefaults.standard.double(forKey: tokenExpiryKey)
         let needsRefresh = expiry == 0 || Date().timeIntervalSince1970 > (expiry - 300)
 
         if needsRefresh {
-            // Refresh first, then verify
             do {
                 try await refreshSession(refreshToken: refreshToken)
+                isAuthenticated = true
+            } catch AuthError.sessionExpired {
+                // Refresh token genuinely invalid — sign out.
+                print("[auth] checkSession: refresh token rejected, signing out")
+                signOut()
+                isLoading = false
+                return
             } catch {
-                // Refresh failed — try the existing token anyway
-                accessToken = token
+                // Soft failure (network, 5xx). Try the existing access
+                // token to confirm we're still valid — if /user comes
+                // back 200 we stay signed in. If /user also fails
+                // softly, we OPTIMISTICALLY adopt the cached session
+                // and let the user keep working until something hard
+                // says otherwise.
                 do {
                     let user = try await getUser(token: token)
                     currentUser = user
                     isAuthenticated = true
-                } catch {
+                } catch AuthError.sessionExpired {
+                    print("[auth] checkSession: access token rejected after refresh failure, signing out")
                     signOut()
+                    isLoading = false
+                    return
+                } catch {
+                    // Both refresh and getUser hit network/5xx errors.
+                    // KEEP the cached session — offline-tolerant. The
+                    // next API call will hit the same wall but at
+                    // least we don't kick the user out for being on
+                    // the subway.
+                    print("[auth] checkSession: soft failures on refresh + getUser — keeping cached session")
+                    isAuthenticated = true
                 }
             }
         } else {
-            // Token still valid
-            accessToken = token
+            // Cached token isn't due for refresh yet. Verify with /user.
             do {
                 let user = try await getUser(token: token)
                 currentUser = user
                 isAuthenticated = true
-            } catch {
-                // Token invalid despite not being expired — try refresh
+            } catch AuthError.sessionExpired {
+                // Token's actually invalid (revoked server-side, etc).
+                // Try a refresh in case the refresh token still works.
                 do {
                     try await refreshSession(refreshToken: refreshToken)
+                    isAuthenticated = true
                 } catch {
+                    print("[auth] checkSession: both tokens rejected, signing out")
                     signOut()
+                    isLoading = false
+                    return
                 }
+            } catch {
+                // Network/5xx on getUser. Adopt cached session.
+                print("[auth] checkSession: /user soft failure — adopting cached session")
+                isAuthenticated = true
             }
         }
 
         isLoading = false
-
-        // Schedule background token refresh
         scheduleTokenRefresh()
     }
 
     /// Get a valid token, refreshing if needed. Use this for ALL API calls.
+    /// On NETWORK failure (offline, 5xx, timeout) returns the stale token
+    /// rather than signing out — production apps survive intermittent
+    /// connectivity without kicking the user back to the login screen.
+    /// Only on HARD auth failure (refresh token actually rejected) do we
+    /// sign out.
     func getValidToken() async -> String? {
         guard let token = accessToken else { return nil }
 
@@ -82,9 +121,17 @@ class AuthService {
             do {
                 try await refreshSession(refreshToken: refreshToken)
                 return accessToken
-            } catch {
+            } catch AuthError.sessionExpired {
+                print("[auth] getValidToken: hard refresh failure — signing out")
                 signOut()
                 return nil
+            } catch {
+                // Soft failure. Return the stale token; the caller's
+                // API hit will surface a network error if it really
+                // can't reach Supabase. Better that than booting the
+                // user mid-flow because their cellular blipped.
+                print("[auth] getValidToken: soft refresh failure (\(error.localizedDescription)) — keeping session")
+                return token
             }
         }
 
@@ -244,10 +291,28 @@ class AuthService {
         var request = URLRequest(url: url)
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            // Network-level failure — connection dropped, timeout, etc.
+            // Throw `networkError`, NOT `sessionExpired`, so callers
+            // don't sign the user out for being offline.
+            throw AuthError.networkError(error.localizedDescription)
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError("malformed response")
+        }
+        // Only 401/403 means "this access token is rejected" — that's
+        // a hard auth failure. 5xx / other codes are server-side and
+        // shouldn't kick the user out.
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
             throw AuthError.sessionExpired
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError("HTTP \(httpResponse.statusCode)")
         }
         return try JSONDecoder().decode(AuthUser.self, from: data)
     }
@@ -258,11 +323,27 @@ class AuthService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.timeoutInterval = 15
         request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AuthError.networkError(error.localizedDescription)
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError("malformed response")
+        }
+        // 400 / 401 from the refresh endpoint means the refresh token
+        // is actually invalid (revoked, expired beyond reuse, never
+        // issued). Anything else (5xx, 429, network) is transient.
+        if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
+            print("[auth] refresh token rejected by Supabase (HTTP \(httpResponse.statusCode)) — hard expiry")
             throw AuthError.sessionExpired
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError("refresh HTTP \(httpResponse.statusCode)")
         }
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
         saveSession(session)
@@ -309,8 +390,23 @@ class AuthService {
             do {
                 try await refreshSession(refreshToken: refreshToken)
                 scheduleTokenRefresh() // Schedule next refresh
+            } catch AuthError.sessionExpired {
+                // Refresh token truly invalid (revoked or beyond reuse).
+                // The user is logged out; getValidToken will surface
+                // this on the next API call.
+                print("[auth] scheduled refresh: hard token rejection")
             } catch {
-                // Token refresh failed — user will need to re-login on next API call
+                // Transient failure (offline, 5xx). The current access
+                // token is still valid until its real expiry; try again
+                // in 60 seconds. Without this retry, a single network
+                // blip can cascade into a logout when the access token
+                // expires.
+                print("[auth] scheduled refresh: soft failure (\(error.localizedDescription)) — retrying in 60s")
+                refreshTask = Task {
+                    try? await Task.sleep(for: .seconds(60))
+                    guard !Task.isCancelled else { return }
+                    self.scheduleTokenRefresh()
+                }
             }
         }
     }
@@ -319,7 +415,14 @@ class AuthService {
 enum AuthError: LocalizedError {
     case signUpFailed(String)
     case signInFailed(String)
+    /// HARD authentication failure: Supabase explicitly said the
+    /// refresh token / access token is invalid (400 / 401 with an
+    /// auth-specific error). Signs the user out.
     case sessionExpired
+    /// SOFT failure: network problem, 5xx server error, timeout —
+    /// the session is still valid, we just couldn't talk to Supabase
+    /// right now. Keep the user signed in; retry later.
+    case networkError(String)
     case updateFailed
 
     var errorDescription: String? {
@@ -327,6 +430,7 @@ enum AuthError: LocalizedError {
         case .signUpFailed(let msg): return "Sign up failed: \(msg)"
         case .signInFailed(let msg): return "Sign in failed: \(msg)"
         case .sessionExpired: return "Session expired. Please sign in again."
+        case .networkError(let msg): return "Network error: \(msg)"
         case .updateFailed: return "Failed to update profile."
         }
     }
