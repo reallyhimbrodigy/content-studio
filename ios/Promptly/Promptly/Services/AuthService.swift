@@ -130,17 +130,29 @@ class AuthService {
         scheduleTokenRefresh()
     }
 
-    func signInWithIdToken(provider: String, idToken: String) async throws {
+    /// Exchange an OAuth provider's id_token for a Supabase session.
+    ///
+    /// Apple Sign-In REQUIRES `nonce` — the raw (unhashed) nonce that
+    /// was hashed with SHA256 and embedded in the original Apple
+    /// authorization request. Supabase validates that the hash of the
+    /// nonce we send here matches the hash baked into the id_token
+    /// JWT by Apple. Without it, Supabase rejects the token with
+    /// `"unable to validate token"` — which is the silent failure
+    /// users were seeing on the Apple button.
+    func signInWithIdToken(provider: String, idToken: String, nonce: String? = nil) async throws {
         let url = URL(string: "\(supabaseUrl)/auth/v1/token?grant_type=id_token")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
 
-        let body: [String: String] = [
+        var body: [String: String] = [
             "provider": provider,
             "id_token": idToken
         ]
+        if let nonce, !nonce.isEmpty {
+            body["nonce"] = nonce
+        }
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -150,6 +162,21 @@ class AuthService {
         }
 
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
+        saveSession(session)
+        scheduleTokenRefresh()
+    }
+
+    /// Adopt an OAuth session built from a redirect-URL fragment
+    /// (Google / GitHub / etc. via Supabase implicit OAuth). The caller
+    /// extracts `access_token` + `refresh_token` from the URL fragment;
+    /// this fetches the user record and persists everything.
+    func adoptOAuthSession(accessToken: String, refreshToken: String) async throws {
+        let user = try await getUser(token: accessToken)
+        let session = SupabaseSession(
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            user: user
+        )
         saveSession(session)
         scheduleTokenRefresh()
     }

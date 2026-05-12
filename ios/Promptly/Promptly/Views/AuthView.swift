@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 
 struct AuthView: View {
     @State private var email = ""
@@ -8,6 +9,18 @@ struct AuthView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
+
+    /// Raw nonce stashed between Apple's `onRequest` and `onCompletion`.
+    /// We hash this with SHA-256 → set as `request.nonce` (Apple bakes
+    /// the hash into the issued id_token). The raw nonce is then sent
+    /// to Supabase alongside the id_token so it can verify the binding.
+    /// Without this end-to-end nonce flow, Supabase rejects every Apple
+    /// id_token — which is why the previous button "went nowhere."
+    @State private var appleRawNonce: String = ""
+
+    /// Owns the ASWebAuthenticationSession for Google sign-in. Held so
+    /// the session isn't deallocated while the OAuth flow is presenting.
+    @State private var oauthCoordinator = OAuthCoordinator()
 
     private enum Field: Hashable { case email, password }
 
@@ -115,6 +128,13 @@ struct AuthView: View {
                 isSignUp ? .signUp : .signIn,
                 onRequest: { request in
                     request.requestedScopes = [.email, .fullName]
+                    // Generate a fresh raw nonce, stash it for onCompletion,
+                    // and set the SHA-256 hash on the request. Apple bakes
+                    // the hash into the id_token; Supabase validates that
+                    // SHA256(rawNonce) == nonceHashInToken before accepting.
+                    let raw = Self.makeRawNonce()
+                    appleRawNonce = raw
+                    request.nonce = Self.sha256Hex(raw)
                 },
                 onCompletion: handleAppleSignIn
             )
@@ -297,11 +317,18 @@ struct AuthView: View {
                 errorMessage = "Apple sign in failed"
                 return
             }
+            // The raw nonce stashed in onRequest must accompany the
+            // id_token so Supabase can verify SHA256(raw) == hash-in-token.
+            let nonce = appleRawNonce
 
             isLoading = true
             Task {
                 do {
-                    try await AuthService.shared.signInWithIdToken(provider: "apple", idToken: tokenString)
+                    try await AuthService.shared.signInWithIdToken(
+                        provider: "apple",
+                        idToken: tokenString,
+                        nonce: nonce
+                    )
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -318,12 +345,132 @@ struct AuthView: View {
     // MARK: - Google Sign In
 
     private func signInWithGoogle() {
-        // Open Supabase OAuth flow in browser
+        // ASWebAuthenticationSession is iOS's purpose-built OAuth runner.
+        // It handles the auth UI in-app, intercepts the redirect by
+        // matching the callback URL scheme, and delivers the URL back
+        // to us via completion — NO "Open in Promptly" system prompt,
+        // no UIApplication.shared.open. This is the pattern Spotify,
+        // Discord, every production iOS app uses.
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
-        let redirectUrl = "app.usepromptly.ios://auth-callback"
+        let scheme = "app.usepromptly.ios"
+        let redirectUrl = "\(scheme)://auth-callback"
         let urlString = "\(supabaseUrl)/auth/v1/authorize?provider=google&redirect_to=\(redirectUrl)"
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url)
+        guard let url = URL(string: urlString) else {
+            errorMessage = "Couldn't build sign-in URL"
+            return
         }
+
+        isLoading = true
+        oauthCoordinator.start(url: url, callbackScheme: scheme) { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let callbackUrl):
+                    do {
+                        try await Self.completeGoogleSignIn(callbackUrl: callbackUrl)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                case .failure(let error):
+                    // User cancellation is silent; everything else surfaces.
+                    if (error as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+                isLoading = false
+            }
+        }
+    }
+
+    /// Parse `access_token` + `refresh_token` out of the callback URL
+    /// fragment (Supabase implicit OAuth returns them after `#`) and
+    /// adopt the session.
+    private static func completeGoogleSignIn(callbackUrl: URL) async throws {
+        // Supabase puts tokens in the URL FRAGMENT, not the query.
+        // URLComponents.fragment is a raw string we have to parse
+        // ourselves — it has the same `key=value&...` shape as a query.
+        let raw = callbackUrl.fragment ?? callbackUrl.query ?? ""
+        let pairs = raw.split(separator: "&").compactMap { kv -> (String, String)? in
+            let parts = kv.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+            return (parts[0], parts[1].removingPercentEncoding ?? parts[1])
+        }
+        let dict = Dictionary(uniqueKeysWithValues: pairs)
+
+        if let providerError = dict["error_description"] ?? dict["error"] {
+            throw AuthError.signInFailed(providerError)
+        }
+        guard let accessToken = dict["access_token"],
+              let refreshToken = dict["refresh_token"] else {
+            throw AuthError.signInFailed("Sign-in callback missing tokens")
+        }
+        try await AuthService.shared.adoptOAuthSession(
+            accessToken: accessToken,
+            refreshToken: refreshToken
+        )
+    }
+
+    // MARK: - Nonce helpers (Apple Sign-In)
+
+    /// Cryptographically-random 32-character nonce. URL-safe charset so it
+    /// survives any encoding in the round-trip through Apple → Supabase.
+    private static func makeRawNonce(length: Int = 32) -> String {
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var bytes = [UInt8](repeating: 0, count: length)
+        let status = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
+        guard status == errSecSuccess else {
+            // Fallback — extremely unlikely path. UUID gives us 128 bits
+            // of entropy which is still cryptographically safe enough
+            // for the nonce binding.
+            return UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        }
+        return String(bytes.map { charset[Int($0) % charset.count] })
+    }
+
+    /// SHA-256 hex-encoded — what Apple expects in `request.nonce`.
+    private static func sha256Hex(_ input: String) -> String {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - OAuth coordinator
+//
+// Owns the live ASWebAuthenticationSession + presentation anchor. The
+// view holds it as @State so the session isn't deallocated mid-flight.
+
+final class OAuthCoordinator: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private var session: ASWebAuthenticationSession?
+
+    func start(url: URL, callbackScheme: String, completion: @escaping (Result<URL, Error>) -> Void) {
+        let s = ASWebAuthenticationSession(
+            url: url,
+            callbackURLScheme: callbackScheme
+        ) { callback, error in
+            if let error {
+                completion(.failure(error))
+            } else if let callback {
+                completion(.success(callback))
+            } else {
+                completion(.failure(NSError(domain: "OAuthCoordinator", code: -1)))
+            }
+        }
+        s.presentationContextProvider = self
+        // false → reuse Safari cookies so users already signed into
+        // Google in Safari skip the password prompt. Production apps
+        // do this; ephemeral mode is a privacy-paranoid choice.
+        s.prefersEphemeralWebBrowserSession = false
+        self.session = s
+        s.start()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        // Find the key window. ASPresentationAnchor is a UIWindow.
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? (UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        return scene?.windows.first(where: { $0.isKeyWindow })
+            ?? scene?.windows.first
+            ?? ASPresentationAnchor()
     }
 }

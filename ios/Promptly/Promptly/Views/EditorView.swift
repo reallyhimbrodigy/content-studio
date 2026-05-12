@@ -834,7 +834,18 @@ struct EditorView: View {
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
                 } catch {
                     print("[perf] upload task failed: \(error.localizedDescription)")
-                    await MainActor.run { pending.uploadFailed = true }
+                    // Clear any eagerly-set URLs so a second Send tap
+                    // doesn't reuse a stale public URL pointing at S3
+                    // bytes that never arrived — that produced the
+                    // "jumps to 40% Preparing your footage" bug where
+                    // the worker dispatched against a missing object.
+                    await MainActor.run {
+                        pending.uploadFailed = true
+                        pending.uploadedUrl = nil
+                        pending.proxyUploadedUrl = nil
+                        pending.uploadProgress = 0
+                        pending.proxyUploadProgress = 0
+                    }
                 }
             }
         }
