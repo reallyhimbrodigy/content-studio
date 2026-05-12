@@ -201,16 +201,23 @@ class AuthService {
             body["nonce"] = nonce
         }
         request.httpBody = try JSONEncoder().encode(body)
+        print("[auth] signInWithIdToken provider=\(provider) hasNonce=\(nonce != nil && !nonce!.isEmpty)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? ""
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            // Print the full body so we can diagnose nonce mismatches,
+            // invalid issuer errors, etc. Production-safe: this only
+            // logs Supabase's own error message, not the id_token.
+            print("[auth] signInWithIdToken \(provider) HTTP \(status): \(errorBody.prefix(500))")
             throw AuthError.signInFailed(errorBody)
         }
 
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
         saveSession(session)
         scheduleTokenRefresh()
+        print("[auth] signInWithIdToken \(provider) success")
     }
 
     /// Adopt an OAuth session built from a redirect-URL fragment

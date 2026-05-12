@@ -311,34 +311,83 @@ struct AuthView: View {
     private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let auth):
-            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                  let identityToken = credential.identityToken,
-                  let tokenString = String(data: identityToken, encoding: .utf8) else {
-                errorMessage = "Apple sign in failed"
+            print("[apple] credential received")
+            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential else {
+                errorMessage = "Apple sign in: unexpected credential type"
+                print("[apple] credential cast failed: \(type(of: auth.credential))")
                 return
             }
-            // The raw nonce stashed in onRequest must accompany the
-            // id_token so Supabase can verify SHA256(raw) == hash-in-token.
+            guard let identityToken = credential.identityToken,
+                  let tokenString = String(data: identityToken, encoding: .utf8) else {
+                errorMessage = "Apple sign in: missing identity token"
+                print("[apple] identityToken missing")
+                return
+            }
+            print("[apple] identityToken length=\(tokenString.count)")
             let nonce = appleRawNonce
 
             isLoading = true
             Task {
                 do {
+                    // PRIMARY PATH: send the nonce. This is the secure
+                    // mode that protects against replay attacks. Works
+                    // when Supabase project has the nonce-validation bug
+                    // (#2378) fixed OR has "Skip nonce check" toggled on.
                     try await AuthService.shared.signInWithIdToken(
                         provider: "apple",
                         idToken: tokenString,
                         nonce: nonce
                     )
-                } catch {
-                    errorMessage = error.localizedDescription
+                    print("[apple] sign in succeeded")
+                } catch let primaryError {
+                    // FALLBACK: if Supabase rejects with a 400 (likely
+                    // "Nonces mismatch" due to the known server bug),
+                    // retry WITHOUT the nonce. This sacrifices replay
+                    // protection but unblocks sign-in on projects that
+                    // can't toggle Skip Nonce Check from the dashboard.
+                    let message = primaryError.localizedDescription.lowercased()
+                    let looksLikeNonceBug = message.contains("nonce") || message.contains("400")
+                    if looksLikeNonceBug {
+                        print("[apple] primary signin failed (\(primaryError.localizedDescription)) — retrying without nonce")
+                        do {
+                            try await AuthService.shared.signInWithIdToken(
+                                provider: "apple",
+                                idToken: tokenString,
+                                nonce: nil
+                            )
+                            print("[apple] no-nonce fallback succeeded")
+                        } catch {
+                            print("[apple] no-nonce fallback also failed: \(error.localizedDescription)")
+                            errorMessage = "Apple sign in: \(error.localizedDescription)"
+                        }
+                    } else {
+                        print("[apple] sign in failed: \(primaryError.localizedDescription)")
+                        errorMessage = "Apple sign in: \(primaryError.localizedDescription)"
+                    }
                 }
                 isLoading = false
             }
 
         case .failure(let error):
-            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = "Apple sign in failed"
+            let nsError = error as NSError
+            if nsError.code == ASAuthorizationError.canceled.rawValue {
+                print("[apple] user canceled")
+                return
             }
+            // Surface the SPECIFIC iOS error code so we can diagnose:
+            // .notHandled / .invalidResponse / .failed / .unknown each
+            // points to a different root cause.
+            let codeName: String
+            switch ASAuthorizationError.Code(rawValue: nsError.code) {
+            case .unknown: codeName = "unknown"
+            case .invalidResponse: codeName = "invalidResponse"
+            case .notHandled: codeName = "notHandled (often: Sign In with Apple capability missing from App ID)"
+            case .failed: codeName = "failed"
+            case .notInteractive: codeName = "notInteractive"
+            default: codeName = "code=\(nsError.code)"
+            }
+            print("[apple] failure: \(codeName) — \(nsError.localizedDescription)")
+            errorMessage = "Apple sign in failed (\(codeName))"
         }
     }
 
