@@ -1033,48 +1033,59 @@ struct EditorView: View {
                             messages.firstIndex(where: { $0.id == msgId })
                         }
                         do {
-                            // Wait for the PROXY upload to finish (small,
-                            // 5-10s on cellular). Once proxy is up, the
-                            // job can dispatch — server uses proxy for
-                            // Gemini analysis while the worker polls S3
-                            // for the high-res source (which the client
-                            // is still uploading via background URLSession).
-                            // The high-res upload survives app suspend
-                            // and kill; user can close the app freely.
+                            let sendStart = Date()
+                            print("[send] waiting for proxy/source URL")
+                            // Wait for the PROXY upload to finish, with a
+                            // 60s deadline so the inner Task can't hang
+                            // forever if the upload Task is stuck or
+                            // suspended.
+                            let waitDeadline = Date().addingTimeInterval(60)
                             while video.proxyUploadedUrl == nil && video.uploadedUrl == nil && !(video.uploadFailed) {
+                                if Date() > waitDeadline {
+                                    throw APIError.uploadFailed
+                                }
                                 try? await Task.sleep(nanoseconds: 100_000_000)
                             }
                             if video.uploadFailed {
                                 throw APIError.uploadFailed
                             }
 
-                            // uploadedUrl is set the moment we know the
-                            // eventual S3 URL (before bytes finish). That
-                            // URL goes into the job; the worker polls.
                             guard let sourceUrl = video.uploadedUrl else {
                                 throw APIError.uploadFailed
                             }
                             let proxyUrl = video.proxyUploadedUrl
+                            print(String(format: "[send] urls ready after %.2fs proxy=%@ source=%@",
+                                Date().timeIntervalSince(sendStart),
+                                proxyUrl == nil ? "nil" : "set",
+                                "set"))
 
                             if let i = indexOfProcessingMsg() {
-                                // Proxy is up → AI analysis is about to
-                                // run. Advance the timeline so the user
-                                // sees forward motion.
                                 messages[i].stageTimeline?.receive(stepToken: "analyze")
                                 if (messages[i].jobProgress ?? 0) < 40 {
                                     messages[i].jobProgress = 40
                                 }
                             }
+                            print("[send] calling createVideoJob")
+                            let cvjStart = Date()
                             let jobId = try await APIService.shared.createVideoJob(
                                 videoUrl: sourceUrl,
                                 proxyVideoUrl: proxyUrl,
                                 vibe: vibe
                             )
+                            print(String(format: "[send] createVideoJob OK in %.2fs jobId=%@",
+                                Date().timeIntervalSince(cvjStart), jobId))
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 startSSE(jobId: jobId, messageIndex: i)
                                 persistMessages()
                             }
+                            // Stuck-detection: if SSE never fires the
+                            // first stage event within 90s, the main
+                            // worker isn't running (or its first event
+                            // isn't reaching us). Surface a clear
+                            // error in the UI so the user isn't staring
+                            // at a frozen progress bar.
+                            scheduleStuckDetector(messageId: msgId, jobId: jobId)
                         } catch {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobStatus = "failed"
@@ -1105,6 +1116,50 @@ struct EditorView: View {
                 }
             }
             isSending = false
+        }
+    }
+
+    // MARK: - Stuck detection
+    //
+    // Production safety net. After the job is dispatched, SSE should
+    // start delivering stage events within seconds (analyze, transcribe,
+    // etc.). If 90 seconds pass and the message is still on the
+    // pre-pipeline `analyze` stage with no jobProgress beyond 40, the
+    // main worker either crashed silently, never received the dispatch,
+    // or its first event isn't reaching us. Surface a clear error in
+    // the UI instead of leaving the user staring at a frozen bar.
+    private func scheduleStuckDetector(messageId: UUID, jobId: String) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(90))
+            guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            // If the message is now completed / failed, the pipeline is
+            // either done or already errored. Nothing to do.
+            let status = messages[i].jobStatus ?? ""
+            if status == "completed" || status == "complete" || status == "failed" || status == "error" {
+                return
+            }
+            // If we got ANY progress past the static 40% "analyze" plant,
+            // SSE is alive — keep waiting.
+            if (messages[i].jobProgress ?? 0) > 41 {
+                return
+            }
+            // Truly stuck. Reconcile against DB one more time in case
+            // the job already completed and we just missed the events.
+            await reconcileJobStatus(jobId: jobId)
+            // After reconcile, if still stuck, mark failed with a clear
+            // message the user can act on.
+            guard let j = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            let postStatus = messages[j].jobStatus ?? ""
+            if postStatus == "completed" || postStatus == "complete" || postStatus == "failed" || postStatus == "error" {
+                return
+            }
+            if (messages[j].jobProgress ?? 0) <= 41 {
+                print("[stuck] job \(jobId) showed no progress past 40% for 90s — marking failed")
+                messages[j].jobStatus = "failed"
+                messages[j].error = "The render didn't start. Try again, or check your connection."
+                messages[j].stageTimeline?.finish()
+                persistMessages()
+            }
         }
     }
 
