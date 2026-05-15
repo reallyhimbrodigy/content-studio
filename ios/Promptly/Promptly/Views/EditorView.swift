@@ -147,7 +147,11 @@ struct EditorView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
                 Task { @MainActor in
-                    await reconcileInProgressJobs()
+                    // includeFailed: true heals messages that got
+                    // marked failed locally (e.g. by an over-eager
+                    // stuck detector or a transient SSE drop) but
+                    // actually completed server-side.
+                    await reconcileInProgressJobs(includeFailed: true)
                 }
             }
             // Foreground heartbeat. SSE can silently die without iOS
@@ -155,14 +159,14 @@ struct EditorView: View {
             // timeout) — when that happens, neither scenePhase nor
             // SSE.onError fire, and the chat would sit on "processing"
             // until the user backgrounds and foregrounds. A cheap 15s
-            // poll closes that gap. Function short-circuits when nothing
-            // is in flight, so the cost is one no-op closure call when
-            // idle.
+            // poll closes that gap. Includes failed messages too so
+            // they self-heal when the worker eventually completes
+            // a render that was prematurely marked failed.
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
                     if Task.isCancelled { break }
-                    await reconcileInProgressJobs()
+                    await reconcileInProgressJobs(includeFailed: true)
                 }
             }
         }
@@ -1121,44 +1125,36 @@ struct EditorView: View {
 
     // MARK: - Stuck detection
     //
-    // Production safety net. After the job is dispatched, SSE should
-    // start delivering stage events within seconds (analyze, transcribe,
-    // etc.). If 90 seconds pass and the message is still on the
-    // pre-pipeline `analyze` stage with no jobProgress beyond 40, the
-    // main worker either crashed silently, never received the dispatch,
-    // or its first event isn't reaching us. Surface a clear error in
-    // the UI instead of leaving the user staring at a frozen bar.
+    // Periodic reconcile against the DB at 90s + 180s after dispatch.
+    // Does NOT mark the message as failed — that was the build 134 bug:
+    // a normal render takes 90-180s, and when SSE drops because the
+    // user closed the app, the stuck detector would fire mid-render
+    // and falsely mark "didn't start" even though the worker was
+    // happily processing. The actual completion would then arrive via
+    // push but the chat was already stuck on a fake failure that the
+    // foreground reconcile (filtered to processing-only) wouldn't heal.
+    //
+    // New behavior: only ASK the DB what the current state is. If DB
+    // says completed/failed, update accordingly. If DB still says
+    // processing, do nothing — the periodic heartbeat + foreground
+    // reconcile will catch the actual completion.
     private func scheduleStuckDetector(messageId: UUID, jobId: String) {
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(90))
-            guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            // If the message is now completed / failed, the pipeline is
-            // either done or already errored. Nothing to do.
-            let status = messages[i].jobStatus ?? ""
-            if status == "completed" || status == "complete" || status == "failed" || status == "error" {
-                return
-            }
-            // If we got ANY progress past the static 40% "analyze" plant,
-            // SSE is alive — keep waiting.
-            if (messages[i].jobProgress ?? 0) > 41 {
-                return
-            }
-            // Truly stuck. Reconcile against DB one more time in case
-            // the job already completed and we just missed the events.
-            await reconcileJobStatus(jobId: jobId)
-            // After reconcile, if still stuck, mark failed with a clear
-            // message the user can act on.
-            guard let j = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            let postStatus = messages[j].jobStatus ?? ""
-            if postStatus == "completed" || postStatus == "complete" || postStatus == "failed" || postStatus == "error" {
-                return
-            }
-            if (messages[j].jobProgress ?? 0) <= 41 {
-                print("[stuck] job \(jobId) showed no progress past 40% for 90s — marking failed")
-                messages[j].jobStatus = "failed"
-                messages[j].error = "The render didn't start. Try again, or check your connection."
-                messages[j].stageTimeline?.finish()
-                persistMessages()
+            for delaySec in [90, 180] {
+                try? await Task.sleep(for: .seconds(delaySec))
+                guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                let status = messages[i].jobStatus ?? ""
+                if status == "completed" || status == "complete" || status == "failed" || status == "error" {
+                    return
+                }
+                // No progress past the static 40% "analyze" plant?
+                // Re-check the DB — but never mark failed locally.
+                // Either the worker IS still processing (push fires
+                // later) or it actually errored (reconcile will see
+                // "failed" in DB and update).
+                if (messages[i].jobProgress ?? 0) <= 41 {
+                    await reconcileJobStatus(jobId: jobId)
+                }
             }
         }
     }
