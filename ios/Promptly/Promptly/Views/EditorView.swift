@@ -1322,21 +1322,31 @@ struct EditorView: View {
                     }
                 }
             } else {
+                // Append the USER's own message as a bubble first. This
+                // was missing — the previous code only added the
+                // thinking-dots assistant placeholder, so the chat just
+                // showed an answer with no record of what the user
+                // asked. Looked broken; it WAS broken.
+                let userMsg = ChatMessage(role: .user, content: text)
+                messages.append(userMsg)
+                conversationHistory.append(["role": "user", "content": text])
+
                 let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
                 messages.append(thinkingMsg)
                 let msgId = thinkingMsg.id
                 func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
 
-                // Streaming chat — Gemini tokens flow in via SSE and we
-                // append to the assistant bubble character-by-character.
-                // Thinking dots show until the FIRST token lands, then
-                // hide so the message reads naturally as it types out.
-                // This is the ChatGPT-style "AI is typing in real time"
-                // feel that makes the chat feel alive instead of
-                // "spinner → wall of text."
+                // Streaming chat. If it throws or returns empty, fall
+                // back to the one-shot /api/chat endpoint — that way
+                // a server-side streaming hiccup doesn't leave the user
+                // staring at a "Sorry, I couldn't respond right now."
                 var accumulated = ""
                 var sawFirstToken = false
-                let historySnapshot = Array(conversationHistory.suffix(20))
+                // History sent to API must NOT include the user message
+                // we just appended (that's the CURRENT turn, sent
+                // separately as `message`). We grab the suffix(20) of
+                // the history snapshot taken BEFORE this turn.
+                let historySnapshot = Array(conversationHistory.dropLast().suffix(20))
                 let stream = APIService.shared.chatStream(message: text, history: historySnapshot)
                 do {
                     for try await token in stream {
@@ -1348,29 +1358,36 @@ struct EditorView: View {
                         }
                         messages[i].content = accumulated
                     }
-                    if let i = idx() {
-                        // Final snapshot — also persists now that the
-                        // full response landed.
-                        messages[i].isThinking = false
-                        messages[i].content = accumulated.isEmpty
-                            ? "Sorry, I couldn't respond right now."
-                            : accumulated
-                        if !accumulated.isEmpty {
-                            conversationHistory.append(["role": "assistant", "content": accumulated])
-                        }
-                        persistMessages()
-                    }
                 } catch {
-                    if let i = idx() {
-                        // Stream failed mid-flight. If we got SOMETHING,
-                        // keep it (partial answer better than nothing).
-                        // Otherwise show the friendly fallback.
-                        messages[i].isThinking = false
-                        messages[i].content = accumulated.isEmpty
-                            ? "Sorry, I couldn't respond right now."
-                            : accumulated
-                        persistMessages()
+                    print("[chat] stream failed: \(error.localizedDescription) — falling back to one-shot")
+                }
+
+                // Streaming returned empty OR threw → try one-shot.
+                if accumulated.isEmpty {
+                    do {
+                        let reply = try await APIService.shared.chat(
+                            message: text,
+                            history: historySnapshot
+                        )
+                        accumulated = reply
+                        if let i = idx() {
+                            messages[i].isThinking = false
+                            messages[i].content = reply
+                        }
+                    } catch {
+                        print("[chat] one-shot fallback also failed: \(error.localizedDescription)")
                     }
+                }
+
+                if let i = idx() {
+                    messages[i].isThinking = false
+                    if accumulated.isEmpty {
+                        messages[i].content = "Sorry, I couldn't respond right now. Try again?"
+                    } else {
+                        messages[i].content = accumulated
+                        conversationHistory.append(["role": "assistant", "content": accumulated])
+                    }
+                    persistMessages()
                 }
             }
             isSending = false
