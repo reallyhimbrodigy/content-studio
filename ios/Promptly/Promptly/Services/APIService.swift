@@ -913,6 +913,58 @@ class APIService {
         let result = try JSONDecoder().decode(ChatResponse.self, from: data)
         return result.reply ?? "No response"
     }
+
+    /// Streaming chat. Each yielded String is a token chunk (could be
+    /// one character, a word, or a few words depending on Gemini's
+    /// SSE batching). Consumer concatenates as they arrive to get the
+    /// real-time "typing" feel iOS chat apps have.
+    ///
+    /// The stream terminates normally on `[DONE]` from the server, or
+    /// throws on transport error / server error frame.
+    func chatStream(message: String, history: [[String: String]]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let work = Task {
+                do {
+                    var request = await authorizedRequest("/api/chat/stream", method: "POST")
+                    let payload: [String: Any] = ["message": message, "history": history]
+                    request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = 60
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                        throw APIError.jobCreationFailed("chat stream HTTP \(http.statusCode)")
+                    }
+
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data: ") else { continue }
+                        let payload = String(line.dropFirst(6))
+                        if payload == "[DONE]" {
+                            continuation.finish()
+                            return
+                        }
+                        if let data = payload.data(using: .utf8) {
+                            // Expect {"token":"..."} or {"error":"..."}.
+                            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                                if let err = obj["error"] {
+                                    continuation.finish(throwing: APIError.jobCreationFailed(err))
+                                    return
+                                }
+                                if let token = obj["token"] {
+                                    continuation.yield(token)
+                                }
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            // Cancel the background Task if the consumer abandons the stream.
+            continuation.onTermination = { _ in work.cancel() }
+        }
+    }
 }
 
 enum APIError: LocalizedError {

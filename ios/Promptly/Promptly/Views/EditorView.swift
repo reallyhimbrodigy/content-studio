@@ -220,6 +220,9 @@ struct EditorView: View {
         let restored = chat.messages.map { $0.toChatMessage() }
         messages = restored
         conversationHistory = restored.compactMap { msg in
+            // Skip the onboarding welcome — it'd burn API tokens and
+            // bias the model's tone if echoed back as prior context.
+            if msg.isOnboarding { return nil }
             if msg.role == .user, !msg.content.isEmpty {
                 return ["role": "user", "content": msg.content]
             }
@@ -230,6 +233,11 @@ struct EditorView: View {
         }
         loadedChatId = newId
         reeditSession = nil
+
+        // Inject welcome on legacy empty chats too (chats created
+        // before this feature existed). Single source of truth for
+        // the message lives in injectWelcomeIfEmpty().
+        injectWelcomeIfEmpty()
 
         // Heal anything older builds may have poisoned in storage. Earlier
         // versions of the SSE error handler persisted `jobStatus = "failed"`
@@ -297,7 +305,23 @@ struct EditorView: View {
         guard let chat = await chatStore.createChat() else { return }
         loadedChatId = chat.id
         chatStore.activeChatId = chat.id
+        injectWelcomeIfEmpty()
         isInputFocused = true
+    }
+
+    /// Single point of truth for the onboarding welcome message. Called
+    /// from both the chat-load path and the new-chat path so a user
+    /// always sees Promptly's intro the moment a fresh chat surfaces.
+    /// Idempotent: only injects when messages is genuinely empty.
+    private func injectWelcomeIfEmpty() {
+        guard messages.isEmpty else { return }
+        var welcome = ChatMessage(
+            role: .assistant,
+            content: "Hey 👋 I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
+        )
+        welcome.isOnboarding = true
+        messages = [welcome]
+        persistMessages()
     }
 
     // MARK: - Re-edit context chip
@@ -1105,16 +1129,48 @@ struct EditorView: View {
                 let msgId = thinkingMsg.id
                 func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
 
+                // Streaming chat — Gemini tokens flow in via SSE and we
+                // append to the assistant bubble character-by-character.
+                // Thinking dots show until the FIRST token lands, then
+                // hide so the message reads naturally as it types out.
+                // This is the ChatGPT-style "AI is typing in real time"
+                // feel that makes the chat feel alive instead of
+                // "spinner → wall of text."
+                var accumulated = ""
+                var sawFirstToken = false
+                let historySnapshot = Array(conversationHistory.suffix(20))
+                let stream = APIService.shared.chatStream(message: text, history: historySnapshot)
                 do {
-                    let reply = try await APIService.shared.chat(message: text, history: Array(conversationHistory.suffix(20)))
+                    for try await token in stream {
+                        accumulated += token
+                        guard let i = idx() else { break }
+                        if !sawFirstToken {
+                            sawFirstToken = true
+                            messages[i].isThinking = false
+                        }
+                        messages[i].content = accumulated
+                    }
                     if let i = idx() {
-                        messages[i] = ChatMessage(role: .assistant, content: reply)
-                        conversationHistory.append(["role": "assistant", "content": reply])
+                        // Final snapshot — also persists now that the
+                        // full response landed.
+                        messages[i].isThinking = false
+                        messages[i].content = accumulated.isEmpty
+                            ? "Sorry, I couldn't respond right now."
+                            : accumulated
+                        if !accumulated.isEmpty {
+                            conversationHistory.append(["role": "assistant", "content": accumulated])
+                        }
                         persistMessages()
                     }
                 } catch {
                     if let i = idx() {
-                        messages[i] = ChatMessage(role: .assistant, content: "Sorry, I couldn't respond right now.")
+                        // Stream failed mid-flight. If we got SOMETHING,
+                        // keep it (partial answer better than nothing).
+                        // Otherwise show the friendly fallback.
+                        messages[i].isThinking = false
+                        messages[i].content = accumulated.isEmpty
+                            ? "Sorry, I couldn't respond right now."
+                            : accumulated
                         persistMessages()
                     }
                 }

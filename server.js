@@ -10285,6 +10285,123 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Streaming chat ─────────────────────────────────────────────────
+  // SSE-streamed Gemini response. Same model + system prompt as /api/chat
+  // but uses streamGenerateContent so iOS can render tokens as they
+  // arrive — the "feels like ChatGPT" path. Falls back to one-shot via
+  // /api/chat if the client doesn't support streaming.
+  if (parsed.pathname === '/api/chat/stream' && req.method === 'POST') {
+    (async () => {
+      try {
+        await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const message = String(body?.message || '').trim();
+        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+
+        const history = Array.isArray(body?.history) ? body.history : [];
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
+
+        // Build Gemini contents (same shape as /api/chat).
+        const systemPrompt = 'You are Promptly, an AI video editing assistant. You help users create short-form video edits for TikTok, Reels, and YouTube Shorts. You can answer questions about video editing, suggest vibes and styles, and help users get the most out of their edits. Keep responses concise and friendly — this is a mobile chat.';
+        const contents = [];
+        for (const h of history.slice(-18)) {
+          if (h.role === 'user' || h.role === 'assistant') {
+            contents.push({
+              role: h.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: h.content }],
+            });
+          }
+        }
+        contents.push({ role: 'user', parts: [{ text: message }] });
+
+        // Open SSE response stream to the client BEFORE we hit Gemini —
+        // a slow connection from us to Gemini shouldn't delay the
+        // headers, and iOS's stream consumer wants to know the response
+        // is alive ASAP.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        // Initial padding so any proxy in the path flushes immediately.
+        res.write(': stream-open\n\n');
+
+        // Gemini streaming endpoint. alt=sse makes the response a true
+        // SSE byte stream we can pipe through; without it Gemini returns
+        // a JSON array we'd have to buffer.
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${geminiKey}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents,
+            generationConfig: {
+              // Bigger budget than the one-shot path — streaming makes
+              // longer answers feel fine because tokens flow as they
+              // generate.
+              maxOutputTokens: 800,
+              temperature: 0.8,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          }),
+        });
+
+        if (!geminiRes.ok || !geminiRes.body) {
+          const errText = await geminiRes.text().catch(() => '');
+          console.error('[ChatStream] Gemini error:', geminiRes.status, errText);
+          res.write(`data: ${JSON.stringify({ error: 'AI service error' })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          return res.end();
+        }
+
+        // Stream Gemini's SSE through to the client. Gemini emits
+        // `data: {json}\n\n` frames; we extract the token text and
+        // re-emit `data: {"token":"..."}\n\n` so the client doesn't
+        // need to know Gemini's response shape.
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const reader = geminiRes.body.getReader();
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // SSE frames are separated by \n\n.
+          let idx;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            const dataLine = frame.split('\n').find(l => l.startsWith('data: '));
+            if (!dataLine) continue;
+            const json = dataLine.slice(6);
+            try {
+              const parsed = JSON.parse(json);
+              const token = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              if (token) {
+                res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              }
+            } catch {
+              // Non-JSON frame (keep-alive comment, etc) — ignore.
+            }
+          }
+        }
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } catch (error) {
+        console.error('[ChatStream] Error:', error);
+        try {
+          res.write(`data: ${JSON.stringify({ error: error?.message || 'Chat error' })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } catch { /* connection probably already closed */ }
+      }
+    })();
+    return;
+  }
+
   // ── Prewarm ─────────────────────────────────────────────────────────
   // iOS calls this the instant a client-side S3 upload completes (well
   // before the user taps Send). Fire-and-forget to Modal's /prewarm

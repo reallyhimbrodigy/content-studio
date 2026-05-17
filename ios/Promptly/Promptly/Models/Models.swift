@@ -37,6 +37,12 @@ struct ChatMessage: Identifiable {
     var isThinking: Bool = false
     var stageTimeline: StageTimeline?  // Pipeline stage narrative (reference type so mutations propagate)
     var originalVibe: String?          // For in-chat Re-edit: the vibe that produced this video
+    /// True for the auto-generated welcome message injected into empty
+    /// chats. We persist it so the chat shows the same friendly intro
+    /// on every reload, but we EXCLUDE it from `conversationHistory`
+    /// passed to the chat API so it doesn't burn context tokens or bias
+    /// the AI's tone.
+    var isOnboarding: Bool = false
 }
 
 enum MessageRole {
@@ -116,6 +122,7 @@ struct SerializedMessage: Codable, Hashable {
     var attachmentFileName: String?
     var error: String?
     var originalVibe: String?
+    var isOnboarding: Bool?
 
     /// Decide whether a live ChatMessage is worth persisting at all.
     /// Mid-render assistant placeholders ("processing", isThinking, no
@@ -154,6 +161,7 @@ struct SerializedMessage: Codable, Hashable {
         self.attachmentFileName = message.videoAttachment?.fileName
         self.error = message.error
         self.originalVibe = message.originalVibe
+        self.isOnboarding = message.isOnboarding ? true : nil
 
         // Persist the local UIImage to disk so chat reload can restore
         // the user-side video tile. UIImage doesn't survive JSON
@@ -180,6 +188,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.thumbnailUrl = thumbnailUrl
         msg.error = error
         msg.originalVibe = originalVibe
+        msg.isOnboarding = isOnboarding ?? false
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {
             // Restore the local UIImage from disk if we cached it during
             // the original send. id is the SerializedMessage.id which
