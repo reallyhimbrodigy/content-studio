@@ -4,6 +4,36 @@ import Photos
 
 struct MessageBubble: View {
     let message: ChatMessage
+    /// Long-press → "Regenerate." Provided only on assistant text
+    /// replies (not on the welcome message, in-flight thinking messages,
+    /// or video render messages — those don't make sense to regenerate).
+    var onRegenerate: (() -> Void)? = nil
+    /// Long-press → "Edit." Provided only on user text messages.
+    /// Pulls the message text into the input bar and removes everything
+    /// from this message forward so the user can resend a revision.
+    var onEdit: (() -> Void)? = nil
+
+    /// SwiftUI-rendered markdown view for chat text.
+    ///
+    /// AttributedString(markdown:) handles **bold**, *italic*, `inline
+    /// code`, ~~strikethrough~~, and [links](url). `inlineOnlyPreservingWhitespace`
+    /// keeps newlines + list-line prefixes so multi-line replies render
+    /// the way Gemini emitted them. If markdown parsing fails (rare —
+    /// only on malformed input mid-stream), we fall back to plain text
+    /// so we never show a blank message.
+    @ViewBuilder
+    private func bubbleText(_ content: String) -> some View {
+        if let attr = try? AttributedString(
+            markdown: content,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) {
+            Text(attr)
+        } else {
+            Text(content)
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -45,9 +75,10 @@ struct MessageBubble: View {
             }
 
             if !message.content.isEmpty {
-                Text(message.content)
+                bubbleText(message.content)
                     .font(.system(.body, design: .default).weight(.regular))
                     .tracking(0.2)
+                    .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -76,10 +107,22 @@ struct MessageBubble: View {
                             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        if let onEdit {
+                            Button {
+                                onEdit()
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                        }
+                    }
             }
         }
-        // Combine the video + text into a single VoiceOver element with
-        // a "You said: ..." prefix so it's clear who's speaking.
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(message.videoAttachment != nil ? [] : [])
     }
@@ -113,9 +156,10 @@ struct MessageBubble: View {
             }
 
             if !message.content.isEmpty {
-                Text(message.content)
+                bubbleText(message.content)
                     .font(.system(.body, design: .default).weight(.regular))
                     .tracking(0.2)
+                    .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -137,6 +181,20 @@ struct MessageBubble: View {
                             .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        if let onRegenerate {
+                            Button {
+                                onRegenerate()
+                            } label: {
+                                Label("Regenerate", systemImage: "arrow.clockwise")
+                            }
+                        }
+                    }
             }
 
             if let videoUrlStr = message.renderedVideoUrl {

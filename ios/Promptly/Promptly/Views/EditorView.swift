@@ -451,8 +451,12 @@ struct EditorView: View {
                 // strictly more important than aesthetic anchoring.
                 LazyVStack(spacing: 8) {
                     ForEach(messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                        MessageBubble(
+                            message: message,
+                            onRegenerate: regenerateClosure(for: message),
+                            onEdit: editClosure(for: message)
+                        )
+                        .id(message.id)
                     }
                 }
                 .padding(16)
@@ -929,6 +933,148 @@ struct EditorView: View {
         "Storytime",
         "Make it good"
     ]
+
+    // MARK: - Per-message context menu (Regenerate / Edit)
+    //
+    // Closures returned per-message gate WHICH affordances surface for
+    // a given message kind. We don't want "Regenerate" showing up on
+    // the welcome message, on in-flight thinking bubbles, or on video
+    // render messages — none of those are meaningful to regenerate.
+    // Same for Edit: only user TEXT messages, never the user video tile.
+
+    private func regenerateClosure(for message: ChatMessage) -> (() -> Void)? {
+        // Only on assistant text replies. Skip welcome, thinking, video,
+        // and failed/in-flight states.
+        guard message.role == .assistant,
+              !message.isOnboarding,
+              !message.isThinking,
+              message.renderedVideoUrl == nil,
+              message.jobStatus == nil,
+              !message.content.isEmpty else { return nil }
+        let messageId = message.id
+        return {
+            Task { @MainActor in
+                regenerate(messageId: messageId)
+            }
+        }
+    }
+
+    private func editClosure(for message: ChatMessage) -> (() -> Void)? {
+        // Only on user TEXT messages (no video attachment).
+        guard message.role == .user,
+              message.videoAttachment == nil,
+              !message.content.isEmpty else { return nil }
+        let messageId = message.id
+        return {
+            Task { @MainActor in
+                edit(messageId: messageId)
+            }
+        }
+    }
+
+    /// Regenerate the assistant message at `messageId`. Replaces its
+    /// content with a fresh streaming response derived from the prior
+    /// conversation (everything BEFORE this message). The user message
+    /// that prompted this reply stays put; only the assistant's answer
+    /// is re-rolled.
+    private func regenerate(messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        guard idx > 0 else { return }
+        // Find the user prompt that produced this assistant reply.
+        var promptIdx = idx - 1
+        while promptIdx >= 0 && messages[promptIdx].role != .user {
+            promptIdx -= 1
+        }
+        guard promptIdx >= 0 else { return }
+        let prompt = messages[promptIdx].content
+        guard !prompt.isEmpty else { return }
+
+        // Rebuild conversation context from messages strictly BEFORE
+        // the prompt (so the prompt is the "current" turn). Skip
+        // onboarding and empty messages.
+        let context: [[String: String]] = messages[..<promptIdx].compactMap { m in
+            if m.isOnboarding { return nil }
+            guard !m.content.isEmpty else { return nil }
+            if m.role == .user { return ["role": "user", "content": m.content] }
+            if m.role == .assistant { return ["role": "assistant", "content": m.content] }
+            return nil
+        }
+
+        // Reset the assistant message to thinking state and re-stream.
+        messages[idx].content = ""
+        messages[idx].isThinking = true
+        messages[idx].error = nil
+
+        Task { @MainActor in
+            await streamReply(intoMessageId: messageId, prompt: prompt, context: context)
+        }
+    }
+
+    /// Edit a previous user message: pull its content into the input
+    /// bar, truncate everything from that message forward, and let the
+    /// user resend. Same behavior as ChatGPT iOS — re-forks the
+    /// conversation from that point.
+    private func edit(messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let original = messages[idx].content
+        inputText = original
+        // Truncate this message and everything after it. Cancel any
+        // SSE streams attached to those messages along the way.
+        for m in messages[idx...] {
+            if let jobId = m.jobId {
+                sseClients[jobId]?.disconnect()
+                sseClients.removeValue(forKey: jobId)
+            }
+        }
+        messages = Array(messages[..<idx])
+        // Rebuild conversation history to match.
+        conversationHistory = messages.compactMap { m in
+            if m.isOnboarding { return nil }
+            guard !m.content.isEmpty else { return nil }
+            if m.role == .user { return ["role": "user", "content": m.content] }
+            if m.role == .assistant { return ["role": "assistant", "content": m.content] }
+            return nil
+        }
+        persistMessages()
+        isInputFocused = true
+    }
+
+    /// Common streaming-into-an-existing-message helper used by
+    /// regenerate. Mirrors the inline streaming logic in send() but
+    /// reuses the existing message slot rather than appending.
+    @MainActor
+    private func streamReply(intoMessageId messageId: UUID, prompt: String, context: [[String: String]]) async {
+        func idx() -> Int? { messages.firstIndex(where: { $0.id == messageId }) }
+        var accumulated = ""
+        var sawFirstToken = false
+        let stream = APIService.shared.chatStream(message: prompt, history: context)
+        do {
+            for try await token in stream {
+                accumulated += token
+                guard let i = idx() else { break }
+                if !sawFirstToken {
+                    sawFirstToken = true
+                    messages[i].isThinking = false
+                }
+                messages[i].content = accumulated
+            }
+            if let i = idx() {
+                messages[i].isThinking = false
+                messages[i].content = accumulated.isEmpty
+                    ? "Sorry, I couldn't respond right now."
+                    : accumulated
+                persistMessages()
+            }
+        } catch {
+            if let i = idx() {
+                messages[i].isThinking = false
+                messages[i].content = accumulated.isEmpty
+                    ? "Sorry, I couldn't respond right now."
+                    : accumulated
+                persistMessages()
+            }
+        }
+    }
 
     // MARK: - Send
 
