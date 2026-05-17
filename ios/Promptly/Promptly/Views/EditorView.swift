@@ -15,6 +15,11 @@ struct EditorView: View {
     @State private var reeditSession: ReeditSession?
     @State private var loadedChatId: String? = nil
     @State private var ghostIndex: Int = 0
+    /// Tracks whether the scroll view is anchored at the bottom. When
+    /// the user scrolls up past the last message's bottom edge, we
+    /// surface a floating "↓ scroll to bottom" button — the standard
+    /// iMessage / ChatGPT pattern.
+    @State private var isAtBottom: Bool = true
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -458,11 +463,58 @@ struct EditorView: View {
                         )
                         .id(message.id)
                     }
+
+                    // Bottom-of-list sentinel. Since LazyVStack only
+                    // renders rows in the visible region, this view's
+                    // onAppear/onDisappear is a reliable signal for
+                    // "is the user looking at the very bottom of the
+                    // chat?" without per-frame geometry math.
+                    Color.clear
+                        .frame(height: 1)
+                        .id("chat-bottom-sentinel")
+                        .onAppear {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                isAtBottom = true
+                            }
+                        }
+                        .onDisappear {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                isAtBottom = false
+                            }
+                        }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
+            .overlay(alignment: .bottom) {
+                // Scroll-to-bottom floating button — iMessage / ChatGPT
+                // pattern. Only surfaces when the bottom sentinel is
+                // off-screen (user scrolled up). Tap returns the view
+                // to the latest message.
+                if !isAtBottom {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("chat-bottom-sentinel", anchor: .bottom)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(
+                                Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                            )
+                            .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 12)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .accessibilityLabel("Scroll to latest message")
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             // Tap on empty area between input + messages dismisses the
             // keyboard. simultaneousGesture so it doesn't steal taps from
