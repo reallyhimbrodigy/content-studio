@@ -20,6 +20,11 @@ struct EditorView: View {
     /// surface a floating "↓ scroll to bottom" button — the standard
     /// iMessage / ChatGPT pattern.
     @State private var isAtBottom: Bool = true
+    /// The currently-in-flight text-chat Task. Tapping Send while a
+    /// response is still streaming cancels this task, lets the partial
+    /// content stay in place, and starts a fresh conversation turn —
+    /// same behavior as ChatGPT iOS.
+    @State private var activeChatTask: Task<Void, Never>?
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -712,7 +717,18 @@ struct EditorView: View {
     }
 
     private var canSend: Bool {
-        (!inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingVideos.isEmpty) && !isSending
+        // Empty input + no video = nothing to send.
+        if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingVideos.isEmpty {
+            return false
+        }
+        // Video sends still gate on isSending so we don't dispatch
+        // duplicate render jobs mid-spawn. Pure text sends are always
+        // allowed — sending a new message cancels the in-flight stream
+        // (ChatGPT iOS pattern).
+        if !pendingVideos.isEmpty {
+            return !isSending
+        }
+        return true
     }
 
     // MARK: - Video Selection (INSTANT — no copy, uses PHAsset directly)
@@ -995,14 +1011,14 @@ struct EditorView: View {
     // Same for Edit: only user TEXT messages, never the user video tile.
 
     private func regenerateClosure(for message: ChatMessage) -> (() -> Void)? {
-        // Only on assistant text replies. Skip welcome, thinking, video,
-        // and failed/in-flight states.
+        // Only on assistant text replies. Skip welcome, thinking, video.
+        // Failed/empty messages STAY eligible — that's the retry path
+        // for "Couldn't respond. Long-press to try again."
         guard message.role == .assistant,
               !message.isOnboarding,
               !message.isThinking,
               message.renderedVideoUrl == nil,
-              message.jobStatus == nil,
-              !message.content.isEmpty else { return nil }
+              message.jobStatus == nil else { return nil }
         let messageId = message.id
         return {
             Task { @MainActor in
@@ -1052,13 +1068,20 @@ struct EditorView: View {
             return nil
         }
 
+        // Cancel any in-flight chat task before re-rolling this slot.
+        activeChatTask?.cancel()
+
         // Reset the assistant message to thinking state and re-stream.
         messages[idx].content = ""
         messages[idx].isThinking = true
         messages[idx].error = nil
 
-        Task { @MainActor in
-            await streamReply(intoMessageId: messageId, prompt: prompt, context: context)
+        activeChatTask = Task { @MainActor in
+            await streamReplyWithFallback(
+                intoMessageId: messageId,
+                prompt: prompt,
+                context: context
+            )
         }
     }
 
@@ -1095,36 +1118,155 @@ struct EditorView: View {
     /// regenerate. Mirrors the inline streaming logic in send() but
     /// reuses the existing message slot rather than appending.
     @MainActor
-    private func streamReply(intoMessageId messageId: UUID, prompt: String, context: [[String: String]]) async {
+    /// The bulletproof chat reply path. Called by both the initial
+    /// Send and the Regenerate context-menu action.
+    ///
+    /// Tier 1: Stream from `/api/chat/stream` (SSE). Token-by-token
+    /// reveal. Natural ChatGPT-style typing animation, no UI tricks.
+    ///
+    /// Tier 2: If the stream throws OR completes with no tokens
+    /// (Render's proxy buffering SSE despite our headers, transient
+    /// 5xx, etc.), fall through to the one-shot `/api/chat` endpoint
+    /// for the full response, then SIMULATE the typewriter effect on
+    /// the client by progressively revealing the text. Users get the
+    /// same visual outcome whether the streaming path works or not.
+    ///
+    /// Cancellation: the caller stores the surrounding Task on
+    /// `activeChatTask`. Sending a new message cancels it, the
+    /// `Task.isCancelled` checks here exit early, and whatever content
+    /// was already revealed stays in place — same behavior as ChatGPT
+    /// when you interrupt a streaming response.
+    ///
+    /// Persistence: `persistMessages()` only fires on a clean
+    /// completion. Mid-cancellation persists are avoided so the chat
+    /// store doesn't save half-streamed messages that look broken on
+    /// reload.
+    private func streamReplyWithFallback(
+        intoMessageId messageId: UUID,
+        prompt: String,
+        context: [[String: String]]
+    ) async {
         func idx() -> Int? { messages.firstIndex(where: { $0.id == messageId }) }
         var accumulated = ""
         var sawFirstToken = false
+
+        // ── Tier 1: streaming ─────────────────────────────────────────
         let stream = APIService.shared.chatStream(message: prompt, history: context)
         do {
             for try await token in stream {
+                if Task.isCancelled { return }
                 accumulated += token
-                guard let i = idx() else { break }
-                if !sawFirstToken {
-                    sawFirstToken = true
-                    messages[i].isThinking = false
+                if let i = idx() {
+                    if !sawFirstToken {
+                        sawFirstToken = true
+                        messages[i].isThinking = false
+                        messages[i].error = nil
+                    }
+                    messages[i].content = accumulated
                 }
-                messages[i].content = accumulated
-            }
-            if let i = idx() {
-                messages[i].isThinking = false
-                messages[i].content = accumulated.isEmpty
-                    ? "Sorry, I couldn't respond right now."
-                    : accumulated
-                persistMessages()
             }
         } catch {
-            if let i = idx() {
-                messages[i].isThinking = false
-                messages[i].content = accumulated.isEmpty
-                    ? "Sorry, I couldn't respond right now."
-                    : accumulated
-                persistMessages()
+            print("[chat] stream failed: \(error.localizedDescription) — falling back")
+        }
+
+        if Task.isCancelled { return }
+
+        // ── Tier 2: one-shot + client-side typewriter ──────────────────
+        if accumulated.isEmpty {
+            do {
+                let reply = try await APIService.shared.chat(message: prompt, history: context)
+                if Task.isCancelled { return }
+                await typewriteReveal(reply, intoMessageId: messageId)
+                accumulated = reply
+            } catch {
+                print("[chat] one-shot fallback failed: \(error.localizedDescription)")
             }
+        }
+
+        if Task.isCancelled { return }
+
+        // ── Finalize ──────────────────────────────────────────────────
+        if let i = idx() {
+            messages[i].isThinking = false
+            if accumulated.isEmpty {
+                // Both tiers failed. Surface a clean error state the
+                // context menu's Retry knows how to re-run.
+                messages[i].content = "Couldn't respond. Long-press to try again."
+                messages[i].error = "chat_failed"
+            } else {
+                messages[i].content = accumulated
+                messages[i].error = nil
+                conversationHistory.append(["role": "assistant", "content": accumulated])
+            }
+            persistMessages()
+        }
+    }
+
+    /// Progressively reveal `text` into the assistant message at
+    /// `messageId`, character-chunk by character-chunk. Used when the
+    /// streaming path silently buffers and we have to fall back to
+    /// the one-shot endpoint — the user still sees the typewriter
+    /// effect even though all the tokens already arrived. Cancellable
+    /// via `Task.isCancelled` so a new send halts the reveal cleanly.
+    private func typewriteReveal(_ text: String, intoMessageId messageId: UUID) async {
+        func idx() -> Int? { messages.firstIndex(where: { $0.id == messageId }) }
+        guard !text.isEmpty else { return }
+
+        // ~5 chars per 22ms tick = ~227 chars/sec. Tuned to match the
+        // perceived speed of native Gemini streaming when it does work.
+        let chunkSize = 5
+        let tickNanos: UInt64 = 22_000_000
+
+        var pos = text.startIndex
+        while pos < text.endIndex {
+            if Task.isCancelled { return }
+            let next = text.index(pos, offsetBy: chunkSize, limitedBy: text.endIndex) ?? text.endIndex
+            pos = next
+            if let i = idx() {
+                if messages[i].isThinking { messages[i].isThinking = false }
+                messages[i].content = String(text[..<pos])
+                messages[i].error = nil
+            }
+            try? await Task.sleep(nanoseconds: tickNanos)
+        }
+    }
+
+    // MARK: - Text-only chat send
+    //
+    // Bypasses the heavy video-flow Task chain entirely. Synchronously
+    // appends user+thinking bubbles, snapshots history, spawns a
+    // cancellable Task that runs streamReplyWithFallback. No isSending
+    // gate — the user can fire another message immediately and the
+    // previous in-flight task gets cancelled.
+    private func sendTextChatMessage(_ text: String) {
+        // Cancel any in-flight chat task. Its partial content stays
+        // visible (intentional — same as ChatGPT iOS interruption).
+        activeChatTask?.cancel()
+
+        inputText = ""
+
+        // User bubble appears IMMEDIATELY. Was the build-139 bug —
+        // user message wasn't being appended at all in text-only.
+        let userMsg = ChatMessage(role: .user, content: text)
+        messages.append(userMsg)
+        conversationHistory.append(["role": "user", "content": text])
+
+        let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
+        messages.append(thinkingMsg)
+        let msgId = thinkingMsg.id
+
+        // History snapshot must EXCLUDE the message we just appended
+        // — that's the CURRENT turn, sent as `message` separately.
+        let historySnapshot = Array(conversationHistory.dropLast().suffix(20))
+
+        activeChatTask = Task { @MainActor in
+            _ = await ensureActiveChat()
+            persistMessages()
+            await streamReplyWithFallback(
+                intoMessageId: msgId,
+                prompt: text,
+                context: historySnapshot
+            )
         }
     }
 
@@ -1135,6 +1277,15 @@ struct EditorView: View {
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
+
+        // ── Text-only chat fast path ──────────────────────────────────
+        // No video, no re-edit session — route to the lightweight
+        // text path that doesn't lock isSending or wait on chat
+        // creation. User can send another message immediately.
+        if !hasVideos && !reeditActive {
+            sendTextChatMessage(text)
+            return
+        }
 
         // Nudge: a video with no vibe is unrenderable — without a
         // creative direction the worker has nothing to optimize for.
@@ -1248,6 +1399,10 @@ struct EditorView: View {
             _ = await ensureActiveChat()
             persistMessages()
 
+            // hasVideos is guaranteed true here: the text-only fast path
+            // returned at the top of send(), and the re-edit branch
+            // returned in its own block. So the inner Task chain below
+            // is only ever reached on the video flow.
             if hasVideos {
                 for (video, msgId) in pendingMsgIds {
                     Task { @MainActor in
@@ -1320,74 +1475,6 @@ struct EditorView: View {
                             }
                         }
                     }
-                }
-            } else {
-                // Append the USER's own message as a bubble first. This
-                // was missing — the previous code only added the
-                // thinking-dots assistant placeholder, so the chat just
-                // showed an answer with no record of what the user
-                // asked. Looked broken; it WAS broken.
-                let userMsg = ChatMessage(role: .user, content: text)
-                messages.append(userMsg)
-                conversationHistory.append(["role": "user", "content": text])
-
-                let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
-                messages.append(thinkingMsg)
-                let msgId = thinkingMsg.id
-                func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
-
-                // Streaming chat. If it throws or returns empty, fall
-                // back to the one-shot /api/chat endpoint — that way
-                // a server-side streaming hiccup doesn't leave the user
-                // staring at a "Sorry, I couldn't respond right now."
-                var accumulated = ""
-                var sawFirstToken = false
-                // History sent to API must NOT include the user message
-                // we just appended (that's the CURRENT turn, sent
-                // separately as `message`). We grab the suffix(20) of
-                // the history snapshot taken BEFORE this turn.
-                let historySnapshot = Array(conversationHistory.dropLast().suffix(20))
-                let stream = APIService.shared.chatStream(message: text, history: historySnapshot)
-                do {
-                    for try await token in stream {
-                        accumulated += token
-                        guard let i = idx() else { break }
-                        if !sawFirstToken {
-                            sawFirstToken = true
-                            messages[i].isThinking = false
-                        }
-                        messages[i].content = accumulated
-                    }
-                } catch {
-                    print("[chat] stream failed: \(error.localizedDescription) — falling back to one-shot")
-                }
-
-                // Streaming returned empty OR threw → try one-shot.
-                if accumulated.isEmpty {
-                    do {
-                        let reply = try await APIService.shared.chat(
-                            message: text,
-                            history: historySnapshot
-                        )
-                        accumulated = reply
-                        if let i = idx() {
-                            messages[i].isThinking = false
-                            messages[i].content = reply
-                        }
-                    } catch {
-                        print("[chat] one-shot fallback also failed: \(error.localizedDescription)")
-                    }
-                }
-
-                if let i = idx() {
-                    messages[i].isThinking = false
-                    if accumulated.isEmpty {
-                        messages[i].content = "Sorry, I couldn't respond right now. Try again?"
-                    } else {
-                        messages[i].content = accumulated
-                        conversationHistory.append(["role": "assistant", "content": accumulated])
-                    }
-                    persistMessages()
                 }
             }
             isSending = false

@@ -182,16 +182,21 @@ struct MessageBubble: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = message.content
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
+                        if message.error == nil {
+                            Button {
+                                UIPasteboard.general.string = message.content
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
                         }
                         if let onRegenerate {
                             Button {
                                 onRegenerate()
                             } label: {
-                                Label("Regenerate", systemImage: "arrow.clockwise")
+                                Label(
+                                    message.error != nil ? "Try again" : "Regenerate",
+                                    systemImage: "arrow.clockwise"
+                                )
                             }
                         }
                     }
