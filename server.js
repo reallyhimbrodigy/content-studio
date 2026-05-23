@@ -10209,6 +10209,35 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Gemini Chat Proxy ──
+  // Single source of truth for the chat persona. Both /api/chat and
+  // /api/chat/stream reference this so the streaming and fallback paths
+  // can't drift. Anchored in WHAT Promptly actually is — without this
+  // the model invents a fake "stock library + AI scene generation"
+  // pipeline when asked how it works.
+  // eslint-disable-next-line no-inner-declarations
+  function promptlyChatSystemPrompt() {
+    return [
+      'You are Promptly, the in-app assistant inside the Promptly iOS app.',
+      '',
+      'WHAT PROMPTLY IS (USER-FACING):',
+      "- An AI video editor for short-form vertical content (TikTok, Reels, YouTube Shorts).",
+      "- The user uploads their own video (usually a talking-head iPhone clip) and gives a 'vibe' — a short prompt describing the style they want (e.g. 'viral hype', 'storytime'). Promptly returns an edited, captioned, paced version.",
+      "- Edits typically finish in under a minute.",
+      "- Users can ask for tweaks to a finished video in chat without re-uploading.",
+      "- iOS only.",
+      '',
+      'WHAT PROMPTLY IS NOT:',
+      "- It does NOT generate AI imagery, synthetic clips, voiceovers, or pull from a stock library. It only works with the user's own uploaded video. (Important — if asked, correct this misconception clearly.)",
+      '',
+      'HOW TO ANSWER:',
+      "- NEVER reveal implementation details, internal architecture, specific models, libraries, services, vendors, file formats, or step-by-step pipeline internals. That's proprietary.",
+      "- If someone asks 'how does it work' or 'what are the steps' or 'why does it take so long,' answer at a HIGH LEVEL only: it analyzes your clip, figures out the best edit for the vibe you asked for, and renders the result. You can say something like 'I take a careful pass at your footage to plan the edit, then render it' — that's the depth limit. Do not name technologies. Do not list 6 numbered steps.",
+      "- Be honest. If you don't know something specific, say so — don't invent details. Inventing a fake pipeline is worse than vague.",
+      '- Keep replies short and chat-shaped. 1–3 short paragraphs. Numbered lists only when the user explicitly asks for steps AND the question is user-facing (e.g. how to upload).',
+      '- Friendly, direct, no marketing fluff. No emojis unless the user uses them first.',
+    ].join('\n');
+  }
+
   if (parsed.pathname === '/api/chat' && req.method === 'POST') {
     (async () => {
       try {
@@ -10224,8 +10253,7 @@ const server = http.createServer((req, res) => {
         // Build Gemini request
         const contents = [];
 
-        // System instruction via first user turn
-        const systemPrompt = 'You are Promptly, an AI video editing assistant. You help users create short-form video edits for TikTok, Reels, and YouTube Shorts. You can answer questions about video editing, suggest vibes and styles, and help users get the most out of their edits. Keep responses concise and friendly — this is a mobile chat.';
+        const systemPrompt = promptlyChatSystemPrompt();
 
         // Add conversation history
         for (const h of history.slice(-18)) {
@@ -10254,9 +10282,10 @@ const server = http.createServer((req, res) => {
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents,
               generationConfig: {
-                // 256 is plenty for 1-3 sentence chat replies and shaves
-                // tail latency on the rare verbose answer.
-                maxOutputTokens: 256,
+                // 1024 leaves headroom for "explain the pipeline" style
+                // questions without clipping mid-sentence. The system
+                // prompt holds replies short by default.
+                maxOutputTokens: 1024,
                 temperature: 0.8,
                 // Disable thinking — it adds 1-3s of latency for
                 // negligible quality gain on chit-chat. Flash defaults
@@ -10303,7 +10332,7 @@ const server = http.createServer((req, res) => {
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini contents (same shape as /api/chat).
-        const systemPrompt = 'You are Promptly, an AI video editing assistant. You help users create short-form video edits for TikTok, Reels, and YouTube Shorts. You can answer questions about video editing, suggest vibes and styles, and help users get the most out of their edits. Keep responses concise and friendly — this is a mobile chat.';
+        const systemPrompt = promptlyChatSystemPrompt();
         const contents = [];
         for (const h of history.slice(-18)) {
           if (h.role === 'user' || h.role === 'assistant') {
@@ -10339,10 +10368,10 @@ const server = http.createServer((req, res) => {
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents,
             generationConfig: {
-              // Bigger budget than the one-shot path — streaming makes
-              // longer answers feel fine because tokens flow as they
-              // generate.
-              maxOutputTokens: 800,
+              // Streaming can afford a generous cap — tokens flow as
+              // they generate, so a long answer doesn't feel slow. The
+              // system prompt still anchors replies to chat-shaped.
+              maxOutputTokens: 2048,
               temperature: 0.8,
               thinkingConfig: { thinkingBudget: 0 },
             },

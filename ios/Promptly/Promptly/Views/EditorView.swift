@@ -1231,6 +1231,22 @@ struct EditorView: View {
         }
     }
 
+    // MARK: - Input field clear
+    //
+    // TextField(axis: .vertical) holds its text in an internal
+    // UITextView. When the field is focused and we reset the binding
+    // in the same render tick as the send, SwiftUI sometimes diffs
+    // away the empty-string write and the typed text stays visible.
+    // Workaround: clear immediately for the canSend animation, then
+    // re-clear on the next runloop tick to win the focus/binding race.
+    private func clearInputField() {
+        inputText = ""
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 16_000_000) // ~1 frame
+            if !inputText.isEmpty { inputText = "" }
+        }
+    }
+
     // MARK: - Text-only chat send
     //
     // Bypasses the heavy video-flow Task chain entirely. Synchronously
@@ -1243,7 +1259,7 @@ struct EditorView: View {
         // visible (intentional — same as ChatGPT iOS interruption).
         activeChatTask?.cancel()
 
-        inputText = ""
+        clearInputField()
 
         // User bubble appears IMMEDIATELY. Was the build-139 bug —
         // user message wasn't being appended at all in text-only.
@@ -1316,7 +1332,7 @@ struct EditorView: View {
         // ── Re-edit path — no upload; server loads source from DB
         if reeditActive, let session = reeditSession {
             let changeRequest = text.isEmpty ? "Apply the requested changes." : text
-            inputText = ""
+            clearInputField()
             let activeSession = session
             reeditSession = nil
             isSending = true
@@ -1367,7 +1383,7 @@ struct EditorView: View {
         let videos = pendingVideos
         let vibe = text.isEmpty ? "Create a clean, engaging edit" : text
 
-        inputText = ""
+        clearInputField()
         withAnimation { pendingVideos = [] }
 
         // Append the user/processing messages NOW, before we await
