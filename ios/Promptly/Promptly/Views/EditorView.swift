@@ -168,13 +168,22 @@ struct EditorView: View {
             // suspending the app (carrier handoff, server restart, idle
             // timeout) — when that happens, neither scenePhase nor
             // SSE.onError fire, and the chat would sit on "processing"
-            // until the user backgrounds and foregrounds. A cheap 15s
-            // poll closes that gap. Includes failed messages too so
-            // they self-heal when the worker eventually completes
-            // a render that was prematurely marked failed.
+            // until the user backgrounds and foregrounds. A 5s tick when
+            // there's an in-flight render closes that gap fast; we drop
+            // to 15s when nothing is processing so we're not hammering
+            // Supabase. Includes failed messages too so they self-heal
+            // when the worker eventually completes a render that was
+            // prematurely marked failed.
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(15))
+                    let hasInFlight = messages.contains { m in
+                        guard m.jobId != nil else { return false }
+                        return m.jobStatus == "processing" ||
+                               m.jobStatus == "queued" ||
+                               m.jobStatus == nil
+                    }
+                    let interval: Duration = hasInFlight ? .seconds(5) : .seconds(15)
+                    try? await Task.sleep(for: interval)
                     if Task.isCancelled { break }
                     await reconcileInProgressJobs(includeFailed: true)
                 }
@@ -1756,7 +1765,10 @@ struct EditorView: View {
     /// finished without us listening, etc.) and on app foreground for any
     /// message still in `processing` state.
     private func reconcileJobStatus(jobId: String) async {
-        guard let token = await AuthService.shared.getValidToken() else { return }
+        guard let token = await AuthService.shared.getValidToken() else {
+            print("[reconcile] \(jobId) skipped — no valid token")
+            return
+        }
 
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
@@ -1777,8 +1789,19 @@ struct EditorView: View {
         }
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let row = (try? JSONDecoder().decode([JobStatusRow].self, from: data))?.first else { return }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                // Auth blip or RLS denial — log it so we can see in console
+                // why a stuck render isn't reconciling. The next heartbeat
+                // tick retries with a freshly-validated token.
+                let body = String(data: data, encoding: .utf8) ?? ""
+                print("[reconcile] \(jobId) HTTP \(http.statusCode) — \(body.prefix(200))")
+                return
+            }
+            guard let row = (try? JSONDecoder().decode([JobStatusRow].self, from: data))?.first else {
+                print("[reconcile] \(jobId) decode failed or empty row")
+                return
+            }
             guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
 
             switch row.status {

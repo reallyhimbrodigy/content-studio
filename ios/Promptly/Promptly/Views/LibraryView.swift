@@ -5,6 +5,8 @@ struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var edits: [VideoJob] = []
     @State private var isLoading = true
+    @State private var loadFailed = false
+    @State private var hasLoadedOnce = false
     @State private var editToDelete: VideoJob?
     @State private var showDeleteConfirm = false
     @State private var selectedEdit: VideoJob?
@@ -34,6 +36,8 @@ struct LibraryView: View {
 
                 if isLoading {
                     ProgressView().tint(.white)
+                } else if loadFailed && edits.isEmpty {
+                    failedState
                 } else if edits.isEmpty {
                     emptyState
                 } else {
@@ -220,6 +224,33 @@ struct LibraryView: View {
         }
     }
 
+    // Distinct state for "fetch failed" so we don't lie to the user with
+    // "No edits yet" when actually we couldn't load them. Tap retries.
+    private var failedState: some View {
+        Button {
+            Task {
+                isLoading = true
+                await loadEdits()
+            }
+        } label: {
+            VStack(spacing: 20) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 40))
+                    .foregroundColor(Color(.separator))
+
+                Text("Couldn't load your library")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Text("Tap to retry.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     private var editList: some View {
         List {
             ForEach(edits) { edit in
@@ -271,7 +302,19 @@ struct LibraryView: View {
     }
 
     private func loadEdits() async {
-        do { edits = try await APIService.shared.getUserEdits() } catch {}
+        do {
+            let fetched = try await APIService.shared.getUserEdits()
+            edits = fetched
+            loadFailed = false
+        } catch {
+            // Don't blow away a previously-populated list — keep what we
+            // had so the user isn't staring at "No edits" because of a
+            // transient blip. Only flip to the failed state if we have
+            // nothing to show.
+            print("[library] loadEdits failed: \(error.localizedDescription)")
+            loadFailed = true
+        }
+        hasLoadedOnce = true
         isLoading = false
         // Eager prefetch: warm the local cache for the most-recent
         // completed edits so taps in the Library are Photos-app instant.
