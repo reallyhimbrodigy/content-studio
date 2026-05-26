@@ -12,57 +12,60 @@ struct ChatListView: View {
 
     @State private var pendingDelete: Chat?
     @State private var search: String = ""
+    @State private var searchActive: Bool = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 10)
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                header
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
 
-            searchField
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
+                // Search is collapsible — ChatGPT-style. Hidden by default
+                // to keep the chrome quiet; the magnifying glass in the
+                // header reveals it inline.
+                if searchActive {
+                    searchField
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
-            Divider()
-                .background(Color(.separator).opacity(0.5))
-
-            // Body
-            ZStack {
-                if store.isLoading && store.chats.isEmpty {
-                    loadingView
-                } else if let err = store.loadError, store.chats.isEmpty {
-                    errorState(err)
-                } else if filtered.isEmpty {
-                    if search.isEmpty {
-                        emptyView
+                // Body
+                ZStack {
+                    if store.isLoading && store.chats.isEmpty {
+                        loadingView
+                    } else if let err = store.loadError, store.chats.isEmpty {
+                        errorState(err)
+                    } else if filtered.isEmpty {
+                        if search.isEmpty {
+                            emptyView
+                        } else {
+                            noMatchesView
+                        }
                     } else {
-                        noMatchesView
+                        chatScroll
                     }
-                } else {
-                    chatScroll
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        searchFocused = false
+                        Keyboard.dismiss()
+                    }
+                )
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Tapping anywhere in the chat-list area dismisses the
-            // search keyboard. Goes through Keyboard.dismiss() for the
-            // synchronous, non-jumpy hide path; clearing searchFocused
-            // keeps the @FocusState in sync.
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    searchFocused = false
-                    Keyboard.dismiss()
-                }
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(.systemBackground))
 
-            Divider()
-                .background(Color(.separator).opacity(0.5))
-
-            profileChip
+            // Floating new-chat pill — bottom-right, ChatGPT iOS pattern.
+            // Replaces the old top-right pencil + the bottom profile chip.
+            newChatPill
+                .padding(.trailing, 18)
+                .padding(.bottom, 22)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(.systemBackground))
         .alert(
             "Delete chat?",
             isPresented: Binding(
@@ -86,30 +89,88 @@ struct ChatListView: View {
     }
 
     // MARK: - Header
+    //
+    // ChatGPT-style: brand title on the left, a pill containing the
+    // search-toggle button + the user's profile avatar on the right.
+    // The profile avatar opens the Account tab; the magnifying glass
+    // toggles the inline search field.
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("Chats")
+            Text("Promptly")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.primary)
             Spacer()
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                Task {
-                    if let chat = await store.createChat() {
-                        store.activeChatId = chat.id
-                        onSelect()
+            HStack(spacing: 6) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        searchActive.toggle()
                     }
+                    if searchActive {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            searchFocused = true
+                        }
+                    } else {
+                        search = ""
+                        searchFocused = false
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.primary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
+                .accessibilityLabel("Search chats")
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    AppState.shared.selectedTab = 2
+                    onSelect()
+                } label: {
+                    ProfileAvatar(size: 32)
+                }
+                .accessibilityLabel("Account")
             }
-            .accessibilityLabel("New chat")
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color(.tertiarySystemFill))
+            )
         }
+    }
+
+    // MARK: - New-chat pill
+
+    private var newChatPill: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task {
+                if let chat = await store.createChat() {
+                    store.activeChatId = chat.id
+                    onSelect()
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Chat")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(.black)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("New chat")
     }
 
     // MARK: - Search field
@@ -389,71 +450,6 @@ struct ChatListView: View {
         return result
     }
 
-    // MARK: - Profile chip
-
-    private var profileChip: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            // Bounce to Account tab. Sidebar dismisses via onSelect callback
-            // so the user lands on the destination.
-            AppState.shared.selectedTab = 2
-            onSelect()
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 36, height: 36)
-                    Text(initial)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(displayName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    Text(emailDisplay)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(.tertiaryLabel))
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Account")
-        .accessibilityValue("\(displayName), \(emailDisplay)")
-        .accessibilityHint("Opens account settings")
-    }
-
-    private var emailDisplay: String {
-        AuthService.shared.currentUser?.email ?? "Signed in"
-    }
-
-    private var displayName: String {
-        if let name = AuthService.shared.currentUser?.user_metadata?.full_name, !name.isEmpty {
-            return name
-        }
-        if let email = AuthService.shared.currentUser?.email {
-            return String(email.split(separator: "@").first ?? "")
-        }
-        return "Account"
-    }
-
-    private var initial: String {
-        let name = displayName
-        guard let first = name.first else { return "?" }
-        return String(first).uppercased()
-    }
 }
 
 // MARK: - Row
@@ -465,35 +461,25 @@ private struct ChatRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(chat.title)
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if !chat.preview.isEmpty && chat.preview != chat.title {
-                    Text(chat.preview)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(.tertiaryLabel))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected
-                          ? Color.primary.opacity(0.08)
-                          : Color.clear)
-            )
-            .contentShape(Rectangle())
+            Text(chat.title)
+                .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isSelected
+                              ? Color.primary.opacity(0.08)
+                              : Color.clear)
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(chat.title)
-        .accessibilityHint(chat.preview.isEmpty ? "" : chat.preview)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }

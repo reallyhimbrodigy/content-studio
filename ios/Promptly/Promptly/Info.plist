@@ -76,6 +76,10 @@
 	<string>Promptly needs photo library access to select videos for editing.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Promptly needs permission to save edited videos to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Promptly needs microphone access for voice input.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Promptly uses speech recognition to convert your voice into text in the composer.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<!--

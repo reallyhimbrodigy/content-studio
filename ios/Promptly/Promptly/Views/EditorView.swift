@@ -8,6 +8,7 @@ struct EditorView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
+    @State private var showVoiceInput = false
     @State private var pendingVideos: [PendingVideo] = []
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
@@ -107,6 +108,19 @@ struct EditorView: View {
                     handlePickedVideos(videos)
                 }
                 .ignoresSafeArea()
+            }
+            .fullScreenCover(isPresented: $showVoiceInput) {
+                VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
+                    // Append (not replace) so a user dictating a second
+                    // chunk on top of an existing draft doesn't lose it.
+                    let trimmedExisting = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedExisting.isEmpty {
+                        inputText = transcript
+                    } else {
+                        inputText = trimmedExisting + " " + transcript
+                    }
+                    isInputFocused = true
+                }
             }
             .onAppear {
                 // Pick up any pending re-edit session posted by Library and consume it.
@@ -655,23 +669,47 @@ struct EditorView: View {
                         }
                 )
 
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 30, height: 30)
-                        .background(Color.white)
-                        .clipShape(Circle())
-                        .accessibilityHidden(true)
+                ZStack {
+                    // Mic — surfaces when the input is empty and there's
+                    // nothing pending. Tap opens the full-screen voice
+                    // input sheet (SFSpeechRecognizer, native, on-device
+                    // when supported). ChatGPT iOS parity.
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showVoiceInput = true
+                    } label: {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                    }
+                    .opacity(canSend ? 0 : 1)
+                    .scaleEffect(canSend ? 0.5 : 1)
+                    .accessibilityLabel("Voice input")
+                    .allowsHitTesting(!canSend)
+
+                    // Send — surfaces the moment there's something to send.
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                    }
+                    .opacity(canSend ? 1 : 0)
+                    .scaleEffect(canSend ? 1 : 0.5)
+                    .accessibilityLabel("Send")
+                    .allowsHitTesting(canSend)
+                    .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
                 .padding(.trailing, 5)
                 .padding(.bottom, 5)
-                .opacity(canSend ? 1 : 0)
-                .scaleEffect(canSend ? 1 : 0.5)
-                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
-                .disabled(!canSend)
-                .accessibilityLabel("Send")
-                .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
             }
         }
         .background(

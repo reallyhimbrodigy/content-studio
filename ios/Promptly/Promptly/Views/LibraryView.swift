@@ -559,15 +559,39 @@ struct VideoDetailSheet: View {
     let edit: VideoJob
     let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
+            // Backdrop: blurred thumbnail blown up behind the card. Gives
+            // the sheet a cinematic, color-tinted depth without us having
+            // to do any color extraction. Falls back to pure black if
+            // no thumbnail (very rare — only the moment before a render
+            // completes, in which case this sheet isn't reachable).
+            if let thumbStr = edit.thumbnail_url, let thumbUrl = URL(string: thumbStr) {
+                AsyncImage(url: thumbUrl) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .blur(radius: 60)
+                            .opacity(0.55)
+                            .overlay(Color.black.opacity(0.4))
+                    } else {
+                        Color.black
+                    }
+                }
+                .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
-                // Large thumbnail + tap-to-play card — opens the custom
-                // PromptlyPlayer (poster-first, glass overlay, frame strip,
-                // HLS-preferred when the variant ladder is available).
+                // Headroom for the close button.
+                Color.clear.frame(height: 52)
+
+                // Video preview — vertical aspect, breathing room around
+                // it, generous rounded corners. Tap to open the player.
                 if let urlStr = edit.rendered_video_url {
                     Button {
                         VideoPlayerPresenter.present(
@@ -582,95 +606,167 @@ struct VideoDetailSheet: View {
                             if let thumbStr = edit.thumbnail_url, let thumbUrl = URL(string: thumbStr) {
                                 AsyncImage(url: thumbUrl) { phase in
                                     if let image = phase.image {
-                                        image.resizable().aspectRatio(contentMode: .fit)
+                                        image.resizable().scaledToFill()
                                     } else {
-                                        Color(.secondarySystemBackground)
+                                        Color.white.opacity(0.04)
                                     }
                                 }
                             } else {
-                                Color(.secondarySystemBackground)
+                                Color.white.opacity(0.04)
                             }
 
+                            // Light vignette pulls focus to the play button.
                             LinearGradient(
-                                colors: [.black.opacity(0.0), .black.opacity(0.35)],
-                                startPoint: .center, endPoint: .bottom
+                                colors: [.black.opacity(0.05), .black.opacity(0.0), .black.opacity(0.25)],
+                                startPoint: .top, endPoint: .bottom
                             )
                             .allowsHitTesting(false)
 
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .frame(width: 72, height: 72)
-                                .overlay {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 26, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .offset(x: 2)
-                                }
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 76, height: 76)
+                                    .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
+                                    .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .offset(x: 2)
+                            }
                         }
+                        .aspectRatio(9.0/16.0, contentMode: .fit)
                         .frame(maxWidth: .infinity)
-                        .frame(maxHeight: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
                     }
                     .buttonStyle(.plain)
+                    .padding(.horizontal, 28)
                 }
 
-                VStack(spacing: 14) {
-                    if let vibe = edit.vibe_input, !vibe.isEmpty {
-                        Text(vibe)
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(.secondaryLabel))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .lineLimit(2)
-                    }
+                Spacer(minLength: 18)
 
-                    if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                        HStack(spacing: 12) {
-                            ShareLink(item: url) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "square.and.arrow.up")
-                                    Text("Share")
-                                }
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 46)
-                                .background(Color.white)
-                                .foregroundColor(.black)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
+                // Title — restrained, light weight, single line. The vibe
+                // input is the title; "Your edit" is the unobtrusive eyebrow.
+                VStack(spacing: 4) {
+                    Text("Your edit")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(1.2)
+                        .foregroundColor(Color.white.opacity(0.45))
+                    Text(edit.vibe_input?.isEmpty == false ? edit.vibe_input! : "Untitled")
+                        .font(.system(size: 22, weight: .semibold, design: .default))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
 
-                            Button {
-                                dismiss()
-                                Task {
-                                    try? await APIService.shared.deleteEdit(id: edit.id)
-                                    onDelete()
-                                }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 16))
-                                    .frame(width: 46, height: 46)
-                                    .background(Color(.tertiarySystemBackground))
-                                    .foregroundColor(.red)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
+                Spacer(minLength: 22)
+
+                // Circular icon action row — all three actions in
+                // ultraThinMaterial circles, equal weight. Replaces the
+                // jarring red trash + giant white pill that was
+                // breaking the visual harmony.
+                if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                    HStack(spacing: 28) {
+                        ShareLink(item: url) {
+                            DetailActionIcon(systemName: "square.and.arrow.up", label: "Share")
+                        }
+                        DetailActionButton(systemName: "arrow.uturn.left", label: "Re-edit") {
+                            // Just dismiss — Library row already has its
+                            // own re-edit affordance for power users; this
+                            // sheet's tertiary action stays in scope but
+                            // simple. (Hook up real handler if/when we
+                            // want to keep parity with the Library row.)
+                            dismiss()
+                        }
+                        DetailActionButton(systemName: "trash", label: "Delete") {
+                            showDeleteConfirm = true
                         }
                     }
+                    .padding(.bottom, 36)
                 }
-                .padding(16)
-                .background(Color(.systemBackground))
             }
 
+            // Close button.
             Button {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
             }
-            .padding(.leading, 16)
-            .padding(.top, 8)
+            .padding(.leading, 18)
+            .padding(.top, 14)
         }
+        .preferredColorScheme(.dark)
         .presentationDragIndicator(.visible)
+        .confirmationDialog(
+            "Delete this edit?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                dismiss()
+                Task {
+                    try? await APIService.shared.deleteEdit(id: edit.id)
+                    onDelete()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This edit will be permanently removed.")
+        }
+    }
+}
+
+// MARK: - Action button primitives
+//
+// Two flavors because ShareLink needs a label-only View while Button
+// owns its tap action. Identical visual weight so the row reads as
+// one unit.
+
+private struct DetailActionIcon: View {
+    let systemName: String
+    let label: String
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 56, height: 56)
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                Image(systemName: systemName)
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.7))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+    }
+}
+
+private struct DetailActionButton: View {
+    let systemName: String
+    let label: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            DetailActionIcon(systemName: systemName, label: label)
+        }
+        .buttonStyle(.plain)
     }
 }
