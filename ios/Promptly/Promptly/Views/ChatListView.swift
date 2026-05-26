@@ -20,8 +20,8 @@ struct ChatListView: View {
             VStack(spacing: 0) {
                 header
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 8)
+                    .padding(.top, 18)
+                    .padding(.bottom, 12)
 
                 // Search is collapsible — ChatGPT-style. Hidden by default
                 // to keep the chrome quiet; the magnifying glass in the
@@ -98,10 +98,10 @@ struct ChatListView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("Promptly")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundColor(.primary)
             Spacer()
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
@@ -117,9 +117,9 @@ struct ChatListView: View {
                     }
                 } label: {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Search chats")
@@ -129,7 +129,7 @@ struct ChatListView: View {
                     AppState.shared.selectedTab = 2
                     onSelect()
                 } label: {
-                    ProfileAvatar(size: 32)
+                    ProfileAvatar(size: 36)
                 }
                 .accessibilityLabel("Account")
             }
@@ -396,12 +396,14 @@ struct ChatListView: View {
                         }
                     }
                 } header: {
+                    // ChatGPT-style: bold white section header, no
+                    // uppercase / tracking. Reads as part of the content
+                    // hierarchy, not as small chrome.
                     Text(sectionTitle)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(.tertiaryLabel))
-                        .tracking(0.4)
-                        .padding(.leading, 10)
-                        .padding(.top, 8)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+                        .padding(.leading, 16)
+                        .padding(.top, 18)
                         .padding(.bottom, 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -468,17 +470,17 @@ private struct ChatRow: View {
     var body: some View {
         Button(action: onTap) {
             Text(chat.title)
-                .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 11)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(isSelected
-                              ? Color.primary.opacity(0.08)
+                              ? Color.primary.opacity(0.10)
                               : Color.clear)
                 )
                 .contentShape(Rectangle())
