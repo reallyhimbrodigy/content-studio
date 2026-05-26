@@ -1,78 +1,61 @@
 import SwiftUI
 
-/// Top-level shell that wraps MainTabView in a ChatGPT-style sidebar
-/// drawer.
+/// Top-level shell that wraps MainTabView in a ChatGPT-style sidebar.
 ///
 /// Visual treatment matches ChatGPT iOS:
-///   - drawer width = (screen − 56), so a thin 56pt strip of the main
-///     content peeks on the right when open.
-///   - main content scales to 0.94 anchored leading, clips to 18pt
-///     rounded corners, and is desaturated + heavily dimmed while the
-///     drawer is open. The desaturation + dim pair is what makes the
-///     peek read as "inactive" rather than "competing for attention".
-///   - tab bar (inside MainTabView) gets pushed off-screen along with
-///     the content because the offset/scale apply to MainTabView, not
-///     just its inner content.
+///   - Sidebar takes the FULL screen width when open — no peek of the
+///     main content. Reads as a destination, not a drawer.
+///   - Main content slides fully off-screen to the right while the
+///     sidebar is open. No scale/desaturate gimmickry needed since
+///     nothing's visible to dim.
 ///
 /// Gestures:
 ///   - Edge-swipe to open: a thin invisible strip pinned to the
 ///     leading edge captures DragGesture so the user can pull the
 ///     sidebar in from the screen edge.
-///   - Drag-to-close: the full main content captures DragGesture
-///     while the sidebar is open, closing on a leftward swipe.
-///   - Tap-to-close: the dim overlay catches taps anywhere on the
-///     visible main content.
+///   - Swipe-left-to-close: any leftward swipe on the sidebar itself
+///     dismisses. Mirrors ChatGPT's behavior.
+///   - Tap-to-close: chat selection / new-chat / avatar all auto-close
+///     via the `onSelect` callback the sidebar already calls.
 struct AppShell: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var chatStore = ChatStore.shared
 
     private static let openSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
-    private static let edgePeek: CGFloat = 56
 
     var body: some View {
         GeometryReader { geo in
-            let drawerWidth = max(280, geo.size.width - Self.edgePeek)
+            let drawerWidth = geo.size.width
 
             ZStack(alignment: .leading) {
-                // Sidebar — always laid out at the leading edge.
+                // Sidebar — always laid out at the leading edge, full width.
                 ChatListView(store: chatStore) { closeSidebar() }
                     .frame(width: drawerWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
+                    // Swipe-left-anywhere on the sidebar to dismiss.
+                    // Only listens while open so we don't interfere with
+                    // List's internal swipe-to-delete on chat rows when
+                    // they're tapped (chat-row swipe is right-to-left
+                    // and short; this gesture requires 60pt of travel).
+                    .gesture(
+                        appState.sidebarOpen
+                        ? DragGesture(minimumDistance: 18)
+                            .onEnded { value in
+                                if value.translation.width < -60 { closeSidebar() }
+                            }
+                        : nil
+                    )
 
-                // Main content. Offsets right + scales + desaturates +
-                // dims when the drawer opens.
-                ZStack(alignment: .leading) {
-                    MainTabView()
-                        .frame(width: geo.size.width)
-                        .background(Color(.systemBackground))
-                        .saturation(appState.sidebarOpen ? 0.0 : 1.0)
-                        .allowsHitTesting(!appState.sidebarOpen)
-
-                    // Layered dim: dark scrim + ultra-thin material so
-                    // the peek reads as fully inactive. Catches taps
-                    // (close on tap) and gates drag-to-close.
-                    if appState.sidebarOpen {
-                        ZStack {
-                            Color.black.opacity(0.55)
-                            Rectangle().fill(.ultraThinMaterial).opacity(0.35)
-                        }
-                        .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .onTapGesture { closeSidebar() }
-                        .gesture(
-                            DragGesture(minimumDistance: 12)
-                                .onEnded { value in
-                                    if value.translation.width < -60 { closeSidebar() }
-                                }
-                        )
-                        .transition(.opacity)
-                    }
-                }
-                .frame(width: geo.size.width)
-                .offset(x: appState.sidebarOpen ? drawerWidth : 0)
-                .scaleEffect(appState.sidebarOpen ? 0.94 : 1.0, anchor: .leading)
-                .clipShape(RoundedRectangle(cornerRadius: appState.sidebarOpen ? 18 : 0, style: .continuous))
-                .shadow(color: .black.opacity(appState.sidebarOpen ? 0.25 : 0), radius: 24, x: -6, y: 0)
+                // Main content. Slides fully off-screen to the right.
+                MainTabView()
+                    .frame(width: geo.size.width)
+                    .background(Color(.systemBackground))
+                    .allowsHitTesting(!appState.sidebarOpen)
+                    .offset(x: appState.sidebarOpen ? drawerWidth : 0)
+                    .shadow(
+                        color: .black.opacity(appState.sidebarOpen ? 0.35 : 0),
+                        radius: 24, x: -8, y: 0
+                    )
 
                 // Edge-swipe-to-open. Only listening while drawer is closed
                 // so we don't fight scroll gestures inside the chat.
