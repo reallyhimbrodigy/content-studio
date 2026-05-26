@@ -26,71 +26,10 @@ struct VoiceInputSheet: View {
             // Deep background — sits above the keyboard layer.
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 28) {
-                Spacer(minLength: 24)
-
-                // Transcript area. Live text grows from top, fading the
-                // earliest lines if it's getting long. Empty state is a
-                // soft prompt that tells the user to start talking.
-                ScrollView(showsIndicators: false) {
-                    Text(displayText)
-                        .font(.system(size: 28, weight: .regular, design: .default))
-                        .tracking(0.2)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 28)
-                        .padding(.top, 8)
-                        .padding(.bottom, 80)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .mask(
-                    LinearGradient(
-                        colors: [.clear, .black, .black, .black, .black],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
-
-                Spacer(minLength: 0)
-
-                // Live audio-level waveform. Centered, animated.
-                waveform
-                    .frame(height: 60)
-                    .padding(.horizontal, 40)
-
-                // Bottom action row: cancel × on left, big Done on right.
-                HStack {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        recognizer.stop()
-                        isPresented = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-
-                    Spacer()
-
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        commit()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 64, height: 64)
-                            .background(Color.white)
-                            .clipShape(Circle())
-                    }
-                    .disabled(recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
-                }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 32)
+            if recognizer.permissionDenied {
+                permissionDeniedView
+            } else {
+                listeningView
             }
         }
         .preferredColorScheme(.dark)
@@ -107,8 +46,143 @@ struct VoiceInputSheet: View {
                 commit()
             }
         }
-        .onChange(of: recognizer.permissionDenied) { _, denied in
-            if denied { isPresented = false }
+    }
+
+    // MARK: - Listening (happy path)
+
+    @ViewBuilder
+    private var listeningView: some View {
+        VStack(spacing: 28) {
+            Spacer(minLength: 24)
+
+            // Transcript area. Live text grows from top, fading the
+            // earliest lines if it's getting long. Empty state is a
+            // soft prompt that tells the user to start talking.
+            ScrollView(showsIndicators: false) {
+                Text(displayText)
+                    .font(.system(size: 28, weight: .regular, design: .default))
+                    .tracking(0.2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 8)
+                    .padding(.bottom, 80)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .mask(
+                LinearGradient(
+                    colors: [.clear, .black, .black, .black, .black],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+
+            Spacer(minLength: 0)
+
+            // Live audio-level waveform. Centered, animated.
+            waveform
+                .frame(height: 60)
+                .padding(.horizontal, 40)
+
+            // Bottom action row: cancel × on left, big Done on right.
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    recognizer.stop()
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    commit()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 64, height: 64)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                }
+                .disabled(recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(recognizer.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 32)
+        }
+    }
+
+    // MARK: - Permission denied
+    //
+    // Shown when the user has previously denied mic OR speech
+    // recognition permission. We can't reprompt — once denied, iOS
+    // requires the user to flip the toggle in Settings. So we tell
+    // them exactly that and offer a one-tap deeplink.
+
+    private var permissionDeniedView: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 84, height: 84)
+                Image(systemName: "mic.slash.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .padding(.bottom, 6)
+
+            Text("Microphone access needed")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(.white)
+
+            Text("Promptly needs microphone and speech recognition access to convert what you say into text. Enable both in Settings.")
+                .font(.system(size: 15))
+                .foregroundColor(Color.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    isPresented = false
+                } label: {
+                    Text("Open Settings")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isPresented = false
+                } label: {
+                    Text("Not now")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 28)
         }
     }
 

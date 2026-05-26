@@ -413,6 +413,12 @@ struct ChatListView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: store.chats.map(\.id))
+        // Bottom safe-area inset so the floating "Chat" pill (44pt tall,
+        // 22pt bottom padding) doesn't cover the last chat row. Anything
+        // less than ~90pt leaves the last title peeking out under the pill.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: 84)
+        }
     }
 
     // Filter + group

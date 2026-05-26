@@ -109,10 +109,20 @@ struct LibraryView: View {
                 Button("Cancel", role: .cancel) { }
             }
             .sheet(item: $selectedEdit) { edit in
-                VideoDetailSheet(edit: edit, onDelete: {
-                    selectedEdit = nil
-                    Task { await loadEdits() }
-                })
+                VideoDetailSheet(
+                    edit: edit,
+                    onDelete: {
+                        selectedEdit = nil
+                        Task { await loadEdits() }
+                    },
+                    onReedit: {
+                        // Same handoff as the row-level Re-edit button:
+                        // post a pending re-edit session, jump to the
+                        // Edit tab. EditorView consumes it on appear.
+                        selectedEdit = nil
+                        startReedit(edit)
+                    }
+                )
             }
         }
     }
@@ -558,6 +568,7 @@ struct EditRow: View {
 struct VideoDetailSheet: View {
     let edit: VideoJob
     let onDelete: () -> Void
+    let onReedit: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
 
@@ -676,12 +687,8 @@ struct VideoDetailSheet: View {
                             DetailActionIcon(systemName: "square.and.arrow.up", label: "Share")
                         }
                         DetailActionButton(systemName: "arrow.uturn.left", label: "Re-edit") {
-                            // Just dismiss — Library row already has its
-                            // own re-edit affordance for power users; this
-                            // sheet's tertiary action stays in scope but
-                            // simple. (Hook up real handler if/when we
-                            // want to keep parity with the Library row.)
                             dismiss()
+                            onReedit()
                         }
                         DetailActionButton(systemName: "trash", label: "Delete") {
                             showDeleteConfirm = true
