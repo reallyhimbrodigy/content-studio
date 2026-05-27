@@ -190,6 +190,13 @@ struct PromptlyApp: App {
         // delegate before the first push arrives — iOS only delivers
         // callbacks if a delegate is set at the time of delivery.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+
+        // Boot RevenueCat. Pulls offerings + initial CustomerInfo so the
+        // paywall has data ready the first time it's presented. Once the
+        // Supabase user resolves below in `.task`, we call identify() to
+        // alias their RC ID to the Supabase user.id — that's what the
+        // webhook uses to write pro_until back to profiles.
+        SubscriptionService.shared.bootstrap()
     }
 
     @StateObject private var appState = AppState.shared
@@ -215,6 +222,13 @@ struct PromptlyApp: App {
                 // the first send.
                 if PushService.shared.hasAskedForPermission && auth.isAuthenticated {
                     await PushService.shared.requestPermissionIfNeeded()
+                }
+                // Tell RevenueCat which Supabase user is signed in so its
+                // webhook can write pro_until back to the right profiles row.
+                // Also pull the initial usage snapshot for the badge.
+                if auth.isAuthenticated, let uid = auth.currentUser?.id {
+                    await SubscriptionService.shared.identify(userId: uid)
+                    await UsageService.shared.refresh()
                 }
             }
         }

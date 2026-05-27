@@ -234,6 +234,14 @@ struct MessageBubble: View {
         let vibe = message.originalVibe ?? ""
         let thumb = message.thumbnailUrl
         return {
+            // Pro gate: re-edit is a paid feature. Free users get the
+            // paywall sheet with the right reason copy; the actual re-edit
+            // only fires when SubscriptionService says they're entitled.
+            if !SubscriptionService.shared.isPro {
+                AppState.shared.paywallReason = .reedit
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                return
+            }
             AppState.shared.pendingReedit = ReeditSession(
                 originalJobId: jobId,
                 oldVibe: vibe,

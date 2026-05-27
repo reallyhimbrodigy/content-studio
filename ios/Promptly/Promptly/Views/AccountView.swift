@@ -47,9 +47,17 @@ struct AccountView: View {
                     }
                     divider
 
-                    row("Subscription", badge: tier == "pro" ? "PRO" : "FREE") {
-                        if let url = URL(string: "https://usepromptly.app/#pricing") {
-                            UIApplication.shared.open(url)
+                    row("Subscription", badge: SubscriptionService.shared.isPro ? "PRO" : "FREE") {
+                        if SubscriptionService.shared.isPro {
+                            // Apple's standard subscription-management URL
+                            // — opens directly to the user's subscriptions
+                            // list in Settings. The only correct way to
+                            // cancel an App Store subscription.
+                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                UIApplication.shared.open(url)
+                            }
+                        } else {
+                            AppState.shared.paywallReason = .manual
                         }
                     }
                     divider

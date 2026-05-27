@@ -106,6 +106,22 @@ class APIService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 402 {
+            // Daily render cap hit. Parse the structured payload so the
+            // caller can present the right paywall reason copy.
+            struct LimitPayload: Decodable {
+                let kind: String?
+                let limit: Int?
+                let message: String?
+                let error: String?
+            }
+            let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
+            throw APIError.paymentRequired(
+                kind: payload?.kind ?? "render",
+                limit: payload?.limit,
+                message: payload?.message ?? "Daily limit reached. Upgrade to Pro for unlimited."
+            )
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Unknown error")
@@ -909,7 +925,20 @@ class APIService {
         let payload: [String: Any] = ["message": message, "history": history]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, _) = try await requestData(request)
+        let (data, response) = try await requestData(request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 402 {
+            struct LimitPayload: Decodable {
+                let kind: String?
+                let limit: Int?
+                let message: String?
+            }
+            let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
+            throw APIError.paymentRequired(
+                kind: payload?.kind ?? "chat",
+                limit: payload?.limit,
+                message: payload?.message ?? "Daily chat limit reached."
+            )
+        }
         let result = try JSONDecoder().decode(ChatResponse.self, from: data)
         return result.reply ?? "No response"
     }
@@ -972,6 +1001,10 @@ enum APIError: LocalizedError {
     case jobCreationFailed(String)
     case uploadFailed
     case deleteFailed
+    /// Server returned 402 — daily quota hit or a Pro-only feature was
+    /// called by a free user. `kind` is "render", "chat", or "reedit" so
+    /// the caller can present the right paywall reason.
+    case paymentRequired(kind: String, limit: Int?, message: String)
 
     var errorDescription: String? {
         switch self {
@@ -979,6 +1012,7 @@ enum APIError: LocalizedError {
         case .jobCreationFailed(let msg): return msg
         case .uploadFailed: return "Upload failed"
         case .deleteFailed: return "Delete failed"
+        case .paymentRequired(_, _, let msg): return msg
         }
     }
 }

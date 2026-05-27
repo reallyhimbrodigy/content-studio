@@ -1241,12 +1241,21 @@ struct EditorView: View {
         if Task.isCancelled { return }
 
         // ── Tier 2: one-shot + client-side typewriter ──────────────────
+        var hitPaywall = false
         if accumulated.isEmpty {
             do {
                 let reply = try await APIService.shared.chat(message: prompt, history: context)
                 if Task.isCancelled { return }
                 await typewriteReveal(reply, intoMessageId: messageId)
                 accumulated = reply
+            } catch let APIError.paymentRequired(_, limit, _) {
+                // Daily AI chat cap. Pop the paywall sheet and remove the
+                // empty assistant bubble — the user didn't really get a
+                // reply, no point persisting one.
+                let lim = limit ?? 50
+                appState.paywallReason = .dailyChats(used: lim, limit: lim)
+                hitPaywall = true
+                await UsageService.shared.refresh()
             } catch {
                 print("[chat] one-shot fallback failed: \(error.localizedDescription)")
             }
@@ -1255,6 +1264,13 @@ struct EditorView: View {
         if Task.isCancelled { return }
 
         // ── Finalize ──────────────────────────────────────────────────
+        if hitPaywall {
+            if let i = idx() {
+                messages.remove(at: i)
+                persistMessages()
+            }
+            return
+        }
         if let i = idx() {
             messages[i].isThinking = false
             if accumulated.isEmpty {
@@ -1552,6 +1568,22 @@ struct EditorView: View {
                             // error in the UI so the user isn't staring
                             // at a frozen progress bar.
                             scheduleStuckDetector(messageId: msgId, jobId: jobId)
+                        } catch let APIError.paymentRequired(kind, limit, _) {
+                            // Server says they're over the daily render cap
+                            // (or hit the re-edit Pro gate). Remove the
+                            // stub processing bubble — they didn't actually
+                            // dispatch a job — and present the paywall.
+                            if let i = indexOfProcessingMsg() {
+                                messages.remove(at: i)
+                                persistMessages()
+                            }
+                            if kind == "reedit" {
+                                appState.paywallReason = .reedit
+                            } else {
+                                let lim = limit ?? 3
+                                appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                            }
+                            await UsageService.shared.refresh()
                         } catch {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobStatus = "failed"

@@ -320,6 +320,21 @@ final class AppState: ObservableObject {
     /// transition. Lives on AppState so any view can dismiss it without
     /// having to plumb a binding through the hierarchy.
     @Published var sidebarOpen: Bool = false
+    /// Request a paywall sheet from anywhere in the view tree. The root
+    /// (AppShell) presents PaywallView when this becomes non-nil and
+    /// clears it on dismiss. Setting from a leaf view (re-edit tap,
+    /// usage badge, server 402 handler) is what triggers the flow —
+    /// no binding plumbing required.
+    @Published var paywallReason: PaywallReason?
+}
+
+/// Codable for symmetry with ReeditSession; only the case matters at
+/// runtime so the picker view in PaywallView can render the right copy.
+enum PaywallReason: Equatable, Hashable {
+    case dailyRenders(used: Int, limit: Int)
+    case dailyChats(used: Int, limit: Int)
+    case reedit
+    case manual
 }
 
 // MARK: - Pipeline stages (render progress narrative)

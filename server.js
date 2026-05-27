@@ -1196,36 +1196,26 @@ async function fetchSubscriptionEntitlement(userId) {
   if (!data) {
     return { status: null, plan: null, sourceTable: 'profiles', row: null };
   }
-  const plan = normalizePlanLabel(
-    data?.subscription_plan || data?.plan || data?.tier || data?.subscription_tier || null
-  );
-  const status = normalizeSubscriptionStatus(
-    data?.subscription_status || data?.stripe_subscription_status || data?.status || null
-  );
+  // RevenueCat era: tier + pro_until are the authoritative source. We
+  // still expose `plan` and `status` in the return shape because other
+  // code paths read them, but they're derived from tier now.
+  const plan = normalizePlanLabel(data?.tier || data?.subscription_plan || null);
+  const status = isProfilePro(data) ? 'active' : null;
   return { status, plan, sourceTable: 'profiles', row: data };
 }
 
 function resolveEntitlementDecision(entitlement) {
   const row = entitlement?.row || null;
-  const hasStatusField = row
-    ? ['subscription_status', 'stripe_subscription_status', 'status'].some((field) =>
-        Object.prototype.hasOwnProperty.call(row, field)
-      )
-    : false;
   const plan = entitlement?.plan || null;
   const status = entitlement?.status || null;
   const isPro = isProfilePro(row);
-  const planQualifies = plan ? PRO_PLAN_VALUES.has(plan) : false;
   if (isPro) {
-    return { isPro: true, reason: 'IS_USER_PRO', plan, status, hasStatusField };
+    return { isPro: true, reason: 'IS_USER_PRO', plan, status };
   }
   if (!row) {
-    return { isPro: false, reason: 'NO_ENTITLEMENT_ROW', plan, status, hasStatusField };
+    return { isPro: false, reason: 'NO_ENTITLEMENT_ROW', plan, status };
   }
-  if (!planQualifies) {
-    return { isPro: false, reason: 'PLAN_NOT_PRO', plan, status, hasStatusField };
-  }
-  return { isPro: false, reason: 'STATUS_NOT_PRO', plan, status, hasStatusField };
+  return { isPro: false, reason: 'TIER_NOT_PRO', plan, status };
 }
 
 async function assertProEntitled(userId) {
@@ -9412,42 +9402,6 @@ function saveCustomersMap(map) {
   }
 }
 
-async function stripeApiRequest({ method = 'GET', path: requestPath, body, secretKey }) {
-  return new Promise((resolve, reject) => {
-    const headers = {
-      'Authorization': `Bearer ${secretKey}`,
-    };
-    let payload = null;
-    if (body) {
-      payload = typeof body === 'string' ? body : JSON.stringify(body);
-      headers['Content-Type'] = 'application/json';
-      headers['Content-Length'] = Buffer.byteLength(payload);
-    }
-    const options = {
-      hostname: 'api.stripe.com',
-      path: requestPath,
-      method,
-      headers,
-    };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => {
-        let parsed = null;
-        try {
-          parsed = JSON.parse(data || '{}');
-        } catch (_err) {
-          parsed = null;
-        }
-        resolve({ statusCode: res.statusCode || 0, data: parsed, raw: data });
-      });
-    });
-    req.on('error', reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
-
 function isBrandKitPath(pathname) {
   if (!pathname) return false;
   const normalized = String(pathname)
@@ -9514,105 +9468,6 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname && (parsed.pathname.startsWith('/api/phyllo') || parsed.pathname.startsWith('/internal/phyllo'))) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'not_found' }));
-  }
-
-  if (parsed.pathname === '/api/entitlements' && req.method === 'GET') {
-    (async () => {
-      const requestId = generateRequestId('entitlements');
-      try {
-        const user = await requireSupabaseUser(req);
-        const emailRaw = user?.email || user?.user_metadata?.email || '';
-        const email = String(emailRaw || '').trim().toLowerCase();
-        const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-        if (!STRIPE_SECRET_KEY) {
-          console.warn('[Entitlements] Stripe not configured', { requestId });
-          return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
-        }
-        if (!email) {
-          return sendJson(res, 200, { tier: 'free', reason: 'missing_email', requestId });
-        }
-
-        const customers = loadCustomersMap();
-        let customerId = customers[email];
-        if (!customerId) {
-          const query = new URLSearchParams({ email, limit: '1' }).toString();
-          const customerResp = await stripeApiRequest({
-            method: 'GET',
-            path: `/v1/customers?${query}`,
-            secretKey: STRIPE_SECRET_KEY,
-          });
-          if (customerResp.statusCode < 200 || customerResp.statusCode >= 300) {
-            console.warn('[Entitlements] Stripe customer lookup failed', {
-              requestId,
-              statusCode: customerResp.statusCode,
-            });
-            return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
-          }
-          const found = Array.isArray(customerResp.data?.data) ? customerResp.data.data[0] : null;
-          if (found?.id) {
-            customerId = found.id;
-            customers[email] = customerId;
-            saveCustomersMap(customers);
-          }
-        }
-
-        if (!customerId) {
-          if (DEBUG_ENTITLEMENTS) {
-            console.log('[Entitlements] no customer found', {
-              requestId,
-              userId: user?.id,
-              email,
-            });
-          }
-          return sendJson(res, 200, { tier: 'free', reason: 'no_customer', requestId });
-        }
-
-        const subsQuery = new URLSearchParams({
-          customer: customerId,
-          status: 'all',
-          limit: '10',
-        }).toString();
-        const subsResp = await stripeApiRequest({
-          method: 'GET',
-          path: `/v1/subscriptions?${subsQuery}`,
-          secretKey: STRIPE_SECRET_KEY,
-        });
-        if (subsResp.statusCode < 200 || subsResp.statusCode >= 300) {
-          console.warn('[Entitlements] Stripe subscription lookup failed', {
-            requestId,
-            customerId,
-            statusCode: subsResp.statusCode,
-          });
-          return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
-        }
-        const subscriptions = Array.isArray(subsResp.data?.data) ? subsResp.data.data : [];
-        const statuses = subscriptions.map((sub) => sub?.status).filter(Boolean);
-        const isPro = statuses.some((status) => status === 'active' || status === 'trialing');
-
-        if (DEBUG_ENTITLEMENTS) {
-          console.log('[Entitlements] resolved', {
-            requestId,
-            userId: user?.id,
-            email,
-            customerId,
-            statuses,
-          });
-        }
-
-        return sendJson(res, 200, { tier: isPro ? 'pro' : 'free', requestId });
-      } catch (err) {
-        const status = err?.statusCode || 500;
-        if (status === 401) {
-          return sendJson(res, 401, { error: 'unauthorized', requestId });
-        }
-        console.warn('[Entitlements] failed to resolve entitlements', {
-          requestId,
-          error: err?.message || err,
-        });
-        return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
-      }
-    })();
-    return;
   }
 
   if (parsed.pathname === '/api/user/subscription' && req.method === 'GET') {
@@ -10111,6 +9966,47 @@ const server = http.createServer((req, res) => {
     return Number(count || 0);
   }
 
+  // ── Daily usage tracking (RevenueCat-era gating) ──
+  // Both counters use the usage_events table and a UTC midnight cutoff.
+  // Cheap: composite index on (user_id, kind, created_at DESC).
+  //
+  // Free tier:
+  //   - 3 renders / day  (kind='render')
+  //   - 50 AI chat msgs / day (kind='chat')
+  //   - Re-edit is fully gated to Pro (no daily allowance)
+  const FREE_DAILY_RENDERS = 3;
+  const FREE_DAILY_CHATS = 50;
+
+  function utcDayStart() {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  }
+
+  async function countTodayUsage(userId, kind) {
+    if (!supabaseAdmin) return 0;
+    const { count, error } = await supabaseAdmin
+      .from('usage_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('kind', kind)
+      .gte('created_at', utcDayStart());
+    if (error) {
+      console.warn('[usage] count failed', { userId, kind, error: error.message });
+      return 0;
+    }
+    return Number(count || 0);
+  }
+
+  async function logUsageEvent(userId, kind) {
+    if (!supabaseAdmin || !userId) return;
+    const { error } = await supabaseAdmin
+      .from('usage_events')
+      .insert({ user_id: userId, kind });
+    if (error) {
+      console.warn('[usage] insert failed', { userId, kind, error: error.message });
+    }
+  }
+
   // ── Presigned S3 upload URL ──
   if (parsed.pathname === '/api/upload-url' && req.method === 'POST') {
     (async () => {
@@ -10246,6 +10142,20 @@ const server = http.createServer((req, res) => {
         const message = String(body?.message || '').trim();
         if (!message) return sendJson(res, 400, { error: 'Message is required' });
 
+        // Daily chat limit (free tier). Pro bypasses entirely.
+        const chatEnt = await assertProEntitled(authUser.id);
+        if (!chatEnt.isPro) {
+          const todayChats = await countTodayUsage(authUser.id, 'chat');
+          if (todayChats >= FREE_DAILY_CHATS) {
+            return sendJson(res, 402, {
+              error: 'daily_limit_reached',
+              kind: 'chat',
+              limit: FREE_DAILY_CHATS,
+              message: `You've used your ${FREE_DAILY_CHATS} free chat messages today. Upgrade to Pro for unlimited.`,
+            });
+          }
+        }
+
         const history = Array.isArray(body?.history) ? body.history : [];
         const geminiKey = process.env.GEMINI_API_KEY;
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
@@ -10305,6 +10215,11 @@ const server = http.createServer((req, res) => {
         const geminiData = await geminiRes.json();
         const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
+        // Log usage AFTER a successful AI hit. Counts AI-reaching messages
+        // only — burning a chat message that errored out shouldn't deplete
+        // the user's daily quota.
+        await logUsageEvent(authUser.id, 'chat');
+
         return sendJson(res, 200, { reply });
       } catch (error) {
         console.error('[Chat] Error:', error);
@@ -10322,10 +10237,24 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/chat/stream' && req.method === 'POST') {
     (async () => {
       try {
-        await requireSupabaseUser(req);
+        const streamUser = await requireSupabaseUser(req);
         const body = await readJsonBody(req);
         const message = String(body?.message || '').trim();
         if (!message) return sendJson(res, 400, { error: 'Message is required' });
+
+        // Daily chat limit (free tier). Pro bypasses entirely.
+        const streamEnt = await assertProEntitled(streamUser.id);
+        if (!streamEnt.isPro) {
+          const todayChats = await countTodayUsage(streamUser.id, 'chat');
+          if (todayChats >= FREE_DAILY_CHATS) {
+            return sendJson(res, 402, {
+              error: 'daily_limit_reached',
+              kind: 'chat',
+              limit: FREE_DAILY_CHATS,
+              message: `You've used your ${FREE_DAILY_CHATS} free chat messages today. Upgrade to Pro for unlimited.`,
+            });
+          }
+        }
 
         const history = Array.isArray(body?.history) ? body.history : [];
         const geminiKey = process.env.GEMINI_API_KEY;
@@ -10419,6 +10348,11 @@ const server = http.createServer((req, res) => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
+
+        // Log usage AFTER stream completion. Counts the message regardless
+        // of how many tokens streamed — even a one-token failure used the
+        // quota. Pro users still log so analytics shows engagement.
+        await logUsageEvent(streamUser.id, 'chat');
       } catch (error) {
         console.error('[ChatStream] Error:', error);
         try {
@@ -10441,6 +10375,160 @@ const server = http.createServer((req, res) => {
   //
   // Returns 202 immediately without waiting for the Modal prewarm to
   // finish. The prewarm is a latency hedge; if it fails, the real job
+  // ── Daily usage + Pro status ──
+  // Single endpoint the iOS client polls on app foreground + after each
+  // gated action. Returns the user's current counts vs limits and Pro
+  // entitlement. iOS uses this to render the usage badge AND to know
+  // when to surface the paywall preemptively (e.g., at 2/3 renders).
+  if (parsed.pathname === '/api/usage' && req.method === 'GET') {
+    (async () => {
+      try {
+        const u = await requireSupabaseUser(req);
+        const ent = await assertProEntitled(u.id);
+        const [renders, chats] = await Promise.all([
+          countTodayUsage(u.id, 'render'),
+          countTodayUsage(u.id, 'chat'),
+        ]);
+        // proUntil — when the current entitlement expires (trial end or
+        // renewal date). Read straight from profiles so the client can
+        // show a friendly "Trial ends Mar 5" line.
+        let proUntil = null;
+        if (supabaseAdmin) {
+          const { data } = await supabaseAdmin
+            .from('profiles')
+            .select('pro_until')
+            .eq('id', u.id)
+            .maybeSingle();
+          proUntil = data?.pro_until || null;
+        }
+        return sendJson(res, 200, {
+          is_pro: !!ent.isPro,
+          pro_until: proUntil,
+          renders_today: renders,
+          chats_today: chats,
+          render_limit: FREE_DAILY_RENDERS,
+          chat_limit: FREE_DAILY_CHATS,
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        return sendJson(res, status, { error: error?.message || 'usage_unavailable' });
+      }
+    })();
+    return;
+  }
+
+  // ── RevenueCat webhook ──
+  // RevenueCat → here on every subscription lifecycle event (INITIAL_PURCHASE,
+  // RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE, TRIAL_STARTED, etc.).
+  // We translate to two profile fields:
+  //   - tier      'pro' when the entitlement is active, else 'free'
+  //   - pro_until ISO timestamp from event.expiration_at_ms; null when free
+  // Server's isUserPro() check looks at both, so a cancelled-but-still-in-period
+  // subscription stays Pro until expiration_at_ms passes.
+  //
+  // Security: RevenueCat signs every webhook with the bearer token configured
+  // in their dashboard (Authorization: Bearer <REVENUECAT_WEBHOOK_AUTH>).
+  // We reject unsigned or mis-signed calls. Set REVENUECAT_WEBHOOK_AUTH in
+  // Render env to match what you paste into RevenueCat's webhook config.
+  if (parsed.pathname === '/api/revenuecat/webhook' && req.method === 'POST') {
+    (async () => {
+      try {
+        const expected = process.env.REVENUECAT_WEBHOOK_AUTH || '';
+        if (!expected) {
+          console.warn('[RevenueCat] webhook called but REVENUECAT_WEBHOOK_AUTH not set');
+          return sendJson(res, 503, { error: 'webhook_not_configured' });
+        }
+        const got = String(req.headers.authorization || '');
+        const expectedHeader = `Bearer ${expected}`;
+        if (got !== expectedHeader) {
+          console.warn('[RevenueCat] webhook auth mismatch');
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+        const body = await readJsonBody(req);
+        const event = body?.event;
+        if (!event) return sendJson(res, 400, { error: 'event_missing' });
+
+        const type = String(event.type || '').toUpperCase();
+        // app_user_id is whatever we set in Purchases.shared.logIn(...) on
+        // iOS — we use the Supabase user.id, so this maps 1:1 to profiles.id.
+        const appUserId = String(event.app_user_id || '').trim();
+        if (!appUserId) {
+          console.warn('[RevenueCat] event missing app_user_id', { type });
+          return sendJson(res, 400, { error: 'app_user_id_missing' });
+        }
+        const productId = event.product_id ? String(event.product_id) : null;
+        const periodType = event.period_type ? String(event.period_type).toLowerCase() : null;
+        const expirationMs = Number(event.expiration_at_ms || 0);
+        const expirationIso = expirationMs > 0 ? new Date(expirationMs).toISOString() : null;
+
+        // Events that activate Pro. RevenueCat fires INITIAL_PURCHASE on
+        // first-time purchase OR free trial start (period_type === 'TRIAL').
+        const grantsPro = new Set([
+          'INITIAL_PURCHASE',
+          'RENEWAL',
+          'PRODUCT_CHANGE',
+          'UNCANCELLATION',
+          'NON_RENEWING_PURCHASE',
+        ]);
+        // Events that revoke Pro IMMEDIATELY (vs CANCELLATION which lets
+        // them stay Pro through expiration_at_ms).
+        const revokesProNow = new Set([
+          'EXPIRATION',
+          'BILLING_ISSUE',
+          'SUBSCRIPTION_PAUSED',
+          'REFUND',
+          'SUBSCRIBER_ALIAS', // edge — re-assigning to new user; treat as revoke for safety
+        ]);
+
+        let update = null;
+        if (grantsPro.has(type)) {
+          update = {
+            tier: 'pro',
+            pro_until: expirationIso,
+            rc_app_user_id: appUserId,
+            rc_product_id: productId,
+            rc_period_type: periodType,
+          };
+        } else if (type === 'CANCELLATION') {
+          // User cancelled but keeps access until expiration_at_ms. No
+          // change to tier — isUserPro will flip to false naturally when
+          // pro_until passes. Just record the new (unchanged) expiration.
+          update = { pro_until: expirationIso, rc_app_user_id: appUserId };
+        } else if (revokesProNow.has(type)) {
+          update = {
+            tier: 'free',
+            pro_until: null,
+            rc_app_user_id: appUserId,
+            rc_product_id: productId,
+            rc_period_type: periodType,
+          };
+        } else {
+          // TRANSFER, TEST, etc — log and ack so RevenueCat doesn't retry.
+          console.log('[RevenueCat] unhandled event type, acking', { type, appUserId });
+          return sendJson(res, 200, { ok: true, ignored: type });
+        }
+
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .update(update)
+          .eq('id', appUserId);
+        if (error) {
+          console.error('[RevenueCat] profile update failed', { type, appUserId, error: error.message });
+          return sendJson(res, 500, { error: 'profile_update_failed' });
+        }
+        console.log('[RevenueCat] applied', { type, appUserId, ...update });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[RevenueCat] webhook error', err);
+        return sendJson(res, 500, { error: err?.message || 'webhook_error' });
+      }
+    })();
+    return;
+  }
+
   // just does the normal S3 download. Zero regression vs the old flow.
   if (parsed.pathname === '/api/prewarm' && req.method === 'POST') {
     (async () => {
@@ -10546,11 +10634,13 @@ const server = http.createServer((req, res) => {
 
         const entitlement = await assertProEntitled(authUser.id);
         if (!entitlement.isPro) {
-          const completedCount = await countCompletedVideoEdits(authUser.id);
-          if (completedCount >= 5) {
-            return sendJson(res, 403, {
-              error: 'free_limit_reached',
-              message: 'You have used all 5 free edits. Upgrade to Promptly Pro for unlimited edits without watermarks.',
+          const todayCount = await countTodayUsage(authUser.id, 'render');
+          if (todayCount >= FREE_DAILY_RENDERS) {
+            return sendJson(res, 402, {
+              error: 'daily_limit_reached',
+              kind: 'render',
+              limit: FREE_DAILY_RENDERS,
+              message: `You've used your ${FREE_DAILY_RENDERS} free renders today. Upgrade to Pro for unlimited.`,
             });
           }
         }
@@ -10561,6 +10651,10 @@ const server = http.createServer((req, res) => {
           vibeInput,
         });
         console.log('  ✅ Job created:', job.id);
+
+        // Log usage AFTER successful job creation so failed dispatches
+        // don't burn quota. Pro users still log so analytics shows engagement.
+        await logUsageEvent(authUser.id, 'render');
 
         await dispatchJobToModal({
           pushProgressToSSE,
@@ -10632,15 +10726,16 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'Only completed edits can be re-edited' });
         }
 
+        // Re-edit is a Pro-only feature. Free users cannot use this endpoint
+        // at all — return 402 with a payload the client recognizes so the
+        // paywall sheet pops with the right "Re-edit is a Pro feature" copy.
         const entitlement = await assertProEntitled(authUser.id);
         if (!entitlement.isPro) {
-          const completedCount = await countCompletedVideoEdits(authUser.id);
-          if (completedCount >= 5) {
-            return sendJson(res, 403, {
-              error: 'free_limit_reached',
-              message: 'You have used all 5 free edits. Upgrade to Promptly Pro for unlimited edits without watermarks.',
-            });
-          }
+          return sendJson(res, 402, {
+            error: 'pro_required',
+            kind: 'reedit',
+            message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
+          });
         }
 
         // Mode resolution: tweak requires a saved edit_recipe; otherwise reinterpret.
@@ -11051,10 +11146,9 @@ const server = http.createServer((req, res) => {
   }
 
   // Optional canonical host redirect to enforce a single domain (e.g., promptlyapp.com)
-  // IMPORTANT: Do NOT redirect Stripe webhooks; Stripe will not follow 301s for webhooks.
   const pathLower = typeof parsed.pathname === 'string' ? parsed.pathname.toLowerCase() : '';
   const isApiRequest = pathLower.startsWith('/api/') || req.method !== 'GET';
-  if (CANONICAL_HOST && parsed.pathname !== '/stripe/webhook' && !isApiRequest) {
+  if (CANONICAL_HOST && !isApiRequest) {
     const reqHost = (req.headers && req.headers.host) ? String(req.headers.host) : '';
     // Strip port if present for comparison
     const normalize = (h) => String(h || '').replace(/:\d+$/, '');
@@ -13493,373 +13587,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/billing/portal' && req.method === 'POST') {
-    // Customer portal creation using Stripe API
-    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
-      try {
-        const { returnUrl, email } = JSON.parse(body || '{}');
-        if (!STRIPE_SECRET_KEY) {
-          res.writeHead(501, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Billing portal not configured', hint: 'Set STRIPE_SECRET_KEY in env.' }));
-        }
-        if (!email) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'email required' }));
-        }
-        const customers = loadCustomersMap();
-        let cid = customers[String(email).toLowerCase()];
-        if (!cid) {
-          // Fallback: search Stripe customers by email to find existing customer id (useful if local map was lost)
-          try {
-            const q = new URLSearchParams({ email: String(email) });
-            const findOpts = {
-              hostname: 'api.stripe.com',
-              path: `/v1/customers?${q.toString()}`,
-              method: 'GET',
-              headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
-            };
-            const list = await new Promise((resolve, reject) => {
-              const r = https.request(findOpts, (sres) => {
-                let data = '';
-                sres.on('data', (c) => (data += c));
-                sres.on('end', () => {
-                  try {
-                    const obj = JSON.parse(data);
-                    if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
-                    reject(new Error(`Stripe customers error ${sres.statusCode}: ${data}`));
-                  } catch (e) { reject(e); }
-                });
-              });
-              r.on('error', reject);
-              r.end();
-            });
-            if (list && Array.isArray(list.data) && list.data.length > 0) {
-              cid = list.data[0].id;
-              const map = loadCustomersMap();
-              map[String(email).toLowerCase()] = cid;
-              saveCustomersMap(map);
-            }
-          } catch (e) {
-            // ignore; will fall through to helpful message
-          }
-          if (!cid) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({ error: 'No Stripe customer found for this user yet', hint: 'Complete checkout first so we can map your account.' }));
-          }
-        }
-        // Create portal session via Stripe REST API (form-encoded)
-        const form = new URLSearchParams({ customer: cid, return_url: String(returnUrl || '/') });
-        const options = {
-          hostname: 'api.stripe.com',
-          path: '/v1/billing_portal/sessions',
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(form.toString()),
-          },
-        };
-        try {
-          const json = await new Promise((resolve, reject) => {
-            const sreq = https.request(options, (sres) => {
-              let data = '';
-              sres.on('data', (c) => (data += c));
-              sres.on('end', () => {
-                try {
-                  const parsed = JSON.parse(data);
-                  if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(parsed);
-                  reject(new Error(`Stripe error ${sres.statusCode}: ${data}`));
-                } catch (e) { reject(e); }
-              });
-            });
-            sreq.on('error', reject);
-            sreq.write(form.toString());
-            sreq.end();
-          });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ url: json.url }));
-        } catch (e) {
-          res.writeHead(502, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: String(e.message || e) }));
-        }
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      }
-    });
-    return;
-  }
-
-  if (parsed.pathname === '/api/billing/checkout' && req.method === 'POST') {
-    // Create a Stripe Checkout Session for subscriptions
-    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
-      try {
-        if (!STRIPE_SECRET_KEY) {
-          res.writeHead(501, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Checkout not configured', hint: 'Set STRIPE_SECRET_KEY to enable checkout.' }));
-        }
-  const { email, priceLookupKey, priceId } = JSON.parse(body || '{}');
-
-  // Build success/cancel URLs with precedence: PUBLIC_BASE_URL ENV > X-Forwarded-* > Host header
-  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
-  const xfHost = req.headers['x-forwarded-host'];
-  const xfProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
-  const host = String(PUBLIC_BASE_URL || (xfHost ? `${xfProto}://${xfHost}` : `http${req.socket.encrypted ? 's' : ''}://${req.headers.host || 'localhost:8000'}`));
-  const base = host.replace(/\/$/, '');
-        const success_url = `${base}/success.html?session_id={CHECKOUT_SESSION_ID}`;
-        const cancel_url = `${base}/?upgrade=canceled`;
-
-        // Form-encode payload
-        const form = new URLSearchParams();
-        form.set('mode', 'subscription');
-        form.set('success_url', success_url);
-        form.set('cancel_url', cancel_url);
-        form.set('allow_promotion_codes', 'true');
-        form.set('automatic_tax[enabled]', 'true');
-        if (email) form.set('customer_email', String(email));
-        let effectivePriceId = priceId || process.env.STRIPE_PRICE_ID || '';
-        const effectiveLookupKey = priceLookupKey || process.env.STRIPE_PRICE_LOOKUP_KEY || '';
-        if (!effectivePriceId && effectiveLookupKey) {
-          // Resolve lookup key to price id via Stripe API
-          const q = new URLSearchParams();
-          q.append('lookup_keys[]', String(effectiveLookupKey));
-          const priceListOptions = {
-            hostname: 'api.stripe.com',
-            path: `/v1/prices?${q.toString()}`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
-          };
-          try {
-            const list = await new Promise((resolve, reject) => {
-              const r = https.request(priceListOptions, (sres) => {
-                let data = '';
-                sres.on('data', (c) => (data += c));
-                sres.on('end', () => {
-                  try {
-                    const obj = JSON.parse(data);
-                    if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
-                    reject(new Error(`Stripe prices error ${sres.statusCode}: ${data}`));
-                  } catch (e) { reject(e); }
-                });
-              });
-              r.on('error', reject);
-              r.end();
-            });
-            effectivePriceId = list && Array.isArray(list.data) && list.data[0] && list.data[0].id;
-          } catch (e) {
-            // ignore and continue to error below if not resolved
-          }
-        }
-
-        if (effectivePriceId) {
-          form.set('line_items[0][price]', String(effectivePriceId));
-          form.set('line_items[0][quantity]', '1');
-        } else {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Valid priceId or resolvable priceLookupKey required' }));
-        }
-
-        const options = {
-          hostname: 'api.stripe.com',
-          path: '/v1/checkout/sessions',
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(form.toString()),
-          },
-        };
-        const session = await new Promise((resolve, reject) => {
-          const sreq = https.request(options, (sres) => {
-            let data = '';
-            sres.on('data', (c) => (data += c));
-            sres.on('end', () => {
-              try {
-                const obj = JSON.parse(data);
-                if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
-                reject(new Error(`Stripe error ${sres.statusCode}: ${data}`));
-              } catch (e) { reject(e); }
-            });
-          });
-          sreq.on('error', reject);
-          sreq.write(form.toString());
-          sreq.end();
-        });
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ url: session.url }));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err.message || err) }));
-      }
-    });
-    return;
-  }
-
-  if (parsed.pathname === '/api/billing/session' && req.method === 'GET') {
-    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-    const sessionId = parsed.query.session_id;
-    if (!STRIPE_SECRET_KEY) {
-      res.writeHead(501, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Not configured' }));
-    }
-    if (!sessionId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'session_id required' }));
-    }
-    const options = {
-      hostname: 'api.stripe.com',
-      path: `/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription`,
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
-    };
-    const start = Date.now();
-    const timer = setTimeout(() => {}, 0); // keep event loop tick
-    const done = (code, payload) => {
-      clearTimeout(timer);
-      res.writeHead(code, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(payload));
-    };
-    const reqStripe = https.request(options, (sres) => {
-      let data = '';
-      sres.on('data', (c) => (data += c));
-      sres.on('end', () => {
-        try {
-          const obj = JSON.parse(data);
-          if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) {
-            const payload = {
-              id: obj.id,
-              status: obj.status,
-              payment_status: obj.payment_status,
-              customer: obj.customer,
-              customer_email: obj.customer_details && obj.customer_details.email || obj.customer_email || null,
-              subscription_status: obj.subscription && obj.subscription.status || null,
-            };
-            return done(200, payload);
-          }
-          return done(502, { error: `Stripe error ${sres.statusCode}`, body: data });
-        } catch (e) {
-          return done(500, { error: String(e.message || e) });
-        }
-      });
-    });
-    reqStripe.on('error', (e) => done(502, { error: String(e.message || e) }));
-    reqStripe.end();
-    return;
-  }
-
-  if (parsed.pathname === '/stripe/webhook' && req.method === 'POST') {
-    // Map Stripe customers to user emails after successful checkout
-    const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
-    let raw = '';
-    req.on('data', (chunk) => (raw += chunk));
-    req.on('end', async () => {
-      try {
-        if (!STRIPE_WEBHOOK_SECRET) {
-          res.writeHead(501, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Webhook not configured' }));
-        }
-        // Verify Stripe signature
-        const sig = req.headers['stripe-signature'] || req.headers['Stripe-Signature'] || '';
-        const parts = String(sig).split(',').reduce((acc, p) => { const [k,v] = p.split('='); if (k && v) acc[k.trim()] = v.trim(); return acc; }, {});
-        const t = parts.t; const v1 = parts.v1;
-        if (!t || !v1) throw new Error('Invalid signature header');
-        const crypto = require('crypto');
-        const signedPayload = `${t}.${raw}`;
-        const expected = crypto.createHmac('sha256', STRIPE_WEBHOOK_SECRET).update(signedPayload).digest('hex');
-        const safeEqual = (a, b) => {
-          try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); } catch { return false; }
-        };
-        if (!safeEqual(expected, v1)) throw new Error('Signature verification failed');
-
-        const event = JSON.parse(raw);
-        const type = event && event.type;
-        const obj = event && event.data && event.data.object;
-        if (!type || !obj) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Invalid event' }));
-        }
-        // Capture mapping on checkout completion or subscription lifecycle updates
-        let email = '';
-        let customer = '';
-        if (type === 'checkout.session.completed') {
-          email = obj.customer_details && obj.customer_details.email || '';
-          customer = obj.customer || '';
-        } else if (type === 'customer.subscription.created' || type === 'customer.subscription.updated' || type === 'customer.subscription.deleted') {
-          customer = obj.customer || '';
-          email = obj.customer_email || '';
-        }
-        if (email && customer) {
-          const map = loadCustomersMap();
-          map[String(email).toLowerCase()] = customer;
-          saveCustomersMap(map);
-        }
-
-        // Update profiles.tier in Supabase (source of truth)
-        const normalizedEmail = String(email || '').toLowerCase().trim();
-        if (normalizedEmail) {
-          try {
-            let newTier = null;
-
-            if (type === 'checkout.session.completed') {
-              newTier = 'pro';
-            } else if (type === 'customer.subscription.updated') {
-              const subStatus = String(obj.status || '').toLowerCase();
-              if (subStatus === 'active' || subStatus === 'trialing') {
-                newTier = 'pro';
-              } else if (subStatus === 'canceled' || subStatus === 'unpaid' || subStatus === 'past_due') {
-                newTier = 'free';
-              }
-            } else if (type === 'customer.subscription.deleted') {
-              newTier = 'free';
-            }
-
-            if (newTier) {
-              const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-              const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
-
-              if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-                const updateResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(normalizedEmail)}`, {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': SUPABASE_SERVICE_KEY,
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-                    'Prefer': 'return=minimal',
-                  },
-                  body: JSON.stringify({ tier: newTier, updated_at: new Date().toISOString() }),
-                });
-                if (updateResp.ok) {
-                  console.log(`[stripe] Updated profiles.tier to '${newTier}' for ${normalizedEmail}`);
-                } else {
-                  const errText = await updateResp.text().catch(() => '');
-                  console.error(`[stripe] Failed to update tier for ${normalizedEmail}: ${updateResp.status} ${errText}`);
-                }
-              } else {
-                console.warn('[stripe] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — cannot update tier');
-              }
-            }
-          } catch (tierErr) {
-            console.error('[stripe] Error updating tier:', tierErr);
-            // Keep webhook response successful even if tier sync fails.
-          }
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ received: true }));
-      } catch (e) {
-        console.error('Stripe webhook error:', e);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(e.message || e) }));
-      }
-    });
-    return;
-  }
 
   if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
     (async () => {

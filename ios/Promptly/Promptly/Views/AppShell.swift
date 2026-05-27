@@ -79,6 +79,25 @@ struct AppShell: View {
             .background(Color(.systemBackground))
         }
         .ignoresSafeArea(.keyboard)
+        // Paywall presentation. Any view can request it by setting
+        // AppState.shared.paywallReason; the sheet rises and clears the
+        // reason on dismiss.
+        .sheet(
+            isPresented: Binding(
+                get: { appState.paywallReason != nil },
+                set: { if !$0 { appState.paywallReason = nil } }
+            )
+        ) {
+            if let reason = appState.paywallReason {
+                PaywallView(
+                    isPresented: Binding(
+                        get: { appState.paywallReason != nil },
+                        set: { if !$0 { appState.paywallReason = nil } }
+                    ),
+                    reason: reason
+                )
+            }
+        }
         .onChange(of: appState.sidebarOpen) { _, isOpen in
             // Keyboard always dismisses on drawer open. We dismiss on
             // close too so a stale focus from the sidebar's search
