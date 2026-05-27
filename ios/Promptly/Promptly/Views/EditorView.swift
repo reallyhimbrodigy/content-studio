@@ -282,6 +282,28 @@ struct EditorView: View {
         Task { @MainActor in
             await reconcileInProgressJobs(includeFailed: true)
         }
+
+        // Re-attach SSE for any message that's still processing in storage.
+        // Otherwise the user comes back to a "processing" bubble that's
+        // frozen at restore-time progress until the next 5s heartbeat tick.
+        // Reconnecting brings live token updates back immediately.
+        resumeSSEForInFlightMessages()
+    }
+
+    /// Restart SSE clients for any restored message whose render is still
+    /// in flight. Called from handleActiveChatChange after the messages
+    /// array is populated; pairs with the reconcile path which catches
+    /// already-completed renders we missed.
+    private func resumeSSEForInFlightMessages() {
+        for (idx, msg) in messages.enumerated() {
+            guard let jobId = msg.jobId else { continue }
+            // Already-final states have nothing to subscribe to.
+            if msg.jobStatus == "completed" || msg.jobStatus == "failed"
+                || msg.jobStatus == "needs_clarification" { continue }
+            // Don't double-subscribe if we somehow still have a live client.
+            if sseClients[jobId] != nil { continue }
+            startSSE(jobId: jobId, messageIndex: idx)
+        }
     }
 
     /// Snapshot the on-screen messages → SerializedMessage and hand them

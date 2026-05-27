@@ -125,21 +125,27 @@ struct SerializedMessage: Codable, Hashable {
     var isOnboarding: Bool?
 
     /// Decide whether a live ChatMessage is worth persisting at all.
-    /// Mid-render assistant placeholders ("processing", isThinking, no
-    /// renderedVideoUrl yet) are dropped — they'd look broken on reload
-    /// because the SSE stream that drives them is gone.
+    /// Includes mid-render placeholders that have a jobId — those re-bind
+    /// to the live SSE stream on reload via EditorView's resumeSSEForInFlight
+    /// + reconcile, so the user doesn't lose the progress bar when they
+    /// leave and come back to a chat with an active render.
     static func shouldPersist(_ message: ChatMessage) -> Bool {
         if message.role == .user { return true }
-        // Assistant rows: only keep if there's something concrete to show
-        // (final job state, rendered video, or surfaced error). Drop
-        // in-flight placeholders.
+        // Final assistant states — always persist.
         if let status = message.jobStatus, ["completed", "failed", "needs_clarification"].contains(status) {
             return true
         }
         if message.renderedVideoUrl != nil || message.error != nil {
             return true
         }
-        // Everything else (isThinking, processing without final state) — drop.
+        // In-flight assistant placeholder with a real jobId. Persist it
+        // so the user can navigate away mid-render and find the progress
+        // bubble still there on return. The chat reloader restarts SSE
+        // and runs reconcile against the DB so the bar isn't stale.
+        if message.jobId != nil && message.role == .assistant {
+            return true
+        }
+        // Otherwise: assistant text bubbles with content but no job.
         return !message.isThinking && message.jobStatus == nil && !message.content.isEmpty
     }
 
@@ -189,6 +195,21 @@ struct SerializedMessage: Codable, Hashable {
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false
+        // Restore an in-flight stage timeline so the bubble shows a
+        // progress UI immediately on chat reload (instead of looking
+        // like the assistant ghosted the user). The actual stage state
+        // re-syncs as soon as SSE reconnects or the reconciler runs.
+        // We default to the "full" pipeline catalog — re-edit timelines
+        // share the same stage IDs, so the first real `step` token
+        // re-anchors the right one regardless.
+        let isInFlight = jobId != nil
+            && (jobStatus == "processing" || jobStatus == "queued" || jobStatus == nil)
+            && renderedVideoUrl == nil
+        if isInFlight && parsedRole == .assistant {
+            msg.stageTimeline = StageTimeline(mode: "full")
+            if jobStatus == nil { msg.jobStatus = "processing" }
+            msg.stepMessage = "Picking up where it left off..."
+        }
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {
             // Restore the local UIImage from disk if we cached it during
             // the original send. id is the SerializedMessage.id which
