@@ -24,7 +24,7 @@ final class SubscriptionService: ObservableObject {
     /// PASTE THE PUBLIC IOS SDK KEY FROM REVENUECAT DASHBOARD HERE.
     /// Looks like `appl_XXXXXXXXXXXXXXXXXX`. Without this, RevenueCat
     /// will not initialize and all users appear as free-tier.
-    private let revenueCatPublicKey = "appl_PASTE_YOUR_PUBLIC_KEY_HERE"
+    private let revenueCatPublicKey = "appl_EsLGLEDGZCJerQFCJCEgHnRrSsP"
 
     /// Entitlement identifier configured in RevenueCat dashboard
     /// (Entitlements → "pro"). Must match exactly — case-sensitive.
