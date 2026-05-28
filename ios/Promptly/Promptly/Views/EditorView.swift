@@ -1452,6 +1452,25 @@ struct EditorView: View {
                         startSSE(jobId: newJobId, messageIndex: i)
                         persistMessages()
                     }
+                } catch let APIError.paymentRequired(kind, limit, _) {
+                    // Re-edit is a Pro-only endpoint, but a free user could
+                    // slip through if the client gate was bypassed (or if
+                    // entitlement state was stale at tap time). Remove the
+                    // stub processing+user bubbles and present the paywall.
+                    if let i = idx() {
+                        messages.remove(at: i)  // assistant processing
+                    }
+                    if !messages.isEmpty, messages.last?.role == .user {
+                        messages.removeLast()  // user "change request" stub
+                    }
+                    persistMessages()
+                    if kind == "reedit" {
+                        appState.paywallReason = .reedit
+                    } else {
+                        let lim = limit ?? 3
+                        appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                    }
+                    await UsageService.shared.refresh()
                 } catch {
                     if let i = idx() {
                         messages[i].jobStatus = "failed"

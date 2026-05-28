@@ -303,6 +303,15 @@ struct LibraryView: View {
 
     private func startReedit(_ edit: VideoJob) {
         guard edit.status == "completed" else { return }
+        // Pro gate: re-edit is paid. Free users see the paywall instead
+        // of getting dropped into the editor where the dispatch would
+        // eventually 402 anyway. Matches the MessageBubble gate so all
+        // entry points behave identically.
+        if !SubscriptionService.shared.isPro {
+            appState.paywallReason = .reedit
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         appState.pendingReedit = ReeditSession(
             originalJobId: edit.id,
             oldVibe: edit.vibe_input ?? "",

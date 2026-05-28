@@ -181,6 +181,21 @@ class APIService {
         ])
 
         let (data, response) = try await requestData(request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 402 {
+            // Pro-only endpoint. Caller catches APIError.paymentRequired
+            // and pops the paywall.
+            struct LimitPayload: Decodable {
+                let kind: String?
+                let limit: Int?
+                let message: String?
+            }
+            let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
+            throw APIError.paymentRequired(
+                kind: payload?.kind ?? "reedit",
+                limit: payload?.limit,
+                message: payload?.message ?? "Re-edit is a Pro feature."
+            )
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Re-edit failed")
