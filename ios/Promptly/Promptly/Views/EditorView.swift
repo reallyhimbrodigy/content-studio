@@ -1220,6 +1220,8 @@ struct EditorView: View {
         var sawFirstToken = false
 
         // ── Tier 1: streaming ─────────────────────────────────────────
+        var hitPaywall = false
+        var paywallReason: PaywallReason?
         let stream = APIService.shared.chatStream(message: prompt, history: context)
         do {
             for try await token in stream {
@@ -1234,6 +1236,13 @@ struct EditorView: View {
                     messages[i].content = accumulated
                 }
             }
+        } catch let APIError.paymentRequired(_, limit, _) {
+            // Server hit the daily chat cap. No point falling back to the
+            // one-shot endpoint — it'd just 402 again. Skip tier 2 and
+            // route directly to the paywall.
+            let lim = limit ?? 50
+            paywallReason = .dailyChats(used: lim, limit: lim)
+            hitPaywall = true
         } catch {
             print("[chat] stream failed: \(error.localizedDescription) — falling back")
         }
@@ -1241,8 +1250,7 @@ struct EditorView: View {
         if Task.isCancelled { return }
 
         // ── Tier 2: one-shot + client-side typewriter ──────────────────
-        var hitPaywall = false
-        if accumulated.isEmpty {
+        if accumulated.isEmpty && !hitPaywall {
             do {
                 let reply = try await APIService.shared.chat(message: prompt, history: context)
                 if Task.isCancelled { return }
@@ -1253,9 +1261,8 @@ struct EditorView: View {
                 // empty assistant bubble — the user didn't really get a
                 // reply, no point persisting one.
                 let lim = limit ?? 50
-                appState.paywallReason = .dailyChats(used: lim, limit: lim)
+                paywallReason = .dailyChats(used: lim, limit: lim)
                 hitPaywall = true
-                await UsageService.shared.refresh()
             } catch {
                 print("[chat] one-shot fallback failed: \(error.localizedDescription)")
             }
@@ -1265,6 +1272,10 @@ struct EditorView: View {
 
         // ── Finalize ──────────────────────────────────────────────────
         if hitPaywall {
+            if let reason = paywallReason {
+                appState.paywallReason = reason
+            }
+            await UsageService.shared.refresh()
             if let i = idx() {
                 messages.remove(at: i)
                 persistMessages()

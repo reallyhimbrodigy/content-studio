@@ -976,6 +976,26 @@ class APIService {
                     request.timeoutInterval = 60
 
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    if let http = response as? HTTPURLResponse, http.statusCode == 402 {
+                        // Daily chat cap hit. Drain the (JSON) response body
+                        // to parse the structured payload and rethrow as
+                        // paymentRequired so the caller pops the paywall
+                        // directly — instead of falling back to /api/chat
+                        // which would just 402 again and waste a request.
+                        var bodyData = Data()
+                        for try await byte in bytes { bodyData.append(byte) }
+                        struct LimitPayload: Decodable {
+                            let kind: String?
+                            let limit: Int?
+                            let message: String?
+                        }
+                        let payload = try? JSONDecoder().decode(LimitPayload.self, from: bodyData)
+                        throw APIError.paymentRequired(
+                            kind: payload?.kind ?? "chat",
+                            limit: payload?.limit,
+                            message: payload?.message ?? "Daily chat limit reached."
+                        )
+                    }
                     if let http = response as? HTTPURLResponse, http.statusCode != 200 {
                         throw APIError.jobCreationFailed("chat stream HTTP \(http.statusCode)")
                     }

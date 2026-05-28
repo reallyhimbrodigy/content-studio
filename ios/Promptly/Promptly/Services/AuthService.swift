@@ -248,6 +248,13 @@ class AuthService {
         Task { @MainActor in
             VideoCache.shared.purgeAll()
         }
+        // Detach the RevenueCat identity. Otherwise the next user that
+        // signs in on this device starts a session aliased to the
+        // previous user's app_user_id, which corrupts both attribution
+        // and the webhook → profiles update target.
+        Task { @MainActor in
+            await SubscriptionService.shared.clearIdentity()
+        }
         refreshTask?.cancel()
         refreshTask = nil
         UserDefaults.standard.removeObject(forKey: tokenKey)
@@ -366,6 +373,18 @@ class AuthService {
         // Parse JWT to get expiry time
         let expiry = parseJWTExpiry(session.access_token) ?? (Date().timeIntervalSince1970 + 3600)
         UserDefaults.standard.set(expiry, forKey: tokenExpiryKey)
+
+        // Re-identify RevenueCat with the new user so any subscription
+        // purchases under this account get attributed correctly AND so
+        // the webhook (which keys on app_user_id = our user.id) writes
+        // back to the right profiles row. Without this, a sign-out →
+        // sign-in-as-other-user flow on the same device would leave
+        // RevenueCat targeting the previous user's RC ID.
+        let uid = session.user.id
+        Task { @MainActor in
+            await SubscriptionService.shared.identify(userId: uid)
+            await UsageService.shared.refresh()
+        }
     }
 
     private func parseJWTExpiry(_ token: String) -> TimeInterval? {
