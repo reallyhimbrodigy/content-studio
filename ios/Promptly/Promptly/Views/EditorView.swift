@@ -104,7 +104,7 @@ struct EditorView: View {
                 }
             }
             .sheet(isPresented: $showVideoPicker) {
-                NativeVideoPicker(maxSelection: 10) { videos in
+                NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
                 }
                 .ignoresSafeArea()
@@ -467,7 +467,7 @@ struct EditorView: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showVideoPicker = true
+                tapAddVideo()
             } label: {
                 Text("Upload Video")
                     .font(.system(size: 16, weight: .semibold))
@@ -634,7 +634,7 @@ struct EditorView: View {
             }
 
             HStack(alignment: .bottom, spacing: 0) {
-                Button { showVideoPicker = true } label: {
+                Button { tapAddVideo() } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white)
@@ -798,6 +798,47 @@ struct EditorView: View {
             return !isSending
         }
         return true
+    }
+
+    // MARK: - Add-video tap gating
+    //
+    // Free users can have a max of ONE video in the composer's pending
+    // tray at a time. Pro unlocks up to ten. The native picker enforces
+    // the count for the SELECTION itself (via `pickerMaxSelection`), but
+    // we ALSO need to gate the entry point — otherwise a free user who
+    // already has 1 pending could tap + and the picker would open with
+    // max=0, which renders awkwardly. Instead we pop the paywall when
+    // they try to exceed their cap.
+
+    private var maxPendingVideos: Int {
+        SubscriptionService.shared.isPro ? 10 : 1
+    }
+
+    /// What the picker should allow on its next presentation. Accounts
+    /// for videos already pending so a Pro user with 7 staged can still
+    /// add 3 more, but a free user with 1 staged hits zero (and the +
+    /// button should have popped the paywall before we got here).
+    private var pickerMaxSelection: Int {
+        max(0, maxPendingVideos - pendingVideos.count)
+    }
+
+    /// Routed from the + button (composer + empty-state). Pops the
+    /// paywall when a free user already has their one pending slot
+    /// filled; otherwise opens the picker.
+    private func tapAddVideo() {
+        if pendingVideos.count >= maxPendingVideos {
+            if SubscriptionService.shared.isPro {
+                // Pro user at the 10-video cap. No paywall to pop — they
+                // already paid. Just give haptic feedback and a console
+                // log. UI also disables visibly via the picker count.
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            appState.paywallReason = .manual
+            return
+        }
+        showVideoPicker = true
     }
 
     // MARK: - Video Selection (INSTANT — no copy, uses PHAsset directly)
