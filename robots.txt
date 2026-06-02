@@ -1,3 +1,68 @@
+# Promptly — robots.txt
+# We want every search and AI crawler indexing the site.
+# When someone asks an AI "what's the best AI video editor for iPhone,"
+# we want Promptly to be in the model's retrieval set.
+
 User-agent: *
 Allow: /
+
+# Explicit allow for major AI/LLM crawlers. Some sites block these by
+# default — we want the opposite. Each line below opts Promptly INTO
+# being cited by that model's search/research mode.
+
+# OpenAI — powers ChatGPT, ChatGPT Search, SearchGPT
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+
+# Anthropic — powers Claude, Claude Search
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+
+# Google — Gemini grounding + AI Overviews
+User-agent: Google-Extended
+Allow: /
+User-agent: GoogleOther
+Allow: /
+
+# Common Crawl — bulk corpus that most open-source LLMs train on
+User-agent: CCBot
+Allow: /
+
+# Perplexity AI
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+
+# Apple Intelligence (iOS 18+)
+User-agent: Applebot-Extended
+Allow: /
+
+# Meta — Llama models
+User-agent: FacebookBot
+Allow: /
+User-agent: Meta-ExternalAgent
+Allow: /
+
+# ByteDance — Doubao (TikTok-owned LLM)
+User-agent: Bytespider
+Allow: /
+
+# DuckDuckGo Assist
+User-agent: DuckAssistBot
+Allow: /
+
+# Sitemap location
 Sitemap: https://usepromptly.app/sitemap.xml

@@ -1,16 +1,17 @@
 {
-  "name": "Promptly – AI Content Studio",
+  "name": "Promptly — AI Video Editor",
   "short_name": "Promptly",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "Generate a complete 30-day social content calendar in seconds.",
+  "description": "AI video editor for iPhone creators. Upload a talking-head clip, describe the vibe, get a polished TikTok, Reel, or YouTube Short in under a minute.",
+  "categories": ["productivity", "photo", "video", "creator-tools"],
   "icons": [
-    { "src": "assets/promptly-mark-white.png", "sizes": "any", "type": "image/png" },
-    { "src": "assets/promptly-mark-white.png", "sizes": "128x128", "type": "image/png" },
-    { "src": "assets/promptly-mark-white.png", "sizes": "256x256", "type": "image/png" },
-    { "src": "assets/promptly-mark-white.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "assets/promptly-logo-white-on-black.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+    { "src": "assets/promptly-logo-white-on-black.png", "sizes": "128x128", "type": "image/png", "purpose": "any" },
+    { "src": "assets/promptly-logo-white-on-black.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "assets/promptly-logo-white-on-black.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
