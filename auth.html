@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Promptly Auth</title>
+    <title>Sign in • Promptly</title>
+    <link rel="icon" type="image/png" href="/assets/promptly-logo-white-on-black.png" />
+    <link rel="apple-touch-icon" href="/assets/promptly-logo-white-on-black.png" />
     <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -400,9 +402,15 @@ button.primary:active {
     <div class="auth-shell">
       <section class="auth-card">
         <header>
-          <p class="auth-wordmark">Promptly</p>
+          <p class="auth-wordmark" style="display: inline-flex; align-items: center; gap: 8px; justify-content: center;">
+            <picture>
+              <source srcset="/assets/promptly-mark-black.png" media="(prefers-color-scheme: light)" />
+              <img src="/assets/promptly-mark-white.png" alt="" width="24" height="24" />
+            </picture>
+            <span>Promptly</span>
+          </p>
           <h2 id="auth-mode-title">Create your account</h2>
-          <p id="auth-mode-desc">Create and export AI-edited videos in minutes.</p>
+          <p id="auth-mode-desc">Edit talking-head videos for TikTok, Reels &amp; Shorts in under a minute.</p>
         </header>
 
         <form id="auth-form">

@@ -1,20 +1,40 @@
 {
   "@context": "https://schema.org",
-  "@type": "Product",
-  "name": "Promptly Pro",
+  "@type": "MobileApplication",
+  "name": "Promptly - AI Video Editor",
+  "operatingSystem": "iOS",
+  "applicationCategory": "VideoEditor",
   "url": "https://usepromptly.app/",
-  "description": "AI content studio that generates a complete 30-day social calendar with platform variants, downloads, and Brand Brain.",
+  "description": "AI video editor for iPhone creators. Upload a talking-head clip, describe the vibe you want, get a polished TikTok, Reel, or YouTube Short in under a minute. Captions, cuts, zoom effects, transitions, motion graphics, B-roll, and sound effects — all automated.",
   "brand": {
     "@type": "Organization",
     "name": "Promptly"
   },
-  "category": "SoftwareApplication",
-  "offers": {
-    "@type": "Offer",
-    "price": "19.99",
-    "priceCurrency": "USD",
-    "availability": "https://schema.org/InStock",
-    "url": "https://usepromptly.app/",
-    "priceValidUntil": "2030-12-31"
-  }
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Free",
+      "price": "0",
+      "priceCurrency": "USD",
+      "description": "3 renders per day, 50 AI chat messages per day, all 20 caption styles, all effects."
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro Monthly",
+      "price": "19.99",
+      "priceCurrency": "USD",
+      "description": "Unlimited renders, unlimited chats, re-edit any finished video, priority queue. 3-day free trial.",
+      "priceValidUntil": "2030-12-31",
+      "availability": "https://schema.org/InStock"
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro Yearly",
+      "price": "199.99",
+      "priceCurrency": "USD",
+      "description": "Same as Pro Monthly, ~17% savings. 3-day free trial.",
+      "priceValidUntil": "2030-12-31",
+      "availability": "https://schema.org/InStock"
+    }
+  ]
 }
