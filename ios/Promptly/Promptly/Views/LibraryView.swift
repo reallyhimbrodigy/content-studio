@@ -375,6 +375,29 @@ struct EditRow: View {
     let onReedit: () -> Void
     @State private var showMenu = false
     @ObservedObject private var cache = VideoCache.shared
+    @StateObject private var exporter: VideoExporter
+
+    init(
+        edit: VideoJob,
+        isSelecting: Bool,
+        isSelected: Bool,
+        onTap: @escaping () -> Void,
+        onShare: @escaping () -> Void,
+        onDelete: @escaping () -> Void,
+        onReedit: @escaping () -> Void
+    ) {
+        self.edit = edit
+        self.isSelecting = isSelecting
+        self.isSelected = isSelected
+        self.onTap = onTap
+        self.onShare = onShare
+        self.onDelete = onDelete
+        self.onReedit = onReedit
+        _exporter = StateObject(wrappedValue: VideoExporter(
+            videoUrlStr: edit.rendered_video_url ?? "",
+            thumbnailUrlStr: edit.thumbnail_url
+        ))
+    }
 
     /// True when the actual rendered video file is on local disk and
     /// playback would be instant. Until then, the row's tap is disabled
@@ -485,14 +508,13 @@ struct EditRow: View {
                             }
                         }
                         if edit.status == "completed", let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                            Button {
+                                exporter.save()
+                            } label: {
+                                Label("Save to Photos", systemImage: "square.and.arrow.down")
+                            }
                             ShareLink(item: url) {
                                 Label("Share", systemImage: "square.and.arrow.up")
-                            }
-
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Label("Download", systemImage: "arrow.down.circle")
                             }
                         }
 
@@ -580,6 +602,37 @@ struct VideoDetailSheet: View {
     let onReedit: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
+    @StateObject private var exporter: VideoExporter
+
+    init(edit: VideoJob, onDelete: @escaping () -> Void, onReedit: @escaping () -> Void) {
+        self.edit = edit
+        self.onDelete = onDelete
+        self.onReedit = onReedit
+        _exporter = StateObject(wrappedValue: VideoExporter(
+            videoUrlStr: edit.rendered_video_url ?? "",
+            thumbnailUrlStr: edit.thumbnail_url
+        ))
+    }
+
+    // The Save action button morphs as it works — same affordance the
+    // chat-side Save uses. Idle = down-arrow, loading = hourglass-ish
+    // spinner via SF Symbol fallback, success = check, error = warning.
+    private var saveIcon: String {
+        switch exporter.saveState {
+        case .idle:    return "arrow.down.to.line"
+        case .loading: return "arrow.down.circle"
+        case .success: return "checkmark"
+        case .error:   return "exclamationmark.triangle"
+        }
+    }
+    private var saveLabel: String {
+        switch exporter.saveState {
+        case .idle:    return "Save"
+        case .loading: return "Saving…"
+        case .success: return "Saved"
+        case .error:   return "Failed"
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -691,7 +744,10 @@ struct VideoDetailSheet: View {
                 // jarring red trash + giant white pill that was
                 // breaking the visual harmony.
                 if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                    HStack(spacing: 28) {
+                    HStack(spacing: 22) {
+                        DetailActionButton(systemName: saveIcon, label: saveLabel) {
+                            exporter.save()
+                        }
                         ShareLink(item: url) {
                             DetailActionIcon(systemName: "square.and.arrow.up", label: "Share")
                         }
