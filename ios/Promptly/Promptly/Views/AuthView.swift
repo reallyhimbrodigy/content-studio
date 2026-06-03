@@ -59,9 +59,20 @@ struct AuthView: View {
                     Spacer(minLength: 32)
                 }
                 .padding(.horizontal, 24)
+                // Center the auth form in a sane column on iPad. Without
+                // this the SignInWithAppleButton stretches across an
+                // 1180pt-wide screen which both looks broken and is what
+                // Apple flagged in the App Review rejection of build 151.
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
-            .dismissKeyboardOnTap()
+            // Note: deliberately NOT using .dismissKeyboardOnTap() here.
+            // On iPad (specifically iPadOS 26.x), the simultaneousGesture
+            // intercepts taps on SignInWithAppleButton before Apple's
+            // button can handle them — caused App Review rejection of
+            // build 151. .scrollDismissesKeyboard(.interactively) above
+            // handles keyboard dismissal via swipe, which is enough.
         }
         .preferredColorScheme(.dark)
         .fullScreenCover(item: Binding(

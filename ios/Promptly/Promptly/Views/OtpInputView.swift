@@ -58,6 +58,9 @@ struct OtpInputView: View {
                 Spacer().frame(height: 32)
             }
             .padding(.horizontal, 24)
+            // Match AuthView's iPad layout — centered column, max width.
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity)
 
             VStack {
                 HStack {
