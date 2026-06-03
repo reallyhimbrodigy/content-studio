@@ -4,10 +4,9 @@ import CryptoKit
 
 struct AuthView: View {
     @State private var email = ""
-    @State private var password = ""
-    @State private var isSignUp = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var otpEmail: String?  // non-nil → present the OTP sheet for this email
     @FocusState private var focusedField: Field?
 
     /// Raw nonce stashed between Apple's `onRequest` and `onCompletion`.
@@ -22,7 +21,7 @@ struct AuthView: View {
     /// the session isn't deallocated while the OAuth flow is presenting.
     @State private var oauthCoordinator = OAuthCoordinator()
 
-    private enum Field: Hashable { case email, password }
+    private enum Field: Hashable { case email }
 
     var body: some View {
         ZStack {
@@ -65,6 +64,21 @@ struct AuthView: View {
             .dismissKeyboardOnTap()
         }
         .preferredColorScheme(.dark)
+        .fullScreenCover(item: Binding(
+            get: { otpEmail.map { OtpPresentation(email: $0) } },
+            set: { otpEmail = $0?.email }
+        )) { presentation in
+            OtpInputView(email: presentation.email) {
+                otpEmail = nil
+            }
+        }
+    }
+
+    /// Wraps the email so SwiftUI's `.fullScreenCover(item:)` has an
+    /// Identifiable to track. The email itself is the identity.
+    private struct OtpPresentation: Identifiable {
+        let email: String
+        var id: String { email }
     }
 
     // MARK: - Background
@@ -108,12 +122,11 @@ struct AuthView: View {
 
     private var titleBlock: some View {
         VStack(spacing: 6) {
-            Text(isSignUp ? "Create your account" : "Welcome back")
+            Text("Sign in to Promptly")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.white)
-                .contentTransition(.opacity)
 
-            Text("AI editor for short-form talking head videos.")
+            Text("AI editor for short-form talking-head videos.")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -125,7 +138,7 @@ struct AuthView: View {
     private var socialButtons: some View {
         VStack(spacing: 10) {
             SignInWithAppleButton(
-                isSignUp ? .signUp : .signIn,
+                .continue,
                 onRequest: { request in
                     request.requestedScopes = [.email, .fullName]
                     // Generate a fresh raw nonce, stash it for onCompletion,
@@ -147,7 +160,7 @@ struct AuthView: View {
                     Image(systemName: "g.circle.fill")
                         .font(.system(size: 20))
                         .accessibilityHidden(true)
-                    Text(isSignUp ? "Sign up with Google" : "Sign in with Google")
+                    Text("Continue with Google")
                         .font(.system(size: 17, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
@@ -156,7 +169,7 @@ struct AuthView: View {
                 .foregroundColor(.black)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .accessibilityLabel(isSignUp ? "Sign up with Google" : "Sign in with Google")
+            .accessibilityLabel("Continue with Google")
         }
     }
 
@@ -176,70 +189,45 @@ struct AuthView: View {
         .padding(.vertical, 4)
     }
 
-    // MARK: - Email/password
+    // MARK: - Email (passwordless OTP)
 
     private var formFields: some View {
-        VStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Email")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .tracking(0.3)
-                TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(Color(.placeholderText)))
-                    .focused($focusedField, equals: .email)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .password }
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .padding(14)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(focusedField == .email ? Color.white.opacity(0.35) : Color.clear, lineWidth: 1)
-                    )
-                    .foregroundColor(.white)
-                    .font(.system(size: 16))
-                    .animation(.easeOut(duration: 0.18), value: focusedField)
-                    .accessibilityLabel("Email")
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Password")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .tracking(0.3)
-                SecureField("", text: $password, prompt: Text("••••••••").foregroundColor(Color(.placeholderText)))
-                    .focused($focusedField, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit { submit() }
-                    .textContentType(isSignUp ? .newPassword : .password)
-                    .padding(14)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(focusedField == .password ? Color.white.opacity(0.35) : Color.clear, lineWidth: 1)
-                    )
-                    .foregroundColor(.white)
-                    .font(.system(size: 16))
-                    .animation(.easeOut(duration: 0.18), value: focusedField)
-                    .accessibilityLabel("Password")
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Email")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+                .tracking(0.3)
+            TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(Color(.placeholderText)))
+                .focused($focusedField, equals: .email)
+                .submitLabel(.go)
+                .onSubmit { sendCode() }
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(14)
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(focusedField == .email ? Color.white.opacity(0.35) : Color.clear, lineWidth: 1)
+                )
+                .foregroundColor(.white)
+                .font(.system(size: 16))
+                .animation(.easeOut(duration: 0.18), value: focusedField)
+                .accessibilityLabel("Email")
         }
     }
 
-    // MARK: - Submit + toggle
+    // MARK: - Submit
 
     private var submitButton: some View {
-        Button(action: submit) {
+        Button(action: sendCode) {
             Group {
                 if isLoading {
                     ProgressView().tint(.black)
                 } else {
-                    Text(isSignUp ? "Create Account" : "Sign In")
+                    Text("Continue with Email")
                         .font(.system(size: 17, weight: .semibold))
                 }
             }
@@ -249,61 +237,49 @@ struct AuthView: View {
             .foregroundColor(.black)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .disabled(isLoading || email.isEmpty || password.isEmpty)
-        .opacity(email.isEmpty || password.isEmpty ? 0.5 : 1)
-        .animation(.easeOut(duration: 0.18), value: email.isEmpty || password.isEmpty)
+        .disabled(isLoading || !looksLikeEmail(email))
+        .opacity(looksLikeEmail(email) ? 1 : 0.5)
+        .animation(.easeOut(duration: 0.18), value: looksLikeEmail(email))
     }
 
     private var toggleButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isSignUp.toggle()
-                errorMessage = nil
-            }
-        } label: {
-            (Text(isSignUp ? "Already have an account? " : "Don't have an account? ")
-                .foregroundColor(.secondary)
-             + Text(isSignUp ? "Sign in" : "Sign up")
-                .foregroundColor(.white)
-                .fontWeight(.semibold))
-                .font(.system(size: 14))
-        }
+        // Passwordless removes the sign-up vs. sign-in toggle entirely —
+        // the same flow handles both. Keep an empty placeholder so the
+        // outer body doesn't need to be refactored, and add a one-line
+        // disclosure so users understand new accounts are auto-created.
+        Text("New here? Just enter your email — we'll create your account.")
+            .font(.system(size: 12))
+            .foregroundColor(Color(.tertiaryLabel))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
     }
 
-    // MARK: - Email/Password
+    // MARK: - OTP send
 
-    private func submit() {
-        guard !email.isEmpty, !password.isEmpty else { return }
+    private func sendCode() {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard looksLikeEmail(trimmed) else { return }
         Keyboard.dismiss()
         isLoading = true
         errorMessage = nil
 
         Task {
             do {
-                if isSignUp {
-                    try await AuthService.shared.signUp(email: email, password: password)
-                } else {
-                    try await AuthService.shared.signIn(email: email, password: password)
-                }
-            } catch let error as AuthError {
-                switch error {
-                case .signUpFailed(let msg):
-                    if msg.contains("already") || msg.contains("exists") || msg.contains("registered") {
-                        errorMessage = "This account already exists."
-                        withAnimation {
-                            isSignUp = false
-                        }
-                    } else {
-                        errorMessage = msg
-                    }
-                default:
-                    errorMessage = error.localizedDescription
-                }
+                try await AuthService.shared.sendOtp(email: trimmed)
+                otpEmail = trimmed
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = "Couldn't send code. Check your email and try again."
             }
             isLoading = false
         }
+    }
+
+    private func looksLikeEmail(_ s: String) -> Bool {
+        // Cheap structural check — Supabase does real validation server-side
+        // and rejects bad emails on /auth/v1/otp. This just prevents the
+        // user from sending a clearly-broken value (no @, no domain).
+        let parts = s.split(separator: "@")
+        return parts.count == 2 && parts[1].contains(".")
     }
 
     // MARK: - Apple Sign In

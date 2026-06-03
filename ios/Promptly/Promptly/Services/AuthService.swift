@@ -140,38 +140,64 @@ class AuthService {
 
     // MARK: - Auth Actions
 
-    func signUp(email: String, password: String) async throws {
-        let url = URL(string: "\(supabaseUrl)/auth/v1/signup")!
+    // MARK: - Passwordless OTP
+    //
+    // Two-step email flow: send the user a 6-digit code, then exchange
+    // that code for a session. Supabase's /auth/v1/otp endpoint also
+    // auto-creates the user on first attempt, so the same flow handles
+    // both sign-up and sign-in — no need for a "create account" branch
+    // in the UI.
+
+    /// Send a 6-digit verification code to the given email. Supabase
+    /// generates the code, picks the template (Magic Link), and SMTPs it
+    /// out via Resend. Idempotent — safe to retry if the user didn't get
+    /// the email.
+    func sendOtp(email: String) async throws {
+        let url = URL(string: "\(supabaseUrl)/auth/v1/otp")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+        // `create_user: true` ensures first-time visitors get an account
+        // created on send rather than getting a "user not found" error.
+        // `email_otp` channel = 6-digit code path (vs. magic link).
+        let body: [String: Any] = [
+            "email": email,
+            "create_user": true
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw AuthError.signUpFailed(body)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            print("[auth] sendOtp HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1): \(bodyStr.prefix(300))")
+            throw AuthError.signInFailed(bodyStr)
         }
-
-        let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
-        saveSession(session)
     }
 
-    func signIn(email: String, password: String) async throws {
-        let url = URL(string: "\(supabaseUrl)/auth/v1/token?grant_type=password")!
+    /// Exchange a 6-digit code for a Supabase session. Same flow handles
+    /// both sign-up confirmation and sign-in — Supabase returns a session
+    /// in both cases. `type: "email"` is what tells Supabase to treat
+    /// the token as an email OTP code (vs. a magic-link nonce or SMS).
+    func verifyOtp(email: String, code: String) async throws {
+        let url = URL(string: "\(supabaseUrl)/auth/v1/verify")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+        let body: [String: String] = [
+            "type": "email",
+            "email": email,
+            "token": code
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw AuthError.signInFailed(body)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            print("[auth] verifyOtp HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1): \(bodyStr.prefix(300))")
+            throw AuthError.signInFailed(bodyStr)
         }
-
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
         saveSession(session)
         scheduleTokenRefresh()
