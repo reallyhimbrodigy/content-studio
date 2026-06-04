@@ -10429,6 +10429,123 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Account deletion ──
+  // Apple's App Store Review Guideline 5.1.1(v) requires apps that
+  // create accounts to also offer in-app account deletion. This is the
+  // server endpoint the iOS app's AccountView Delete button calls.
+  //
+  // Flow:
+  //   1. Authenticate the caller via their Supabase JWT.
+  //   2. Collect S3 keys for every rendered video + thumbnail this user
+  //      owns so we can clean up storage after the DB rows are gone.
+  //   3. Delete the user's rows from video_jobs, chats, usage_events,
+  //      profiles. We do this explicitly rather than relying on cascade
+  //      because the migrations protect video_jobs and chats from
+  //      cascade-on-user-delete (so a casual misclick doesn't nuke
+  //      paying customer content). Account-delete is the intentional
+  //      path that DOES wipe everything.
+  //   4. Delete the auth.users row via Supabase admin API. After this
+  //      the JWT is invalid and the iOS app signs the user out.
+  //   5. Best-effort delete the S3 objects. Failures here are logged
+  //      but don't block account deletion — orphan files cost ~$0.01/GB/mo
+  //      and can be cleaned up later by a lifecycle policy.
+  //
+  // Idempotent: a re-run with an already-deleted auth user returns
+  // success because there's nothing left to clean up.
+  if (parsed.pathname === '/api/account/delete' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const userId = authUser.id;
+        console.log('[account] delete requested for user', userId);
+
+        // 1. Collect S3 keys to clean up post-deletion.
+        const { data: jobs, error: jobsErr } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, video_url, rendered_video_url, thumbnail_url, hls_manifest_url')
+          .eq('user_id', userId);
+        if (jobsErr) {
+          console.error('[account] could not list jobs', jobsErr);
+        }
+        const s3Keys = [];
+        for (const job of jobs || []) {
+          for (const urlStr of [job.video_url, job.rendered_video_url, job.thumbnail_url, job.hls_manifest_url]) {
+            if (!urlStr) continue;
+            try {
+              const u = new URL(urlStr);
+              // Strip leading slash to get the S3 key. Works for both
+              // direct S3 URLs (bucket.s3.region.amazonaws.com/key) and
+              // CloudFront URLs (cdn.example.com/key).
+              const key = u.pathname.replace(/^\/+/, '');
+              if (key) s3Keys.push(key);
+            } catch {
+              // Malformed URL — skip.
+            }
+          }
+        }
+        console.log('[account] will delete', s3Keys.length, 'S3 objects after DB rows');
+
+        // 2. Delete DB rows explicitly. Order matters only for the
+        //    profiles row (its FK has CASCADE so it would go automatically
+        //    on auth user delete, but we delete it first to keep the
+        //    state machine readable).
+        const deleteResults = await Promise.allSettled([
+          supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
+          supabaseAdmin.from('chats').delete().eq('user_id', userId),
+          supabaseAdmin.from('usage_events').delete().eq('user_id', userId),
+          supabaseAdmin.from('profiles').delete().eq('id', userId),
+        ]);
+        for (const r of deleteResults) {
+          if (r.status === 'rejected' || r.value?.error) {
+            console.error('[account] DB row delete failure (continuing):', r.value?.error || r.reason);
+          }
+        }
+
+        // 3. Delete the auth user. This makes the JWT invalid; the iOS
+        //    app will sign out automatically on next API call.
+        const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(userId);
+        if (authErr) {
+          console.error('[account] auth user delete failed', authErr);
+          // Already-deleted users return 404 here — treat as success.
+          const msg = String(authErr.message || authErr).toLowerCase();
+          if (!msg.includes('not found') && !msg.includes('not_found')) {
+            return sendJson(res, 500, { error: 'auth_delete_failed', detail: authErr.message });
+          }
+        }
+
+        // 4. Best-effort S3 cleanup. Run after DB delete so a half-finished
+        //    state never leaves "user can sign in but their files are gone."
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        const s3svc = require('./services/s3');
+        if (s3svc.s3Client && s3svc.S3_BUCKET) {
+          let s3DeleteCount = 0;
+          for (const key of s3Keys) {
+            try {
+              await s3svc.s3Client.send(new DeleteObjectCommand({
+                Bucket: s3svc.S3_BUCKET,
+                Key: key,
+              }));
+              s3DeleteCount++;
+            } catch (err) {
+              // Orphan files are cheap; logging is enough.
+              console.warn('[account] S3 delete failed for', key, err.message || err);
+            }
+          }
+          console.log('[account] deleted', s3DeleteCount, 'of', s3Keys.length, 'S3 objects');
+        }
+
+        console.log('[account] delete complete for', userId);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        const status = err?.statusCode || 500;
+        console.error('[account] delete error', err);
+        return sendJson(res, status, { error: err?.message || 'delete_failed' });
+      }
+    })();
+    return;
+  }
+
   // ── RevenueCat webhook ──
   // RevenueCat → here on every subscription lifecycle event (INITIAL_PURCHASE,
   // RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE, TRIAL_STARTED, etc.).

@@ -274,11 +274,14 @@ final class PromptlyPlayerSession: ObservableObject {
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var isScrubbing: Bool = false
+    @Published var isBuffering: Bool = false
     @Published private(set) var frameStrip: [UIImage] = []
 
     private let item: AVPlayerItem
     private var timeObserver: Any?
     private var statusKVO: NSKeyValueObservation?
+    private var timeControlKVO: NSKeyValueObservation?
+    private var bufferingShowTask: Task<Void, Never>?
     private var endNotificationToken: NSObjectProtocol?
 
     init(item: AVPlayerItem, urlString: String) {
@@ -306,6 +309,36 @@ final class PromptlyPlayerSession: ObservableObject {
                     if d.isFinite, d > 0 { self.duration = d }
                     self.player.play()
                     self.isPlaying = true
+                }
+            }
+        }
+
+        // Buffering signal. timeControlStatus is the cleanest source: it
+        // tells us whether the player is .playing, .paused, or
+        // .waitingToPlayAtSpecifiedRate (stalled). Show a spinner only
+        // when the player WANTS to be playing but is waiting — and
+        // debounce by 250ms so micro-stalls (decoder catch-ups, rebuffer
+        // ticks shorter than a frame) don't flash the spinner. Hide
+        // immediately when playback resumes — Netflix / YouTube-style.
+        timeControlKVO = player.observe(\.timeControlStatus, options: [.new, .initial]) { [weak self] player, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                switch player.timeControlStatus {
+                case .waitingToPlayAtSpecifiedRate:
+                    self.bufferingShowTask?.cancel()
+                    self.bufferingShowTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        guard let self, !Task.isCancelled else { return }
+                        if self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                            self.isBuffering = true
+                        }
+                    }
+                case .playing, .paused:
+                    self.bufferingShowTask?.cancel()
+                    self.bufferingShowTask = nil
+                    if self.isBuffering { self.isBuffering = false }
+                @unknown default:
+                    break
                 }
             }
         }
@@ -365,6 +398,8 @@ final class PromptlyPlayerSession: ObservableObject {
     deinit {
         if let t = timeObserver { player.removeTimeObserver(t) }
         statusKVO?.invalidate()
+        timeControlKVO?.invalidate()
+        bufferingShowTask?.cancel()
         if let token = endNotificationToken { NotificationCenter.default.removeObserver(token) }
         let p = player
         Task { @MainActor in PlayerPool.shared.release(p) }
@@ -451,7 +486,20 @@ struct PromptlyPlayerView: View {
                 )
                 .transition(.opacity)
             }
+
+            // Buffering spinner — appears center-screen any time the
+            // player is waiting on data while it WANTS to be playing.
+            // Sits above the control overlay so it doesn't get blocked
+            // by the center play/pause hit area, and fades cleanly.
+            // 250ms debounce in the session means we never flash on
+            // sub-frame stalls — only real rebuffer events surface.
+            if session.isBuffering && firstFrameReady {
+                BufferingSpinner()
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
+        .animation(.easeInOut(duration: 0.18), value: session.isBuffering)
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -861,5 +909,29 @@ final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
 
     deinit {
         Task { @MainActor [session] in session.pause() }
+    }
+}
+
+// MARK: - Buffering spinner
+//
+// Center-screen indicator that pops in when AVPlayer stalls mid-playback.
+// Matches the visual weight of the play/pause button (76pt circle) so
+// the eye stays anchored to the same focal point. ultraThinMaterial
+// keeps it legible over any frame — bright daylight shots and dark
+// night scenes alike — without a hard chip that would feel out of place.
+struct BufferingSpinner: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .frame(width: 64, height: 64)
+                .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+            ProgressView()
+                .progressViewStyle(.circular)
+                .tint(.white)
+                .scaleEffect(1.15)
+        }
+        .accessibilityLabel("Loading")
     }
 }

@@ -275,6 +275,22 @@ class APIService {
         }
     }
 
+    // MARK: - Account
+
+    /// Permanent account deletion. Apple Guideline 5.1.1(v) requires this
+    /// be available in-app for any account-creating app. Server deletes
+    /// every video_job + chat + usage_event + profile row owned by this
+    /// user, removes the auth.users record, and best-effort-purges every
+    /// S3 object referenced by the deleted jobs. Once this returns 200 the
+    /// caller MUST sign out — the access token is now revoked.
+    func deleteAccount() async throws {
+        let request = await authorizedRequest("/api/account/delete", method: "POST")
+        let (_, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.deleteFailed
+        }
+    }
+
     // MARK: - Upload
 
     func getUploadUrl(fileName: String) async throws -> UploadUrlResponse {

@@ -16,6 +16,8 @@ struct AccountView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showPasswordReset = false
     @State private var passwordResetSent = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
 
     var body: some View {
         NavigationStack {
@@ -104,10 +106,18 @@ struct AccountView: View {
                     // Delete + version
                     VStack(spacing: 14) {
                         Button { showDeleteAccount = true } label: {
-                            Text("Delete account")
-                                .font(.system(size: 13))
-                                .foregroundColor(.red.opacity(0.75))
+                            HStack(spacing: 8) {
+                                if isDeletingAccount {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(.red.opacity(0.75))
+                                }
+                                Text(isDeletingAccount ? "Deleting account…" : "Delete account")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.red.opacity(0.75))
+                            }
                         }
+                        .disabled(isDeletingAccount)
 
                         Text(versionString)
                             .font(.system(size: 12))
@@ -148,6 +158,14 @@ struct AccountView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently delete your account and all your data. This cannot be undone.")
+            }
+            .alert("Couldn't delete account", isPresented: Binding(
+                get: { deleteAccountError != nil },
+                set: { if !$0 { deleteAccountError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteAccountError ?? "")
             }
         }
     }
@@ -351,6 +369,16 @@ struct AccountView: View {
     }
 
     private func deleteAccount() {
-        AuthService.shared.signOut()
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        Task {
+            do {
+                try await APIService.shared.deleteAccount()
+                AuthService.shared.signOut()
+            } catch {
+                isDeletingAccount = false
+                deleteAccountError = "We couldn't delete your account right now. Please check your connection and try again, or contact support@usepromptly.app if this keeps happening."
+            }
+        }
     }
 }
