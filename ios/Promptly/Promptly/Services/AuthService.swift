@@ -274,6 +274,14 @@ class AuthService {
         Task { @MainActor in
             VideoCache.shared.purgeAll()
         }
+        // Clear the chat list singleton. Without this, the next user
+        // signing in on this device sees the previous user's chats
+        // lingering in memory until ChatStore.loadChats happens to refresh
+        // them — which masquerades as "data still here" while the Library
+        // is correctly empty for the new account.
+        Task { @MainActor in
+            ChatStore.shared.clearForSignOut()
+        }
         // Detach the RevenueCat identity. Otherwise the next user that
         // signs in on this device starts a session aliased to the
         // previous user's app_user_id, which corrupts both attribution
@@ -407,9 +415,16 @@ class AuthService {
         // sign-in-as-other-user flow on the same device would leave
         // RevenueCat targeting the previous user's RC ID.
         let uid = session.user.id
+        print("[auth] saveSession user.id=\(uid) email=\(session.user.email ?? "nil")")
         Task { @MainActor in
             await SubscriptionService.shared.identify(userId: uid)
             await UsageService.shared.refresh()
+            // Force a fresh chat reload for the new identity. Without this,
+            // a sign-out → sign-in-as-other-user flow shows the previous
+            // user's chats lingering in memory until the next manual
+            // refresh. ChatStore.clearForSignOut() ran on sign-out so the
+            // list is already empty; this re-fills it for the new account.
+            await ChatStore.shared.loadChats()
         }
     }
 

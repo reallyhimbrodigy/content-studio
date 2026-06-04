@@ -236,7 +236,11 @@ class APIService {
 
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
-              let token = await validToken() else { throw APIError.notAuthenticated }
+              let token = await validToken() else {
+            print("[library] getUserEdits skipped — no userId or token")
+            throw APIError.notAuthenticated
+        }
+        print("[library] getUserEdits fetching for user_id=\(userId)")
 
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
@@ -247,7 +251,9 @@ class APIService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         let (data, _) = try await requestData(request)
-        return try JSONDecoder().decode([VideoJob].self, from: data)
+        let result = try JSONDecoder().decode([VideoJob].self, from: data)
+        print("[library] getUserEdits returned \(result.count) rows for user_id=\(userId)")
+        return result
     }
 
     func deleteEdit(id: String) async throws {

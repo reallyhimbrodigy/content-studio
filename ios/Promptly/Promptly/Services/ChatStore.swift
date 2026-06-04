@@ -19,6 +19,20 @@ final class ChatStore: ObservableObject {
 
     private init() {}
 
+    /// Reset to a clean slate. Called from AuthService.signOut so the next
+    /// user on this device doesn't see the previous user's chat list
+    /// lingering in memory. Cancels any in-flight save so we don't write
+    /// the previous user's chats under the new user's token.
+    func clearForSignOut() {
+        chats = []
+        activeChatId = nil
+        isLoading = false
+        loadError = nil
+        saveDebounceTask?.cancel()
+        saveDebounceTask = nil
+        pendingSaves.removeAll()
+    }
+
     // MARK: - Load
 
     /// Pull all chats for the signed-in user. Idempotent — safe to call
