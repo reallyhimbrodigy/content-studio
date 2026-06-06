@@ -170,6 +170,19 @@ struct EditorView: View {
             // by an SSE transport error even though the render succeeded.
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
+                // Force any live SSE clients to reconnect immediately.
+                // iOS suspended the app, killed the SSE socket, and the
+                // SSEClient's exponential backoff was paused along with
+                // the rest of the app — meaning on resume it'd sleep
+                // anywhere from 2s up to 60s before reconnecting. The
+                // progress bar would freeze the entire time even though
+                // the render is still streaming server-side.
+                sseClients.values.forEach { $0.forceReconnectIfNeeded() }
+                // Spin up SSE for any in-flight message that doesn't
+                // have a client yet (e.g. the chat was just restored
+                // from disk and never had one, or a previous client
+                // gave up after exhausting its retry budget).
+                resumeSSEForInFlightMessages()
                 Task { @MainActor in
                     // includeFailed: true heals messages that got
                     // marked failed locally (e.g. by an over-eager

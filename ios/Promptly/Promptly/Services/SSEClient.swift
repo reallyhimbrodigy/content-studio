@@ -64,6 +64,29 @@ class SSEClient {
         task = nil
     }
 
+    /// Foreground-recovery hook. iOS suspends the app aggressively; the
+    /// SSE socket dies on suspension and the exponential backoff Task
+    /// .sleep is paused along with the rest of the app. On resume the
+    /// sleep continues from wherever it was — up to a full 60s — and
+    /// the progress UI sits frozen the whole time even though the
+    /// render is still streaming server-side.
+    ///
+    /// Calling this on scenePhase=.active cancels the pending backoff,
+    /// resets the attempt counter, tears down the stale URLSessionTask,
+    /// and reconnects immediately. Safe to call any time — no-ops after
+    /// disconnect() or once the server has sent a terminal event.
+    func forceReconnectIfNeeded() {
+        if isClosed { return }
+        if receivedFinalEvent { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempts = 0
+        task?.cancel()
+        task = nil
+        lastEventTime = Date()
+        connect()
+    }
+
     private func handleData(_ data: Data) {
         lastEventTime = Date()
         // Any successful data resets the reconnect counter — we're back
