@@ -1291,8 +1291,49 @@ struct EditorView: View {
         context: [[String: String]]
     ) async {
         func idx() -> Int? { messages.firstIndex(where: { $0.id == messageId }) }
-        var accumulated = ""
-        var sawFirstToken = false
+
+        // Buffered typewriter pattern. Streaming tokens land in
+        // `buffer.text` as they arrive from Gemini — but the actual UI
+        // reveal is paced by a parallel typewriter that advances at a
+        // constant rate. Gemini's SSE chunks are wildly uneven (often
+        // a whole sentence at a time, with multi-second pauses between
+        // bursts), so writing tokens directly to the bubble felt chunky
+        // and stop-and-go. The typewriter smooths that out: every chat
+        // reply now reveals at a steady ChatGPT-style pace regardless
+        // of upstream pacing. When tokens arrive faster than the
+        // typewriter can reveal, the buffer absorbs the excess and the
+        // typewriter catches up over the following ticks; when they
+        // arrive slower, the typewriter just keeps pace with the stream.
+        let buffer = StreamBuffer()
+
+        let typewriter = Task { @MainActor in
+            let chunkSize = 5
+            let tickNanos: UInt64 = 22_000_000
+            var sawFirstReveal = false
+            var revealedCount = 0
+            while !Task.isCancelled {
+                let total = buffer.text.count
+                if revealedCount < total {
+                    revealedCount = min(revealedCount + chunkSize, total)
+                    if let i = idx() {
+                        let prefix = String(buffer.text.prefix(revealedCount))
+                        if !sawFirstReveal {
+                            sawFirstReveal = true
+                            messages[i].isThinking = false
+                            messages[i].error = nil
+                        }
+                        messages[i].content = prefix
+                    }
+                    try? await Task.sleep(nanoseconds: tickNanos)
+                } else if buffer.done {
+                    return
+                } else {
+                    // Waiting for more tokens — small sleep so we don't
+                    // tight-loop on the MainActor.
+                    try? await Task.sleep(nanoseconds: tickNanos)
+                }
+            }
+        }
 
         // ── Tier 1: streaming ─────────────────────────────────────────
         var hitPaywall = false
@@ -1300,16 +1341,8 @@ struct EditorView: View {
         let stream = APIService.shared.chatStream(message: prompt, history: context)
         do {
             for try await token in stream {
-                if Task.isCancelled { return }
-                accumulated += token
-                if let i = idx() {
-                    if !sawFirstToken {
-                        sawFirstToken = true
-                        messages[i].isThinking = false
-                        messages[i].error = nil
-                    }
-                    messages[i].content = accumulated
-                }
+                if Task.isCancelled { typewriter.cancel(); return }
+                buffer.text += token
             }
         } catch let APIError.paymentRequired(_, limit, _) {
             // Server hit the daily chat cap. No point falling back to the
@@ -1322,15 +1355,17 @@ struct EditorView: View {
             print("[chat] stream failed: \(error.localizedDescription) — falling back")
         }
 
-        if Task.isCancelled { return }
+        if Task.isCancelled { typewriter.cancel(); return }
 
-        // ── Tier 2: one-shot + client-side typewriter ──────────────────
-        if accumulated.isEmpty && !hitPaywall {
+        // ── Tier 2: one-shot fallback ──────────────────────────────────
+        // Stream silently buffered or threw — try the non-streaming
+        // endpoint and dump the whole reply into the buffer. The
+        // typewriter takes care of revealing it smoothly.
+        if buffer.text.isEmpty && !hitPaywall {
             do {
                 let reply = try await APIService.shared.chat(message: prompt, history: context)
-                if Task.isCancelled { return }
-                await typewriteReveal(reply, intoMessageId: messageId)
-                accumulated = reply
+                if Task.isCancelled { typewriter.cancel(); return }
+                buffer.text = reply
             } catch let APIError.paymentRequired(_, limit, _) {
                 // Daily AI chat cap. Pop the paywall sheet and remove the
                 // empty assistant bubble — the user didn't really get a
@@ -1342,6 +1377,11 @@ struct EditorView: View {
                 print("[chat] one-shot fallback failed: \(error.localizedDescription)")
             }
         }
+
+        // Signal the typewriter that no more tokens are coming. It will
+        // finish revealing whatever's left in the buffer, then exit.
+        buffer.done = true
+        await typewriter.value
 
         if Task.isCancelled { return }
 
@@ -1359,18 +1399,29 @@ struct EditorView: View {
         }
         if let i = idx() {
             messages[i].isThinking = false
-            if accumulated.isEmpty {
-                // Both tiers failed. Surface a clean error state the
-                // context menu's Retry knows how to re-run.
-                messages[i].content = "Couldn't respond. Long-press to try again."
+            if buffer.text.isEmpty {
+                // Both tiers failed. Surface a clean error state via the
+                // typewriter too, so even the failure mode feels alive
+                // instead of slamming in an error string.
                 messages[i].error = "chat_failed"
+                await typewriteReveal("Couldn't respond. Long-press to try again.", intoMessageId: messageId)
             } else {
-                messages[i].content = accumulated
+                messages[i].content = buffer.text
                 messages[i].error = nil
-                conversationHistory.append(["role": "assistant", "content": accumulated])
+                conversationHistory.append(["role": "assistant", "content": buffer.text])
             }
             persistMessages()
         }
+    }
+
+    /// Reference-type box for the streaming buffer + done signal so the
+    /// streaming loop and the typewriter task can both see each other's
+    /// mutations. Both run on the MainActor so access is naturally
+    /// serialized; no locking required.
+    @MainActor
+    private final class StreamBuffer {
+        var text: String = ""
+        var done: Bool = false
     }
 
     /// Progressively reveal `text` into the assistant message at
