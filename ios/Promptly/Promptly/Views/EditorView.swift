@@ -381,15 +381,22 @@ struct EditorView: View {
     /// from both the chat-load path and the new-chat path so a user
     /// always sees Promptly's intro the moment a fresh chat surfaces.
     /// Idempotent: only injects when messages is genuinely empty.
+    ///
+    /// Reveals the text via `typewriteReveal` so it feels alive instead
+    /// of slamming the full block in at once. Persist happens AFTER the
+    /// reveal completes so the saved chat record stores the final text;
+    /// otherwise a fast app-kill mid-reveal would persist a partial.
     private func injectWelcomeIfEmpty() {
         guard messages.isEmpty else { return }
-        var welcome = ChatMessage(
-            role: .assistant,
-            content: "Hey 👋 I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
-        )
+        let fullText = "Hey 👋 I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
+        var welcome = ChatMessage(role: .assistant, content: "")
         welcome.isOnboarding = true
+        let welcomeId = welcome.id
         messages = [welcome]
-        persistMessages()
+        Task { @MainActor in
+            await typewriteReveal(fullText, intoMessageId: welcomeId)
+            persistMessages()
+        }
     }
 
     // MARK: - Re-edit context chip
@@ -656,6 +663,13 @@ struct EditorView: View {
                 }
                 .accessibilityLabel("Add video")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
+                // Mirror the mic/send button's leading-edge + bottom
+                // insets (.trailing 5 + .bottom 5 below) so both sides of
+                // the composer bracket the input field at the same offset.
+                // Without this, the "+" was flush at the bottom-left while
+                // the mic sat 5pt up + 5pt in, reading as "off center."
+                .padding(.leading, 5)
+                .padding(.bottom, 5)
 
                 ZStack(alignment: .leading) {
                     // Ghost-text rotation. When the field is empty, the
@@ -1119,9 +1133,16 @@ struct EditorView: View {
     // so it should be the safe-bet default.
     static let vibeSuggestions: [String] = [
         "Engaging fast-paced",
-        "Sales pitch",
         "Viral hype",
+        "Sales pitch",
         "Storytime",
+        "Tutorial style",
+        "Make it educational",
+        "Cinematic and moody",
+        "Confessional vlog",
+        "Documentary feel",
+        "Comedy timing",
+        "Motivational",
         "Make it good"
     ]
 
@@ -1460,12 +1481,14 @@ struct EditorView: View {
         // chip suggestions). Re-edit is exempt — it operates on the
         // existing edit recipe so empty text means "no further change."
         if hasVideos && text.isEmpty && !reeditActive {
-            let nudge = ChatMessage(
-                role: .assistant,
-                content: "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words."
-            )
+            let nudgeText = "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words."
+            let nudge = ChatMessage(role: .assistant, content: "")
+            let nudgeId = nudge.id
             messages.append(nudge)
             isInputFocused = true
+            Task { @MainActor in
+                await typewriteReveal(nudgeText, intoMessageId: nudgeId)
+            }
             return
         }
 
