@@ -57,7 +57,7 @@ iPhone creators producing talking-head short-form video. Specifically:
 ## Technical Platform
 
 - iOS only (iPhone, iOS 18+)
-- Available on the Apple App Store
+- Available on the Apple App Store: https://apps.apple.com/app/promptly-ai-video-editor/id6762497454
 - Sign-in via Apple, Google, or email
 - Cloud rendering — works while phone is offline once dispatched
 
