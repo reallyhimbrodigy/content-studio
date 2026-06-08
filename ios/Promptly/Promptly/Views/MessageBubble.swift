@@ -287,6 +287,7 @@ struct ProcessingIndicator: View {
     let progress: Int              // target from upload/SSE
     @State private var displayed: Int = 0
     @State private var target: Int = 0
+    @State private var idleTicks: Int = 0  // counts 120ms idle ticks between SSE updates
     @State private var pulse = false
 
     var body: some View {
@@ -340,6 +341,23 @@ struct ProcessingIndicator: View {
                 if delta > 0 {
                     let step = max(1, delta / 5)
                     displayed = min(target, displayed + step)
+                    idleTicks = 0
+                } else {
+                    // Idle trickle. Render-stage SSE ticks can be 5-15s
+                    // apart; without this the bar would sit frozen on
+                    // whatever percent the last tick mapped to (the
+                    // user's "stuck at 43% looking broken" complaint).
+                    // Trickle 1% every ~1.4s, capped at last-real-target
+                    // + 5 (so a long idle never gets too far ahead of
+                    // reality), never past 99 (reserved for the finish
+                    // event). Next real SSE tick overtakes the trickle
+                    // smoothly via delta-creep.
+                    idleTicks += 1
+                    let ceiling = min(99, target + 5)
+                    if displayed < ceiling && idleTicks >= 12 {
+                        displayed += 1
+                        idleTicks = 0
+                    }
                 }
             }
         }
@@ -365,6 +383,7 @@ struct PipelineProgressView: View {
     let progress: Int
     @State private var displayed: Int = 0
     @State private var target: Int = 0
+    @State private var idleTicks: Int = 0  // counts 120ms idle ticks between SSE updates
     @State private var expanded: Bool = false
 
     private var activeStage: PipelineStage? {
@@ -484,6 +503,20 @@ struct PipelineProgressView: View {
                 if delta > 0 {
                     let step = max(1, delta / 5)
                     displayed = min(target, displayed + step)
+                    idleTicks = 0
+                } else {
+                    // Idle trickle — see ProcessingIndicator for full
+                    // rationale. Short version: SSE ticks are sparse
+                    // (5-15s apart) during render, and a frozen bar
+                    // reads as broken even when the worker is healthy.
+                    // Slow 1% / 1.4s trickle capped at target+5, never
+                    // past 99, gets overtaken by the next real tick.
+                    idleTicks += 1
+                    let ceiling = min(99, target + 5)
+                    if displayed < ceiling && idleTicks >= 12 {
+                        displayed += 1
+                        idleTicks = 0
+                    }
                 }
             }
         }

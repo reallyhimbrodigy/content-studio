@@ -1711,6 +1711,18 @@ struct EditorView: View {
                                 if Date() > waitDeadline {
                                     throw APIError.uploadFailed
                                 }
+                                // Mirror real upload progress (0…1) into the
+                                // message progress bar so it fills smoothly
+                                // during the upload (0→38) rather than sitting
+                                // at 0 the whole time and then jumping to 40
+                                // the instant dispatch fires. Once dispatch
+                                // fires it nudges to 40, then SSE drives 40→100.
+                                if let i = indexOfProcessingMsg() {
+                                    let mapped = Int(video.uploadProgress * 38)
+                                    if mapped > (messages[i].jobProgress ?? 0) {
+                                        messages[i].jobProgress = mapped
+                                    }
+                                }
                                 try? await Task.sleep(nanoseconds: 100_000_000)
                             }
                             if video.uploadFailed {
