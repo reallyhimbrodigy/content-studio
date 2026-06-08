@@ -66,6 +66,15 @@ class PendingVideo: Identifiable, ObservableObject {
     /// 60-120s on cellular). Used for the actual render. Set the moment
     /// we know the eventual URL — the upload may still be in flight.
     @Published var uploadedUrl: String?
+    /// True only after the source PUT to S3 returns successfully — i.e.
+    /// the bytes are actually in the bucket. The dispatch loop in send()
+    /// must wait for THIS, not for `uploadedUrl`, before creating the
+    /// render job. `uploadedUrl` is set the moment we know the future
+    /// URL (so the prewarm + UI know what's coming), but the worker on
+    /// the other end will 404 + time out after 180s if it polls before
+    /// the bytes land. Production failure: a 26s clip on slow cellular
+    /// took > 180s to upload, worker timed out, job was lost.
+    @Published var sourceUploadCompleted: Bool = false
     /// Public S3 URL of the low-res proxy upload (foreground URLSession,
     /// 5-10s). Used for cloud AI analysis (Gemini, transcript). When this
     /// is set, the user can tap Send even though the source upload is

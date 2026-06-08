@@ -1027,9 +1027,13 @@ struct EditorView: View {
                             try? FileManager.default.removeItem(at: materializedSourceUrl)
                             await MainActor.run {
                                 pending.uploadProgress = 1.0
-                                // uploadedUrl was already set early so the
-                                // job could dispatch on proxy-ready; this
-                                // is the byte-arrival signal.
+                                // Bytes are in S3 now — release the job
+                                // dispatcher. `uploadedUrl` was set early
+                                // (line 985) for prewarm + UI, but the
+                                // dispatcher gates on `sourceUploadCompleted`
+                                // so a slow upload can't trigger a job that
+                                // would 404 + time the worker out.
+                                pending.sourceUploadCompleted = true
                             }
                             print("[perf] source upload complete (background)")
                         }()
@@ -1064,6 +1068,11 @@ struct EditorView: View {
                         await MainActor.run {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
+                            // For the .stream / single-PUT paths, control
+                            // only reaches here after the upload has
+                            // returned — so the bytes are confirmed in S3
+                            // and the dispatcher can fire immediately.
+                            pending.sourceUploadCompleted = true
                         }
                         firePrewarmOnce.fire(publicUrl)
                     }
@@ -1679,8 +1688,26 @@ struct EditorView: View {
                             // 60s deadline so the inner Task can't hang
                             // forever if the upload Task is stuck or
                             // suspended.
-                            let waitDeadline = Date().addingTimeInterval(60)
-                            while video.proxyUploadedUrl == nil && video.uploadedUrl == nil && !(video.uploadFailed) {
+                            //
+                            // Wait specifically for `sourceUploadCompleted`
+                            // — bytes confirmed in S3. The previous version
+                            // dispatched as soon as `uploadedUrl` was set,
+                            // but that field is published EARLY (the moment
+                            // we know the eventual URL, before the PUT
+                            // finishes) so the prewarm + UI can react. The
+                            // worker only polls for the file for 180s, so
+                            // dispatching before the bytes land caused the
+                            // worker to 404 + give up on slow cellular
+                            // uploads. Production failure: 26s clip,
+                            // worker polled for 183s, never saw the file,
+                            // returned "Source video did not arrive on S3."
+                            //
+                            // Deadline raised from 60s → 240s. A large clip
+                            // on slow cellular legitimately takes 90-180s
+                            // to upload; the old 60s cap was racing real
+                            // uploads on bad networks.
+                            let waitDeadline = Date().addingTimeInterval(240)
+                            while !(video.sourceUploadCompleted) && !(video.uploadFailed) {
                                 if Date() > waitDeadline {
                                     throw APIError.uploadFailed
                                 }
