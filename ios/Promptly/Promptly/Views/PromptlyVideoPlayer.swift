@@ -357,14 +357,12 @@ final class PromptlyPlayerSession: ObservableObject {
             }
         }
 
-        // Frame strip generation off-thread. AVAssetImageGenerator on
-        // a progressive MP4 with dense keyframes (server emits one per
-        // second) populates the strip within a few hundred ms.
-        Task { [weak self] in
-            guard let self else { return }
-            let images = await FrameStripCache.shared.strip(for: urlString, asset: item.asset)
-            await MainActor.run { self.frameStrip = images }
-        }
+        // Frame strip generation is intentionally skipped — the native
+        // AVPlayerViewController surface generates its own high-res
+        // scrub previews on demand from the asset, so a pre-extracted
+        // sampled strip is redundant + wasted CPU/disk. The frameStrip
+        // @Published stays in place for binary compatibility with any
+        // surviving call sites; it just stays empty.
     }
 
     func togglePlay() { isPlaying ? pause() : play() }
@@ -406,6 +404,51 @@ final class PromptlyPlayerSession: ObservableObject {
     }
 }
 
+// MARK: - Native AVPlayerViewController surface
+//
+// SwiftUI wrapper around AVKit's AVPlayerViewController. Why this
+// instead of the SwiftUI `VideoPlayer` view: AVPlayerViewController
+// gives us the same controls the Photos / TV / Music apps use —
+// high-resolution frame previews on scrub (the system extracts them
+// at the native asset resolution rather than a sampled-down strip),
+// a polished system play/pause button with the correct symbol weight
+// and hit target, AirPlay, Picture-in-Picture, and the right
+// auto-hide cadence. The SwiftUI VideoPlayer is a thinner wrapper
+// that doesn't expose `entersFullScreenWhenPlaybackBegins`,
+// `videoGravity`, or the customOverlay layer, so we lose precision
+// over how the player composes with the rest of the screen.
+//
+// We do NOT set entersFullScreenWhenPlaybackBegins — the player is
+// already mounted in a full-screen modal at this point, and the
+// extra "expand to fullscreen" step makes the inline controls flash
+// for a frame before the system rebuilds them.
+
+struct NativeAVPlayerSurface: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.showsPlaybackControls = true
+        vc.allowsPictureInPicturePlayback = true
+        vc.canStartPictureInPictureAutomaticallyFromInline = false
+        vc.entersFullScreenWhenPlaybackBegins = false
+        vc.exitsFullScreenWhenPlaybackEnds = false
+        vc.videoGravity = .resizeAspect
+        // Keep our own Now Playing handling out of the system center —
+        // the app isn't a media library client and we don't want Music
+        // / lock-screen controls to bind to in-app render previews.
+        vc.updatesNowPlayingInfoCenter = false
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
+        if uiViewController.player !== player {
+            uiViewController.player = player
+        }
+    }
+}
+
 // MARK: - Player view (the surface the user sees)
 
 struct PromptlyPlayerView: View {
@@ -415,8 +458,6 @@ struct PromptlyPlayerView: View {
     let title: String?
     let posterUrl: String?
 
-    @State private var showControls: Bool = true
-    @State private var hideTask: Task<Void, Never>?
     @State private var dismissOffset: CGFloat = 0
     @State private var firstFrameReady: Bool = false
 
@@ -430,11 +471,11 @@ struct PromptlyPlayerView: View {
                 .allowsHitTesting(false)
 
             // Poster — instant first paint surface. Sits BEHIND the
-            // video layer and fades out when the AVPlayerLayer reports
-            // its first frame is ready to display. This is the trick
-            // that makes the player feel instant: the user never sees
-            // a black flash between tap and video start, even though
-            // AVPlayer is technically still warming up underneath.
+            // video layer and fades out when the asset reports it's
+            // ready to play (duration > 0 signals the statusKVO has
+            // landed). User never sees a black flash between tap and
+            // video start even though AVPlayer is still warming up
+            // underneath.
             if !firstFrameReady, let posterUrl, let url = URL(string: posterUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -450,91 +491,111 @@ struct PromptlyPlayerView: View {
                 .transition(.opacity)
             }
 
-            // Video. Tap toggles controls; drag-down rubber-bands and dismisses.
-            PlayerLayerView(player: session.player) {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    firstFrameReady = true
+            // NATIVE AVPlayerViewController surface. This is what gives
+            // us the Photos-app-quality scrubber: high-resolution frame
+            // previews above the thumb on drag, smooth time scrub, and
+            // the system pause/play button that respects symbol weight,
+            // hit target, and Dynamic Type out of the box. AirPlay +
+            // PiP buttons are also native, free.
+            //
+            // The custom ControlOverlay + FrameStripScrubber + Buffering
+            // spinner that used to live here had three problems the user
+            // called out: a janky white dot for the thumb, a random-
+            // looking strip of pre-extracted frames behind it, and a
+            // pause button that "felt wrong." Replacing with AVKit's
+            // controls fixes all three at once and brings the player up
+            // to the "this is a video editor app" bar.
+            NativeAVPlayerSurface(player: session.player)
+                .ignoresSafeArea()
+                .opacity(firstFrameReady ? 1 : 0)
+                .scaleEffect(1 - min(abs(dismissOffset) / 1500, 0.15), anchor: .center)
+                .offset(y: dismissOffset)
+                .gesture(swipeDownDismiss)
+
+            // Custom chrome that overlays the native player — close (X)
+            // top-leading + optional "Re-edit" pill bottom-trailing.
+            // Both sit above the safe area / native scrubber area so
+            // they never collide with system controls. Native controls
+            // auto-hide; our overlay stays visible since these aren't
+            // playback controls — they're navigation.
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Button(action: animateClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+
+                    if let title = title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+
+                Spacer()
+
+                if let onReedit {
+                    HStack {
+                        Spacer()
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onReedit()
+                            onClose()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Re-edit")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 16)
+                        // Sit clear of the native scrubber area at the
+                        // bottom (the native bar lives in roughly the
+                        // bottom 100pt). 92pt keeps the pill within
+                        // thumb reach but doesn't overlap the scrubber.
+                        .padding(.bottom, 92)
+                    }
                 }
             }
-            .ignoresSafeArea()
-            .opacity(firstFrameReady ? 1 : 0)
-            .contentShape(Rectangle())
-            .onTapGesture { toggleControls() }
-            .scaleEffect(1 - min(abs(dismissOffset) / 1500, 0.15), anchor: .center)
-            .offset(y: dismissOffset)
-            .gesture(swipeDownDismiss)
-
-            // Subtle vignette during fullscreen playback (controls hidden).
-            // Pulls focus toward subject without muddying the picture.
-            if session.isPlaying && !showControls && firstFrameReady {
-                LinearGradient(
-                    colors: [.black.opacity(0.04), .clear, .clear, .black.opacity(0.18)],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .transition(.opacity)
-            }
-
-            if showControls {
-                ControlOverlay(
-                    session: session,
-                    title: title,
-                    onClose: animateClose,
-                    onReedit: onReedit,
-                    onScrubChanged: { resetHide() }
-                )
-                .transition(.opacity)
-            }
-
-            // Buffering spinner — appears center-screen any time the
-            // player is waiting on data while it WANTS to be playing.
-            // Sits above the control overlay so it doesn't get blocked
-            // by the center play/pause hit area, and fades cleanly.
-            // 250ms debounce in the session means we never flash on
-            // sub-frame stalls — only real rebuffer events surface.
-            if session.isBuffering && firstFrameReady {
-                BufferingSpinner()
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-            }
+            .allowsHitTesting(true)
         }
-        .animation(.easeInOut(duration: 0.18), value: session.isBuffering)
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear {
             session.play()
-            scheduleHide()
         }
         .onDisappear {
-            hideTask?.cancel()
             session.pause()
         }
-    }
-
-    private func toggleControls() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            showControls.toggle()
-        }
-        if showControls {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            scheduleHide()
-        }
-    }
-
-    private func resetHide() {
-        hideTask?.cancel()
-        scheduleHide()
-    }
-
-    private func scheduleHide() {
-        hideTask?.cancel()
-        hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
-            if Task.isCancelled || session.isScrubbing { return }
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                showControls = false
+        // Fade the poster out as soon as the asset is ready (duration
+        // signals readyToPlay via the existing statusKVO). Native
+        // AVPlayerViewController will be displaying its first frame by
+        // the time this fires.
+        .onChange(of: session.duration, initial: true) { _, new in
+            if new > 0 && !firstFrameReady {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    firstFrameReady = true
+                }
             }
         }
     }
