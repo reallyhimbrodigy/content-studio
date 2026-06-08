@@ -218,9 +218,11 @@ struct PromptlyApp: App {
             // Crossfade between launch ↔ authed ↔ unauthed roots so the
             // logo doesn't hard-cut to the app shell when checkSession()
             // resolves. The logo's slight scale-up on exit reads as a
-            // soft hand-off rather than a slam.
-            .animation(.easeOut(duration: 0.35), value: auth.isLoading)
-            .animation(.easeOut(duration: 0.28), value: auth.isAuthenticated)
+            // soft hand-off rather than a slam. Crossfade durations are
+            // intentionally short — once auth resolves, the user wants
+            // to be IN the app, not watching another transition.
+            .animation(.easeOut(duration: 0.22), value: auth.isLoading)
+            .animation(.easeOut(duration: 0.22), value: auth.isAuthenticated)
             .environmentObject(appState)
             .preferredColorScheme(.dark)
             .task {
@@ -244,174 +246,188 @@ struct PromptlyApp: App {
     }
 }
 
-/// Cinematic branded splash shown while `auth.checkSession()` resolves.
+/// Branded splash shown while `auth.checkSession()` resolves.
 ///
-/// Sequence:
-///   1. ~60ms black hold (gives the eye a quiet beat before action)
-///   2. ZOOM: logo rockets in from scale 0.18 to 1.15 over ~260ms,
-///      blur clearing from 22 → 0, opacity 0 → 1, with 8 radial speed
-///      rays sweeping outward behind it (the "running / whoosh" the
-///      user asked for).
-///   3. IMPACT: spring overshoot snaps logo back to 1.0 (~180ms),
-///      glow ring shockwaves outward, and a white flash briefly
-///      veils the screen — reads as a soft camera-flash on landing.
-///   4. SETTLE: speed rays fade, shockwave finishes, ambient halo
-///      relaxes to a low persistent value, and the logo enters a
-///      barely-perceptible 1.0 ↔ 1.025 breathing loop so the splash
-///      never looks "stuck" while the auth check finishes.
+/// Designed around the actual Promptly mark — a runner with motion
+/// lines baked into the artwork. Rather than layering synthetic speed
+/// rays on top (which would compete with the brand), the animation
+/// uses the runner's own motion direction: the logo SPRINTS IN from
+/// off-screen left (where the existing motion lines trail), brakes to
+/// a stop at center with a small overshoot, then "runs in place"
+/// during the wait — a subtle vertical bob plus an occasional thin
+/// streak passing behind the runner suggesting wind/speed.
 ///
-/// Total entrance is ~450ms — short enough that a fast checkSession()
-/// resolve cuts to the app shell mid-breathe (the parent crossfade
-/// modifier in WindowGroup handles the hand-off), but slow enough
-/// that the user clocks the brand moment on a cold start.
+/// Phases:
+///   1. ~60ms black hold — the breath before motion.
+///   2. SPRINT IN (~320ms) — logo enters from offset x=-280 to 0,
+///      scale 0.78 → 1.08, opacity 0 → 1, horizontal motion blur
+///      14 → 0. Timing curve decelerates at the end so it reads as
+///      braking to a stop, not skidding past.
+///   3. LAND (~200ms) — spring overshoot 1.08 → 1.0 (the brake), soft
+///      glow bloom from beneath the runner, brief light kiss across
+///      the screen (eased to 24% peak — felt, not seen).
+///   4. RUN IN PLACE (idle) — subtle 1.0 ↔ 1.025 breathe + 0 ↔ -2pt
+///      vertical bob over 1.4s loops (the runner's stride). Every
+///      ~1.6s a thin horizontal streak passes behind the runner from
+///      right to left, fading in/out — the wind still moving past.
+///      This is what carries the long-wait case (5s+ on slow auth
+///      resolves) so the splash never reads as frozen.
+///
+/// Exit hand-off: when auth.isLoading flips false, the WindowGroup's
+/// .animation(.easeOut(duration: 0.22)) crossfades LaunchView out.
+/// Same crossfade timing applies on a fast resolve that cuts the
+/// sprint short — the exit blends with whatever animation phase the
+/// view happens to be in, no special-case needed.
 struct LaunchView: View {
-    // Logo
-    @State private var logoScale: CGFloat = 0.18
+    // Logo motion
+    @State private var logoOffsetX: CGFloat = -280
+    @State private var logoScale: CGFloat = 0.78
     @State private var logoOpacity: Double = 0
-    @State private var logoBlur: CGFloat = 22
-    @State private var breathing = false
+    @State private var logoBlur: CGFloat = 14
 
-    // Ambient glow beneath the logo (persists at low opacity after the
-    // entrance so the mark reads as luminous rather than flat).
+    // Ambient glow under the logo (blooms on land, settles for idle).
     @State private var glowOpacity: Double = 0
 
-    // Speed rays — eight thin radial spokes that sweep outward during
-    // the zoom phase. Suggests motion/whoosh without a particle system.
-    @State private var raysScale: CGFloat = 0.6
-    @State private var raysOpacity: Double = 0
+    // Brief light kiss at landing — softer than a full flash; reads as
+    // a halt of motion rather than a camera pop.
+    @State private var landFlashOpacity: Double = 0
 
-    // Shockwave ring — scales outward at the landing moment so the
-    // logo's arrival reads as an impact rather than a fade-in.
-    @State private var shockScale: CGFloat = 0.4
-    @State private var shockOpacity: Double = 0
+    // Idle loops — kicked on after the sprint settles.
+    @State private var idleBreathing = false   // 1.0 ↔ 1.025 scale
+    @State private var idleStride = false      // 0 ↔ -2pt vertical bob
 
-    // Brief white flash that veils the screen at impact — the
-    // camera-flash beat of the landing.
-    @State private var flashOpacity: Double = 0
+    // Wind streak — a thin line passes behind the runner every ~1.6s
+    // during the idle state. Driven by an explicit Task rather than a
+    // repeatForever animation so the streak fires AFTER the entrance
+    // is complete, not during.
+    @State private var windStreakX: CGFloat = 220   // start off-screen right
+    @State private var windStreakOpacity: Double = 0
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // Ambient glow halo (persistent, low-opacity after entrance).
+            // Ambient glow halo (blooms on land, persists faintly).
             RadialGradient(
-                colors: [Color.white.opacity(0.22), Color.white.opacity(0.0)],
+                colors: [Color.white.opacity(0.25), Color.white.opacity(0.0)],
                 center: .center,
                 startRadius: 0,
-                endRadius: 240
+                endRadius: 260
             )
-            .frame(width: 480, height: 480)
+            .frame(width: 520, height: 520)
             .opacity(glowOpacity)
-            .blendMode(.screen)
-
-            // Speed rays — 8 radial spokes. Sweep outward during the
-            // zoom, fade as the logo lands.
-            ZStack {
-                ForEach(0..<8, id: \.self) { i in
-                    Capsule()
-                        .fill(LinearGradient(
-                            colors: [Color.white.opacity(0.9), Color.white.opacity(0)],
-                            startPoint: .leading, endPoint: .trailing
-                        ))
-                        .frame(width: 96, height: 1.5)
-                        .offset(x: 86)
-                        .rotationEffect(.degrees(Double(i) * 45))
-                }
-            }
-            .scaleEffect(raysScale)
-            .opacity(raysOpacity)
-            .blur(radius: 0.5)
             .blendMode(.screen)
             .allowsHitTesting(false)
 
-            // Shockwave ring — expanding circle stroke that fires at
-            // the impact moment.
-            Circle()
-                .stroke(Color.white.opacity(0.55), lineWidth: 1.5)
-                .frame(width: 220, height: 220)
-                .scaleEffect(shockScale)
-                .opacity(shockOpacity)
+            // Wind streak — thin horizontal line passing behind the
+            // runner during the idle/wait state.
+            Capsule()
+                .fill(LinearGradient(
+                    colors: [Color.white.opacity(0), Color.white.opacity(0.55), Color.white.opacity(0)],
+                    startPoint: .leading, endPoint: .trailing
+                ))
+                .frame(width: 140, height: 1.2)
                 .blur(radius: 0.5)
+                .offset(x: windStreakX, y: 12)
+                .opacity(windStreakOpacity)
                 .blendMode(.screen)
                 .allowsHitTesting(false)
 
-            // The logo itself — the focal point. Scale + blur + opacity
-            // animate together for the cinematic zoom-in feel.
+            // The logo itself — the focal point. The PNG is white art
+            // on a SOLID BLACK background (no alpha channel) so we DO
+            // NOT apply renderingMode(.template) here — that would
+            // tint the whole 1024×1024 square. Render as-is and let
+            // the black square blend into the black launch background.
             Image("PromptlyLogo")
                 .resizable()
-                .renderingMode(.template)
-                .foregroundColor(.white)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 148, height: 148)
-                .scaleEffect(breathing ? logoScale * 1.025 : logoScale)
+                .frame(width: 168, height: 168)
+                .scaleEffect(idleBreathing ? logoScale * 1.025 : logoScale)
+                .offset(x: logoOffsetX, y: idleStride ? -2 : 0)
                 .opacity(logoOpacity)
                 .blur(radius: logoBlur)
                 .animation(
-                    .easeInOut(duration: 2.6).repeatForever(autoreverses: true),
-                    value: breathing
+                    .easeInOut(duration: 1.4).repeatForever(autoreverses: true),
+                    value: idleBreathing
+                )
+                .animation(
+                    .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                    value: idleStride
                 )
 
-            // Camera-flash veil — briefly washes the screen white at
-            // the impact moment, then clears.
+            // Brief light kiss at landing.
             Color.white
-                .opacity(flashOpacity)
+                .opacity(landFlashOpacity)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .blendMode(.screen)
         }
         .task {
-            // Phase 1 — brief black hold. Gives the eye a quiet beat
-            // so the zoom that follows reads as decisive.
+            // Phase 1 — black hold.
             try? await Task.sleep(for: .milliseconds(60))
 
-            // Phase 2 — ZOOM. Logo rockets in: scale 0.18 → 1.15,
-            // opacity 0 → 1, blur 22 → 0. Timing curve front-loads the
-            // acceleration so the motion feels like it's coming AT
-            // the viewer rather than crawling. Speed rays fire in
-            // parallel and sweep outward.
-            withAnimation(.timingCurve(0.22, 0.6, 0.35, 1, duration: 0.26)) {
-                logoScale = 1.15
+            // Phase 2 — SPRINT IN. Logo enters from off-screen left
+            // (motion lines on the artwork trail behind correctly).
+            // Custom curve: fast start, gentle finish — reads as
+            // braking to a stop at center.
+            withAnimation(.timingCurve(0.16, 0.7, 0.28, 1, duration: 0.32)) {
+                logoOffsetX = 0
+                logoScale = 1.08
                 logoOpacity = 1
                 logoBlur = 0
             }
-            withAnimation(.easeOut(duration: 0.32)) {
-                raysScale = 1.6
-                raysOpacity = 1
-            }
 
-            // Phase 3 — IMPACT. Spring overshoot back to 1.0 — the
-            // perceived "thunk" of the logo landing. Shockwave ring
-            // expands outward simultaneously, and the camera flash
-            // briefly veils the screen.
-            try? await Task.sleep(for: .milliseconds(240))
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
+            // Phase 3 — LAND. Spring overshoot back to 1.0 (the brake),
+            // glow blooms beneath, light kiss flashes briefly.
+            try? await Task.sleep(for: .milliseconds(300))
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.66)) {
                 logoScale = 1.0
             }
-            withAnimation(.easeOut(duration: 0.45)) {
-                shockScale = 1.9
-                shockOpacity = 0.85
+            withAnimation(.easeOut(duration: 0.22)) {
+                glowOpacity = 0.55
+                landFlashOpacity = 0.18
             }
-            withAnimation(.easeOut(duration: 0.18)) {
-                flashOpacity = 0.32
-                glowOpacity = 0.62
-            }
-            // Begin fading the flash + rays back out almost immediately
-            // so the "impact" reads as a snap rather than a hold.
-            withAnimation(.easeInOut(duration: 0.4).delay(0.06)) {
-                flashOpacity = 0
-                raysOpacity = 0
+            withAnimation(.easeInOut(duration: 0.45).delay(0.10)) {
+                landFlashOpacity = 0
+                glowOpacity = 0.22
             }
 
-            // Phase 4 — SETTLE. Shockwave finishes, glow relaxes to a
-            // low persistent halo, breathing loop kicks on so the
-            // splash never reads as stuck during the auth wait.
-            try? await Task.sleep(for: .milliseconds(280))
-            withAnimation(.easeOut(duration: 0.5)) {
-                shockOpacity = 0
-                shockScale = 2.2
-                glowOpacity = 0.18
+            // Phase 4 — RUN IN PLACE. Kick the breathing + stride
+            // loops; start the periodic wind streak.
+            try? await Task.sleep(for: .milliseconds(260))
+            idleBreathing = true
+            idleStride = true
+            await runWindStreaks()
+        }
+    }
+
+    /// Fire a horizontal streak across the screen every ~1.6s while the
+    /// view is alive. Each streak: snap to start position (off-screen
+    /// right), fade in, glide left across the runner, fade out at the
+    /// far edge. Suggests wind passing the runner during the wait.
+    /// Cancelled when SwiftUI tears down the .task on view dismissal.
+    private func runWindStreaks() async {
+        while !Task.isCancelled {
+            // Reset to off-screen right, invisible.
+            windStreakX = 220
+            windStreakOpacity = 0
+
+            // Fade in as it begins crossing.
+            withAnimation(.easeIn(duration: 0.22)) {
+                windStreakOpacity = 1
             }
-            breathing = true
+            // Glide across — past the runner and off to the left.
+            withAnimation(.easeInOut(duration: 0.9)) {
+                windStreakX = -220
+            }
+            // Fade out as it exits.
+            withAnimation(.easeOut(duration: 0.3).delay(0.55)) {
+                windStreakOpacity = 0
+            }
+
+            // Wait before the next streak. Slightly randomized via
+            // alternating intervals so it doesn't feel mechanical.
+            try? await Task.sleep(for: .milliseconds(1600))
         }
     }
 }
