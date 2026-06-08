@@ -203,15 +203,24 @@ struct PromptlyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
+            ZStack {
                 if auth.isLoading {
                     LaunchView()
+                        .transition(.opacity.combined(with: .scale(scale: 1.04)))
                 } else if auth.isAuthenticated {
                     AppShell()
+                        .transition(.opacity)
                 } else {
                     AuthView()
+                        .transition(.opacity)
                 }
             }
+            // Crossfade between launch ↔ authed ↔ unauthed roots so the
+            // logo doesn't hard-cut to the app shell when checkSession()
+            // resolves. The logo's slight scale-up on exit reads as a
+            // soft hand-off rather than a slam.
+            .animation(.easeOut(duration: 0.35), value: auth.isLoading)
+            .animation(.easeOut(duration: 0.28), value: auth.isAuthenticated)
             .environmentObject(appState)
             .preferredColorScheme(.dark)
             .task {
@@ -235,12 +244,79 @@ struct PromptlyApp: App {
     }
 }
 
+/// Branded splash shown while `auth.checkSession()` resolves. Replaces
+/// the bare spinner — the logo flies in with a quick whoosh-style
+/// spring (slight scale-up + soft glow bloom + brief blur clear) and
+/// then breathes gently until the session check returns and the root
+/// view swaps to AppShell / AuthView.
+///
+/// Why a custom transition: a cold start often resolves in 300-800ms
+/// and the bare ProgressView felt clinical — the app would briefly
+/// look like a system loading screen instead of a product. The
+/// animation is short by design (~480ms entrance, then a 2.4s breathe
+/// loop) so it doesn't add perceived launch latency on a fast resolve.
 struct LaunchView: View {
+    @State private var logoScale: CGFloat = 0.84
+    @State private var logoOpacity: Double = 0
+    @State private var logoBlur: CGFloat = 14
+    @State private var glowOpacity: Double = 0
+    @State private var breathing = false
+
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            ProgressView()
-                .tint(.white)
+            Color.black.ignoresSafeArea()
+
+            // Soft radial glow pulse beneath the logo. Bloom-in matches
+            // the logo's entrance, then settles to a faint always-on
+            // halo so the mark reads as luminous rather than flat.
+            RadialGradient(
+                colors: [
+                    Color.white.opacity(0.18),
+                    Color.white.opacity(0.0)
+                ],
+                center: .center,
+                startRadius: 0,
+                endRadius: 220
+            )
+            .frame(width: 440, height: 440)
+            .opacity(glowOpacity)
+            .blendMode(.screen)
+
+            Image("PromptlyLogo")
+                .resizable()
+                .renderingMode(.template)
+                .foregroundColor(.white)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 140, height: 140)
+                .scaleEffect(breathing ? logoScale * 1.035 : logoScale)
+                .opacity(logoOpacity)
+                .blur(radius: logoBlur)
+                .animation(
+                    .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
+                    value: breathing
+                )
+        }
+        .task {
+            // Entrance: quick scale + opacity + de-blur with a spring so
+            // the mark "snaps in" rather than fades flat. Glow trails
+            // ~80ms behind so it reads as a bloom not a slam.
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
+                logoScale = 1.0
+                logoOpacity = 1
+                logoBlur = 0
+            }
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(.easeOut(duration: 0.4)) {
+                glowOpacity = 0.55
+            }
+            // Settle the glow to a low resting state once the entrance
+            // is over, then kick the breathing loop. Avoids competing
+            // with the auth-resolve transition that's about to happen.
+            try? await Task.sleep(for: .milliseconds(360))
+            withAnimation(.easeInOut(duration: 0.6)) {
+                glowOpacity = 0.18
+            }
+            breathing = true
         }
     }
 }

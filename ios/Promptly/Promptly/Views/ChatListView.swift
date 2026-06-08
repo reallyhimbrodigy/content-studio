@@ -398,9 +398,12 @@ struct ChatListView: View {
                 } header: {
                     // ChatGPT-style: bold white section header, no
                     // uppercase / tracking. Reads as part of the content
-                    // hierarchy, not as small chrome.
+                    // hierarchy, not as small chrome. Header sits ~2pt
+                    // above the chat-row title size (17pt) so date
+                    // groupings clearly outweigh the items they
+                    // group — matches ChatGPT's sidebar rhythm.
                     Text(sectionTitle)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 19, weight: .bold))
                         .foregroundColor(.primary)
                         .padding(.leading, 16)
                         .padding(.top, 18)

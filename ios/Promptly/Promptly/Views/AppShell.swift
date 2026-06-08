@@ -23,6 +23,14 @@ struct AppShell: View {
 
     private static let openSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
+    /// Tracks the user's in-flight dismiss-drag in points. Negative while
+    /// the user pulls the sidebar leftward, 0 when no drag is active or
+    /// after the gesture commits/cancels. Driven by .onChanged so the
+    /// drawer follows the finger in real time instead of waiting for
+    /// release — that snap-on-release behavior is what made the sidebar
+    /// feel non-interactive and broken vs. ChatGPT's drawer.
+    @State private var sidebarDragX: CGFloat = 0
+
     var body: some View {
         GeometryReader { geo in
             let drawerWidth = geo.size.width
@@ -32,26 +40,42 @@ struct AppShell: View {
                 ChatListView(store: chatStore) { closeSidebar() }
                     .frame(width: drawerWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
-                    // Swipe-left-anywhere on the sidebar to dismiss.
+                    // Interactive swipe-left-to-dismiss. Live-tracks the
+                    // drag so both sidebar + main content move with the
+                    // finger, ChatGPT-style. Commits on release if past
+                    // a 60pt threshold OR with high leftward velocity.
                     // Only listens while open so we don't interfere with
-                    // List's internal swipe-to-delete on chat rows when
-                    // they're tapped (chat-row swipe is right-to-left
-                    // and short; this gesture requires 60pt of travel).
+                    // List's internal swipe-to-delete on chat rows.
                     .gesture(
                         appState.sidebarOpen
-                        ? DragGesture(minimumDistance: 18)
+                        ? DragGesture(minimumDistance: 10)
+                            .onChanged { value in
+                                // Clamp to leftward-only. Right-swiping
+                                // an already-open drawer is meaningless.
+                                sidebarDragX = min(0, value.translation.width)
+                            }
                             .onEnded { value in
-                                if value.translation.width < -60 { closeSidebar() }
+                                let endVelocityX = value.predictedEndLocation.x - value.location.x
+                                let shouldClose = value.translation.width < -60 || endVelocityX < -200
+                                withAnimation(Self.openSpring) {
+                                    sidebarDragX = 0
+                                    if shouldClose {
+                                        appState.sidebarOpen = false
+                                    }
+                                }
                             }
                         : nil
                     )
 
                 // Main content. Slides fully off-screen to the right.
+                // The applied offset = open-state base + active drag,
+                // clamped to [0, drawerWidth] so a fling can't overshoot
+                // or invert.
                 MainTabView()
                     .frame(width: geo.size.width)
                     .background(Color(.systemBackground))
-                    .allowsHitTesting(!appState.sidebarOpen)
-                    .offset(x: appState.sidebarOpen ? drawerWidth : 0)
+                    .allowsHitTesting(!appState.sidebarOpen && sidebarDragX == 0)
+                    .offset(x: max(0, min(drawerWidth, (appState.sidebarOpen ? drawerWidth : 0) + sidebarDragX)))
                     .shadow(
                         color: .black.opacity(appState.sidebarOpen ? 0.35 : 0),
                         radius: 24, x: -8, y: 0
