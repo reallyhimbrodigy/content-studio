@@ -244,76 +244,171 @@ struct PromptlyApp: App {
     }
 }
 
-/// Branded splash shown while `auth.checkSession()` resolves. Replaces
-/// the bare spinner — the logo flies in with a quick whoosh-style
-/// spring (slight scale-up + soft glow bloom + brief blur clear) and
-/// then breathes gently until the session check returns and the root
-/// view swaps to AppShell / AuthView.
+/// Cinematic branded splash shown while `auth.checkSession()` resolves.
 ///
-/// Why a custom transition: a cold start often resolves in 300-800ms
-/// and the bare ProgressView felt clinical — the app would briefly
-/// look like a system loading screen instead of a product. The
-/// animation is short by design (~480ms entrance, then a 2.4s breathe
-/// loop) so it doesn't add perceived launch latency on a fast resolve.
+/// Sequence:
+///   1. ~60ms black hold (gives the eye a quiet beat before action)
+///   2. ZOOM: logo rockets in from scale 0.18 to 1.15 over ~260ms,
+///      blur clearing from 22 → 0, opacity 0 → 1, with 8 radial speed
+///      rays sweeping outward behind it (the "running / whoosh" the
+///      user asked for).
+///   3. IMPACT: spring overshoot snaps logo back to 1.0 (~180ms),
+///      glow ring shockwaves outward, and a white flash briefly
+///      veils the screen — reads as a soft camera-flash on landing.
+///   4. SETTLE: speed rays fade, shockwave finishes, ambient halo
+///      relaxes to a low persistent value, and the logo enters a
+///      barely-perceptible 1.0 ↔ 1.025 breathing loop so the splash
+///      never looks "stuck" while the auth check finishes.
+///
+/// Total entrance is ~450ms — short enough that a fast checkSession()
+/// resolve cuts to the app shell mid-breathe (the parent crossfade
+/// modifier in WindowGroup handles the hand-off), but slow enough
+/// that the user clocks the brand moment on a cold start.
 struct LaunchView: View {
-    @State private var logoScale: CGFloat = 0.84
+    // Logo
+    @State private var logoScale: CGFloat = 0.18
     @State private var logoOpacity: Double = 0
-    @State private var logoBlur: CGFloat = 14
-    @State private var glowOpacity: Double = 0
+    @State private var logoBlur: CGFloat = 22
     @State private var breathing = false
+
+    // Ambient glow beneath the logo (persists at low opacity after the
+    // entrance so the mark reads as luminous rather than flat).
+    @State private var glowOpacity: Double = 0
+
+    // Speed rays — eight thin radial spokes that sweep outward during
+    // the zoom phase. Suggests motion/whoosh without a particle system.
+    @State private var raysScale: CGFloat = 0.6
+    @State private var raysOpacity: Double = 0
+
+    // Shockwave ring — scales outward at the landing moment so the
+    // logo's arrival reads as an impact rather than a fade-in.
+    @State private var shockScale: CGFloat = 0.4
+    @State private var shockOpacity: Double = 0
+
+    // Brief white flash that veils the screen at impact — the
+    // camera-flash beat of the landing.
+    @State private var flashOpacity: Double = 0
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // Soft radial glow pulse beneath the logo. Bloom-in matches
-            // the logo's entrance, then settles to a faint always-on
-            // halo so the mark reads as luminous rather than flat.
+            // Ambient glow halo (persistent, low-opacity after entrance).
             RadialGradient(
-                colors: [
-                    Color.white.opacity(0.18),
-                    Color.white.opacity(0.0)
-                ],
+                colors: [Color.white.opacity(0.22), Color.white.opacity(0.0)],
                 center: .center,
                 startRadius: 0,
-                endRadius: 220
+                endRadius: 240
             )
-            .frame(width: 440, height: 440)
+            .frame(width: 480, height: 480)
             .opacity(glowOpacity)
             .blendMode(.screen)
 
+            // Speed rays — 8 radial spokes. Sweep outward during the
+            // zoom, fade as the logo lands.
+            ZStack {
+                ForEach(0..<8, id: \.self) { i in
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [Color.white.opacity(0.9), Color.white.opacity(0)],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                        .frame(width: 96, height: 1.5)
+                        .offset(x: 86)
+                        .rotationEffect(.degrees(Double(i) * 45))
+                }
+            }
+            .scaleEffect(raysScale)
+            .opacity(raysOpacity)
+            .blur(radius: 0.5)
+            .blendMode(.screen)
+            .allowsHitTesting(false)
+
+            // Shockwave ring — expanding circle stroke that fires at
+            // the impact moment.
+            Circle()
+                .stroke(Color.white.opacity(0.55), lineWidth: 1.5)
+                .frame(width: 220, height: 220)
+                .scaleEffect(shockScale)
+                .opacity(shockOpacity)
+                .blur(radius: 0.5)
+                .blendMode(.screen)
+                .allowsHitTesting(false)
+
+            // The logo itself — the focal point. Scale + blur + opacity
+            // animate together for the cinematic zoom-in feel.
             Image("PromptlyLogo")
                 .resizable()
                 .renderingMode(.template)
                 .foregroundColor(.white)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 140, height: 140)
-                .scaleEffect(breathing ? logoScale * 1.035 : logoScale)
+                .frame(width: 148, height: 148)
+                .scaleEffect(breathing ? logoScale * 1.025 : logoScale)
                 .opacity(logoOpacity)
                 .blur(radius: logoBlur)
                 .animation(
-                    .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
+                    .easeInOut(duration: 2.6).repeatForever(autoreverses: true),
                     value: breathing
                 )
+
+            // Camera-flash veil — briefly washes the screen white at
+            // the impact moment, then clears.
+            Color.white
+                .opacity(flashOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .blendMode(.screen)
         }
         .task {
-            // Entrance: quick scale + opacity + de-blur with a spring so
-            // the mark "snaps in" rather than fades flat. Glow trails
-            // ~80ms behind so it reads as a bloom not a slam.
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                logoScale = 1.0
+            // Phase 1 — brief black hold. Gives the eye a quiet beat
+            // so the zoom that follows reads as decisive.
+            try? await Task.sleep(for: .milliseconds(60))
+
+            // Phase 2 — ZOOM. Logo rockets in: scale 0.18 → 1.15,
+            // opacity 0 → 1, blur 22 → 0. Timing curve front-loads the
+            // acceleration so the motion feels like it's coming AT
+            // the viewer rather than crawling. Speed rays fire in
+            // parallel and sweep outward.
+            withAnimation(.timingCurve(0.22, 0.6, 0.35, 1, duration: 0.26)) {
+                logoScale = 1.15
                 logoOpacity = 1
                 logoBlur = 0
             }
-            try? await Task.sleep(for: .milliseconds(80))
-            withAnimation(.easeOut(duration: 0.4)) {
-                glowOpacity = 0.55
+            withAnimation(.easeOut(duration: 0.32)) {
+                raysScale = 1.6
+                raysOpacity = 1
             }
-            // Settle the glow to a low resting state once the entrance
-            // is over, then kick the breathing loop. Avoids competing
-            // with the auth-resolve transition that's about to happen.
-            try? await Task.sleep(for: .milliseconds(360))
-            withAnimation(.easeInOut(duration: 0.6)) {
+
+            // Phase 3 — IMPACT. Spring overshoot back to 1.0 — the
+            // perceived "thunk" of the logo landing. Shockwave ring
+            // expands outward simultaneously, and the camera flash
+            // briefly veils the screen.
+            try? await Task.sleep(for: .milliseconds(240))
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
+                logoScale = 1.0
+            }
+            withAnimation(.easeOut(duration: 0.45)) {
+                shockScale = 1.9
+                shockOpacity = 0.85
+            }
+            withAnimation(.easeOut(duration: 0.18)) {
+                flashOpacity = 0.32
+                glowOpacity = 0.62
+            }
+            // Begin fading the flash + rays back out almost immediately
+            // so the "impact" reads as a snap rather than a hold.
+            withAnimation(.easeInOut(duration: 0.4).delay(0.06)) {
+                flashOpacity = 0
+                raysOpacity = 0
+            }
+
+            // Phase 4 — SETTLE. Shockwave finishes, glow relaxes to a
+            // low persistent halo, breathing loop kicks on so the
+            // splash never reads as stuck during the auth wait.
+            try? await Task.sleep(for: .milliseconds(280))
+            withAnimation(.easeOut(duration: 0.5)) {
+                shockOpacity = 0
+                shockScale = 2.2
                 glowOpacity = 0.18
             }
             breathing = true
