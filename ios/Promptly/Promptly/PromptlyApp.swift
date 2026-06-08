@@ -279,97 +279,130 @@ struct PromptlyApp: App {
 /// sprint short — the exit blends with whatever animation phase the
 /// view happens to be in, no special-case needed.
 struct LaunchView: View {
-    // Logo motion
+    // Sprint-in entrance state (withAnimation-driven, settles to
+    // identity values once the entrance completes).
     @State private var logoOffsetX: CGFloat = -280
     @State private var logoScale: CGFloat = 0.78
     @State private var logoOpacity: Double = 0
     @State private var logoBlur: CGFloat = 14
 
     // Ambient glow under the logo (blooms on land, settles for idle).
-    @State private var glowOpacity: Double = 0
+    @State private var glowBaseOpacity: Double = 0
 
-    // Brief light kiss at landing — softer than a full flash; reads as
-    // a halt of motion rather than a camera pop.
+    // Brief light kiss at landing — softer than a full flash.
     @State private var landFlashOpacity: Double = 0
 
-    // Idle loops — kicked on after the sprint settles.
-    @State private var idleBreathing = false   // 1.0 ↔ 1.025 scale
-    @State private var idleStride = false      // 0 ↔ -2pt vertical bob
-
-    // Wind streak — a thin line passes behind the runner every ~1.6s
-    // during the idle state. Driven by an explicit Task rather than a
-    // repeatForever animation so the streak fires AFTER the entrance
-    // is complete, not during.
+    // Wind streak — a thin line passes behind the runner periodically
+    // during the idle state. Driven by an explicit Task so the streak
+    // fires only AFTER the entrance is complete.
     @State private var windStreakX: CGFloat = 220   // start off-screen right
     @State private var windStreakOpacity: Double = 0
 
+    // Idle starts after the entrance settles. Used to gate the
+    // sinusoidal stride animations inside the TimelineView.
+    @State private var strideStart: Date? = nil
+
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        // Single TimelineView drives every continuous motion in the
+        // scene — runner stride (bob + lean + breath), glow pulse,
+        // ambient halo modulation. Driving everything off one time
+        // stream means the layers stay phase-coherent: the lean
+        // peaks as the runner bobs down, the glow pulses on the
+        // breath cycle, etc. Boolean .repeatForever animations
+        // couldn't express this — they only toggle between two
+        // states and re-trigger on a single value change. Using
+        // sinusoids gives true continuous motion that feels organic
+        // rather than mechanical.
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+            let elapsed = strideStart.map { context.date.timeIntervalSince($0) } ?? 0
 
-            // Ambient glow halo (blooms on land, persists faintly).
-            RadialGradient(
-                colors: [Color.white.opacity(0.25), Color.white.opacity(0.0)],
-                center: .center,
-                startRadius: 0,
-                endRadius: 260
-            )
-            .frame(width: 520, height: 520)
-            .opacity(glowOpacity)
-            .blendMode(.screen)
-            .allowsHitTesting(false)
+            // Stride: ~0.7s per cycle (≈1.4 steps/sec, jogging pace).
+            // All stride values start at 0 at t=0 so the transition
+            // from the entrance's final state into the idle loop is
+            // invisible — no scale pop, no offset jump.
+            let stridePhase = elapsed * 2.0 * .pi / 0.7
+            let bob = sin(stridePhase) * 3.0                       // 0 → ±3pt
+            let lean = sin(stridePhase) * 1.6                      // 0 → ±1.6° (forward at bob-down)
 
-            // Wind streak — thin horizontal line passing behind the
-            // runner during the idle/wait state.
-            Capsule()
-                .fill(LinearGradient(
-                    colors: [Color.white.opacity(0), Color.white.opacity(0.55), Color.white.opacity(0)],
-                    startPoint: .leading, endPoint: .trailing
-                ))
-                .frame(width: 140, height: 1.2)
-                .blur(radius: 0.5)
-                .offset(x: windStreakX, y: 12)
-                .opacity(windStreakOpacity)
+            // Breath: longer cycle, offset from stride so they don't
+            // double-pulse. (1 - cos) flavor keeps breath ≥ 1.0 so
+            // the runner never visually shrinks below identity.
+            let breathPhase = elapsed * 2.0 * .pi / 2.3
+            let breath = 1.0 + (1.0 - cos(breathPhase)) * 0.0075   // 1.0 → 1.015
+
+            // Glow pulse: yet another cycle, layered on top of the
+            // settled base opacity for an organic ambient feel.
+            let glowPhase = elapsed * 2.0 * .pi / 1.8
+            let glowPulseExtra = (1.0 - cos(glowPhase)) * 0.06     // 0 → 0.12
+
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                // Ambient halo. Base opacity is @State-driven by the
+                // entrance (rises on land, settles for idle). The
+                // pulse extra is added on top continuously.
+                RadialGradient(
+                    colors: [Color.white.opacity(0.25), Color.white.opacity(0.0)],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 260
+                )
+                .frame(width: 520, height: 520)
+                .opacity(glowBaseOpacity + glowPulseExtra)
                 .blendMode(.screen)
                 .allowsHitTesting(false)
 
-            // The logo itself — the focal point. The PNG is white art
-            // on a SOLID BLACK background (no alpha channel) so we DO
-            // NOT apply renderingMode(.template) here — that would
-            // tint the whole 1024×1024 square. Render as-is and let
-            // the black square blend into the black launch background.
-            Image("PromptlyLogo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 168, height: 168)
-                .scaleEffect(idleBreathing ? logoScale * 1.025 : logoScale)
-                .offset(x: logoOffsetX, y: idleStride ? -2 : 0)
-                .opacity(logoOpacity)
-                .blur(radius: logoBlur)
-                .animation(
-                    .easeInOut(duration: 1.4).repeatForever(autoreverses: true),
-                    value: idleBreathing
-                )
-                .animation(
-                    .easeInOut(duration: 0.7).repeatForever(autoreverses: true),
-                    value: idleStride
-                )
+                // Wind streak — passes behind the runner periodically.
+                Capsule()
+                    .fill(LinearGradient(
+                        colors: [Color.white.opacity(0), Color.white.opacity(0.55), Color.white.opacity(0)],
+                        startPoint: .leading, endPoint: .trailing
+                    ))
+                    .frame(width: 140, height: 1.2)
+                    .blur(radius: 0.5)
+                    .offset(x: windStreakX, y: 12)
+                    .opacity(windStreakOpacity)
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
 
-            // Brief light kiss at landing.
-            Color.white
-                .opacity(landFlashOpacity)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .blendMode(.screen)
+                // The runner. The PNG is white art on a solid black
+                // background (no alpha) so we do NOT apply
+                // .renderingMode(.template) — that would tint the
+                // whole 1024×1024 square. Render as-is; the black
+                // background blends invisibly with the launch black,
+                // and the white runner art carries the visible shape.
+                //
+                // Modifier ordering matters: rotation first (rotate
+                // the art), then offset (translate the rotated art),
+                // then scale (scale around its center). This matches
+                // how a running body actually moves — torso rotates,
+                // whole body bobs, breath happens on top.
+                Image("PromptlyLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 168, height: 168)
+                    .rotationEffect(.degrees(lean))
+                    .offset(x: logoOffsetX, y: bob)
+                    .scaleEffect(logoScale * CGFloat(breath))
+                    .opacity(logoOpacity)
+                    .blur(radius: logoBlur)
+
+                // Brief light kiss at landing — purely entrance-driven.
+                Color.white
+                    .opacity(landFlashOpacity)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .blendMode(.screen)
+            }
         }
         .task {
-            // Phase 1 — black hold.
+            // Phase 1 — black hold (the breath before motion).
             try? await Task.sleep(for: .milliseconds(60))
 
-            // Phase 2 — SPRINT IN. Logo enters from off-screen left
+            // Phase 2 — SPRINT IN. Runner enters from off-screen left
             // (motion lines on the artwork trail behind correctly).
-            // Custom curve: fast start, gentle finish — reads as
-            // braking to a stop at center.
+            // Decelerating curve — reads as braking to a stop, not
+            // skidding past.
             withAnimation(.timingCurve(0.16, 0.7, 0.28, 1, duration: 0.32)) {
                 logoOffsetX = 0
                 logoScale = 1.08
@@ -384,19 +417,21 @@ struct LaunchView: View {
                 logoScale = 1.0
             }
             withAnimation(.easeOut(duration: 0.22)) {
-                glowOpacity = 0.55
+                glowBaseOpacity = 0.55
                 landFlashOpacity = 0.18
             }
             withAnimation(.easeInOut(duration: 0.45).delay(0.10)) {
                 landFlashOpacity = 0
-                glowOpacity = 0.22
+                glowBaseOpacity = 0.22
             }
 
-            // Phase 4 — RUN IN PLACE. Kick the breathing + stride
-            // loops; start the periodic wind streak.
+            // Phase 4 — RUN IN PLACE. Anchor strideStart so the
+            // TimelineView's sinusoidal stride/breath/glow modulations
+            // begin from zero phase (matches the entrance's final
+            // identity values, no visible pop). Kick the wind-streak
+            // loop in parallel.
             try? await Task.sleep(for: .milliseconds(260))
-            idleBreathing = true
-            idleStride = true
+            strideStart = Date()
             await runWindStreaks()
         }
     }
@@ -404,29 +439,23 @@ struct LaunchView: View {
     /// Fire a horizontal streak across the screen every ~1.6s while the
     /// view is alive. Each streak: snap to start position (off-screen
     /// right), fade in, glide left across the runner, fade out at the
-    /// far edge. Suggests wind passing the runner during the wait.
-    /// Cancelled when SwiftUI tears down the .task on view dismissal.
+    /// far edge. Suggests wind passing the runner during the wait —
+    /// makes long auth-resolve cases never read as frozen.
     private func runWindStreaks() async {
         while !Task.isCancelled {
-            // Reset to off-screen right, invisible.
             windStreakX = 220
             windStreakOpacity = 0
 
-            // Fade in as it begins crossing.
             withAnimation(.easeIn(duration: 0.22)) {
                 windStreakOpacity = 1
             }
-            // Glide across — past the runner and off to the left.
             withAnimation(.easeInOut(duration: 0.9)) {
                 windStreakX = -220
             }
-            // Fade out as it exits.
             withAnimation(.easeOut(duration: 0.3).delay(0.55)) {
                 windStreakOpacity = 0
             }
 
-            // Wait before the next streak. Slightly randomized via
-            // alternating intervals so it doesn't feel mechanical.
             try? await Task.sleep(for: .milliseconds(1600))
         }
     }
