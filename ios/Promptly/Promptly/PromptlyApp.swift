@@ -292,12 +292,6 @@ struct LaunchView: View {
     // Brief light kiss at landing — softer than a full flash.
     @State private var landFlashOpacity: Double = 0
 
-    // Wind streak — a thin line passes behind the runner periodically
-    // during the idle state. Driven by an explicit Task so the streak
-    // fires only AFTER the entrance is complete.
-    @State private var windStreakX: CGFloat = 220   // start off-screen right
-    @State private var windStreakOpacity: Double = 0
-
     // Idle starts after the entrance settles. Used to gate the
     // sinusoidal stride animations inside the TimelineView.
     @State private var strideStart: Date? = nil
@@ -327,8 +321,10 @@ struct LaunchView: View {
             // Breath: longer cycle, offset from stride so they don't
             // double-pulse. (1 - cos) flavor keeps breath ≥ 1.0 so
             // the runner never visually shrinks below identity.
+            // Amplitude tuned to be visibly perceptible without
+            // reading as "the logo is changing size."
             let breathPhase = elapsed * 2.0 * .pi / 2.3
-            let breath = 1.0 + (1.0 - cos(breathPhase)) * 0.0075   // 1.0 → 1.015
+            let breath = 1.0 + (1.0 - cos(breathPhase)) * 0.012    // 1.0 → 1.024
 
             // Glow pulse: yet another cycle, layered on top of the
             // settled base opacity for an organic ambient feel.
@@ -352,31 +348,24 @@ struct LaunchView: View {
                 .blendMode(.screen)
                 .allowsHitTesting(false)
 
-                // Wind streak — passes behind the runner periodically.
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [Color.white.opacity(0), Color.white.opacity(0.55), Color.white.opacity(0)],
-                        startPoint: .leading, endPoint: .trailing
-                    ))
-                    .frame(width: 140, height: 1.2)
-                    .blur(radius: 0.5)
-                    .offset(x: windStreakX, y: 12)
-                    .opacity(windStreakOpacity)
-                    .blendMode(.screen)
-                    .allowsHitTesting(false)
-
-                // The runner. The PNG is white art on a solid black
-                // background (no alpha) so we do NOT apply
-                // .renderingMode(.template) — that would tint the
-                // whole 1024×1024 square. Render as-is; the black
-                // background blends invisibly with the launch black,
-                // and the white runner art carries the visible shape.
+                // The runner. The PNG is white art on a SOLID BLACK
+                // background (no alpha channel). Without intervention
+                // the black square would OCCLUDE the glow halo behind
+                // it — a visible 168×168 dark cutout in the middle of
+                // the halo. .blendMode(.screen) fixes this: screen
+                // mode treats black as transparent (black + anything
+                // = anything) so the glow shines through unimpeded,
+                // while white runner pixels stay solid white. The
+                // runner appears to FLOAT in the luminous halo
+                // rather than sit on top of a flat square. This is
+                // the single most important compositing decision in
+                // the splash — without it nothing else looks right.
                 //
                 // Modifier ordering matters: rotation first (rotate
                 // the art), then offset (translate the rotated art),
-                // then scale (scale around its center). This matches
-                // how a running body actually moves — torso rotates,
-                // whole body bobs, breath happens on top.
+                // then scale (around its now-translated center). This
+                // matches how a running body actually moves — torso
+                // rotates, whole body bobs, breath layered on top.
                 Image("PromptlyLogo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -386,6 +375,7 @@ struct LaunchView: View {
                     .scaleEffect(logoScale * CGFloat(breath))
                     .opacity(logoOpacity)
                     .blur(radius: logoBlur)
+                    .blendMode(.screen)
 
                 // Brief light kiss at landing — purely entrance-driven.
                 Color.white
@@ -428,35 +418,13 @@ struct LaunchView: View {
             // Phase 4 — RUN IN PLACE. Anchor strideStart so the
             // TimelineView's sinusoidal stride/breath/glow modulations
             // begin from zero phase (matches the entrance's final
-            // identity values, no visible pop). Kick the wind-streak
-            // loop in parallel.
+            // identity values, no visible pop). From here onward the
+            // continuous motion carries the wait: stride/lean at
+            // 0.7s, breath at 2.3s, glow pulse at 1.8s — three
+            // independent clocks so they never sync up and beat
+            // against each other.
             try? await Task.sleep(for: .milliseconds(260))
             strideStart = Date()
-            await runWindStreaks()
-        }
-    }
-
-    /// Fire a horizontal streak across the screen every ~1.6s while the
-    /// view is alive. Each streak: snap to start position (off-screen
-    /// right), fade in, glide left across the runner, fade out at the
-    /// far edge. Suggests wind passing the runner during the wait —
-    /// makes long auth-resolve cases never read as frozen.
-    private func runWindStreaks() async {
-        while !Task.isCancelled {
-            windStreakX = 220
-            windStreakOpacity = 0
-
-            withAnimation(.easeIn(duration: 0.22)) {
-                windStreakOpacity = 1
-            }
-            withAnimation(.easeInOut(duration: 0.9)) {
-                windStreakX = -220
-            }
-            withAnimation(.easeOut(duration: 0.3).delay(0.55)) {
-                windStreakOpacity = 0
-            }
-
-            try? await Task.sleep(for: .milliseconds(1600))
         }
     }
 }
