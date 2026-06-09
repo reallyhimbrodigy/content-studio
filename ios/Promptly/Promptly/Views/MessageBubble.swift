@@ -343,18 +343,28 @@ struct ProcessingIndicator: View {
                     displayed = min(target, displayed + step)
                     idleTicks = 0
                 } else {
-                    // Idle trickle. Render-stage SSE ticks can be 5-15s
-                    // apart; without this the bar would sit frozen on
-                    // whatever percent the last tick mapped to (the
-                    // user's "stuck at 43% looking broken" complaint).
-                    // Trickle 1% every ~1.4s, capped at last-real-target
-                    // + 5 (so a long idle never gets too far ahead of
-                    // reality), never past 99 (reserved for the finish
-                    // event). Next real SSE tick overtakes the trickle
-                    // smoothly via delta-creep.
+                    // Adaptive idle trickle. THE RULE: the bar must NEVER
+                    // sit still for more than ~5 seconds, even if SSE is
+                    // silent for a minute, because anything longer reads
+                    // as "the app is broken" and users bounce.
+                    //
+                    // Old behavior capped at target+5, which is exactly
+                    // what created the frozen feel: once the trickle hit
+                    // the ceiling it'd stop and the user would stare at
+                    // a motionless bar for 10-30 seconds.
+                    //
+                    // New behavior: no distance ceiling. Bar trickles
+                    // forever up to 99 (final 100 reserved for the
+                    // completed event). Trickle SPEED scales with
+                    // distance from the last real target so the bar
+                    // doesn't shoot way ahead of reality — fast when
+                    // close, slow when far — but the per-tick threshold
+                    // is capped at ~5s (40 × 120ms) so it can never
+                    // appear stopped for longer than that.
                     idleTicks += 1
-                    let ceiling = min(99, target + 5)
-                    if displayed < ceiling && idleTicks >= 12 {
+                    let distance = max(0, displayed - target)
+                    let threshold = min(40, 12 + distance * 5)
+                    if displayed < 99 && idleTicks >= threshold {
                         displayed += 1
                         idleTicks = 0
                     }
@@ -495,7 +505,13 @@ struct PipelineProgressView: View {
             if new > target { target = new }
         }
         .task {
-            // Smoothed creep toward target — same pattern as ProcessingIndicator.
+            // Smoothed creep + adaptive trickle — see ProcessingIndicator
+            // for the full rationale. THE RULE: the bar must NEVER sit
+            // still for more than ~5 seconds, even if SSE is silent for
+            // a minute. Anything longer reads as broken; users bounce.
+            // No distance ceiling — bar trickles up to 99 forever. Speed
+            // scales with distance from target so it doesn't shoot too
+            // far ahead, but capped at ~5s per tick so it's always alive.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 120_000_000)
                 if Task.isCancelled { break }
@@ -505,15 +521,10 @@ struct PipelineProgressView: View {
                     displayed = min(target, displayed + step)
                     idleTicks = 0
                 } else {
-                    // Idle trickle — see ProcessingIndicator for full
-                    // rationale. Short version: SSE ticks are sparse
-                    // (5-15s apart) during render, and a frozen bar
-                    // reads as broken even when the worker is healthy.
-                    // Slow 1% / 1.4s trickle capped at target+5, never
-                    // past 99, gets overtaken by the next real tick.
                     idleTicks += 1
-                    let ceiling = min(99, target + 5)
-                    if displayed < ceiling && idleTicks >= 12 {
+                    let distance = max(0, displayed - target)
+                    let threshold = min(40, 12 + distance * 5)
+                    if displayed < 99 && idleTicks >= threshold {
                         displayed += 1
                         idleTicks = 0
                     }
