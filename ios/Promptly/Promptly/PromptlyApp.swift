@@ -373,24 +373,14 @@ struct LaunchView: View {
                 .blendMode(.screen)
                 .allowsHitTesting(false)
 
-                // The runner. The PNG is white art on a SOLID BLACK
-                // background (no alpha channel). Without intervention
-                // the black square would OCCLUDE the glow halo behind
-                // it — a visible 168×168 dark cutout in the middle of
-                // the halo. .blendMode(.screen) fixes this: screen
-                // mode treats black as transparent (black + anything
-                // = anything) so the glow shines through unimpeded,
-                // while white runner pixels stay solid white. The
-                // runner appears to FLOAT in the luminous halo
-                // rather than sit on top of a flat square. This is
-                // the single most important compositing decision in
-                // the splash — without it nothing else looks right.
-                //
-                // Modifier ordering matters: rotation first (rotate
-                // the art), then offset (translate the rotated art),
-                // then scale (around its now-translated center). This
-                // matches how a running body actually moves — torso
-                // rotates, whole body bobs, breath layered on top.
+                // The runner. PromptlyLogo PNG was reprocessed in build
+                // 170 to have a proper alpha channel — the original
+                // had a solid black background with no alpha, which
+                // would have created a visible 168×168 dark cutout in
+                // the middle of the halo. Now black is transparent and
+                // white runner art is opaque; the halo shines through
+                // every pixel the runner doesn't occupy, exactly as a
+                // luminous mark should compose.
                 Image("PromptlyLogo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -400,7 +390,6 @@ struct LaunchView: View {
                     .scaleEffect(logoScale * CGFloat(breath))
                     .opacity(logoOpacity)
                     .blur(radius: logoBlur)
-                    .blendMode(.screen)
 
                 // Brief light kiss at landing — purely entrance-driven.
                 Color.white

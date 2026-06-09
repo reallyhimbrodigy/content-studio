@@ -115,17 +115,15 @@ struct AuthView: View {
 
     private var logoMark: some View {
         VStack(spacing: 14) {
-            // PNG is white runner on solid black, no alpha channel.
-            // Using .template + .foregroundColor would tint the entire
-            // 88×88 square white (no silhouette possible without alpha).
-            // .blendMode(.screen) treats black pixels as transparent
-            // against the dark background while keeping the white
-            // runner art solid.
+            // PromptlyLogo PNG now has a proper alpha channel (built
+            // 170 converted the asset from solid-black-background RGB
+            // to RGBA where black = transparent, white = opaque).
+            // Renders cleanly as a silhouette against any background;
+            // no blend mode or mask trickery required.
             Image("PromptlyLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 88, height: 88)
-                .blendMode(.screen)
                 .shadow(color: .white.opacity(0.18), radius: 18, y: 0)
                 .accessibilityHidden(true)
 
