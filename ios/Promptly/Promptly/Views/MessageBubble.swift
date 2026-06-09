@@ -303,6 +303,18 @@ struct ProcessingIndicator: View {
                     .font(.system(size: 15))
                     .foregroundColor(.white)
                     .lineLimit(2)
+                    // Smooth fade + slight slide when SSE rotates the
+                    // stage message ("Watching your video" → "Reading
+                    // the speaker's energy" → "Choosing visual
+                    // treatments" etc.). Without this the text snaps
+                    // between strings every 5-15s and reads as glitchy
+                    // — the spec calls out that the transitions should
+                    // "feel like work happening, not just text changes."
+                    // .id ties the transition to the message content
+                    // so SwiftUI treats each new string as a new view.
+                    .id(stepMessage)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .animation(.easeInOut(duration: 0.28), value: stepMessage)
 
                 Spacer(minLength: 8)
 
