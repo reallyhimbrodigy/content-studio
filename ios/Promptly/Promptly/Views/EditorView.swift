@@ -984,33 +984,66 @@ struct EditorView: View {
                         // real byte movement.
                         await MainActor.run { pending.uploadedUrl = sourcePub }
 
-                        // Extract proxy. ~3-5s on iPhone 13+ for a 50s
-                        // 1080p clip → ~3-6 MB output at 640x480.
+                        // Encode the Gemini proxy in parallel with the
+                        // upcoming source upload. Proxy failure is NON-
+                        // FATAL per the worker contract: if extraction
+                        // throws we just leave proxyFile nil, skip the
+                        // proxy upload, and dispatch the job without
+                        // `proxy_video_url`. The worker falls back to
+                        // its own 480p@10fps encode in that case —
+                        // ~7-10s slower than the client path but the
+                        // render still completes correctly.
+                        //
+                        // VideoProxyExtractor matches the worker's exact
+                        // spec (H.264 480p height @ 10fps CFR, AAC mono
+                        // 48kbps, MP4 faststart) so the worker accepts
+                        // the upload and skips its on-server encode.
                         let proxyExtractStart = Date()
-                        let proxyFile = try await VideoProxyExtractor.extract(from: materializedSourceUrl)
-                        print(String(format: "[perf] proxy-extract %.2fs", Date().timeIntervalSince(proxyExtractStart)))
+                        let proxyFile: URL?
+                        do {
+                            proxyFile = try await VideoProxyExtractor.extract(from: materializedSourceUrl)
+                            print(String(format: "[perf] proxy-extract %.2fs", Date().timeIntervalSince(proxyExtractStart)))
+                        } catch {
+                            print("[perf] proxy-extract FAILED (non-fatal, worker will encode its own): \(error.localizedDescription)")
+                            proxyFile = nil
+                        }
 
-                        // Parallel uploads:
-                        //   - Proxy via foreground URLSession (small,
-                        //     completes in 5-10s, blocks Send button).
-                        //   - Source via background URLSession (60-120s,
-                        //     survives app suspend / kill).
+                        // Parallel uploads. Proxy is best-effort (any
+                        // failure leaves proxyUploadedUrl nil so the
+                        // dispatcher omits proxy_video_url); source is
+                        // load-bearing (failure must abort the whole
+                        // task so the render doesn't 404 the worker).
                         let uploadStart = Date()
                         async let proxyUpload: Void = {
-                            try await APIService.shared.uploadFileToS3Foreground(
-                                url: proxyPutUrl,
-                                fileUrl: proxyFile,
-                                mimeType: "video/mp4",
-                                onProgress: { p in
-                                    Task { @MainActor in pending.proxyUploadProgress = p }
-                                }
-                            )
-                            try? FileManager.default.removeItem(at: proxyFile)
-                            await MainActor.run {
-                                pending.proxyUploadProgress = 1.0
-                                pending.proxyUploadedUrl = proxyPub
+                            // Always flip proxyUploadFinished on exit (success
+                            // OR failure OR skip) so the dispatcher can stop
+                            // waiting. proxyUploadedUrl distinguishes which:
+                            // set = success, nil = no proxy will be sent.
+                            defer {
+                                Task { @MainActor in pending.proxyUploadFinished = true }
                             }
-                            print("[perf] proxy upload complete")
+                            guard let proxyFile else { return }
+                            do {
+                                try await APIService.shared.uploadFileToS3Foreground(
+                                    url: proxyPutUrl,
+                                    fileUrl: proxyFile,
+                                    mimeType: "video/mp4",
+                                    onProgress: { p in
+                                        Task { @MainActor in pending.proxyUploadProgress = p }
+                                    }
+                                )
+                                try? FileManager.default.removeItem(at: proxyFile)
+                                await MainActor.run {
+                                    pending.proxyUploadProgress = 1.0
+                                    pending.proxyUploadedUrl = proxyPub
+                                }
+                                print("[perf] proxy upload complete")
+                            } catch {
+                                // Non-fatal — proxy upload failures fall
+                                // back to worker's on-server encode.
+                                try? FileManager.default.removeItem(at: proxyFile)
+                                print("[perf] proxy upload FAILED (non-fatal): \(error.localizedDescription)")
+                            }
                         }()
 
                         async let sourceUpload: Void = {
@@ -1038,7 +1071,10 @@ struct EditorView: View {
                             print("[perf] source upload complete (background)")
                         }()
 
-                        _ = try await proxyUpload
+                        // proxyUpload swallows its own errors so await
+                        // is non-throwing here — only the source upload
+                        // can fail the whole task.
+                        _ = await proxyUpload
                         _ = try await sourceUpload
                         print(String(format: "[perf] both-uploads-done %.2fs", Date().timeIntervalSince(uploadStart)))
                         publicUrl = sourcePub
@@ -1073,6 +1109,12 @@ struct EditorView: View {
                             // returned — so the bytes are confirmed in S3
                             // and the dispatcher can fire immediately.
                             pending.sourceUploadCompleted = true
+                            // No proxy path on .stream / single-PUT —
+                            // worker encodes its own. Flip the proxy-
+                            // finished flag immediately so the dispatcher
+                            // doesn't hang waiting for a proxy upload
+                            // that's never going to come.
+                            pending.proxyUploadFinished = true
                         }
                         firePrewarmOnce.fire(publicUrl)
                     }
@@ -1707,7 +1749,20 @@ struct EditorView: View {
                             // to upload; the old 60s cap was racing real
                             // uploads on bad networks.
                             let waitDeadline = Date().addingTimeInterval(240)
-                            while !(video.sourceUploadCompleted) && !(video.uploadFailed) {
+                            // Dispatch waits for BOTH the source upload AND
+                            // the proxy upload Task to reach a terminal
+                            // state. Source success is load-bearing (the
+                            // render needs the bytes in S3). Proxy "finish"
+                            // can be either success or known-failure — in
+                            // the failure case proxyUploadedUrl stays nil
+                            // and we just omit proxy_video_url from the
+                            // render dispatch (worker falls back to its
+                            // on-server encode). The spec is explicit:
+                            // never pass a proxy URL pointing at bytes
+                            // that aren't in S3 yet, or the worker wastes
+                            // 30s of polling before falling back.
+                            while !(video.uploadFailed) &&
+                                  !(video.sourceUploadCompleted && video.proxyUploadFinished) {
                                 if Date() > waitDeadline {
                                     throw APIError.uploadFailed
                                 }

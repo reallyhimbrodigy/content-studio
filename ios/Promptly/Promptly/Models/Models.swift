@@ -75,6 +75,18 @@ class PendingVideo: Identifiable, ObservableObject {
     /// the bytes land. Production failure: a 26s clip on slow cellular
     /// took > 180s to upload, worker timed out, job was lost.
     @Published var sourceUploadCompleted: Bool = false
+    /// True once the proxy upload Task has reached a terminal state —
+    /// either succeeded (in which case proxyUploadedUrl is also set)
+    /// or definitively failed/skipped (in which case proxyUploadedUrl
+    /// is nil and the dispatcher omits proxy_video_url, falling the
+    /// worker back to its on-server encode). The dispatcher must wait
+    /// for this flag in addition to `sourceUploadCompleted` so a fast
+    /// source upload doesn't race ahead of a slow proxy upload — the
+    /// spec requires the proxy to be in S3 before the worker tries to
+    /// fetch it, OR the field must be omitted entirely. Either is OK;
+    /// the in-between (URL passed but bytes not landed yet) wastes 30s
+    /// of worker time on the 404 fallback.
+    @Published var proxyUploadFinished: Bool = false
     /// Public S3 URL of the low-res proxy upload (foreground URLSession,
     /// 5-10s). Used for cloud AI analysis (Gemini, transcript). When this
     /// is set, the user can tap Send even though the source upload is
