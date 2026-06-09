@@ -32,6 +32,14 @@ struct EditorView: View {
     @State private var activeChatTask: Task<Void, Never>?
     @FocusState private var isInputFocused: Bool
 
+    /// Layer 1 (TalkingHeadPrecheck) rejection state. When a picked
+    /// video fails the on-device face-detection precheck we stash
+    /// the continuation here and surface a SwiftUI alert; the user's
+    /// "Try Anyway" / "Choose Another" tap resumes the picker flow
+    /// with the right boolean.
+    @State private var rejectedVideoCallback: ((Bool) -> Void)? = nil
+    @State private var showPrecheckRejection: Bool = false
+
     var body: some View {
         NavigationStack {
             // SwiftUI's native pattern for "scroll content above a pinned
@@ -112,6 +120,22 @@ struct EditorView: View {
                     handlePickedVideos(videos)
                 }
                 .ignoresSafeArea()
+            }
+            // Layer 1 (TalkingHeadPrecheck) rejection alert. Surfaced
+            // when the on-device Vision precheck doesn't find a face
+            // in enough sampled frames; lets the user pick a different
+            // clip without paying the upload + render cost.
+            .alert("Try a different video", isPresented: $showPrecheckRejection) {
+                Button("Choose Another", role: .cancel) {
+                    rejectedVideoCallback?(false)
+                    rejectedVideoCallback = nil
+                }
+                Button("Try Anyway") {
+                    rejectedVideoCallback?(true)
+                    rejectedVideoCallback = nil
+                }
+            } message: {
+                Text("Promptly works best with videos of someone talking on camera. Pick another clip?")
             }
             .fullScreenCover(isPresented: $showVoiceInput) {
                 VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
@@ -918,22 +942,57 @@ struct EditorView: View {
     // MARK: - Video Selection (INSTANT — no copy, uses PHAsset directly)
 
     private func handlePickedVideos(_ videos: [PickedVideo]) {
-        for video in videos {
-            let pending = PendingVideo()
-            pending.fileName = "\(video.id).mp4"
-            pending.isLoading = false
+        Task { @MainActor in
+            for video in videos {
+                // LAYER 1 — on-device Vision precheck. <1s for local
+                // files, skipped for iCloud-only (Layer 2 handles those).
+                // Goal: reject obviously-incompatible clips BEFORE any
+                // upload or render cost is incurred. User sees a clear
+                // "try a different video" prompt with a "Try Anyway"
+                // escape hatch for borderline cases.
+                if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
+                    let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
+                    if !valid {
+                        let userWantsToProceed = await askToProceedAfterPrecheck()
+                        if !userWantsToProceed { continue }
+                    }
+                }
 
-            // Thumbnail comes from the Photos cache immediately — local, no
-            // iCloud bytes needed. Tile shows up the instant the picker
-            // dismisses.
-            Task {
-                let thumb = await PHAssetResolver.thumbnail(for: video.asset)
-                await MainActor.run { pending.thumbnail = thumb }
+                addPendingVideoAndStartUpload(video)
             }
+        }
+    }
 
-            withAnimation(.easeOut(duration: 0.15)) {
-                pendingVideos.append(pending)
-            }
+    /// Suspend the picker flow until the user resolves the rejection
+    /// alert. Returns true if they tap "Try Anyway", false if they pick
+    /// "Choose Another" (or dismiss). The alert state lives in
+    /// @State on the View; this bridges it to async/await.
+    private func askToProceedAfterPrecheck() async -> Bool {
+        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            rejectedVideoCallback = { proceed in cont.resume(returning: proceed) }
+            showPrecheckRejection = true
+        }
+    }
+
+    /// Original per-video upload-pipeline starter, factored out of
+    /// handlePickedVideos so the precheck can gate it without
+    /// duplicating logic.
+    private func addPendingVideoAndStartUpload(_ video: PickedVideo) {
+        let pending = PendingVideo()
+        pending.fileName = "\(video.id).mp4"
+        pending.isLoading = false
+
+        // Thumbnail comes from the Photos cache immediately — local, no
+        // iCloud bytes needed. Tile shows up the instant the picker
+        // dismisses.
+        Task {
+            let thumb = await PHAssetResolver.thumbnail(for: video.asset)
+            await MainActor.run { pending.thumbnail = thumb }
+        }
+
+        withAnimation(.easeOut(duration: 0.15)) {
+            pendingVideos.append(pending)
+        }
 
             // Pause prefetch downloads NOW — before strategy probes,
             // compression, or any server roundtrip. Otherwise prefetches
@@ -1183,7 +1242,9 @@ struct EditorView: View {
                     }
                 }
             }
-        }
+        // Leftover close brace from the removed `for video in videos { }`
+        // loop was deleted here when handlePickedVideos was refactored
+        // into a precheck-aware outer + per-video pipeline inner.
     }
 
     // MARK: - Prewarm One-Shot

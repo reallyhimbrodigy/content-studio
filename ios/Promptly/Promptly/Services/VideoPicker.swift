@@ -105,6 +105,14 @@ enum PHAssetResolver {
         return .stream(resource: resource, fileSize: fileSize)
     }
 
+    /// Public wrapper around tryResolveLocalOnly so other services can
+    /// check "do I have file URL access without paying an iCloud
+    /// download?" — used by TalkingHeadPrecheck to decide whether the
+    /// on-device Vision precheck is fast enough to run.
+    static func localFileURLIfAvailable(asset: PHAsset) async -> URL? {
+        await tryResolveLocalOnly(asset: asset)
+    }
+
     /// Try to get the file URL WITHOUT touching iCloud. Returns nil for
     /// iCloud-only assets or edited/composition assets that need rendering.
     private static func tryResolveLocalOnly(asset: PHAsset) async -> URL? {
