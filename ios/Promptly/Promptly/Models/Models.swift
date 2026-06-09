@@ -43,6 +43,29 @@ struct ChatMessage: Identifiable {
     /// passed to the chat API so it doesn't burn context tokens or bias
     /// the AI's tone.
     var isOnboarding: Bool = false
+
+    // MARK: - Retry cache (structured-failure recovery)
+    //
+    // When a render fails with the backend's structured envelope and
+    // retryable: true, we stash the public S3 URLs + vibe text here
+    // so the user can one-tap Retry without re-uploading or re-typing.
+    // The spec calls this out explicitly: "cache the source video URL
+    // and vibe text in the failure state. Don't re-upload, don't re-
+    // type." Survives chat reload via SerializedMessage so a user who
+    // closes the app and comes back later still sees the Retry path.
+    /// Public S3 URL of the source video the failed dispatch was using.
+    var cachedSourceUrl: String? = nil
+    /// Public S3 URL of the matching Gemini proxy (may be nil if the
+    /// proxy upload failed or this was a .stream / single-PUT path).
+    var cachedProxyUrl: String? = nil
+    /// The vibe text the user typed before the failed dispatch.
+    var cachedVibe: String? = nil
+    /// True iff the backend's structured failure said retryable: true.
+    /// Drives visibility of the Retry button — non-retryable failures
+    /// still show user_message but no retry affordance (the spec wants
+    /// requires_new_video / requires_vibe_change to push the user
+    /// toward a fresh start instead).
+    var isRetryable: Bool = false
 }
 
 enum MessageRole {
@@ -144,6 +167,13 @@ struct SerializedMessage: Codable, Hashable {
     var error: String?
     var originalVibe: String?
     var isOnboarding: Bool?
+    // Retry cache — persisted so a user who closes the app on a failed
+    // bubble still sees the Retry button on reload. All four fields are
+    // optional in storage (only failed retryable messages have them set).
+    var cachedSourceUrl: String?
+    var cachedProxyUrl: String?
+    var cachedVibe: String?
+    var isRetryable: Bool?
 
     /// Decide whether a live ChatMessage is worth persisting at all.
     /// Includes mid-render placeholders that have a jobId — those re-bind
@@ -189,6 +219,10 @@ struct SerializedMessage: Codable, Hashable {
         self.error = message.error
         self.originalVibe = message.originalVibe
         self.isOnboarding = message.isOnboarding ? true : nil
+        self.cachedSourceUrl = message.cachedSourceUrl
+        self.cachedProxyUrl = message.cachedProxyUrl
+        self.cachedVibe = message.cachedVibe
+        self.isRetryable = message.isRetryable ? true : nil
 
         // Persist the local UIImage to disk so chat reload can restore
         // the user-side video tile. UIImage doesn't survive JSON
@@ -216,6 +250,10 @@ struct SerializedMessage: Codable, Hashable {
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false
+        msg.cachedSourceUrl = cachedSourceUrl
+        msg.cachedProxyUrl = cachedProxyUrl
+        msg.cachedVibe = cachedVibe
+        msg.isRetryable = isRetryable ?? false
         // Restore an in-flight stage timeline so the bubble shows a
         // progress UI immediately on chat reload (instead of looking
         // like the assistant ghosted the user). The actual stage state

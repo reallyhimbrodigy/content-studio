@@ -12,6 +12,13 @@ struct MessageBubble: View {
     /// Pulls the message text into the input bar and removes everything
     /// from this message forward so the user can resend a revision.
     var onEdit: (() -> Void)? = nil
+    /// Tap on the failed-render Retry button. Provided only on
+    /// assistant render bubbles where the backend's structured
+    /// failure said retryable: true AND we have the cached S3 URLs
+    /// + vibe stored on the message. Calling this re-dispatches
+    /// createVideoJob with the cached values — no re-upload, no
+    /// re-type, single tap.
+    var onRetry: (() -> Void)? = nil
 
     /// SwiftUI-rendered markdown view for chat text.
     ///
@@ -218,13 +225,47 @@ struct MessageBubble: View {
             }
 
             if message.jobStatus == "failed" || message.jobStatus == "error" {
-                Text(message.error ?? "Something went wrong.")
-                    .font(.system(size: 14))
-                    .foregroundColor(.red)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Color.red.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(message.error ?? "Something went wrong.")
+                        .font(.system(size: 14))
+                        .foregroundColor(.red)
+
+                    // Try Again button — shown only when the backend
+                    // marked this failure as retryable AND we have the
+                    // cached S3 URLs to re-dispatch with. One tap re-
+                    // submits the SAME source + proxy + vibe via
+                    // createVideoJob; no upload, no re-typing.
+                    if message.isRetryable,
+                       message.cachedSourceUrl != nil,
+                       let onRetry = onRetry {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onRetry()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Try Again")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(Color.white.opacity(0.12))
+                            )
+                            .overlay(
+                                Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Try again — re-runs the render with the same video and vibe")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(Color.red.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
     }

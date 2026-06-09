@@ -568,7 +568,8 @@ struct EditorView: View {
                         MessageBubble(
                             message: message,
                             onRegenerate: regenerateClosure(for: message),
-                            onEdit: editClosure(for: message)
+                            onEdit: editClosure(for: message),
+                            onRetry: retryClosure(for: message)
                         )
                         .id(message.id)
                     }
@@ -1425,6 +1426,98 @@ struct EditorView: View {
         }
     }
 
+    /// Build the Retry handler for a failed render message. Returns nil
+    /// unless the message is in the failed state AND backend marked it
+    /// retryable AND we have the cached S3 URLs to re-dispatch with.
+    /// On tap: flip the bubble back to "processing", clear the error,
+    /// and call createVideoJob with the cached values — no upload, no
+    /// re-typing. New job_id replaces the old one on the same message.
+    private func retryClosure(for message: ChatMessage) -> (() -> Void)? {
+        guard message.role == .assistant,
+              message.jobStatus == "failed" || message.jobStatus == "error",
+              message.isRetryable,
+              let cachedSourceUrl = message.cachedSourceUrl,
+              let cachedVibe = message.cachedVibe else { return nil }
+        let messageId = message.id
+        let cachedProxyUrl = message.cachedProxyUrl
+        return {
+            Task { @MainActor in
+                retryFailedRender(
+                    messageId: messageId,
+                    sourceUrl: cachedSourceUrl,
+                    proxyUrl: cachedProxyUrl,
+                    vibe: cachedVibe
+                )
+            }
+        }
+    }
+
+    /// Re-dispatch a previously-failed render with the cached S3 URLs
+    /// + vibe. Skips upload entirely — the source and proxy are still
+    /// in the bucket from the original attempt. Resets the bubble to
+    /// the processing state and starts a fresh SSE stream against the
+    /// new jobId. Failures here re-route through the same structured-
+    /// error path as the original dispatch, so a retry that also fails
+    /// just leaves the user back on a retryable failed state.
+    private func retryFailedRender(
+        messageId: UUID,
+        sourceUrl: String,
+        proxyUrl: String?,
+        vibe: String
+    ) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        // Reset the bubble's failure state in-place. Keeping the same
+        // ChatMessage.id (and stableness of LazyVStack identity) means
+        // SwiftUI animates the transition cleanly instead of replacing
+        // the whole bubble.
+        withAnimation(.easeOut(duration: 0.2)) {
+            messages[idx].jobStatus = "processing"
+            messages[idx].error = nil
+            messages[idx].jobProgress = 40
+            messages[idx].stepMessage = "Re-sending your edit..."
+            // Re-arm the stage timeline so the progress UI shows again
+            // (was hidden under the error rendering).
+            if messages[idx].stageTimeline == nil {
+                messages[idx].stageTimeline = StageTimeline(mode: "full", startWith: "analyze")
+            }
+        }
+        persistMessages()
+
+        Task { @MainActor in
+            do {
+                let jobId = try await APIService.shared.createVideoJob(
+                    videoUrl: sourceUrl,
+                    proxyVideoUrl: proxyUrl,
+                    vibe: vibe
+                )
+                guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                messages[i].jobId = jobId
+                startSSE(jobId: jobId, messageIndex: i)
+                scheduleStuckDetector(messageId: messageId, jobId: jobId)
+                persistMessages()
+                print("[retry] re-dispatched job=\(jobId)")
+            } catch let APIError.structuredFailure(_, userMessage, retryable, _, _) {
+                // Re-failure — same cached values stay attached so the
+                // user can keep tapping Retry. retryable from the new
+                // response wins (backend might've flipped it off if
+                // the error is now permanent).
+                guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                messages[i].jobStatus = "failed"
+                messages[i].error = userMessage
+                messages[i].isRetryable = retryable
+                persistMessages()
+            } catch let APIError.paymentRequired(_, _, _) {
+                appState.paywallReason = .manual
+            } catch {
+                guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                messages[i].jobStatus = "failed"
+                messages[i].error = error.localizedDescription
+                persistMessages()
+            }
+        }
+    }
+
     /// Regenerate the assistant message at `messageId`. Replaces its
     /// content with a fresh streaming response derived from the prior
     /// conversation (everything BEFORE this message). The user message
@@ -2026,17 +2119,38 @@ struct EditorView: View {
                                 appState.paywallReason = .dailyRenders(used: lim, limit: lim)
                             }
                             await UsageService.shared.refresh()
-                        } catch let APIError.structuredFailure(errorCode, userMessage, _, requiresNewVideo, _) {
+                        } catch let APIError.structuredFailure(errorCode, userMessage, retryable, requiresNewVideo, _) {
                             // Backend returned the structured error
                             // shape. user_message is authoritative and
                             // gets surfaced verbatim into the failed
                             // message bubble; the flags shape the
-                            // recovery path (most-impactful is
-                            // requires_new_video → re-open picker).
-                            print("[dispatch] structured failure code=\(errorCode ?? "?") requiresNewVideo=\(requiresNewVideo)")
+                            // recovery path (requires_new_video → re-
+                            // open picker, retryable → cache S3 URLs +
+                            // vibe for the one-tap Retry button).
+                            print("[dispatch] structured failure code=\(errorCode ?? "?") retryable=\(retryable) requiresNewVideo=\(requiresNewVideo)")
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobStatus = "failed"
                                 messages[i].error = userMessage
+                                // Retry cache — spec wants Try Again to
+                                // be one-tap with no re-upload, no re-
+                                // type. We have sourceUrl + proxyUrl +
+                                // vibe in scope here; stash them on the
+                                // failed message so MessageBubble can
+                                // surface a Retry button bound to the
+                                // existing public S3 objects (no new
+                                // upload needed).
+                                if retryable {
+                                    messages[i].isRetryable = true
+                                    // Read URLs directly off the PendingVideo
+                                    // capture (the do-scope locals aren't
+                                    // visible to this catch). video.uploadedUrl
+                                    // is set after the source PUT lands, and
+                                    // dispatch only runs after that flips, so
+                                    // it's guaranteed non-nil here.
+                                    messages[i].cachedSourceUrl = video.uploadedUrl
+                                    messages[i].cachedProxyUrl = video.proxyUploadedUrl
+                                    messages[i].cachedVibe = vibe
+                                }
                                 persistMessages()
                             }
                             if requiresNewVideo {
