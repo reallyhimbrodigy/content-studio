@@ -15,7 +15,11 @@ struct EditorView: View {
     @State private var sseClients: [String: SSEClient] = [:]
     @State private var reeditSession: ReeditSession?
     @State private var loadedChatId: String? = nil
-    @State private var ghostIndex: Int = 0
+    // ghostIndex removed — the rotating ghost-text suggestion was
+    // replaced in build 172 with always-visible vibe chips above the
+    // input (ChatGPT-style). Users couldn't discover the swipe-right-
+    // to-accept gesture the rotation depended on; the chips are tap
+    // targets so the affordance is obvious.
     /// Tracks whether the scroll view is anchored at the bottom. When
     /// the user scrolls up past the last message's bottom edge, we
     /// surface a floating "↓ scroll to bottom" button — the standard
@@ -139,19 +143,9 @@ struct EditorView: View {
                     await chatStore.loadChats()
                 }
             }
-            .task {
-                // Ghost-text rotation. 3.2 s dwell per suggestion with a
-                // spring-driven fade-up between transitions. Runs for the
-                // lifetime of the view; SwiftUI cancels the .task when the
-                // view leaves the hierarchy.
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(3.2))
-                    if Task.isCancelled { break }
-                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                        ghostIndex = (ghostIndex + 1) % Self.vibeSuggestions.count
-                    }
-                }
-            }
+            // Ghost-text rotation task removed in build 172 — replaced
+            // with always-visible vibe chips above the input. No more
+            // animation timer needed; the chips are static affordances.
             .onChange(of: appState.pendingReedit) { _, newSession in
                 if let s = newSession {
                     reeditSession = s
@@ -653,6 +647,14 @@ struct EditorView: View {
                 .frame(height: 72)
             }
 
+            // ChatGPT-style vibe-suggestion chips. Always visible when
+            // the input is empty + we're not in a re-edit session, so
+            // the affordance reads as an obvious tap target instead of
+            // the previous hidden swipe-right gesture. Horizontally
+            // scrollable since 3 chips don't fit on smaller iPhones.
+            // Hides cleanly the moment the user starts typing.
+            vibeChipRow
+
             HStack(alignment: .bottom, spacing: 0) {
                 Button { tapAddVideo() } label: {
                     Image(systemName: "plus")
@@ -672,21 +674,14 @@ struct EditorView: View {
                 .padding(.bottom, 5)
 
                 ZStack(alignment: .leading) {
-                    // Ghost-text rotation. When the field is empty, the
-                    // placeholder cycles through outcome-shaped vibes —
-                    // dimmed, fading-up between transitions. Swipe right
-                    // on the input area to accept the current ghost; tap
-                    // also works. Old chip row is gone.
-                    if inputText.isEmpty && pendingVideos.isEmpty && reeditSession == nil {
-                        Text(Self.vibeSuggestions[ghostIndex])
+                    // Static placeholder. The rotating ghost-text was
+                    // removed in build 172 — the visible chip row above
+                    // now carries the "here are some vibes" message.
+                    if inputText.isEmpty && reeditSession == nil {
+                        Text("Tell me the vibe…")
                             .font(.system(.body, design: .default).weight(.regular))
                             .tracking(0.3)
                             .foregroundColor(Color.white.opacity(0.35))
-                            .id(ghostIndex)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
-                                removal: .move(edge: .top).combined(with: .opacity)
-                            ))
                             .padding(.vertical, 9)
                             .allowsHitTesting(false)
                     }
@@ -706,17 +701,6 @@ struct EditorView: View {
                         .accessibilityLabel("Describe your edit")
                 }
                 .contentShape(Rectangle())
-                .gesture(
-                    // Swipe right (>= 80pt) accepts the current ghost.
-                    // Only fires when the field is empty so it doesn't
-                    // fight with text selection.
-                    DragGesture(minimumDistance: 30)
-                        .onEnded { v in
-                            guard inputText.isEmpty, v.translation.width > 80 else { return }
-                            inputText = Self.vibeSuggestions[ghostIndex]
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        }
-                )
 
                 ZStack {
                     // Mic — surfaces when the input is empty and there's
@@ -786,6 +770,69 @@ struct EditorView: View {
         .padding(.top, Theme.Space.xxs)
         .padding(.bottom, Theme.Space.xs)
         .animation(.spring(response: 0.45, dampingFraction: 0.78), value: pendingVideos.count)
+        // Animate the chip row's appearance/disappearance as the user
+        // starts/stops typing. easeInOut is enough — the chips already
+        // do a fade + slide via their .transition.
+        .animation(.easeInOut(duration: 0.22), value: inputText.isEmpty)
+    }
+
+    /// Featured vibes shown as ChatGPT-style tappable chips above the
+    /// input. Three options instead of twelve: forces a clear, scannable
+    /// affordance and keeps the chip row from sprawling. Each chip is
+    /// short enough to read at a glance, distinct enough in feel to
+    /// guide users toward different render styles.
+    private static let featuredVibes: [String] = [
+        "Viral engaging video",
+        "Professional corporate style",
+        "Fast paced punchy"
+    ]
+
+    /// Horizontally-scrollable chip row that surfaces the featured
+    /// vibes above the composer. Tap a chip to insert its text into
+    /// the input and focus the field — same as if the user typed it.
+    /// Hides the moment the input has any text, so the chips never
+    /// fight with what the user is composing.
+    @ViewBuilder
+    private var vibeChipRow: some View {
+        if inputText.isEmpty && reeditSession == nil {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.featuredVibes, id: \.self) { vibe in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            inputText = vibe
+                            isInputFocused = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.55))
+                                Text(vibe)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.88))
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.06))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Use vibe: \(vibe)")
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
 
     // MARK: - Luxurious backdrop
@@ -1176,26 +1223,10 @@ struct EditorView: View {
         return size > 0 && size <= maxSkippableBytes
     }
 
-    // MARK: - Vibe chips
-    //
-    // Outcome-shaped vibes for short-form talking head. Cycled inside
-    // the input bubble as ghost text — see inputBar above. Order
-    // matters: the first one is what users see in the static frame,
-    // so it should be the safe-bet default.
-    static let vibeSuggestions: [String] = [
-        "Engaging fast-paced",
-        "Viral hype",
-        "Sales pitch",
-        "Storytime",
-        "Tutorial style",
-        "Make it educational",
-        "Cinematic and moody",
-        "Confessional vlog",
-        "Documentary feel",
-        "Comedy timing",
-        "Motivational",
-        "Make it good"
-    ]
+    // Old vibeSuggestions 12-item array removed in build 172 — the
+    // ghost-text rotation + swipe-right that consumed it was replaced
+    // with the visible vibeChipRow above the input. Featured vibes
+    // now live next to that view (see `featuredVibes` static).
 
     // MARK: - Per-message context menu (Regenerate / Edit)
     //
