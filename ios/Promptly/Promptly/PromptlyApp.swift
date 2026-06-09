@@ -201,10 +201,19 @@ struct PromptlyApp: App {
 
     @StateObject private var appState = AppState.shared
 
+    /// LaunchView must remain on screen long enough for its entrance
+    /// animation to complete and the brand moment to register. Without
+    /// this gate, a fast auth.checkSession() resolve (~300ms on a warm
+    /// device) would cut to AppShell while the logo is still mid-zoom
+    /// — the user would see a half-formed mark snap away. 700ms is the
+    /// floor: ~280ms entrance + ~420ms of idle "the runner is alive"
+    /// before any handoff is allowed.
+    @State private var launchMinElapsed = false
+
     var body: some Scene {
         WindowGroup {
             ZStack {
-                if auth.isLoading {
+                if auth.isLoading || !launchMinElapsed {
                     LaunchView()
                         .transition(.opacity.combined(with: .scale(scale: 1.04)))
                 } else if auth.isAuthenticated {
@@ -216,22 +225,26 @@ struct PromptlyApp: App {
                 }
             }
             // Spring-driven crossfade between launch ↔ authed ↔ unauthed
-            // roots. WWDC23 'Animate with springs' (10158) is explicit:
-            // ease curves "jerk to a halt" when retargeted because a
-            // Bezier cannot encode initial velocity, while springs are
-            // the only animation type that preserves velocity across
-            // interruption. This matters here because auth.checkSession
-            // can resolve mid-entrance (the runner's sprint-in spring
-            // is still settling) — a spring crossfade inherits the
-            // in-flight velocity and reads as a continuous handoff,
-            // not a snap. Bounce 0 (dampingFraction 1.0) keeps the
-            // handoff itself calm; the runner's overshoot already
-            // carries the bounce energy.
+            // roots. WWDC23 'Animate with springs' (10158): ease curves
+            // "jerk to a halt" when retargeted because a Bezier cannot
+            // encode initial velocity; springs uniquely preserve in-
+            // flight velocity across interruption. Bounce 0
+            // (dampingFraction 1.0) keeps the handoff itself calm —
+            // the runner's overshoot already carries the bounce.
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
+            .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
             .environmentObject(appState)
             .preferredColorScheme(.dark)
             .task {
+                // Minimum LaunchView display time so the entrance
+                // animation always completes. Runs in parallel with
+                // the auth check; whichever finishes later determines
+                // when the handoff fires.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(700))
+                    launchMinElapsed = true
+                }
                 await auth.checkSession()
                 // If we already have permission from a prior install, kick
                 // off remote-registration so the server learns this run's
@@ -285,33 +298,35 @@ struct PromptlyApp: App {
 /// sprint short — the exit blends with whatever animation phase the
 /// view happens to be in, no special-case needed.
 struct LaunchView: View {
-    // WCAG 2.1 SC 2.3.3 + iOS Reduce Motion. Per A List Apart, ~35% of
-    // users with vestibular disorders have difficulty with motion-heavy
-    // interfaces. When the system flag is on we replace the sprint-in
-    // + sinusoidal idle with a calm fade-in and a static logo — the
-    // brand moment still lands but no animation can trigger vertigo.
+    // WCAG 2.1 SC 2.3.3 + iOS Reduce Motion accessibility.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Sprint-in entrance state (withAnimation-driven, settles to
-    // identity values once the entrance completes). Sprint distance
-    // was 280pt; reduced to 180pt because at 280pt over 320ms the
-    // peak velocity (~1300pt/s) sits in the range where Apple's
-    // WWDC18 'Designing Fluid Interfaces' calls out visual strobing
-    // on hard-edged silhouettes. 180pt brings peak velocity down to
-    // ~840pt/s and keeps the sprint feel without the strobe risk.
-    @State private var logoOffsetX: CGFloat = -180
-    @State private var logoScale: CGFloat = 0.78
+    // Zoom-in entrance. Logo starts SMALL (scale 0.25) and very
+    // BLURRED (18pt) — reads as "coming from far away / toward the
+    // camera." Snaps to identity values in ~220ms with a spring
+    // overshoot for the "whoosh land" feel the user asked for.
+    //
+    // Why zoom and not slide-in: the user explicitly said "zooming
+    // in super fast all the way and then whoosh fade in." Slide-in
+    // is what we built in 162-168 — wrong shape entirely.
+    //
+    // Speed: total entrance ~280ms. auth.checkSession() typically
+    // resolves in ~300ms on a cold start so the animation needs to
+    // FINISH inside that window or the user sees a half-formed
+    // logo cut to the auth screen. PromptlyApp enforces a 500ms
+    // minimum LaunchView display time on top of this so even a
+    // truly instant resolve still lets the brand moment land.
+    @State private var logoScale: CGFloat = 0.25
     @State private var logoOpacity: Double = 0
-    @State private var logoBlur: CGFloat = 14
+    @State private var logoBlur: CGFloat = 18
 
-    // Ambient glow under the logo (blooms on land, settles for idle).
+    // Ambient glow under the logo (blooms during zoom, settles low).
     @State private var glowBaseOpacity: Double = 0
 
-    // Brief light kiss at landing — softer than a full flash.
+    // Brief light kiss at landing.
     @State private var landFlashOpacity: Double = 0
 
-    // Idle starts after the entrance settles. Used to gate the
-    // sinusoidal stride animations inside the TimelineView.
+    // Idle starts after the entrance settles.
     @State private var strideStart: Date? = nil
 
     var body: some View {
@@ -381,7 +396,7 @@ struct LaunchView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 168, height: 168)
                     .rotationEffect(.degrees(lean))
-                    .offset(x: logoOffsetX, y: bob)
+                    .offset(y: bob)
                     .scaleEffect(logoScale * CGFloat(breath))
                     .opacity(logoOpacity)
                     .blur(radius: logoBlur)
@@ -396,15 +411,11 @@ struct LaunchView: View {
             }
         }
         .task {
-            // Reduce Motion path: skip the sprint / overshoot / flash
-            // entirely. Just calm-fade the runner in at identity
-            // values and let the idle layer (also damped to zero
-            // motion when reduceMotion is true) hold the brand
-            // moment statically. WCAG 2.1 SC 2.3.3 compliance and
-            // protects vestibular-sensitive users from any kinetic
-            // surprise on cold start.
+            // Reduce Motion path: skip zoom + overshoot + flash. Just
+            // a calm fade-in at identity scale, then the static idle
+            // layer (also damped to zero modulation when reduceMotion
+            // is true) holds the brand moment.
             if reduceMotion {
-                logoOffsetX = 0
                 logoScale = 1.0
                 logoBlur = 0
                 withAnimation(.easeOut(duration: 0.28)) {
@@ -416,50 +427,49 @@ struct LaunchView: View {
                 return
             }
 
-            // Phase 1 — black hold (the breath before motion).
-            try? await Task.sleep(for: .milliseconds(60))
+            // Phase 1 — brief black hold (one frame of anticipation).
+            try? await Task.sleep(for: .milliseconds(30))
 
-            // Phase 2 — SPRINT IN. Runner enters from off-screen left
-            // (motion lines on the artwork trail behind correctly).
-            // Decelerating curve — reads as braking to a stop, not
-            // skidding past.
-            withAnimation(.timingCurve(0.16, 0.7, 0.28, 1, duration: 0.32)) {
-                logoOffsetX = 0
+            // Phase 2 — ZOOM IN. The user's actual ask: "zooming in
+            // super fast all the way and then whoosh fade in." Logo
+            // grows from scale 0.25 → 1.08 with opacity 0 → 1 and
+            // blur 18 → 0 over 200ms. Front-loaded ease so it feels
+            // like the logo is rushing toward the camera and braking
+            // as it arrives. Slight scale overshoot (1.08) anticipates
+            // the spring landing in Phase 3.
+            withAnimation(.timingCurve(0.22, 0.68, 0.34, 1, duration: 0.20)) {
                 logoScale = 1.08
                 logoOpacity = 1
                 logoBlur = 0
             }
 
-            // Phase 3 — LAND. Spring overshoot back to 1.0 (the brake),
-            // glow blooms beneath, light kiss flashes briefly.
-            // Bounce ≈ 0.34 (dampingFraction 0.66) — within the
-            // WWDC23 'Animate with springs' recommended ceiling of
-            // ~0.4 for UI elements. The runner depicts momentum, so
-            // a modest overshoot is consistent with WWDC18 'Designing
-            // Fluid Interfaces' guidance to reserve overshoot for
-            // motion that already carries depicted velocity.
-            try? await Task.sleep(for: .milliseconds(300))
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.66)) {
+            // Glow blooms in parallel with the zoom so the runner
+            // looks luminous from the moment it's visible.
+            withAnimation(.easeOut(duration: 0.24)) {
+                glowBaseOpacity = 0.55
+                landFlashOpacity = 0.20
+            }
+
+            // Phase 3 — WHOOSH LAND. Spring back to 1.0 (the "thunk"
+            // of arrival), flash veil fades out, glow settles. Spring
+            // bounce ≈ 0.34 — within WWDC23 cap of 0.4 for UI.
+            try? await Task.sleep(for: .milliseconds(200))
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.66)) {
                 logoScale = 1.0
             }
-            withAnimation(.easeOut(duration: 0.22)) {
-                glowBaseOpacity = 0.55
-                landFlashOpacity = 0.18
-            }
-            withAnimation(.easeInOut(duration: 0.45).delay(0.10)) {
+            withAnimation(.easeInOut(duration: 0.40).delay(0.04)) {
                 landFlashOpacity = 0
                 glowBaseOpacity = 0.22
             }
 
             // Phase 4 — RUN IN PLACE. Anchor strideStart so the
             // TimelineView's sinusoidal stride/breath/glow modulations
-            // begin from zero phase (matches the entrance's final
-            // identity values, no visible pop). From here onward the
-            // continuous motion carries the wait: stride/lean at
-            // 0.7s, breath at 2.3s, glow pulse at 1.8s — three
-            // independent clocks so they never sync up and beat
-            // against each other.
-            try? await Task.sleep(for: .milliseconds(260))
+            // start at zero phase, exactly matching the entrance's
+            // final identity values. From here the continuous motion
+            // carries any additional wait — three independent clocks
+            // (stride 0.7s, glow pulse 1.8s, breath 2.3s) so they
+            // never sync up and beat into a single visible loop.
+            try? await Task.sleep(for: .milliseconds(180))
             strideStart = Date()
         }
     }
