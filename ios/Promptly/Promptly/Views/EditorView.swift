@@ -40,6 +40,14 @@ struct EditorView: View {
     @State private var rejectedVideoCallback: ((Bool) -> Void)? = nil
     @State private var showPrecheckRejection: Bool = false
 
+    /// Layer 2 (backend /validate) rejection state. Backend's
+    /// user_message gets surfaced verbatim — it's authoritative on
+    /// why the clip was rejected and the spec wants the wording
+    /// passed through. Single "Choose Another" button (no Try Anyway
+    /// here — Layer 2 is the backend's final call).
+    @State private var showLayer2Rejection: Bool = false
+    @State private var layer2RejectionMessage: String = ""
+
     var body: some View {
         NavigationStack {
             // SwiftUI's native pattern for "scroll content above a pinned
@@ -136,6 +144,19 @@ struct EditorView: View {
                 }
             } message: {
                 Text("Promptly works best with videos of someone talking on camera. Pick another clip?")
+            }
+            // Layer 2 (backend /validate) rejection alert. Backend's
+            // user_message is authoritative — surfaced verbatim.
+            // Single "Choose Another" button: the backend already
+            // ran a higher-confidence check on the actual sample, so
+            // there's no "Try Anyway" escape hatch here.
+            .alert("Try a different video", isPresented: $showLayer2Rejection) {
+                Button("Choose Another", role: .cancel) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showVideoPicker = true
+                }
+            } message: {
+                Text(layer2RejectionMessage)
             }
             .fullScreenCover(isPresented: $showVoiceInput) {
                 VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
@@ -974,6 +995,52 @@ struct EditorView: View {
         }
     }
 
+    /// Layer 2 — extract a 5s sample, upload it to S3 under the
+    /// validation-samples/ prefix, POST to the Modal /validate endpoint.
+    /// If the backend says the clip isn't a talking head, surface its
+    /// user_message in an alert and throw a sentinel so the caller can
+    /// bail out cleanly (without marking the tile as a failed upload).
+    /// Other failures (network blips, Modal cold-start timeout, etc) are
+    /// thrown as their underlying error and treated as non-fatal upstream.
+    private func runLayer2Validate(pending: PendingVideo, materializedSourceUrl: URL) async throws {
+        guard let userId = AuthService.shared.currentUser?.id else { return }
+        let t0 = Date()
+
+        let sampleFile = try await ValidationSampleExtractor.extract(from: materializedSourceUrl)
+        defer { try? FileManager.default.removeItem(at: sampleFile) }
+
+        let sampleKey = "validation-samples/\(userId)/\(UUID().uuidString).mp4"
+        let sampleResp = try await APIService.shared.getUploadUrl(fileName: sampleKey)
+        guard let samplePutUrl = sampleResp.uploadUrl,
+              let samplePubUrl = sampleResp.publicUrl else {
+            throw APIError.uploadFailed
+        }
+        try await APIService.shared.uploadFileToS3Foreground(
+            url: samplePutUrl,
+            fileUrl: sampleFile,
+            mimeType: "video/mp4",
+            onProgress: nil
+        )
+
+        let validation = try await APIService.shared.validateVideo(sampleS3Url: samplePubUrl)
+        let elapsed = Date().timeIntervalSince(t0)
+        print(String(format: "[layer2] validate verdict=%@ in %.2fs (faceRatio=%.2f reason=%@)",
+                     validation.isTalkingHead ? "PASS" : "REJECT",
+                     elapsed,
+                     validation.faceRatio ?? -1,
+                     validation.reason ?? "n/a"))
+
+        if !validation.isTalkingHead {
+            let message = validation.userMessage
+                ?? "Promptly works best with videos of someone talking on camera. Pick another clip?"
+            await MainActor.run {
+                layer2RejectionMessage = message
+                showLayer2Rejection = true
+            }
+            throw Layer2RejectionSentinel()
+        }
+    }
+
     /// Original per-video upload-pipeline starter, factored out of
     /// handlePickedVideos so the precheck can gate it without
     /// duplicating logic.
@@ -1059,6 +1126,37 @@ struct EditorView: View {
                             print("[perf] compressed → tmp")
                         }
                         await MainActor.run { pending.fileUrl = materializedSourceUrl }
+
+                        // LAYER 2 — backend /validate round-trip on a 5s
+                        // sample. Catches incompatible clips the Layer 1
+                        // on-device Vision precheck didn't flag (iCloud
+                        // sources especially, since Layer 1 is skipped
+                        // for those). Adds ~4-9s of latency but the
+                        // alternative is uploading 30-100MB + waiting
+                        // 30-60s into the render before discovering the
+                        // clip can't be edited. Non-fatal on its own
+                        // errors (network blip, Modal cold-start, etc) —
+                        // we'd rather upload a borderline clip than
+                        // block on a flaky validation service.
+                        do {
+                            try await runLayer2Validate(
+                                pending: pending,
+                                materializedSourceUrl: materializedSourceUrl
+                            )
+                        } catch is Layer2RejectionSentinel {
+                            // User-facing rejection alert was shown
+                            // already; bail out cleanly without
+                            // marking uploadFailed (we want the tile
+                            // to come off, not show an error state).
+                            await MainActor.run {
+                                withAnimation(.easeOut(duration: 0.18)) {
+                                    pendingVideos.removeAll { $0.id == pending.id }
+                                }
+                            }
+                            return
+                        } catch {
+                            print("[layer2] non-fatal error (continuing): \(error.localizedDescription)")
+                        }
 
                         // Get TWO presigned upload URLs in parallel —
                         // one for the proxy (small, foreground), one
@@ -1928,6 +2026,29 @@ struct EditorView: View {
                                 appState.paywallReason = .dailyRenders(used: lim, limit: lim)
                             }
                             await UsageService.shared.refresh()
+                        } catch let APIError.structuredFailure(errorCode, userMessage, _, requiresNewVideo, _) {
+                            // Backend returned the structured error
+                            // shape. user_message is authoritative and
+                            // gets surfaced verbatim into the failed
+                            // message bubble; the flags shape the
+                            // recovery path (most-impactful is
+                            // requires_new_video → re-open picker).
+                            print("[dispatch] structured failure code=\(errorCode ?? "?") requiresNewVideo=\(requiresNewVideo)")
+                            if let i = indexOfProcessingMsg() {
+                                messages[i].jobStatus = "failed"
+                                messages[i].error = userMessage
+                                persistMessages()
+                            }
+                            if requiresNewVideo {
+                                // Bring the picker back up so the user
+                                // can swap clips with one tap. Matches
+                                // the spec's recommended UX for the
+                                // requires_new_video=true case.
+                                await MainActor.run {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    showVideoPicker = true
+                                }
+                            }
                         } catch {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobStatus = "failed"
@@ -2376,3 +2497,10 @@ struct CircularProgressRing: View {
         }
     }
 }
+
+
+/// Marker thrown by runLayer2Validate when the backend /validate
+/// endpoint rejects the clip. The caller already showed the user-
+/// facing alert; throwing this is just the signal to bail out of
+/// the upload Task cleanly without flagging an upload error.
+private struct Layer2RejectionSentinel: Error {}

@@ -92,6 +92,34 @@ class APIService {
         return request
     }
 
+    // MARK: - Validation (Layer 2)
+
+    /// POST a S3 sample URL to the Modal /validate endpoint and parse
+    /// the talking-head verdict. Used inside the upload Task BEFORE
+    /// committing to the full source upload, so an incompatible clip
+    /// is caught in 5-9s instead of 30-60s into a doomed render.
+    ///
+    /// The endpoint is a public Modal URL (no auth header required).
+    /// 30s timeout because cold Modal container starts can land in
+    /// the 5-10s range and we'd rather wait than blow past the timeout.
+    func validateVideo(sampleS3Url: String) async throws -> ValidationResponse {
+        guard let url = URL(string: "https://reallyhimbrodigy--promptly-gpu-worker-promptlyvalidator-validate.modal.run") else {
+            throw APIError.uploadFailed
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode(["sample_url": sampleS3Url])
+
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw APIError.jobCreationFailed("validate HTTP \(status)")
+        }
+        return try JSONDecoder().decode(ValidationResponse.self, from: data)
+    }
+
     // MARK: - Video Jobs
 
     func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String) async throws -> String {
@@ -123,6 +151,22 @@ class APIService {
             )
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            // Render-endpoint structured failure: when the backend
+            // returns error_code + user_message + the routing flags,
+            // surface them as APIError.structuredFailure so the UI
+            // can branch (requires_new_video → video picker, etc).
+            // Falls through to the legacy jobCreationFailed shape if
+            // the structured fields aren't present.
+            if let payload = try? JSONDecoder().decode(StructuredErrorPayload.self, from: data),
+               payload.errorCode != nil || payload.userMessage != nil {
+                throw APIError.structuredFailure(
+                    errorCode: payload.errorCode,
+                    userMessage: payload.userMessage ?? payload.error ?? "Something went wrong.",
+                    retryable: payload.retryable ?? false,
+                    requiresNewVideo: payload.requiresNewVideo ?? false,
+                    requiresVibeChange: payload.requiresVibeChange ?? false
+                )
+            }
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Unknown error")
         }
@@ -1062,6 +1106,22 @@ enum APIError: LocalizedError {
     /// called by a free user. `kind` is "render", "chat", or "reedit" so
     /// the caller can present the right paywall reason.
     case paymentRequired(kind: String, limit: Int?, message: String)
+    /// Render dispatch returned a structured failure shape: error_code +
+    /// user_message + the three behavioural flags (retryable,
+    /// requires_new_video, requires_vibe_change). Callers branch on the
+    /// flags to decide which failure screen to show. Carries the
+    /// underlying error_code string so analytics can group failures.
+    case structuredFailure(
+        errorCode: String?,
+        userMessage: String,
+        retryable: Bool,
+        requiresNewVideo: Bool,
+        requiresVibeChange: Bool
+    )
+    /// Layer 2 of pick-validate-upload flow: Modal /validate said the
+    /// sample isn't a talking-head video. userMessage is the backend's
+    /// human-readable reason; faceRatio + confidence are debug info.
+    case validationRejected(userMessage: String, faceRatio: Double?, confidence: Double?)
 
     var errorDescription: String? {
         switch self {
@@ -1070,7 +1130,52 @@ enum APIError: LocalizedError {
         case .uploadFailed: return "Upload failed"
         case .deleteFailed: return "Delete failed"
         case .paymentRequired(_, _, let msg): return msg
+        case .structuredFailure(_, let userMessage, _, _, _): return userMessage
+        case .validationRejected(let userMessage, _, _): return userMessage
         }
+    }
+}
+
+/// Modal /validate response shape. is_talking_head is the only field
+/// the iOS app branches on; the rest are surfaced for logging and
+/// future analytics.
+struct ValidationResponse: Codable {
+    let isTalkingHead: Bool
+    let confidence: Double?
+    let faceRatio: Double?
+    let faceSamples: Int?
+    let reason: String?
+    let userMessage: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isTalkingHead = "is_talking_head"
+        case confidence
+        case faceRatio = "face_ratio"
+        case faceSamples = "face_samples"
+        case reason
+        case userMessage = "user_message"
+    }
+}
+
+/// Render-endpoint structured error envelope. Parsed when createVideoJob
+/// receives a non-2xx response that includes the structured fields.
+private struct StructuredErrorPayload: Codable {
+    let error: String?
+    let errorCode: String?
+    let userMessage: String?
+    let retryable: Bool?
+    let requiresNewVideo: Bool?
+    let requiresVibeChange: Bool?
+    let errorDetail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case error
+        case errorCode = "error_code"
+        case userMessage = "user_message"
+        case retryable
+        case requiresNewVideo = "requires_new_video"
+        case requiresVibeChange = "requires_vibe_change"
+        case errorDetail = "error_detail"
     }
 }
 
