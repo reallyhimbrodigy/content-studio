@@ -50,6 +50,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
+const { sendRenderCompleteNotification } = require('./services/pushNotifier');
 
 // SSE client registry — maps jobId -> Set of response objects
 const sseClients = new Map();
@@ -9877,7 +9878,7 @@ const server = http.createServer((req, res) => {
           // The frontend keeps the SSE open until that final event arrives.
           const { data: jobRow } = await supabaseAdmin
             .from('video_jobs')
-            .select('rendered_video_url')
+            .select('rendered_video_url, hls_manifest_url, user_id, vibe_input')
             .eq('id', job_id)
             .maybeSingle();
           const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
@@ -9891,6 +9892,24 @@ const server = http.createServer((req, res) => {
             final: false,
             error: null,
           });
+          // Fire the APNs push so users who navigated away during the
+          // render get pulled back in. Fire-and-forget: notification
+          // failure must never affect the render success path — the
+          // SSE event already told any foreground client the video is
+          // ready. iOS taps on the notification deep-link into the
+          // Library tab via the "render-complete" type handler.
+          if (jobRow?.user_id && finalVideoUrl) {
+            sendRenderCompleteNotification({
+              userId: jobRow.user_id,
+              jobId: job_id,
+              videoUrl: finalVideoUrl,
+              hlsManifestUrl: jobRow.hls_manifest_url || null,
+              vibe: jobRow.vibe_input || null,
+              supabaseAdmin,
+            }).catch((err) => {
+              console.error('[push] render-complete dispatch failed:', err.message);
+            });
+          }
         } else {
           pushProgressToSSE(job_id, {
             status,
