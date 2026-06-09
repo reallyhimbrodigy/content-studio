@@ -146,7 +146,11 @@ struct MessageBubble: View {
             if let status = message.jobStatus,
                !["completed", "complete", "failed", "error"].contains(status) {
                 if let timeline = message.stageTimeline {
-                    PipelineProgressView(timeline: timeline, progress: message.jobProgress ?? 0)
+                    PipelineProgressView(
+                        timeline: timeline,
+                        progress: message.jobProgress ?? 0,
+                        subMessage: message.stepMessage
+                    )
                 } else {
                     ProcessingIndicator(
                         stepMessage: message.stepMessage ?? "Getting started...",
@@ -403,6 +407,14 @@ struct ProcessingIndicator: View {
 struct PipelineProgressView: View {
     @ObservedObject var timeline: StageTimeline
     let progress: Int
+    /// Optional finer-grained SSE message (e.g. "Reading the speaker's
+    /// energy" while the stage stays on `analyze`). Surfaced as a
+    /// subtitle below the stage title so backend rotations within a
+    /// single catalog stage are visible to the user — without this
+    /// the stage label can sit on "Analyzing your video" for 30-60s
+    /// while the backend cycles through more detailed copy, and the
+    /// progress UI reads as frozen even though work is happening.
+    var subMessage: String? = nil
     @State private var displayed: Int = 0
     @State private var target: Int = 0
     @State private var idleTicks: Int = 0  // counts 120ms idle ticks between SSE updates
@@ -429,24 +441,52 @@ struct PipelineProgressView: View {
         return Array(completed.suffix(2))
     }
 
+    /// True when the SSE message differs meaningfully from the stage
+    /// title — used to gate showing the subtitle (so we don't render
+    /// "Analyzing your video" twice if the backend's message matches
+    /// the catalog stage title verbatim).
+    private var effectiveSubMessage: String? {
+        guard let sub = subMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sub.isEmpty else { return nil }
+        if sub == (activeStage?.title ?? "") { return nil }
+        return sub
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Active stage header
-            HStack(alignment: .center, spacing: 10) {
-                stageIcon
-                Text(activeStage?.title ?? "Starting")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .transition(.opacity)
-                Spacer(minLength: 8)
-                Text("\(max(displayed, 1))%")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 10) {
+                    stageIcon
+                    Text(activeStage?.title ?? "Starting")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .transition(.opacity)
+                    Spacer(minLength: 8)
+                    Text("\(max(displayed, 1))%")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+                .animation(.easeInOut(duration: 0.25), value: activeStage?.id)
+
+                // SSE subtitle — finer-grained backend message that
+                // rotates within a stage. Slides + fades on every
+                // rotation so the user sees real motion even when
+                // the headline stage label is unchanged.
+                if let sub = effectiveSubMessage {
+                    Text(sub)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.6))
+                        .lineLimit(2)
+                        .padding(.leading, 28)  // align past the stageIcon
+                        .id(sub)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .animation(.easeInOut(duration: 0.28), value: sub)
+                }
             }
-            .animation(.easeInOut(duration: 0.25), value: activeStage?.id)
 
             // Progress bar
             GeometryReader { geo in
