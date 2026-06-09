@@ -3,6 +3,8 @@ node_modules/
 *.log
 .env
 .env.local
+# Sentry CLI config — contains the auth token. Never commit.
+.sentryclirc
 data/
 reference-videos/*.mp4
 reference-videos/_last_analyses.json

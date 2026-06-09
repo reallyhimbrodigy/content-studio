@@ -48,6 +48,16 @@ struct EditorView: View {
     @State private var showLayer2Rejection: Bool = false
     @State private var layer2RejectionMessage: String = ""
 
+    /// Set when the backend rejects a render with requires_vibe_change=
+    /// true. Holds the failed message's id so send() knows to route
+    /// to retryFailedRender (with the user's NEW input text as the
+    /// vibe) instead of treating Send as a fresh chat or render. A
+    /// pill above the composer tells the user "Editing vibe for your
+    /// previous video — tap to cancel" so the routing is never
+    /// invisible. Cleared on successful re-dispatch, on user tap-to-
+    /// cancel, or if the user closes the chat.
+    @State private var pendingVibeEditMessageId: UUID? = nil
+
     var body: some View {
         NavigationStack {
             // SwiftUI's native pattern for "scroll content above a pinned
@@ -318,6 +328,11 @@ struct EditorView: View {
         }
         loadedChatId = newId
         reeditSession = nil
+        // Clear any in-flight vibe-edit routing — the failed-message
+        // id we were holding belonged to the OLD chat. Sending in
+        // the new chat should behave normally, not try to retry a
+        // render that isn't visible here.
+        pendingVibeEditMessageId = nil
 
         // Inject welcome on legacy empty chats too (chats created
         // before this feature existed). Single source of truth for
@@ -693,6 +708,13 @@ struct EditorView: View {
                 .frame(height: 72)
             }
 
+            // Vibe-edit pill. Visible only when the backend told us
+            // to change the vibe and we're holding cached S3 URLs for
+            // the previous source — Send routes to a re-dispatch with
+            // the user's new wording, no upload. Tapping the X clears
+            // the routing back to a normal Send.
+            vibeEditPill
+
             // ChatGPT-style vibe-suggestion chips. Always visible when
             // the input is empty + we're not in a re-edit session, so
             // the affordance reads as an obvious tap target instead of
@@ -835,6 +857,53 @@ struct EditorView: View {
 
     /// Horizontally-scrollable chip row that surfaces the featured
     /// vibes above the composer. Tap a chip to insert its text into
+    /// Pill that surfaces above the composer when the user is mid-
+    /// vibe-edit. Tells them their next Send will re-render the
+    /// previously-uploaded source video with the new wording. Single
+    /// X button cancels the routing — Send then falls back to the
+    /// normal text/render flow.
+    @ViewBuilder
+    private var vibeEditPill: some View {
+        if pendingVibeEditMessageId != nil {
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.75))
+                Text("Editing vibe for your previous video")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    pendingVibeEditMessageId = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(width: 18, height: 18)
+                        .background(
+                            Circle().fill(Color.white.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel vibe edit")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule().fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                Capsule().stroke(Color.white.opacity(0.16), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
     /// the input and focus the field — same as if the user typed it.
     /// Hides the moment the input has any text, so the chips never
     /// fight with what the user is composing.
@@ -1850,6 +1919,29 @@ struct EditorView: View {
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
 
+        // ── requires_vibe_change re-dispatch path ─────────────────────
+        // Backend told us the source was fine but the vibe was the
+        // problem. The composer's been showing a "Editing vibe for
+        // your previous video" pill since the failure landed; tapping
+        // Send here re-runs the SAME source/proxy in S3 with the new
+        // vibe text. No upload, no re-typing — exact spec match.
+        if let editId = pendingVibeEditMessageId,
+           !text.isEmpty,
+           let failed = messages.first(where: { $0.id == editId }),
+           let sourceUrl = failed.cachedSourceUrl {
+            let proxyUrl = failed.cachedProxyUrl
+            let newVibe = text
+            clearInputField()
+            pendingVibeEditMessageId = nil
+            retryFailedRender(
+                messageId: editId,
+                sourceUrl: sourceUrl,
+                proxyUrl: proxyUrl,
+                vibe: newVibe
+            )
+            return
+        }
+
         // ── Text-only chat fast path ──────────────────────────────────
         // No video, no re-edit session — route to the lightweight
         // text path that doesn't lock isSending or wait on chat
@@ -2119,28 +2211,30 @@ struct EditorView: View {
                                 appState.paywallReason = .dailyRenders(used: lim, limit: lim)
                             }
                             await UsageService.shared.refresh()
-                        } catch let APIError.structuredFailure(errorCode, userMessage, retryable, requiresNewVideo, _) {
+                        } catch let APIError.structuredFailure(errorCode, userMessage, retryable, requiresNewVideo, requiresVibeChange) {
                             // Backend returned the structured error
                             // shape. user_message is authoritative and
                             // gets surfaced verbatim into the failed
                             // message bubble; the flags shape the
                             // recovery path (requires_new_video → re-
                             // open picker, retryable → cache S3 URLs +
-                            // vibe for the one-tap Retry button).
-                            print("[dispatch] structured failure code=\(errorCode ?? "?") retryable=\(retryable) requiresNewVideo=\(requiresNewVideo)")
+                            // vibe for the one-tap Retry button,
+                            // requires_vibe_change → prefill composer
+                            // with the old vibe + route Send through
+                            // retryFailedRender so the user can change
+                            // wording without re-uploading).
+                            print("[dispatch] structured failure code=\(errorCode ?? "?") retryable=\(retryable) requiresNewVideo=\(requiresNewVideo) requiresVibeChange=\(requiresVibeChange)")
+                            var failedMessageId: UUID? = nil
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobStatus = "failed"
                                 messages[i].error = userMessage
-                                // Retry cache — spec wants Try Again to
-                                // be one-tap with no re-upload, no re-
-                                // type. We have sourceUrl + proxyUrl +
-                                // vibe in scope here; stash them on the
-                                // failed message so MessageBubble can
-                                // surface a Retry button bound to the
-                                // existing public S3 objects (no new
-                                // upload needed).
-                                if retryable {
-                                    messages[i].isRetryable = true
+                                failedMessageId = messages[i].id
+                                // Cache the source/proxy/vibe whenever
+                                // either retryable OR requires_vibe_change
+                                // is set — both recovery paths need the
+                                // cached S3 URLs to skip the upload.
+                                if retryable || requiresVibeChange {
+                                    messages[i].isRetryable = retryable
                                     // Read URLs directly off the PendingVideo
                                     // capture (the do-scope locals aren't
                                     // visible to this catch). video.uploadedUrl
@@ -2161,6 +2255,21 @@ struct EditorView: View {
                                 await MainActor.run {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     showVideoPicker = true
+                                }
+                            }
+                            if requiresVibeChange, let msgId = failedMessageId {
+                                // Hand the composer over to the vibe-edit
+                                // flow. The pill appears, the input pre-
+                                // fills with the failed vibe, and the
+                                // user's next Send routes through
+                                // retryFailedRender with the new wording
+                                // — no upload, no re-typing the vibe
+                                // from scratch.
+                                await MainActor.run {
+                                    pendingVibeEditMessageId = msgId
+                                    inputText = vibe
+                                    isInputFocused = true
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 }
                             }
                         } catch {
@@ -2249,6 +2358,47 @@ struct EditorView: View {
                 messages[messageIndex].stepMessage = msg
             }
             if let err = event.error { messages[messageIndex].error = err }
+
+            // Structured-error forward-compat. If the worker ever
+            // sends structured failure fields via SSE (currently it
+            // only does this on the render-dispatch endpoint), surface
+            // them the same way: user_message wins for display,
+            // retryable wires the Try Again button, requires_vibe_change
+            // pre-fills the input for an in-place vibe edit, and
+            // requires_new_video re-opens the picker. iOS forward-
+            // compat — zero-day pickup the moment the worker upgrades.
+            if let userMessage = event.userMessage, !userMessage.isEmpty {
+                messages[messageIndex].error = userMessage
+            }
+            if event.retryable == true {
+                messages[messageIndex].isRetryable = true
+                // We don't have the cached source URL in this SSE
+                // handler scope (the original upload Task that knew
+                // it is gone by this point). The Retry button checks
+                // for cachedSourceUrl != nil, so it stays hidden for
+                // SSE-delivered retryables until we can plumb a way
+                // to find the source URL again (via the chat store
+                // or the video_jobs DB row).
+            }
+            if event.requiresVibeChange == true {
+                let msgId = messages[messageIndex].id
+                Task { @MainActor in
+                    pendingVibeEditMessageId = msgId
+                    if let cached = messages.first(where: { $0.id == msgId })?.cachedVibe {
+                        inputText = cached
+                    } else if let original = messages.first(where: { $0.id == msgId })?.originalVibe {
+                        inputText = original
+                    }
+                    isInputFocused = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+            if event.requiresNewVideo == true {
+                Task { @MainActor in
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showVideoPicker = true
+                }
+            }
 
             // Feed the authoritative step token into the stage timeline. Unknown
             // or missing tokens are silently ignored — the timeline stays on the

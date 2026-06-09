@@ -217,7 +217,9 @@ class SSEClient {
                         status: "completed", progress: 100, step: "complete",
                         message: "Your video is ready!", videoUrl: job.rendered_video_url,
                         hlsManifestUrl: job.hls_manifest_url,
-                        thumbnailUrl: job.thumbnail_url, error: nil, final: true
+                        thumbnailUrl: job.thumbnail_url, error: nil, final: true,
+                        errorCode: nil, userMessage: nil, retryable: nil,
+                        requiresNewVideo: nil, requiresVibeChange: nil
                     ))
                 } else if job.status == "failed" {
                     self?.onEvent?(SSEEvent(
@@ -225,7 +227,9 @@ class SSEClient {
                         message: nil, videoUrl: nil,
                         hlsManifestUrl: nil,
                         thumbnailUrl: nil,
-                        error: job.error_message ?? "Something went wrong. Please try again.", final: true
+                        error: job.error_message ?? "Something went wrong. Please try again.", final: true,
+                        errorCode: nil, userMessage: nil, retryable: nil,
+                        requiresNewVideo: nil, requiresVibeChange: nil
                     ))
                 }
                 // If still processing, do nothing — wait for more SSE events or next timeout check
@@ -249,6 +253,32 @@ struct SSEEvent: Codable {
     let thumbnailUrl: String?
     let error: String?
     let final: Bool? // swiftlint:disable:this identifier_name
+
+    // Structured-error forward-compat. The worker currently sends
+    // only a string `error` for SSE failures, but the render-dispatch
+    // endpoint returns the structured envelope (error_code,
+    // user_message, retryable, requires_new_video, requires_vibe_change)
+    // for failures during dispatch. If the worker is ever upgraded to
+    // emit the same shape in SSE error events, EditorView's SSE
+    // handler will pick these up automatically and route to the same
+    // Retry / "Try a different vibe" UX as dispatch failures — no
+    // iOS update required.
+    let errorCode: String?
+    let userMessage: String?
+    let retryable: Bool?
+    let requiresNewVideo: Bool?
+    let requiresVibeChange: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case status, progress, step, message
+        case videoUrl, hlsManifestUrl, thumbnailUrl
+        case error, final
+        case errorCode = "error_code"
+        case userMessage = "user_message"
+        case retryable
+        case requiresNewVideo = "requires_new_video"
+        case requiresVibeChange = "requires_vibe_change"
+    }
 }
 
 private class SSEDelegate: NSObject, URLSessionDataDelegate {

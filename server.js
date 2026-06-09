@@ -9857,6 +9857,20 @@ const server = http.createServer((req, res) => {
         const status = Number(pct) >= 100 ? 'completed' : 'processing';
         const completionVideoUrl = body?.videoUrl || body?.video_url || body?.rendered_video_url || null;
 
+        // Read the PREVIOUS state before the update so the push-
+        // dedup path (below) can tell "first complete event for
+        // this job" from "duplicate complete event we already pushed
+        // for." Single round-trip — we'd be reading this row in the
+        // 'complete' branch anyway. The fields we pull (status,
+        // user_id, vibe_input, hls_manifest_url) cover both the
+        // dedup decision and the push payload.
+        const { data: prevState } = await supabaseAdmin
+          .from('video_jobs')
+          .select('status, user_id, vibe_input, hls_manifest_url')
+          .eq('id', job_id)
+          .maybeSingle();
+        const wasAlreadyCompleted = prevState?.status === 'completed';
+
         const updateData = {
           status,
           progress: Number(pct || 0),
@@ -9876,9 +9890,12 @@ const server = http.createServer((req, res) => {
           // says so. The thumbnail will arrive in a later 'final' event from
           // dispatchJobToModal, which is the only event with final:true.
           // The frontend keeps the SSE open until that final event arrives.
+          // We already have user_id + vibe_input + hls_manifest_url from
+          // prevState; only re-read the rendered_video_url because the
+          // update above might have just set it.
           const { data: jobRow } = await supabaseAdmin
             .from('video_jobs')
-            .select('rendered_video_url, hls_manifest_url, user_id, vibe_input')
+            .select('rendered_video_url')
             .eq('id', job_id)
             .maybeSingle();
           const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
@@ -9898,17 +9915,27 @@ const server = http.createServer((req, res) => {
           // SSE event already told any foreground client the video is
           // ready. iOS taps on the notification deep-link into the
           // Library tab via the "render-complete" type handler.
-          if (jobRow?.user_id && finalVideoUrl) {
+          //
+          // Deduplication: only push when the job was NOT already in
+          // the 'completed' state before this request. If the worker
+          // retries /api/modal-progress with step === 'complete' for a
+          // job it already finished (network blip, idempotency safety
+          // net, etc), we skip the duplicate push. Without this guard
+          // the user would see two "Your video is ready ✨" alerts
+          // back-to-back, which reads as buggy.
+          if (!wasAlreadyCompleted && prevState?.user_id && finalVideoUrl) {
             sendRenderCompleteNotification({
-              userId: jobRow.user_id,
+              userId: prevState.user_id,
               jobId: job_id,
               videoUrl: finalVideoUrl,
-              hlsManifestUrl: jobRow.hls_manifest_url || null,
-              vibe: jobRow.vibe_input || null,
+              hlsManifestUrl: prevState.hls_manifest_url || null,
+              vibe: prevState.vibe_input || null,
               supabaseAdmin,
             }).catch((err) => {
               console.error('[push] render-complete dispatch failed:', err.message);
             });
+          } else if (wasAlreadyCompleted) {
+            console.log(`[push] skipping duplicate render-complete for job=${job_id} (already completed)`);
           }
         } else {
           pushProgressToSSE(job_id, {
