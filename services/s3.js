@@ -27,12 +27,31 @@ let s3Client = null;
 let s3SigningClient = null;
 
 if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUCKET) {
+  // Opt out of @aws-sdk/client-s3 v3.730+'s default "include CRC32 checksum
+  // placeholder in every presigned URL" behavior. When that default is on,
+  // every presigned PUT URL contains an `x-amz-checksum-crc32=AAAAAA==`
+  // query parameter (the CRC32 of empty bytes — a placeholder). The SDK
+  // assumes the uploading client will overwrite this with the real CRC32
+  // of the body before sending. Simple HTTP clients (curl, wget, iOS
+  // URLSession.background) don't do that. S3 then computes the actual
+  // body CRC32, sees it doesn't match the placeholder, and rejects with
+  // HTTP 400. Symptom: iOS shows "uploading…" and then "Upload failed"
+  // with no apparent server-side error trail because S3 logged a request-
+  // level rejection, not a route handler error.
+  // WHEN_REQUIRED restores pre-v3.730 behavior: checksum only when the
+  // caller explicitly opts in. This is what every existing PUT URL we
+  // hand the iOS client needs.
+  const checksumOptOut = {
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+  };
   s3Client = new S3Client({
     region: AWS_REGION,
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     },
+    ...checksumOptOut,
   });
 
   s3SigningClient = S3_USE_ACCELERATE
@@ -43,6 +62,7 @@ if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUC
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
         },
         useAccelerateEndpoint: true,
+        ...checksumOptOut,
       })
     : s3Client;
 
