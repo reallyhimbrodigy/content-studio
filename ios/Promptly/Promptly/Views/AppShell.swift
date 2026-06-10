@@ -9,12 +9,15 @@ import SwiftUI
 ///     sidebar is open. No scale/desaturate gimmickry needed since
 ///     nothing's visible to dim.
 ///
-/// Gestures:
-///   - Edge-swipe to open: a thin invisible strip pinned to the
-///     leading edge captures DragGesture so the user can pull the
-///     sidebar in from the screen edge.
-///   - Swipe-left-to-close: any leftward swipe on the sidebar itself
-///     dismisses. Mirrors ChatGPT's behavior.
+/// Gestures (build 180 rewrite — was a 22pt edge strip + plain
+/// .gesture, both of which felt unreliable):
+///   - Open: horizontal-dominant right-swipe starting ANYWHERE on the
+///     main content. Direction-locked so vertical scrolls in the
+///     chat list still work. Live-tracks the finger.
+///   - Close: horizontal-dominant left-swipe starting anywhere on the
+///     open sidebar. Live-tracks. Uses .simultaneousGesture so it
+///     coexists with List row taps + swipe-to-delete instead of
+///     swallowing them.
 ///   - Tap-to-close: chat selection / new-chat / avatar all auto-close
 ///     via the `onSelect` callback the sidebar already calls.
 struct AppShell: View {
@@ -23,12 +26,12 @@ struct AppShell: View {
 
     private static let openSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
-    /// Tracks the user's in-flight dismiss-drag in points. Negative while
-    /// the user pulls the sidebar leftward, 0 when no drag is active or
-    /// after the gesture commits/cancels. Driven by .onChanged so the
-    /// drawer follows the finger in real time instead of waiting for
-    /// release — that snap-on-release behavior is what made the sidebar
-    /// feel non-interactive and broken vs. ChatGPT's drawer.
+    /// Tracks the user's in-flight swipe in points. Positive when
+    /// pulling the drawer open from a closed state, negative when
+    /// dragging the drawer closed from an open state. Zero when no
+    /// drag is active or after the gesture commits/cancels. Driven
+    /// by .onChanged so the drawer follows the finger in real time —
+    /// snap-on-release felt non-interactive vs. ChatGPT.
     @State private var sidebarDragX: CGFloat = 0
 
     var body: some View {
@@ -37,68 +40,35 @@ struct AppShell: View {
 
             ZStack(alignment: .leading) {
                 // Sidebar — always laid out at the leading edge, full width.
+                // .simultaneousGesture so the close drag coexists with the
+                // List's row taps (a plain .gesture was swallowing some
+                // taps because it had higher priority than children).
                 ChatListView(store: chatStore) { closeSidebar() }
                     .frame(width: drawerWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
-                    // Interactive swipe-left-to-dismiss. Live-tracks the
-                    // drag so both sidebar + main content move with the
-                    // finger, ChatGPT-style. Commits on release if past
-                    // a 60pt threshold OR with high leftward velocity.
-                    // Only listens while open so we don't interfere with
-                    // List's internal swipe-to-delete on chat rows.
-                    .gesture(
-                        appState.sidebarOpen
-                        ? DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                // Clamp to leftward-only. Right-swiping
-                                // an already-open drawer is meaningless.
-                                sidebarDragX = min(0, value.translation.width)
-                            }
-                            .onEnded { value in
-                                let endVelocityX = value.predictedEndLocation.x - value.location.x
-                                let shouldClose = value.translation.width < -60 || endVelocityX < -200
-                                withAnimation(Self.openSpring) {
-                                    sidebarDragX = 0
-                                    if shouldClose {
-                                        appState.sidebarOpen = false
-                                    }
-                                }
-                            }
-                        : nil
-                    )
+                    .simultaneousGesture(closeSwipeGesture)
 
                 // Main content. Slides fully off-screen to the right.
                 // The applied offset = open-state base + active drag,
                 // clamped to [0, drawerWidth] so a fling can't overshoot
                 // or invert.
+                //
+                // .simultaneousGesture on the WHOLE main content surface
+                // gives the open-swipe ChatGPT-style reach: the user can
+                // start a right-swipe anywhere on the screen (the gesture
+                // direction-locks to horizontal so vertical scrolls keep
+                // working). Was previously a 22pt invisible edge strip,
+                // which made the rest of the screen feel non-responsive.
                 MainTabView()
                     .frame(width: geo.size.width)
                     .background(Color(.systemBackground))
-                    .allowsHitTesting(!appState.sidebarOpen && sidebarDragX == 0)
+                    .allowsHitTesting(!appState.sidebarOpen)
                     .offset(x: max(0, min(drawerWidth, (appState.sidebarOpen ? drawerWidth : 0) + sidebarDragX)))
                     .shadow(
                         color: .black.opacity(appState.sidebarOpen ? 0.35 : 0),
                         radius: 24, x: -8, y: 0
                     )
-
-                // Edge-swipe-to-open. Only listening while drawer is closed
-                // so we don't fight scroll gestures inside the chat.
-                if !appState.sidebarOpen {
-                    Color.clear
-                        .frame(width: 22)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 14)
-                                .onEnded { value in
-                                    let dx = value.translation.width
-                                    let velocity = value.predictedEndLocation.x - value.location.x
-                                    if dx > 60 || velocity > 200 {
-                                        openSidebar()
-                                    }
-                                }
-                        )
-                        .frame(maxHeight: .infinity, alignment: .leading)
-                }
+                    .simultaneousGesture(openSwipeGesture)
             }
             .background(Color(.systemBackground))
         }
@@ -156,5 +126,78 @@ struct AppShell: View {
 
     private func closeSidebar() {
         withAnimation(Self.openSpring) { appState.sidebarOpen = false }
+    }
+
+    /// Right-swipe anywhere on the main content opens the sidebar.
+    /// Direction-locked to horizontal-dominant drags so it doesn't
+    /// fight with the vertical scrolls inside the chat list. Live-
+    /// tracks the finger via sidebarDragX → main offset, so the
+    /// drawer creeps in proportional to the drag. Commits on
+    /// release past 50pt OR with rightward velocity > 200pt/s
+    /// (lowered from 60pt/300 so short fast flicks register too).
+    private var openSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                guard !appState.sidebarOpen else { return }
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Direction lock — vertical scrolls in chat / library
+                // must keep working. If the drag is vertical-dominant
+                // we don't move the drawer, but the gesture stays
+                // alive so a curve into a horizontal direction can
+                // still pick up.
+                guard abs(dx) > abs(dy) else { return }
+                // Right-only — left drags on closed main are no-ops.
+                guard dx > 0 else { return }
+                sidebarDragX = dx
+            }
+            .onEnded { value in
+                guard !appState.sidebarOpen else {
+                    sidebarDragX = 0
+                    return
+                }
+                let dx = value.translation.width
+                let velocityX = value.predictedEndLocation.x - value.location.x
+                let horizontalDominant = abs(dx) >= abs(value.translation.height)
+                let shouldOpen = horizontalDominant && (dx > 50 || velocityX > 200)
+                withAnimation(Self.openSpring) {
+                    sidebarDragX = 0
+                    if shouldOpen {
+                        appState.sidebarOpen = true
+                    }
+                }
+            }
+    }
+
+    /// Left-swipe anywhere on the open sidebar closes it. Direction-
+    /// locked so vertical scrolls in the chat list keep working.
+    /// Live-tracks the finger. Same generous commit thresholds as
+    /// open: 50pt distance OR 200pt/s leftward velocity.
+    private var closeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                guard appState.sidebarOpen else { return }
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy) else { return }
+                guard dx < 0 else { return }  // left-only
+                sidebarDragX = dx
+            }
+            .onEnded { value in
+                guard appState.sidebarOpen else {
+                    sidebarDragX = 0
+                    return
+                }
+                let dx = value.translation.width
+                let velocityX = value.predictedEndLocation.x - value.location.x
+                let horizontalDominant = abs(dx) >= abs(value.translation.height)
+                let shouldClose = horizontalDominant && (dx < -50 || velocityX < -200)
+                withAnimation(Self.openSpring) {
+                    sidebarDragX = 0
+                    if shouldClose {
+                        appState.sidebarOpen = false
+                    }
+                }
+            }
     }
 }
