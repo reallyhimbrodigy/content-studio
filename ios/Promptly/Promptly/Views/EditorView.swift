@@ -726,18 +726,21 @@ struct EditorView: View {
             HStack(alignment: .bottom, spacing: 0) {
                 Button { tapAddVideo() } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
+                        // 30×30 frame to MATCH the mic/send button on the
+                        // right. Previously 36×36 with the same 5pt bottom
+                        // padding — that put the "+" optical center 3pt
+                        // ABOVE the mic/send center because the frames
+                        // were different heights. Matching sizes makes
+                        // both buttons sit at exactly the same y-position
+                        // in the composer, which is what "centered" reads
+                        // as to the eye.
+                        .frame(width: 30, height: 30)
                         .accessibilityHidden(true)
                 }
                 .accessibilityLabel("Add video")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
-                // Mirror the mic/send button's leading-edge + bottom
-                // insets (.trailing 5 + .bottom 5 below) so both sides of
-                // the composer bracket the input field at the same offset.
-                // Without this, the "+" was flush at the bottom-left while
-                // the mic sat 5pt up + 5pt in, reading as "off center."
                 .padding(.leading, 5)
                 .padding(.bottom, 5)
 
