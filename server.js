@@ -10808,9 +10808,18 @@ const server = http.createServer((req, res) => {
         console.log('  Vibe:', vibeInput);
 
         const entitlement = await assertProEntitled(authUser.id);
+        // Diagnostic — surface the gate decision in Render logs so we can
+        // spot users wrongly marked Pro (profile.tier='pro' / pro_until
+        // null) without an active RevenueCat purchase. Add: rc_app_user_id
+        // unset alongside tier='pro' is the classic "hand-promoted /
+        // test purchase never reverted" pattern.
+        console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
+          entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
         if (!entitlement.isPro) {
           const todayCount = await countTodayUsage(authUser.id, 'render');
+          console.log('  [paywall] free user count=%d limit=%d', todayCount, FREE_DAILY_RENDERS);
           if (todayCount >= FREE_DAILY_RENDERS) {
+            console.log('  [paywall] 402 daily_limit_reached for userId=%s', authUser.id);
             return sendJson(res, 402, {
               error: 'daily_limit_reached',
               kind: 'render',
@@ -10829,7 +10838,14 @@ const server = http.createServer((req, res) => {
 
         // Log usage AFTER successful job creation so failed dispatches
         // don't burn quota. Pro users still log so analytics shows engagement.
-        await logUsageEvent(authUser.id, 'render');
+        // If this insert fails silently the free-user gate becomes a no-op
+        // (count stays at 0 forever) — so we now surface failures loudly.
+        try {
+          await logUsageEvent(authUser.id, 'render');
+        } catch (logErr) {
+          console.error('  [paywall] CRITICAL: logUsageEvent threw — free gate will not enforce!',
+            { userId: authUser.id, error: logErr?.message || logErr });
+        }
 
         await dispatchJobToModal({
           pushProgressToSSE,
