@@ -9504,45 +9504,29 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/user/subscription' && req.method === 'POST') {
     (async () => {
+      // CRITICAL BYPASS — this endpoint used to accept `{ "tier": "pro" }`
+      // from ANY authenticated user and write it straight to profiles via
+      // the service-role client (RLS bypassed). That made the entire Pro
+      // gate self-serve: anyone with their own Supabase JWT could grant
+      // themselves unlimited renders, unlimited chats, and re-edit.
+      //
+      // No legitimate caller exists in this repo or the iOS app — the
+      // only consumer of subscription state is the GET counterpart at
+      // line 9474, which reads. RevenueCat writes via its webhook at
+      // /api/revenuecat/webhook, signed and validated.
+      //
+      // Removed. Returns 410 Gone so any stale caller fails loudly
+      // rather than silently no-op'ing.
       try {
-        const user = await requireSupabaseUser(req);
-        if (!user || !user.id) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-        }
-        const body = await readJsonBody(req);
-        const rawTier = String(body?.tier || body?.plan || '')
-          .trim()
-          .toLowerCase();
-        if (!rawTier) {
-          return sendJson(res, 400, { ok: false, error: 'missing_tier' });
-        }
-        const normalized =
-          rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
-
-        const { error } = await supabaseAdmin
-          .from('profiles')
-          .upsert(
-            {
-              id: user.id,
-              email: toPlainString(user.email || user?.user_metadata?.email || ''),
-              tier: normalized,
-              subscription_plan: normalized,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'id' }
-          );
-
-        if (error) {
-          console.error('[Subscription] update error', error);
-          return sendJson(res, 500, { ok: false, error: 'update_failed' });
-        }
-
-        return sendJson(res, 200, { ok: true, plan: normalized, tier: normalized });
-      } catch (err) {
-        const status = err.statusCode || 500;
-        console.error('[Subscription] update error', err);
-        return sendJson(res, status, { ok: false, error: 'update_failed' });
+        await requireSupabaseUser(req);
+      } catch {
+        // fall through to 410 — auth state irrelevant, the endpoint is gone
       }
+      return sendJson(res, 410, {
+        ok: false,
+        error: 'gone',
+        message: 'Tier writes happen via the RevenueCat webhook only.',
+      });
     })();
     return;
   }
@@ -10029,7 +10013,14 @@ const server = http.createServer((req, res) => {
   }
 
   async function countTodayUsage(userId, kind) {
-    if (!supabaseAdmin) return 0;
+    if (!supabaseAdmin) {
+      // Closed by default. If supabase is down we cannot prove the user
+      // has remaining quota, so refuse the action — better than letting
+      // them through unbounded.
+      const err = new Error('usage_count_unavailable');
+      err.statusCode = 503;
+      throw err;
+    }
     const { count, error } = await supabaseAdmin
       .from('usage_events')
       .select('*', { count: 'exact', head: true })
@@ -10037,19 +10028,37 @@ const server = http.createServer((req, res) => {
       .eq('kind', kind)
       .gte('created_at', utcDayStart());
     if (error) {
-      console.warn('[usage] count failed', { userId, kind, error: error.message });
-      return 0;
+      // Fail CLOSED instead of returning 0. A Supabase-error response
+      // returning 0 lets every free user blow past the cap until the
+      // outage clears. We'd rather a brief "try again in a minute"
+      // than silently turn off the paywall for the duration of an
+      // incident.
+      console.error('[usage] count failed — refusing action', { userId, kind, error: error.message });
+      const wrapped = new Error('usage_count_failed');
+      wrapped.statusCode = 503;
+      throw wrapped;
     }
     return Number(count || 0);
   }
 
   async function logUsageEvent(userId, kind) {
-    if (!supabaseAdmin || !userId) return;
+    if (!supabaseAdmin || !userId) {
+      // Same fail-closed reasoning. If we cannot increment the counter,
+      // the next request will see the same (uncounted) value and the
+      // gate becomes a no-op for the duration of the outage. Refuse the
+      // current action so the user retries instead of getting unlimited.
+      const err = new Error('usage_log_unavailable');
+      err.statusCode = 503;
+      throw err;
+    }
     const { error } = await supabaseAdmin
       .from('usage_events')
       .insert({ user_id: userId, kind });
     if (error) {
-      console.warn('[usage] insert failed', { userId, kind, error: error.message });
+      console.error('[usage] insert failed — refusing action', { userId, kind, error: error.message });
+      const wrapped = new Error('usage_log_failed');
+      wrapped.statusCode = 503;
+      throw wrapped;
     }
   }
 
@@ -10404,13 +10413,25 @@ const server = http.createServer((req, res) => {
             }
           }
         }
+        // Log usage BEFORE writing the closing [DONE] frame. Previously
+        // we logged after res.end(), which meant a client disconnect
+        // mid-stream skipped the increment — a determined free user
+        // could abort every stream after one token and never burn quota.
+        // Counts the message regardless of how many tokens actually
+        // streamed; even a one-token reply used the quota.
+        try {
+          await logUsageEvent(streamUser.id, 'chat');
+        } catch (logErr) {
+          console.error('[ChatStream] usage log failed — surfacing 503 mid-stream',
+            { userId: streamUser.id, error: logErr?.message });
+          // The Gemini reply already streamed; we cannot pull it back.
+          // Surface the failure to the client so they retry and the
+          // counter remains accurate. Better than letting an outage
+          // disable the cap.
+          res.write(`data: ${JSON.stringify({ error: 'usage_log_failed' })}\n\n`);
+        }
         res.write('data: [DONE]\n\n');
         res.end();
-
-        // Log usage AFTER stream completion. Counts the message regardless
-        // of how many tokens streamed — even a one-token failure used the
-        // quota. Pro users still log so analytics shows engagement.
-        await logUsageEvent(streamUser.id, 'chat');
       } catch (error) {
         console.error('[ChatStream] Error:', error);
         try {
@@ -10808,13 +10829,42 @@ const server = http.createServer((req, res) => {
         console.log('  Vibe:', vibeInput);
 
         const entitlement = await assertProEntitled(authUser.id);
-        // Diagnostic — surface the gate decision in Render logs so we can
-        // spot users wrongly marked Pro (profile.tier='pro' / pro_until
-        // null) without an active RevenueCat purchase. Add: rc_app_user_id
-        // unset alongside tier='pro' is the classic "hand-promoted /
-        // test purchase never reverted" pattern.
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
+
+        // Concurrency gate — server-side enforcement of the same 1-free /
+        // 10-pro cap the iOS picker enforces. Without this, an alternate
+        // client (curl, scripts, sideloaded build) could fire up to
+        // (daily_cap = 3) renders in parallel for a free user, or
+        // (rate_limit = 10) for a Pro user, with no per-user concurrency
+        // gate. Counts queued + processing rows; failed/completed/cancelled
+        // don't count against the cap.
+        if (supabaseAdmin) {
+          const { count: pendingCount, error: pendingErr } = await supabaseAdmin
+            .from('video_jobs')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', authUser.id)
+            .in('status', ['queued', 'processing']);
+          if (pendingErr) {
+            console.error('  [paywall] pending-count failed, refusing action',
+              { userId: authUser.id, error: pendingErr.message });
+            return sendJson(res, 503, { error: 'pending_check_failed' });
+          }
+          const concurrencyCap = entitlement.isPro ? 10 : 1;
+          if ((pendingCount || 0) >= concurrencyCap) {
+            console.log('  [paywall] 402 concurrency_limit_reached userId=%s pending=%d cap=%d',
+              authUser.id, pendingCount, concurrencyCap);
+            return sendJson(res, 402, {
+              error: 'concurrency_limit_reached',
+              kind: entitlement.isPro ? 'concurrency_pro' : 'concurrency_free',
+              limit: concurrencyCap,
+              message: entitlement.isPro
+                ? `You can have up to ${concurrencyCap} renders in flight at once.`
+                : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
+            });
+          }
+        }
+
         if (!entitlement.isPro) {
           const todayCount = await countTodayUsage(authUser.id, 'render');
           console.log('  [paywall] free user count=%d limit=%d', todayCount, FREE_DAILY_RENDERS);
@@ -10829,23 +10879,20 @@ const server = http.createServer((req, res) => {
           }
         }
 
+        // Increment the counter BEFORE creating the job row. If the
+        // increment fails (Supabase outage, schema drift, etc.) we abort
+        // here rather than dispatch a render that wouldn't count against
+        // the daily cap. Previous order was: createJob → logUsage, with
+        // logUsage failures swallowed — that turned a counter outage
+        // into a permanent free-renders bug.
+        await logUsageEvent(authUser.id, 'render');
+
         const job = await createQueuedVideoJob({
           userId: authUser.id,
           videoUrl,
           vibeInput,
         });
         console.log('  ✅ Job created:', job.id);
-
-        // Log usage AFTER successful job creation so failed dispatches
-        // don't burn quota. Pro users still log so analytics shows engagement.
-        // If this insert fails silently the free-user gate becomes a no-op
-        // (count stays at 0 forever) — so we now surface failures loudly.
-        try {
-          await logUsageEvent(authUser.id, 'render');
-        } catch (logErr) {
-          console.error('  [paywall] CRITICAL: logUsageEvent threw — free gate will not enforce!',
-            { userId: authUser.id, error: logErr?.message || logErr });
-        }
 
         await dispatchJobToModal({
           pushProgressToSSE,
