@@ -369,7 +369,7 @@ struct EditorView: View {
                 || msg.jobStatus == "needs_clarification" { continue }
             // Don't double-subscribe if we somehow still have a live client.
             if sseClients[jobId] != nil { continue }
-            startSSE(jobId: jobId, messageIndex: idx)
+            startSSE(jobId: jobId, messageId: msg.id)
         }
     }
 
@@ -858,6 +858,28 @@ struct EditorView: View {
         "Fast paced punchy"
     ]
 
+    /// Re-edit suggestion chips. Shown above the composer when a
+    /// re-edit session is active and the input is empty. Each chip
+    /// maps to a pattern the worker's plan-diff classifier reliably
+    /// handles — split across the four ranges:
+    ///   - Directional reshape ("Pace the middle faster", "Make the
+    ///     captions punchier") → classifier upgrades to
+    ///     guided_redraft, the new mode that keeps your prior plan
+    ///     as soft default while reshaping the targeted region.
+    ///   - Surgical ("Remove the second cutaway") → tweak mode,
+    ///     touches only the named element.
+    ///   - Add ("Add a zoom on the payoff") → tweak mode, single op.
+    ///   - Total recast ("Redo it completely different") →
+    ///     reinterpret mode.
+    /// Picked for breadth: a user opening re-edit with no idea what
+    /// to ask gets one example from each category.
+    private static let reeditSuggestions: [String] = [
+        "Pace the middle faster",
+        "Make the captions punchier",
+        "Add a zoom on the payoff",
+        "Remove the second cutaway"
+    ]
+
     /// Horizontally-scrollable chip row that surfaces the featured
     /// vibes above the composer. Tap a chip to insert its text into
     /// Pill that surfaces above the composer when the user is mid-
@@ -912,10 +934,20 @@ struct EditorView: View {
     /// fight with what the user is composing.
     @ViewBuilder
     private var vibeChipRow: some View {
-        if inputText.isEmpty && reeditSession == nil {
+        // Two surfaces share the same chip row UI:
+        //   - First-render: featured vibe chips ("Viral engaging…").
+        //   - Re-edit: change-request suggestions matched to the
+        //     worker's plan-diff classifier ("Pace the middle faster"…).
+        // Picked via the same `inputText.isEmpty` gate so the chips
+        // never fight with what the user is typing.
+        let suggestions: [String]? = {
+            guard inputText.isEmpty else { return nil }
+            return reeditSession != nil ? Self.reeditSuggestions : Self.featuredVibes
+        }()
+        if let suggestions {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(Self.featuredVibes, id: \.self) { vibe in
+                    ForEach(suggestions, id: \.self) { vibe in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             inputText = vibe
@@ -1003,7 +1035,10 @@ struct EditorView: View {
     // they try to exceed their cap.
 
     private var maxPendingVideos: Int {
-        SubscriptionService.shared.isPro ? 10 : 1
+        // Use effectiveIsPro so server-comped users (SQL-promoted, future
+        // RevenueCat-out-of-sync paths) get the 10-cap immediately
+        // without needing RevenueCat's client cache to catch up.
+        SubscriptionService.shared.effectiveIsPro ? 10 : 1
     }
 
     /// What the picker should allow on its next presentation. Accounts
@@ -1019,7 +1054,7 @@ struct EditorView: View {
     /// filled; otherwise opens the picker.
     private func tapAddVideo() {
         if pendingVideos.count >= maxPendingVideos {
-            if SubscriptionService.shared.isPro {
+            if SubscriptionService.shared.effectiveIsPro {
                 // Pro user at the 10-video cap. No paywall to pop — they
                 // already paid. Just give haptic feedback and a console
                 // log. UI also disables visibly via the picker count.
@@ -1565,7 +1600,7 @@ struct EditorView: View {
                 )
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobId = jobId
-                startSSE(jobId: jobId, messageIndex: i)
+                startSSE(jobId: jobId, messageId: messageId)
                 scheduleStuckDetector(messageId: messageId, jobId: jobId)
                 persistMessages()
                 print("[retry] re-dispatched job=\(jobId)")
@@ -1883,6 +1918,20 @@ struct EditorView: View {
     // gate — the user can fire another message immediately and the
     // previous in-flight task gets cancelled.
     private func sendTextChatMessage(_ text: String) {
+        // PREEMPTIVE PAYWALL — same pattern as the render gate. If the
+        // server's last /api/usage snapshot says this free user is at
+        // their daily chat cap, present the paywall before kicking off
+        // the Gemini round trip. Server still authoritatively gates with
+        // 402 (handled in streamReplyWithFallback) — this is UX defense
+        // so the user doesn't watch a thinking indicator spin only to
+        // get bounced.
+        if UsageService.shared.atChatLimit {
+            let lim = UsageService.shared.chatLimit
+            appState.paywallReason = .dailyChats(used: lim, limit: lim)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+
         // Cancel any in-flight chat task. Its partial content stays
         // visible (intentional — same as ChatGPT iOS interruption).
         activeChatTask?.cancel()
@@ -2017,7 +2066,7 @@ struct EditorView: View {
                     )
                     if let i = idx() {
                         messages[i].jobId = newJobId
-                        startSSE(jobId: newJobId, messageIndex: i)
+                        startSSE(jobId: newJobId, messageId: msgId)
                         persistMessages()
                     }
                 } catch let APIError.paymentRequired(kind, limit, _) {
@@ -2051,39 +2100,75 @@ struct EditorView: View {
             return
         }
 
-        isSending = true
-        let videos = pendingVideos
-        let vibe = text.isEmpty ? "Create a clean, engaging edit" : text
-
-        clearInputField()
-        withAnimation { pendingVideos = [] }
-
-        // Append the user/processing messages NOW, before we await
-        // ensureActiveChat. The chat ID is only needed for persistence;
-        // the UI can render messages immediately. Otherwise the chat
-        // looks blank for 200-800ms while createChat round-trips
-        // Supabase, which feels broken.
-        var pendingMsgIds: [(video: PendingVideo, msgId: UUID)] = []
-        if hasVideos {
-            for video in videos {
-                var userMsg = ChatMessage(role: .user, content: vibe)
-                userMsg.videoAttachment = VideoAttachment(localUrl: video.fileUrl ?? URL(fileURLWithPath: ""), fileName: video.fileName, thumbnail: video.thumbnail)
-                messages.append(userMsg)
-                conversationHistory.append(["role": "user", "content": vibe])
-
-                var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: nil)
-                processingMsg.stageTimeline = StageTimeline(mode: "full", startWith: "upload_local")
-                processingMsg.originalVibe = vibe
-                messages.append(processingMsg)
-                pendingMsgIds.append((video, processingMsg.id))
-            }
+        // PREEMPTIVE PAYWALL (fast path) — uses the cached /api/usage
+        // snapshot for an INSTANT paywall when the user is already
+        // known to be at the cap (e.g. just opened the app with 3/3
+        // renders from earlier today). Catches the obvious case with
+        // zero latency.
+        if hasVideos && UsageService.shared.atRenderLimit {
+            let lim = UsageService.shared.renderLimit
+            appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
         }
 
-        // Pin everything to the main actor explicitly. Swift 5 mode does
-        // NOT auto-inherit @MainActor for `Task {}` and StageTimeline +
-        // ChatMessage mutations are MainActor-isolated, so a non-isolated
-        // task body would crash on first @MainActor call.
+        // PREEMPTIVE PAYWALL (refresh path) — for everything else, we
+        // re-fetch /api/usage BEFORE setting isSending=true / appending
+        // any stub bubbles. Adds ~100-200ms but guarantees the freshest
+        // possible count, so the user never sees an upload start only
+        // to be 402'd by the server after the bytes already landed.
+        //
+        // The fast path above + this refresh path together mean the
+        // cached snapshot ONLY decides "no paywall, proceed instantly"
+        // — anything stale that needed a paywall is caught here. The
+        // dispatch + processing-bubble setup happens INSIDE the refresh
+        // Task so there's nothing to roll back if the refresh says
+        // "actually you're at limit."
+        let textSnapshot = text
         Task { @MainActor in
+            if hasVideos {
+                await UsageService.shared.refresh()
+                if UsageService.shared.atRenderLimit {
+                    let lim = UsageService.shared.renderLimit
+                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    return
+                }
+            }
+
+            isSending = true
+            let videos = pendingVideos
+            let vibe = textSnapshot.isEmpty ? "Create a clean, engaging edit" : textSnapshot
+
+            clearInputField()
+            withAnimation { pendingVideos = [] }
+
+            // Append the user/processing messages NOW, before we await
+            // ensureActiveChat. The chat ID is only needed for persistence;
+            // the UI can render messages immediately. Otherwise the chat
+            // looks blank for 200-800ms while createChat round-trips
+            // Supabase, which feels broken.
+            var pendingMsgIds: [(video: PendingVideo, msgId: UUID)] = []
+            if hasVideos {
+                for video in videos {
+                    var userMsg = ChatMessage(role: .user, content: vibe)
+                    userMsg.videoAttachment = VideoAttachment(localUrl: video.fileUrl ?? URL(fileURLWithPath: ""), fileName: video.fileName, thumbnail: video.thumbnail)
+                    messages.append(userMsg)
+                    conversationHistory.append(["role": "user", "content": vibe])
+
+                    var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: nil)
+                    processingMsg.stageTimeline = StageTimeline(mode: "full", startWith: "upload_local")
+                    processingMsg.originalVibe = vibe
+                    messages.append(processingMsg)
+                    pendingMsgIds.append((video, processingMsg.id))
+                }
+            }
+
+            // Pin everything to the main actor explicitly. Swift 5 mode does
+            // NOT auto-inherit @MainActor for `Task {}` and StageTimeline +
+            // ChatMessage mutations are MainActor-isolated, so a non-isolated
+            // task body would crash on first @MainActor call.
+            Task { @MainActor in
             _ = await ensureActiveChat()
             persistMessages()
 
@@ -2092,8 +2177,20 @@ struct EditorView: View {
             // returned in its own block. So the inner Task chain below
             // is only ever reached on the video flow.
             if hasVideos {
-                for (video, msgId) in pendingMsgIds {
+                for (clipIndex, (video, msgId)) in pendingMsgIds.enumerated() {
                     Task { @MainActor in
+                        // Stagger fan-out: clip 0 dispatches immediately,
+                        // clip 1 at +200ms, clip 2 at +400ms, etc. The
+                        // Modal worker warms instantly but our own
+                        // /api/upload-url and /api/video-jobs endpoints
+                        // have a 10-jobs-per-15-minutes rate limit per
+                        // user — without staggering, a 4-video upload
+                        // can flood those caps in a single burst. 200ms
+                        // keeps total fan-out latency under 2s for the
+                        // 10-clip Pro cap while smoothing the rate.
+                        if clipIndex > 0 {
+                            try? await Task.sleep(for: .milliseconds(200 * clipIndex))
+                        }
                         // Helper: find the live index of the processing
                         // message by id. Returns nil if it's been removed
                         // (chat switch, delete, etc.) so we silently no-op
@@ -2101,184 +2198,121 @@ struct EditorView: View {
                         func indexOfProcessingMsg() -> Int? {
                             messages.firstIndex(where: { $0.id == msgId })
                         }
-                        do {
-                            let sendStart = Date()
-                            print("[send] waiting for proxy/source URL")
-                            // Wait for the PROXY upload to finish, with a
-                            // 60s deadline so the inner Task can't hang
-                            // forever if the upload Task is stuck or
-                            // suspended.
-                            //
-                            // Wait specifically for `sourceUploadCompleted`
-                            // — bytes confirmed in S3. The previous version
-                            // dispatched as soon as `uploadedUrl` was set,
-                            // but that field is published EARLY (the moment
-                            // we know the eventual URL, before the PUT
-                            // finishes) so the prewarm + UI can react. The
-                            // worker only polls for the file for 180s, so
-                            // dispatching before the bytes land caused the
-                            // worker to 404 + give up on slow cellular
-                            // uploads. Production failure: 26s clip,
-                            // worker polled for 183s, never saw the file,
-                            // returned "Source video did not arrive on S3."
-                            //
-                            // Deadline raised from 60s → 240s. A large clip
-                            // on slow cellular legitimately takes 90-180s
-                            // to upload; the old 60s cap was racing real
-                            // uploads on bad networks.
-                            let waitDeadline = Date().addingTimeInterval(240)
-                            // Dispatch waits for BOTH the source upload AND
-                            // the proxy upload Task to reach a terminal
-                            // state. Source success is load-bearing (the
-                            // render needs the bytes in S3). Proxy "finish"
-                            // can be either success or known-failure — in
-                            // the failure case proxyUploadedUrl stays nil
-                            // and we just omit proxy_video_url from the
-                            // render dispatch (worker falls back to its
-                            // on-server encode). The spec is explicit:
-                            // never pass a proxy URL pointing at bytes
-                            // that aren't in S3 yet, or the worker wastes
-                            // 30s of polling before falling back.
-                            while !(video.uploadFailed) &&
-                                  !(video.sourceUploadCompleted && video.proxyUploadFinished) {
-                                if Date() > waitDeadline {
-                                    throw APIError.uploadFailed
+                        // Hand off to the dispatch coordinator. It owns
+                        // the upload-wait + createVideoJob loop and
+                        // retries every soft failure (network blip,
+                        // worker hiccup, S3 stall, rate limit, etc.)
+                        // silently with exponential backoff. The only
+                        // outcomes that escape to the UI are:
+                        //   - success → start SSE + stuck detector
+                        //   - hardFailure → user must act (paywall, bad
+                        //     video, vibe rewrite)
+                        //   - cancelled → user explicitly cancelled
+                        let outcome = await JobDispatchCoordinator.shared.dispatch(
+                            pendingVideo: video,
+                            vibe: vibe
+                        ) { phase in
+                            // Phase callback drives the bar's Phase 1
+                            // (iOS → S3 upload) portion. Per the new
+                            // contract: real upload progress 0…1 → bar
+                            // 0–30%. NO fake timer, NO plant-to-40 jump
+                            // on dispatch. The bar continues smoothly
+                            // from wherever upload left it (e.g. 12) and
+                            // the first /api/modal-progress event
+                            // (download=5 → bar=33.5) drives the
+                            // transition into Phase 2 without any visible
+                            // discontinuity.
+                            guard let i = indexOfProcessingMsg() else { return }
+                            switch phase {
+                            case .waitingForUpload(let progress):
+                                let mapped = Int(progress * 30)
+                                if mapped > (messages[i].jobProgress ?? 0) {
+                                    messages[i].jobProgress = mapped
                                 }
-                                // Mirror real upload progress (0…1) into the
-                                // message progress bar so it fills smoothly
-                                // during the upload (0→38) rather than sitting
-                                // at 0 the whole time and then jumping to 40
-                                // the instant dispatch fires. Once dispatch
-                                // fires it nudges to 40, then SSE drives 40→100.
-                                if let i = indexOfProcessingMsg() {
-                                    let mapped = Int(video.uploadProgress * 38)
-                                    if mapped > (messages[i].jobProgress ?? 0) {
-                                        messages[i].jobProgress = mapped
-                                    }
-                                }
-                                try? await Task.sleep(nanoseconds: 100_000_000)
-                            }
-                            if video.uploadFailed {
-                                throw APIError.uploadFailed
-                            }
-
-                            guard let sourceUrl = video.uploadedUrl else {
-                                throw APIError.uploadFailed
-                            }
-                            let proxyUrl = video.proxyUploadedUrl
-                            print(String(format: "[send] urls ready after %.2fs proxy=%@ source=%@",
-                                Date().timeIntervalSince(sendStart),
-                                proxyUrl == nil ? "nil" : "set",
-                                "set"))
-
-                            if let i = indexOfProcessingMsg() {
+                            case .dispatching:
+                                // Light up "analyze" in the stage list
+                                // (so the active-stage row updates) but
+                                // do NOT bump the percent — the bar's
+                                // position is owned by upload progress
+                                // until the first modal-progress event
+                                // arrives.
                                 messages[i].stageTimeline?.receive(stepToken: "analyze")
-                                if (messages[i].jobProgress ?? 0) < 40 {
-                                    messages[i].jobProgress = 40
-                                }
+                            case .waitingForNetwork, .retrying:
+                                break
                             }
-                            print("[send] calling createVideoJob")
-                            let cvjStart = Date()
-                            let jobId = try await APIService.shared.createVideoJob(
-                                videoUrl: sourceUrl,
-                                proxyVideoUrl: proxyUrl,
-                                vibe: vibe
-                            )
-                            print(String(format: "[send] createVideoJob OK in %.2fs jobId=%@",
-                                Date().timeIntervalSince(cvjStart), jobId))
+                        }
+
+                        switch outcome {
+                        case .success(let jobId):
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
-                                startSSE(jobId: jobId, messageIndex: i)
+                                startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
                             }
-                            // Stuck-detection: if SSE never fires the
-                            // first stage event within 90s, the main
-                            // worker isn't running (or its first event
-                            // isn't reaching us). Surface a clear
-                            // error in the UI so the user isn't staring
-                            // at a frozen progress bar.
                             scheduleStuckDetector(messageId: msgId, jobId: jobId)
-                        } catch let APIError.paymentRequired(kind, limit, _) {
-                            // Server says they're over the daily render cap
-                            // (or hit the re-edit Pro gate). Remove the
-                            // stub processing bubble — they didn't actually
-                            // dispatch a job — and present the paywall.
-                            if let i = indexOfProcessingMsg() {
-                                messages.remove(at: i)
-                                persistMessages()
+                            // Async-refresh the usage snapshot so the
+                            // NEXT send already sees the bumped count
+                            // without needing to wait for the synchronous
+                            // refresh at the top of send(). Belt-and-
+                            // suspenders: even if the refresh-then-check
+                            // at send() entry fails for some reason, the
+                            // fast-path check sees the right number.
+                            Task { @MainActor in
+                                await UsageService.shared.refresh()
                             }
-                            if kind == "reedit" {
-                                appState.paywallReason = .reedit
+
+                        case .hardFailure(let hf):
+                            if hf.isPaymentRequired {
+                                // Same flow as the old APIError.paymentRequired
+                                // branch: pull the stub processing bubble
+                                // and pop the paywall.
+                                if let i = indexOfProcessingMsg() {
+                                    messages.remove(at: i)
+                                    persistMessages()
+                                }
+                                if hf.paymentKind == "reedit" {
+                                    appState.paywallReason = .reedit
+                                } else {
+                                    let lim = hf.paymentLimit ?? 3
+                                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                                }
+                                await UsageService.shared.refresh()
                             } else {
-                                let lim = limit ?? 3
-                                appState.paywallReason = .dailyRenders(used: lim, limit: lim)
-                            }
-                            await UsageService.shared.refresh()
-                        } catch let APIError.structuredFailure(errorCode, userMessage, retryable, requiresNewVideo, requiresVibeChange) {
-                            // Backend returned the structured error
-                            // shape. user_message is authoritative and
-                            // gets surfaced verbatim into the failed
-                            // message bubble; the flags shape the
-                            // recovery path (requires_new_video → re-
-                            // open picker, retryable → cache S3 URLs +
-                            // vibe for the one-tap Retry button,
-                            // requires_vibe_change → prefill composer
-                            // with the old vibe + route Send through
-                            // retryFailedRender so the user can change
-                            // wording without re-uploading).
-                            print("[dispatch] structured failure code=\(errorCode ?? "?") retryable=\(retryable) requiresNewVideo=\(requiresNewVideo) requiresVibeChange=\(requiresVibeChange)")
-                            var failedMessageId: UUID? = nil
-                            if let i = indexOfProcessingMsg() {
-                                messages[i].jobStatus = "failed"
-                                messages[i].error = userMessage
-                                failedMessageId = messages[i].id
-                                // Cache the source/proxy/vibe whenever
-                                // either retryable OR requires_vibe_change
-                                // is set — both recovery paths need the
-                                // cached S3 URLs to skip the upload.
-                                if retryable || requiresVibeChange {
-                                    messages[i].isRetryable = retryable
-                                    // Read URLs directly off the PendingVideo
-                                    // capture (the do-scope locals aren't
-                                    // visible to this catch). video.uploadedUrl
-                                    // is set after the source PUT lands, and
-                                    // dispatch only runs after that flips, so
-                                    // it's guaranteed non-nil here.
+                                var failedMessageId: UUID? = nil
+                                if let i = indexOfProcessingMsg() {
+                                    messages[i].jobStatus = "failed"
+                                    messages[i].error = hf.userMessage
+                                    failedMessageId = messages[i].id
+                                    // Always cache URLs so the Try Again
+                                    // button (and vibe-edit retry path) work
+                                    // without re-uploading. requiresNewVideo
+                                    // hides the Try Again button via the
+                                    // !requiresNewVideo gate on isRetryable.
+                                    messages[i].isRetryable = !hf.requiresNewVideo
                                     messages[i].cachedSourceUrl = video.uploadedUrl
                                     messages[i].cachedProxyUrl = video.proxyUploadedUrl
                                     messages[i].cachedVibe = vibe
+                                    persistMessages()
                                 }
-                                persistMessages()
-                            }
-                            if requiresNewVideo {
-                                // Bring the picker back up so the user
-                                // can swap clips with one tap. Matches
-                                // the spec's recommended UX for the
-                                // requires_new_video=true case.
-                                await MainActor.run {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    showVideoPicker = true
+                                if hf.requiresNewVideo {
+                                    await MainActor.run {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        showVideoPicker = true
+                                    }
                                 }
-                            }
-                            if requiresVibeChange, let msgId = failedMessageId {
-                                // Hand the composer over to the vibe-edit
-                                // flow. The pill appears, the input pre-
-                                // fills with the failed vibe, and the
-                                // user's next Send routes through
-                                // retryFailedRender with the new wording
-                                // — no upload, no re-typing the vibe
-                                // from scratch.
-                                await MainActor.run {
-                                    pendingVibeEditMessageId = msgId
-                                    inputText = vibe
-                                    isInputFocused = true
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                if hf.requiresVibeChange, let mid = failedMessageId {
+                                    await MainActor.run {
+                                        pendingVibeEditMessageId = mid
+                                        inputText = vibe
+                                        isInputFocused = true
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    }
                                 }
                             }
-                        } catch {
+
+                        case .cancelled:
                             if let i = indexOfProcessingMsg() {
-                                messages[i].jobStatus = "failed"
-                                messages[i].error = error.localizedDescription
+                                messages.remove(at: i)
                                 persistMessages()
                             }
                         }
@@ -2286,6 +2320,7 @@ struct EditorView: View {
                 }
             }
             isSending = false
+            }
         }
     }
 
@@ -2327,12 +2362,23 @@ struct EditorView: View {
 
     // MARK: - SSE
 
-    private func startSSE(jobId: String, messageIndex: Int) {
+    // Takes the message's UUID rather than its current array index. Why:
+    // capturing `Int messageIndex` here used to look up `messages[idx]`
+    // forever after — but any later insertion or deletion (a new send
+    // while this render is still going, a paywall path removing the stub
+    // processing bubble, a chat restoration) shifts indices. The
+    // captured index then writes SSE updates into the WRONG message
+    // bubble — exactly the bug from the screenshot, where the new
+    // "Your video is ready!" message rendered correctly but the OLD
+    // processing bubble was left frozen at 57% because its SSE writes
+    // were being absorbed by a different message. Resolving by id each
+    // event is O(messages) but the array is tiny and SSE is sparse.
+    private func startSSE(jobId: String, messageId: UUID) {
         let client = SSEClient(jobId: jobId)
         sseClients[jobId] = client
 
         client.onEvent = { event in
-            guard messageIndex < messages.count else { return }
+            guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // Pass through every status EXCEPT "completed". The completed
             // flip is gated on the local video cache being warm — see the
             // dedicated branch below — so the play UI never appears until
@@ -2341,12 +2387,23 @@ struct EditorView: View {
                 messages[messageIndex].jobStatus = status
             }
             if let progress = event.progress {
-                // Server reports render progress 0-100. Upload takes 0-40 client-side
-                // (with `upload_local` as the first stage in the timeline), so map
-                // render into the 40-100 band. Bar never goes backwards: the SSE
-                // mapping floor is exactly where upload's ceiling lands, so the
-                // first server tick continues the bar instead of resetting it.
-                let mapped = 40 + Int(Double(progress) * 0.6)
+                // Phase 2 mapping per the backend contract:
+                //   bar = 30 + (server_pct / 100) × 70
+                // Maps the worker's canonical pct values to a single
+                // continuous 30-100 band:
+                //   download   pct=5   → bar 33.5  (33)
+                //   transcribe pct=10  → bar 37
+                //   plan       pct=38  → bar 56.6  (56) (heartbeats to 50→65)
+                //   broll      pct=52  → bar 66.4  (66)
+                //   render     pct=65  → bar 75.5  (75) (heartbeats to 90→93)
+                //   thumbnail  pct=92  → bar 94.4  (94)
+                //   upload     pct=96  → bar 97.2  (97) (heartbeats to 99→99.3)
+                //   complete   pct=100 → bar 100
+                // Monotonic — never reduces the bar. Out-of-order
+                // heartbeats can land with a lower pct than what we've
+                // already shown; we just ignore the pct and let the
+                // message field (handled below) update visibly.
+                let mapped = 30 + Int(Double(progress) * 0.7)
                 if mapped > (messages[messageIndex].jobProgress ?? 0) {
                     messages[messageIndex].jobProgress = mapped
                 }
@@ -2400,6 +2457,23 @@ struct EditorView: View {
                 Task { @MainActor in
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showVideoPicker = true
+                }
+            }
+
+            // Defense-in-depth concurrency paywall. Backend's
+            // /api/video-jobs concurrency gate normally catches this
+            // synchronously (1 free / 10 Pro pending), but if a job
+            // slips past (race condition, alternate client) the Modal
+            // worker rejects with error_code="tier_concurrency_limit".
+            // The SSE error event carries the worker's user_message;
+            // we surface the paywall the same way the synchronous 402
+            // path does so the user sees a consistent upgrade prompt.
+            if let code = event.errorCode,
+               code == "tier_concurrency_limit" {
+                Task { @MainActor in
+                    let lim = UsageService.shared.renderLimit
+                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
 

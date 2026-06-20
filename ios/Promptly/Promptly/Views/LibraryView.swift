@@ -95,6 +95,17 @@ struct LibraryView: View {
             }
             .refreshable { if !isSelecting { await loadEdits() } }
             .task { await loadEdits() }
+            // The MainTabView keeps Library mounted (via opacity-toggled
+            // ZStack) so .task only fires once at app launch. If auth
+            // wasn't ready then, the initial load throws notAuthenticated
+            // and the view sticks on emptyState/failedState until the
+            // user manually pull-to-refreshes. Reload whenever the user
+            // navigates INTO this tab so a fresh sign-in or a transient
+            // auth blip self-heals on tap.
+            .onChange(of: appState.selectedTab) { _, newTab in
+                guard newTab == 1, !isSelecting else { return }
+                Task { await loadEdits() }
+            }
             .confirmationDialog("Delete this edit?", isPresented: $showDeleteConfirm, presenting: editToDelete) { edit in
                 Button("Delete", role: .destructive) { deleteEdit(edit) }
             }
@@ -306,8 +317,9 @@ struct LibraryView: View {
         // Pro gate: re-edit is paid. Free users see the paywall instead
         // of getting dropped into the editor where the dispatch would
         // eventually 402 anyway. Matches the MessageBubble gate so all
-        // entry points behave identically.
-        if !SubscriptionService.shared.isPro {
+        // entry points behave identically. effectiveIsPro so server-comped
+        // users (SQL update, RevenueCat-out-of-sync) get through too.
+        if !SubscriptionService.shared.effectiveIsPro {
             appState.paywallReason = .reedit
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -751,7 +763,15 @@ struct VideoDetailSheet: View {
                         ShareLink(item: url) {
                             DetailActionIcon(systemName: "square.and.arrow.up", label: "Share")
                         }
-                        DetailActionButton(systemName: "arrow.uturn.left", label: "Re-edit") {
+                        // Pro-aware Re-edit affordance. Pro users see the
+                        // standard ultra-thin chrome with the gold-gradient
+                        // icon + a soft gold glow ("premium feature");
+                        // free users see a lock glyph inside the circle
+                        // with no gold — visually communicates that the
+                        // button isn't for them, but tapping still pops
+                        // the paywall via the onReedit closure so they
+                        // can convert.
+                        ReeditDetailButton(isPro: SubscriptionService.shared.effectiveIsPro) {
                             dismiss()
                             onReedit()
                         }
@@ -840,5 +860,54 @@ private struct DetailActionButton: View {
             DetailActionIcon(systemName: systemName, label: label)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Re-edit variant of the DetailAction circle button. Shape and size
+/// match the other actions in the sheet so the row stays rhythmic;
+/// what changes is the icon styling per Pro state.
+private struct ReeditDetailButton: View {
+    let isPro: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Circle().stroke(
+                                isPro ? AnyShapeStyle(PromptlyGold.gradient)
+                                      : AnyShapeStyle(Color.white.opacity(0.12)),
+                                lineWidth: isPro ? 1.2 : 0.5
+                            )
+                        )
+                        .shadow(
+                            color: isPro ? PromptlyGold.solid.opacity(0.35) : .clear,
+                            radius: 10, y: 0
+                        )
+                    if isPro {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(PromptlyGold.gradient)
+                    } else {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                Text("Re-edit")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.7))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Re-edit this video")
+        .accessibilityValue(isPro ? "" : "Pro feature, tap to unlock")
     }
 }

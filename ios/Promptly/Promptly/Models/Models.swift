@@ -525,8 +525,21 @@ final class StageTimeline: ObservableObject {
         if curState != .completed {
             states[stage.id] = .inProgress
         }
+        // Only kick off the derived narration when this is a brand-new
+        // current stage. The worker re-emits the same `render` token on
+        // every progress tick during the render phase; without this
+        // guard, each tick CANCELS the in-flight derived task and
+        // restarts the cycle from index 0 ("timing"). On a long render
+        // (~30s) the user sees the substage label flip back and forth
+        // between "Timing cuts to the beat" and "Placing captions
+        // word-by-word" 20+ times — looks completely broken. Restarting
+        // only on stage CHANGE makes the cycle play through cleanly,
+        // matching the actual pipeline flow.
+        let isNewStage = currentStageId != stage.id
         currentStageId = stage.id
-        startDerivedNarration(parentId: stage.id)
+        if isNewStage {
+            startDerivedNarration(parentId: stage.id)
+        }
     }
 
     /// Client-side narration through derived children of an authoritative

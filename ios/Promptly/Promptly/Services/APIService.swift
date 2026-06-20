@@ -103,7 +103,16 @@ class APIService {
     /// 30s timeout because cold Modal container starts can land in
     /// the 5-10s range and we'd rather wait than blow past the timeout.
     func validateVideo(sampleS3Url: String) async throws -> ValidationResponse {
-        guard let url = URL(string: "https://reallyhimbrodigy--promptly-gpu-worker-promptlyvalidator-validate.modal.run") else {
+        // Modal hash-suffixed URL. The "obvious" name
+        // promptlyvalidator-validate.modal.run is 64 chars in the subdomain
+        // label — one over the RFC 1035 63-octet limit — and fails DNS
+        // resolution instantly. Modal auto-truncates to a hash suffix when
+        // the natural name would be too long; the displayed URL in the
+        // deploy log is the authoritative one. The hash is stable per
+        // (app + class + method) so it survives re-deploys. If we ever
+        // rename PromptlyValidator.validate or move it to a different
+        // app, this URL has to be updated to match the new deploy log.
+        guard let url = URL(string: "https://reallyhimbrodigy--promptly-gpu-worker-promptlyvalidator--3ad3a2.modal.run") else {
             throw APIError.uploadFailed
         }
         var request = URLRequest(url: url)
@@ -281,7 +290,7 @@ class APIService {
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
               let token = await validToken() else {
-            print("[library] getUserEdits skipped — no userId or token")
+            print("[library] getUserEdits skipped — no userId or token (userId=\(AuthService.shared.currentUser?.id ?? "nil"))")
             throw APIError.notAuthenticated
         }
         print("[library] getUserEdits fetching for user_id=\(userId)")
@@ -294,9 +303,22 @@ class APIService {
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await requestData(request)
+        let (data, response) = try await requestData(request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let body = String(data: data, encoding: .utf8)?.prefix(300) ?? ""
+            print("[library] getUserEdits HTTP \(http.statusCode) for user_id=\(userId) — body=\(body)")
+            throw APIError.jobCreationFailed("library HTTP \(http.statusCode)")
+        }
         let result = try JSONDecoder().decode([VideoJob].self, from: data)
-        print("[library] getUserEdits returned \(result.count) rows for user_id=\(userId)")
+        if result.isEmpty {
+            // Either the user genuinely has no edits OR a server-side RLS
+            // policy is filtering them out. Dump the raw body so the user
+            // can confirm the empty array isn't from a misdecoded shape.
+            let body = String(data: data, encoding: .utf8)?.prefix(120) ?? ""
+            print("[library] getUserEdits 0 rows for user_id=\(userId) — body=\(body)")
+        } else {
+            print("[library] getUserEdits returned \(result.count) rows for user_id=\(userId)")
+        }
         return result
     }
 

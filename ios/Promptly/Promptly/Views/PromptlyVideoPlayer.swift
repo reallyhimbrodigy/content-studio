@@ -439,6 +439,12 @@ struct NativeAVPlayerSurface: UIViewControllerRepresentable {
         // the app isn't a media library client and we don't want Music
         // / lock-screen controls to bind to in-app render previews.
         vc.updatesNowPlayingInfoCenter = false
+        // Force white tint on the native controls so the play / skip
+        // buttons stay monochrome. Without this they pick up whatever
+        // accent color is inherited from the SwiftUI hierarchy, which
+        // in dark UIs renders as a strong orange-ish halo that reads
+        // as "wrong" against the otherwise-clean native chrome.
+        vc.view.tintColor = .white
         return vc
     }
 
@@ -512,14 +518,20 @@ struct PromptlyPlayerView: View {
                 .offset(y: dismissOffset)
                 .gesture(swipeDownDismiss)
 
-            // Custom chrome that overlays the native player — close (X)
-            // top-leading + optional "Re-edit" pill bottom-trailing.
-            // Both sit above the safe area / native scrubber area so
-            // they never collide with system controls. Native controls
-            // auto-hide; our overlay stays visible since these aren't
-            // playback controls — they're navigation.
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
+            // The ONE custom affordance over the native player: a close
+            // button. iOS gives AVPlayerViewController's inline controls no
+            // close button and no public API to add one, so this lives as a
+            // persistent top-leading X. It deliberately does NOT try to
+            // auto-hide in step with the native controls — iOS exposes no
+            // hook to observe their visibility, and faking it with a
+            // parallel timer is exactly what caused the old "stacking" bug
+            // where one X toggled and the rest didn't. Everything else
+            // (play/pause, scrubber, volume, AirPlay/PiP) is native and
+            // toggles on tap as normal, because nothing here steals taps:
+            // only the 36pt button hit-tests; the rest of the frame falls
+            // through to the native surface below.
+            VStack {
+                HStack {
                     Button(action: animateClose) {
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .semibold))
@@ -527,56 +539,17 @@ struct PromptlyPlayerView: View {
                             .frame(width: 36, height: 36)
                             .background(.ultraThinMaterial, in: Circle())
                             .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
                     }
                     .buttonStyle(.plain)
-
-                    if let title = title, !title.isEmpty {
-                        Text(title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
-                    }
-
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 6)
-
-                Spacer()
-
-                if let onReedit {
-                    HStack {
-                        Spacer()
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onReedit()
-                            onClose()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "wand.and.stars")
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text("Re-edit")
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 16)
-                        // Sit clear of the native scrubber area at the
-                        // bottom (the native bar lives in roughly the
-                        // bottom 100pt). 92pt keeps the pill within
-                        // thumb reach but doesn't overlap the scrubber.
-                        .padding(.bottom, 92)
-                    }
-                }
+                Spacer(minLength: 0)
             }
-            .allowsHitTesting(true)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .opacity(firstFrameReady ? 1 : 0)
+            .offset(y: dismissOffset)
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
@@ -710,22 +683,40 @@ struct ControlOverlay: View {
                 Spacer()
 
                 if let onReedit {
+                    let isPro = SubscriptionService.shared.effectiveIsPro
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onReedit()
-                        onClose()
+                        if isPro { onClose() }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 12, weight: .semibold))
+                            if isPro {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(PromptlyGold.gradient)
+                            } else {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
                             Text("Re-edit")
                                 .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
                         }
-                        .foregroundColor(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .background(.ultraThinMaterial, in: Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                        .overlay(
+                            Capsule().stroke(
+                                isPro ? AnyShapeStyle(PromptlyGold.gradient)
+                                      : AnyShapeStyle(Color.white.opacity(0.18)),
+                                lineWidth: isPro ? 1 : 0.5
+                            )
+                        )
+                        .shadow(
+                            color: isPro ? PromptlyGold.solid.opacity(0.4) : .clear,
+                            radius: 8, y: 0
+                        )
                     }
                     .buttonStyle(.plain)
                 }

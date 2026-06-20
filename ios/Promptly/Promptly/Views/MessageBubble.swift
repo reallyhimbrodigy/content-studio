@@ -282,7 +282,9 @@ struct MessageBubble: View {
             // Pro gate: re-edit is a paid feature. Free users get the
             // paywall sheet with the right reason copy; the actual re-edit
             // only fires when SubscriptionService says they're entitled.
-            if !SubscriptionService.shared.isPro {
+            // effectiveIsPro consults BOTH RevenueCat and the server-derived
+            // /api/usage snapshot so server-comped users (SQL update) work.
+            if !SubscriptionService.shared.effectiveIsPro {
                 AppState.shared.paywallReason = .reedit
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 return
@@ -319,20 +321,18 @@ struct ThinkingDots: View {
 
 // MARK: - Processing Indicator (ChatGPT-style — inline, thin progress line)
 //
-// Smoothly creeps displayed toward the target each tick. Past bug: we used
-// Timer.scheduledTimer whose closure captured `progress` from a value-type
-// View struct, freezing the target at whatever it was at ticker creation
-// time (usually 0). Result: bar stuck at 1% forever on re-edit because there
-// was no pre-SSE upload phase to update it. Fix: mirror `progress` into a
-// @State var via .onChange(initial: true); .task reads the @State through
-// the property wrapper so it always sees the live value.
+// Monotonic-clamped bar position driven directly by the backend's pct.
+// .animation(.easeOut(duration: 0.4)) handles all the visual smoothing —
+// no local timer, no extrapolation, no random nudges. The bar position
+// is whatever the backend says it should be, smoothly tweened.
 
 struct ProcessingIndicator: View {
     let stepMessage: String
     let progress: Int              // target from upload/SSE
-    @State private var displayed: Int = 0
-    @State private var target: Int = 0
-    @State private var idleTicks: Int = 0  // counts 120ms idle ticks between SSE updates
+    // Monotonic-clamped position. Same model as PipelineProgressView:
+    // backend pcts are the truth; we just animate the visible bar to
+    // catch up over 400ms.
+    @State private var smoothedProgress: Int = 0
     @State private var pulse = false
 
     var body: some View {
@@ -363,7 +363,7 @@ struct ProcessingIndicator: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(max(displayed, 1))%")
+                Text("\(max(smoothedProgress, 1))%")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
@@ -376,56 +376,22 @@ struct ProcessingIndicator: View {
                         .fill(Color(.separator).opacity(0.5))
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(displayed) / 100.0))))
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(smoothedProgress) / 100.0))))
                 }
             }
             .frame(height: 3)
         }
         .frame(maxWidth: 320, alignment: .leading)
-        .animation(.easeOut(duration: 0.18), value: displayed)
+        // 400ms ease-out per the bar contract — animate the visual
+        // position to the latest backend value with no local timer.
+        .animation(.easeOut(duration: 0.4), value: smoothedProgress)
         .onAppear { pulse = true }
+        // Monotonic clamp: out-of-order heartbeats can land with a
+        // lower pct than what we've already shown. Ignore the pct in
+        // that case — the bar never goes backwards.
         .onChange(of: progress, initial: true) { _, new in
-            if new > target { target = new }
-        }
-        .task {
-            // One task per view identity. Reads @State `target` + `displayed`
-            // through the property wrapper so it always sees the latest values
-            // even though the enclosing struct is value-typed.
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 120_000_000)
-                if Task.isCancelled { break }
-                let delta = target - displayed
-                if delta > 0 {
-                    let step = max(1, delta / 5)
-                    displayed = min(target, displayed + step)
-                    idleTicks = 0
-                } else {
-                    // Adaptive idle trickle. THE RULE: the bar must NEVER
-                    // sit still for more than ~5 seconds, even if SSE is
-                    // silent for a minute, because anything longer reads
-                    // as "the app is broken" and users bounce.
-                    //
-                    // Old behavior capped at target+5, which is exactly
-                    // what created the frozen feel: once the trickle hit
-                    // the ceiling it'd stop and the user would stare at
-                    // a motionless bar for 10-30 seconds.
-                    //
-                    // New behavior: no distance ceiling. Bar trickles
-                    // forever up to 99 (final 100 reserved for the
-                    // completed event). Trickle SPEED scales with
-                    // distance from the last real target so the bar
-                    // doesn't shoot way ahead of reality — fast when
-                    // close, slow when far — but the per-tick threshold
-                    // is capped at ~5s (40 × 120ms) so it can never
-                    // appear stopped for longer than that.
-                    idleTicks += 1
-                    let distance = max(0, displayed - target)
-                    let threshold = min(40, 12 + distance * 5)
-                    if displayed < 99 && idleTicks >= threshold {
-                        displayed += 1
-                        idleTicks = 0
-                    }
-                }
+            if new > smoothedProgress {
+                smoothedProgress = new
             }
         }
     }
@@ -456,10 +422,35 @@ struct PipelineProgressView: View {
     /// while the backend cycles through more detailed copy, and the
     /// progress UI reads as frozen even though work is happening.
     var subMessage: String? = nil
-    @State private var displayed: Int = 0
-    @State private var target: Int = 0
-    @State private var idleTicks: Int = 0  // counts 120ms idle ticks between SSE updates
+    // Monotonic bar position — only ever increases. Real signals from
+    // backend pct are the truth; we just animate the visible bar to
+    // catch up over 400ms.
+    @State private var smoothedProgress: Int = 0
+    @State private var lastUpdateAt: Date = Date()
+    // Rotating fallback message shown when no SSE event has arrived
+    // for several seconds. Nil when a real subMessage is available
+    // (or recent activity exists).
+    @State private var fallbackMessage: String? = nil
+    @State private var fallbackIndex: Int = 0
     @State private var expanded: Bool = false
+
+    /// Rotated through when SSE goes quiet for 3.5s+. Keeps the user
+    /// reassured that work is still happening even when the bar can't
+    /// move (typical: bar sits at the cap of plan / render / upload
+    /// heartbeats while the backend is heads-down for 30-90s).
+    private static let stuckMessages = [
+        "Hang tight\u{2026}",
+        "Just a moment more\u{2026}",
+        "Almost there\u{2026}"
+    ]
+    /// Swapped in after 60+ seconds of silence. Different copy so the
+    /// user clocks that this particular render is on the long side
+    /// without us declaring failure.
+    private static let veryStuckMessages = [
+        "This is taking a little longer than usual",
+        "Still working on it\u{2026}",
+        "Hanging in there\u{2026}"
+    ]
 
     private var activeStage: PipelineStage? {
         if let did = timeline.currentDerivedId, let s = timeline.stages.first(where: { $0.id == did }) {
@@ -482,15 +473,19 @@ struct PipelineProgressView: View {
         return Array(completed.suffix(2))
     }
 
-    /// True when the SSE message differs meaningfully from the stage
-    /// title — used to gate showing the subtitle (so we don't render
-    /// "Analyzing your video" twice if the backend's message matches
-    /// the catalog stage title verbatim).
+    /// What actually renders in the subtitle slot. Preference order:
+    ///   1. The backend's SSE message if non-empty and not a duplicate
+    ///      of the stage title.
+    ///   2. The rotating fallback when SSE has gone quiet long enough
+    ///      to set one.
+    ///   3. Nothing.
     private var effectiveSubMessage: String? {
-        guard let sub = subMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sub.isEmpty else { return nil }
-        if sub == (activeStage?.title ?? "") { return nil }
-        return sub
+        if let sub = subMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sub.isEmpty,
+           sub != (activeStage?.title ?? "") {
+            return sub
+        }
+        return fallbackMessage
     }
 
     var body: some View {
@@ -505,7 +500,7 @@ struct PipelineProgressView: View {
                         .lineLimit(2)
                         .transition(.opacity)
                     Spacer(minLength: 8)
-                    Text("\(max(displayed, 1))%")
+                    Text("\(max(smoothedProgress, 1))%")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
                         .monospacedDigit()
@@ -529,14 +524,16 @@ struct PipelineProgressView: View {
                 }
             }
 
-            // Progress bar
+            // Progress bar. Width is driven by `smoothedProgress`, which
+            // animates over 400ms ease-out when a new event arrives (see
+            // the .animation modifier near the bottom of the view).
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color(.separator).opacity(0.5))
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(displayed) / 100.0))))
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(smoothedProgress) / 100.0))))
                 }
             }
             .frame(height: 3)
@@ -593,35 +590,48 @@ struct PipelineProgressView: View {
             }
         }
         .frame(maxWidth: 340, alignment: .leading)
-        .animation(.easeOut(duration: 0.18), value: displayed)
+        // 400ms ease-out is the spec: just animate the visual position
+        // to the latest backend value. NO local extrapolation, NO timer
+        // creep, NO random nudges. Bar position = whatever the backend
+        // says it should be, smoothly tweened.
+        .animation(.easeOut(duration: 0.4), value: smoothedProgress)
+        // Monotonic clamp. The backend can occasionally emit an out-of-
+        // order heartbeat with a LOWER pct than what we've already
+        // shown (e.g. plan heartbeat at 38 lands after we've already
+        // jumped to 52 for broll_search). Per the contract, we ignore
+        // the pct in that case — but we DO still treat it as activity
+        // so the stale-watcher resets.
         .onChange(of: progress, initial: true) { _, new in
-            if new > target { target = new }
+            lastUpdateAt = Date()
+            fallbackMessage = nil
+            fallbackIndex = 0
+            if new > smoothedProgress {
+                smoothedProgress = new
+            }
+        }
+        // Any backend message change is also activity — reset stale.
+        .onChange(of: subMessage) { _, _ in
+            lastUpdateAt = Date()
+            fallbackMessage = nil
+            fallbackIndex = 0
         }
         .task {
-            // Smoothed creep + adaptive trickle — see ProcessingIndicator
-            // for the full rationale. THE RULE: the bar must NEVER sit
-            // still for more than ~5 seconds, even if SSE is silent for
-            // a minute. Anything longer reads as broken; users bounce.
-            // No distance ceiling — bar trickles up to 99 forever. Speed
-            // scales with distance from target so it doesn't shoot too
-            // far ahead, but capped at ~5s per tick so it's always alive.
+            // Stale-progress watcher. Does NOT touch the bar position.
+            // Rotates a reassuring fallback message into the subtitle
+            // slot whenever no SSE event has landed for 3.5s+. After
+            // 60s, the copy shifts to "taking longer than usual"
+            // variants so the user knows the render is on the long
+            // side — without ever claiming failure.
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 120_000_000)
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
                 if Task.isCancelled { break }
-                let delta = target - displayed
-                if delta > 0 {
-                    let step = max(1, delta / 5)
-                    displayed = min(target, displayed + step)
-                    idleTicks = 0
-                } else {
-                    idleTicks += 1
-                    let distance = max(0, displayed - target)
-                    let threshold = min(40, 12 + distance * 5)
-                    if displayed < 99 && idleTicks >= threshold {
-                        displayed += 1
-                        idleTicks = 0
-                    }
-                }
+                let silentSec = Date().timeIntervalSince(lastUpdateAt)
+                guard silentSec >= 3.0 else { continue }
+                let pool = silentSec > 60
+                    ? Self.veryStuckMessages
+                    : Self.stuckMessages
+                fallbackMessage = pool[fallbackIndex % pool.count]
+                fallbackIndex += 1
             }
         }
     }
@@ -817,6 +827,11 @@ struct VideoActionRow: View {
     let thumbnailUrlStr: String?
     let onReedit: (() -> Void)?
     @StateObject private var exporter: VideoExporter
+    // Observe both signals so the Re-edit pill re-renders (gold ↔ lock)
+    // the moment Pro state flips — a fresh purchase or an SQL comp on
+    // an open chat lights up the icon without an app relaunch.
+    @ObservedObject private var subscription = SubscriptionService.shared
+    @ObservedObject private var usage = UsageService.shared
 
     init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?) {
         self.videoUrlStr = videoUrlStr
@@ -825,15 +840,12 @@ struct VideoActionRow: View {
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
     }
 
+    private var isPro: Bool { subscription.isPro || usage.isPro }
+
     var body: some View {
         HStack(spacing: 14) {
             if let onReedit {
-                pill(
-                    icon: "wand.and.stars",
-                    label: "Re-edit",
-                    state: .idle,
-                    action: onReedit
-                )
+                reeditPill(action: onReedit)
             }
 
             pill(
@@ -851,6 +863,79 @@ struct VideoActionRow: View {
     }
 
     // MARK: - Pill subviews
+
+    /// Re-edit pill — visually swaps between two states:
+    ///   - Pro: the wand icon paints with the PromptlyGold gradient and
+    ///     the circle gets a faint gold border + soft gold glow so the
+    ///     button reads "premium". Tap fires the onReedit closure directly.
+    ///   - Free: the icon stays muted (.secondaryLabel) and a tiny
+    ///     lock badge sits at the bottom-right of the circle, mirroring
+    ///     how App Store / Photos overlay status icons. Tap still fires
+    ///     the closure — the closure itself is the actual gate (it pops
+    ///     the paywall sheet). UI here is purely about communicating
+    ///     "this is locked, but tap to see why."
+    /// Same hit-target size and label as the other pills so the action
+    /// row keeps a clean rhythm regardless of state.
+    @ViewBuilder
+    private func reeditPill(action: @escaping () -> Void) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(Color(.tertiarySystemBackground))
+                    if isPro {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(PromptlyGold.gradient)
+                    } else {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(.secondaryLabel))
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Circle()
+                        .stroke(
+                            isPro ? AnyShapeStyle(PromptlyGold.gradient)
+                                  : AnyShapeStyle(Color.white.opacity(0.08)),
+                            lineWidth: isPro ? 1.2 : 0.5
+                        )
+                )
+                .shadow(
+                    color: isPro ? PromptlyGold.solid.opacity(0.35) : .clear,
+                    radius: 8, y: 0
+                )
+                // Lock badge — overlay the bottom-right corner with a
+                // small filled circle + lock glyph. Same idiom Apple
+                // uses on locked Photos / App Store buttons.
+                .overlay(alignment: .bottomTrailing) {
+                    if !isPro {
+                        ZStack {
+                            Circle()
+                                .fill(Color(.systemBackground))
+                                .frame(width: 18, height: 18)
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color(.secondaryLabel))
+                        }
+                        .offset(x: 2, y: 2)
+                    }
+                }
+
+                Text("Re-edit")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Re-edit this video")
+        .accessibilityValue(isPro ? "" : "Pro feature, tap to unlock")
+    }
 
     @ViewBuilder
     private func pill(

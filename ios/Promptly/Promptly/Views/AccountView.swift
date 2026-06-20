@@ -2,12 +2,26 @@ import SwiftUI
 import PhotosUI
 
 struct AccountView: View {
+    // Observe BOTH Pro signals so the view re-renders the moment either
+    // flips. RevenueCat (SubscriptionService) is authoritative for paid
+    // purchases; UsageService is authoritative for server-comped or
+    // RevenueCat-out-of-sync users (e.g. when profiles.tier='pro' is
+    // hand-set via SQL but the iOS RevenueCat client cache hasn't
+    // synced). `effectiveIsPro` returns true if EITHER says so — that's
+    // the only way an SQL-comped user sees the Pro affordance.
+    @ObservedObject private var subscription = SubscriptionService.shared
+    @ObservedObject private var usage = UsageService.shared
+
     @State private var userName = ""
     @State private var userEmail = ""
     @State private var userInitial = "U"
     @State private var avatarUrl: String?
     @State private var tier = "free"
     @State private var isLoading = true
+
+    private var effectiveIsPro: Bool {
+        subscription.isPro || usage.isPro
+    }
     @State private var showNameEdit = false
     @State private var showEmailEdit = false
     @State private var newName = ""
@@ -49,19 +63,7 @@ struct AccountView: View {
                     }
                     divider
 
-                    row("Subscription", badge: SubscriptionService.shared.isPro ? "PRO" : "FREE") {
-                        if SubscriptionService.shared.isPro {
-                            // Apple's standard subscription-management URL
-                            // — opens directly to the user's subscriptions
-                            // list in Settings. The only correct way to
-                            // cancel an App Store subscription.
-                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                                UIApplication.shared.open(url)
-                            }
-                        } else {
-                            AppState.shared.paywallReason = .manual
-                        }
-                    }
+                    subscriptionRow
                     divider
 
                     row("Change password") {
@@ -133,6 +135,14 @@ struct AccountView: View {
             .scrollDismissesKeyboard(.interactively)
             .dismissKeyboardOnTap()
             .task { await loadProfile() }
+            .task {
+                // Pull a fresh /api/usage snapshot whenever the Account
+                // tab appears. Catches the "server says Pro, RevenueCat
+                // says free" case (SQL-comped users, RevenueCat webhook
+                // drift) so `effectiveIsPro` reflects current truth
+                // without needing an app relaunch.
+                await UsageService.shared.refresh()
+            }
             .alert("Edit name", isPresented: $showNameEdit) {
                 TextField("Name", text: $newName)
                 Button("Save") { saveName() }
@@ -170,6 +180,56 @@ struct AccountView: View {
         }
     }
 
+    // MARK: - Subscription row
+
+    /// Inlined (rather than going through the generic `row` helper) so
+    /// the Pro state can render the gold-gradient PROBadge — the helper
+    /// only handles plain-text badges. Tap behaviour matches the old row:
+    /// Pro → Apple's manage-subscriptions URL; free → present the paywall.
+    private var subscriptionRow: some View {
+        Button {
+            if effectiveIsPro {
+                // Apple's standard subscription-management URL — opens
+                // straight into the user's subscriptions list in Settings.
+                // Only correct way to cancel an App Store subscription.
+                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                    UIApplication.shared.open(url)
+                }
+            } else {
+                AppState.shared.paywallReason = .manual
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text("Subscription")
+                    .font(.system(size: 17))
+                    .foregroundColor(.white)
+                Spacer()
+                if effectiveIsPro {
+                    PROBadge()
+                } else {
+                    Text("FREE")
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Color(.tertiarySystemBackground))
+                        .foregroundColor(.secondary)
+                        .clipShape(Capsule())
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 20)
+            .frame(height: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Subscription")
+        .accessibilityValue(effectiveIsPro ? "Pro" : "Free")
+    }
+
     // MARK: - Profile row
 
     private var profileRow: some View {
@@ -177,6 +237,17 @@ struct AccountView: View {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 ZStack(alignment: .bottomTrailing) {
                     avatarCircle
+                        // Premium aura — a soft gold glow around the
+                        // avatar when the user is Pro. Reads as "you're
+                        // special" without putting a literal crown on
+                        // their face. Easy to spot at a glance the
+                        // moment the Account tab opens.
+                        .shadow(
+                            color: effectiveIsPro
+                                ? PromptlyGold.solid.opacity(0.55)
+                                : .clear,
+                            radius: 10, y: 0
+                        )
                     Circle()
                         .fill(Color.white)
                         .frame(width: 20, height: 20)
@@ -194,10 +265,20 @@ struct AccountView: View {
             .onChange(of: selectedPhoto) { _, item in uploadAvatar(item) }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(userName.isEmpty ? "User" : userName)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(userName.isEmpty ? "User" : userName)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    // Inline PRO badge — sits right next to the name
+                    // so it reads as part of the user's identity, not
+                    // a separate status indicator. Hidden entirely for
+                    // free users so the header stays clean (no "FREE"
+                    // chip — free is the default, nothing to celebrate).
+                    if effectiveIsPro {
+                        PROBadge(compact: true)
+                    }
+                }
                 Text(userEmail)
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)

@@ -207,6 +207,7 @@ struct PaywallView: View {
     private var featureList: some View {
         VStack(alignment: .leading, spacing: 14) {
             featureRow(icon: "infinity", text: "Unlimited renders")
+            featureRow(icon: "square.stack.3d.up.fill", text: "Upload up to 10 videos at a time")
             featureRow(icon: "bubble.left.and.bubble.right.fill", text: "Unlimited AI chats")
             featureRow(icon: "arrow.uturn.left", text: "Re-edit any finished video")
             featureRow(icon: "bolt.fill", text: "Priority render queue")

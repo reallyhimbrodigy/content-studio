@@ -35,6 +35,24 @@ final class SubscriptionService: ObservableObject {
     static let defaultOfferingId = "default"
 
     @Published var isPro: Bool = false
+
+    /// THE source-of-truth Pro flag for every iOS gate that needs one.
+    /// Returns true if EITHER RevenueCat's client cache (`isPro`) OR the
+    /// server's `/api/usage` snapshot (`UsageService.shared.isPro`) says
+    /// the user is Pro. Catches two real cases:
+    ///   - **Server-comped users** (manual SQL update to profiles.tier='pro')
+    ///     — no RevenueCat transaction exists, so SubscriptionService.isPro
+    ///     stays false. UsageService catches it.
+    ///   - **RevenueCat webhook drift** — RevenueCat fired INITIAL_PURCHASE
+    ///     locally but the webhook hasn't synced profiles.tier yet, or
+    ///     vice versa. Whichever signal is ahead wins.
+    /// All UI gates (paywall pops, picker caps, re-edit affordance,
+    /// Pro badges) should read this, not the raw `isPro`. The raw
+    /// signal stays available for purchase-flow logic that genuinely
+    /// needs to know what RevenueCat itself thinks.
+    var effectiveIsPro: Bool {
+        isPro || UsageService.shared.isPro
+    }
     @Published var offerings: Offerings?
     @Published var isLoadingPurchase: Bool = false
     @Published var lastError: String?
@@ -128,6 +146,10 @@ final class SubscriptionService: ObservableObject {
             applyCustomerInfo(result.customerInfo)
             if !result.userCancelled {
                 lastError = nil
+                // Reconcile with the server immediately so the render gate
+                // (which trusts ONLY the server, not RevenueCat's client
+                // cache) unlocks without waiting for the webhook to land.
+                if isPro { await syncEntitlementWithServer() }
             }
             return isPro
         } catch {
@@ -150,11 +172,44 @@ final class SubscriptionService: ObservableObject {
         do {
             let info = try await Purchases.shared.restorePurchases()
             applyCustomerInfo(info)
+            if isPro { await syncEntitlementWithServer() }
             return isPro
         } catch {
             lastError = error.localizedDescription
             return false
         }
+    }
+
+    /// Reconcile Pro entitlement with the server SYNCHRONOUSLY after a
+    /// purchase or restore. The RevenueCat webhook is the primary activation
+    /// path, but it's asynchronous and can lag or fail — this POSTs to
+    /// `/api/revenuecat/sync`, which verifies the entitlement against
+    /// RevenueCat's REST API and flips `profiles.tier='pro'` on the spot, so
+    /// the server-side render gate unlocks right away.
+    ///
+    /// Best-effort: any failure (offline, key not configured, RC blip) is
+    /// swallowed — the webhook plus the `effectiveIsPro` client signal keep
+    /// the UI unlocked regardless. Always refreshes `UsageService` afterward
+    /// so the server's view is reflected once the write lands.
+    func syncEntitlementWithServer() async {
+        if let token = await AuthService.shared.getValidToken(),
+           let url = URL(string: "https://usepromptly.app/api/revenuecat/sync") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.timeoutInterval = 12
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                    print("[Subscription] server sync returned \(http.statusCode)")
+                }
+            } catch {
+                print("[Subscription] server sync failed: \(error.localizedDescription)")
+            }
+        }
+        // Reflect the server's (now-updated) entitlement regardless of the
+        // sync call's outcome.
+        await UsageService.shared.refresh()
     }
 
     // MARK: - Internal

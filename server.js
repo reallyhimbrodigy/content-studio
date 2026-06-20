@@ -44,7 +44,11 @@ try {
   console.log('[Phyllo] metrics disabled (module missing)');
 }
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
-const { isUserPro: isProfilePro } = require('./lib/entitlement');
+const {
+  isUserPro: isProfilePro,
+  proEntitlementFromV2ActiveList,
+  PRO_ENTITLEMENT_ID,
+} = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
@@ -1228,6 +1232,142 @@ async function assertProEntitled(userId) {
   const entitlement = await fetchSubscriptionEntitlement(userId);
   const decision = resolveEntitlementDecision(entitlement);
   return { ...decision, sourceTable: entitlement.sourceTable };
+}
+
+// RevenueCat REST v2 is project-scoped and uses a V2 API key. Both must be
+// set for the synchronous reconciliation path; without them /sync 503s and the
+// app falls back to webhook-only activation (no regression).
+const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
+
+// The internal entitlement id ("entl…") that our 'pro' lookup_key resolves to.
+// Static per project, so we memoise it for the process lifetime after the
+// first successful lookup.
+let _rcProEntitlementInternalId = null;
+
+/**
+ * Resolve the internal id for the 'pro' lookup_key from RevenueCat. Returns
+ * null on any failure — callers treat null as "accept any active entitlement",
+ * which is the correct behaviour for a single-entitlement project, so a blip
+ * here never blocks activation.
+ */
+async function resolveProEntitlementInternalId(projectId, secret) {
+  if (_rcProEntitlementInternalId) return _rcProEntitlementInternalId;
+  const url = `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const items = body && Array.isArray(body.items) ? body.items : [];
+    const match = items.find((e) => e && e.lookup_key === PRO_ENTITLEMENT_ID);
+    if (match && match.id) {
+      _rcProEntitlementInternalId = match.id;
+      return match.id;
+    }
+  } catch (e) {
+    /* fall through to null */
+  }
+  return null;
+}
+
+/**
+ * Verify a user's Pro entitlement straight from RevenueCat's REST **v2** API
+ * and mirror it into profiles. This is the synchronous reconciliation path
+ * that removes the webhook as a single point of failure: the iOS app calls it
+ * right after a successful purchase/restore, and the webhook's TRANSFER branch
+ * reuses it.
+ *
+ * GRANT-ONLY by design. Revocation stays with the webhook
+ * (EXPIRATION/BILLING_ISSUE), so a client-triggered call can never strip Pro
+ * on a transient/eventually-consistent RC read.
+ *
+ * Returns { ok, isPro, reason, proUntil } on a definitive answer; throws with
+ * a `.statusCode` on misconfiguration / RC outage so callers can surface a
+ * 5xx WITHOUT writing the DB.
+ */
+async function reconcileEntitlementFromRevenueCat(appUserId) {
+  const secret = process.env.REVENUECAT_SECRET_KEY || '';
+  const projectId = process.env.REVENUECAT_PROJECT_ID || '';
+  if (!secret || !projectId) {
+    const err = new Error('revenuecat_not_configured');
+    err.statusCode = 503;
+    throw err;
+  }
+  if (!supabaseAdmin) {
+    const err = new Error('supabase_not_configured');
+    err.statusCode = 500;
+    throw err;
+  }
+  const id = String(appUserId || '').trim();
+  if (!id) {
+    const err = new Error('app_user_id_missing');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // null → accept any active entitlement (single-entitlement fallback).
+  const proEntId = await resolveProEntitlementInternalId(projectId, secret);
+
+  const url =
+    `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}` +
+    `/customers/${encodeURIComponent(id)}/active_entitlements`;
+  let rcRes;
+  try {
+    rcRes = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    const err = new Error('revenuecat_unreachable');
+    err.statusCode = 502;
+    throw err;
+  }
+  // 404 = RC has never seen this customer (no purchase under this identity).
+  if (rcRes.status === 404) {
+    return { ok: true, isPro: false, reason: 'NO_RC_CUSTOMER', proUntil: null };
+  }
+  if (!rcRes.ok) {
+    const err = new Error(`revenuecat_http_${rcRes.status}`);
+    err.statusCode = 502;
+    throw err;
+  }
+  const body = await rcRes.json().catch(() => null);
+  const items = body && Array.isArray(body.items) ? body.items : [];
+  const decision = proEntitlementFromV2ActiveList(items, proEntId, Date.now());
+  if (!decision.active) {
+    // Not entitled per RC. Grant-only: never downgrade here.
+    return { ok: true, isPro: false, reason: 'RC_NOT_ACTIVE', proUntil: decision.proUntil };
+  }
+
+  // Mirror only the fields isUserPro() depends on. rc_product_id /
+  // rc_period_type are informational and owned by the webhook — we don't null
+  // them out from this path.
+  const update = {
+    tier: 'pro',
+    pro_until: decision.proUntil,
+    rc_app_user_id: id,
+  };
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update(update)
+    .eq('id', id)
+    .select('id');
+  if (error) {
+    const err = new Error('profile_update_failed');
+    err.statusCode = 500;
+    throw err;
+  }
+  if (!data || data.length === 0) {
+    // RC says Pro but there's no profile row for this id. Surface loudly
+    // rather than reporting a phantom success.
+    const err = new Error('no_profile_for_app_user_id');
+    err.statusCode = 409;
+    throw err;
+  }
+  return { ok: true, isPro: true, reason: 'GRANTED', proUntil: decision.proUntil };
 }
 
 async function requirePro(req, { allowPastDue = false } = {}) {
@@ -10671,12 +10811,17 @@ const server = http.createServer((req, res) => {
         ]);
         // Events that revoke Pro IMMEDIATELY (vs CANCELLATION which lets
         // them stay Pro through expiration_at_ms).
+        //
+        // SUBSCRIBER_ALIAS is deliberately NOT here. It fires when RevenueCat
+        // links two app_user_ids for the SAME person (e.g. an anonymous id
+        // aliased to a signed-in user) — treating it as a revoke would strip
+        // Pro from a paying customer at the exact moment they sign in. It
+        // falls through to the ack branch instead.
         const revokesProNow = new Set([
           'EXPIRATION',
           'BILLING_ISSUE',
           'SUBSCRIPTION_PAUSED',
           'REFUND',
-          'SUBSCRIBER_ALIAS', // edge — re-assigning to new user; treat as revoke for safety
         ]);
 
         let update = null;
@@ -10701,25 +10846,131 @@ const server = http.createServer((req, res) => {
             rc_product_id: productId,
             rc_period_type: periodType,
           };
+        } else if (type === 'TRANSFER') {
+          // A subscription moved between app_user_ids (e.g. an anonymous
+          // purchase later aliased to a signed-in user). The entitlement now
+          // belongs to `transferred_to`. There's no expiration on a TRANSFER
+          // event, so we reconcile each recipient straight from RC's REST API
+          // to grant Pro with the correct pro_until. Requires
+          // REVENUECAT_SECRET_KEY; without it we ack (the user's next /sync
+          // call reconciles instead) rather than make RC retry forever.
+          const toIds = Array.isArray(event.transferred_to) ? event.transferred_to : [];
+          let granted = 0;
+          for (const rawId of toIds) {
+            const tid = String(rawId || '').trim();
+            if (!tid || tid.startsWith('$RCAnonymousID')) continue;
+            try {
+              const r = await reconcileEntitlementFromRevenueCat(tid);
+              if (r.isPro) granted++;
+            } catch (e) {
+              if (e.statusCode === 503) {
+                console.warn('[RevenueCat] TRANSFER but REVENUECAT_SECRET_KEY not set; acking');
+                return sendJson(res, 200, { ok: true, ignored: 'TRANSFER_no_secret' });
+              }
+              console.error('[RevenueCat] TRANSFER reconcile failed', { tid, error: e.message });
+            }
+          }
+          console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length });
+          return sendJson(res, 200, { ok: true, transferred: granted });
         } else {
-          // TRANSFER, TEST, etc — log and ack so RevenueCat doesn't retry.
+          // TEST, SUBSCRIBER_ALIAS, etc — log and ack so RevenueCat doesn't retry.
           console.log('[RevenueCat] unhandled event type, acking', { type, appUserId });
           return sendJson(res, 200, { ok: true, ignored: type });
         }
 
-        const { error } = await supabaseAdmin
-          .from('profiles')
-          .update(update)
-          .eq('id', appUserId);
-        if (error) {
+        // Apply the update. We `.select('id')` so we can tell a real write
+        // apart from a silent zero-row no-op: Supabase/PostgREST returns NO
+        // error when `.eq('id', x)` matches nothing. Without this check a
+        // webhook aimed at an id with no profile — app_user_id still a
+        // `$RCAnonymousID` because logIn() hadn't aliased yet, or the row is
+        // missing — would log "applied" and 200 while the user never becomes
+        // Pro. That's the worst failure for a paid flow: silent, logs lying.
+        const applyTo = async (id) => {
+          const { data, error } = await supabaseAdmin
+            .from('profiles')
+            .update(update)
+            .eq('id', id)
+            .select('id');
+          if (error) throw error;
+          return Array.isArray(data) ? data.length : 0;
+        };
+
+        let matchedId = null;
+        try {
+          if ((await applyTo(appUserId)) > 0) {
+            matchedId = appUserId;
+          } else {
+            // app_user_id matched no profile. Fall back to this subscriber's
+            // other known identities before giving up — covers the
+            // anonymous-purchase-then-login alias case. RevenueCat includes
+            // every id it knows for the subscriber in `aliases`.
+            const candidates = []
+              .concat(Array.isArray(event.aliases) ? event.aliases : [])
+              .concat(event.original_app_user_id || [])
+              .map((x) => String(x || '').trim())
+              .filter((x) => x && x !== appUserId && !x.startsWith('$RCAnonymousID'));
+            for (const cand of candidates) {
+              if ((await applyTo(cand)) > 0) { matchedId = cand; break; }
+            }
+          }
+        } catch (error) {
           console.error('[RevenueCat] profile update failed', { type, appUserId, error: error.message });
           return sendJson(res, 500, { error: 'profile_update_failed' });
         }
-        console.log('[RevenueCat] applied', { type, appUserId, ...update });
+
+        if (!matchedId) {
+          // No profile matched any known id for this subscriber. Return 500
+          // (NOT 200) so RevenueCat retries: this makes the problem visible
+          // in logs + RC's dashboard, and buys time for a just-completed
+          // logIn() alias to land. A truly orphaned purchase (user never
+          // signed in) exhausts retries and surfaces in RC instead of
+          // silently stranding a paying customer.
+          console.error('[RevenueCat] no profile matched subscriber; asking RC to retry', {
+            type, appUserId, aliases: event.aliases || null,
+          });
+          return sendJson(res, 500, { error: 'no_profile_matched' });
+        }
+
+        console.log('[RevenueCat] applied', { type, appUserId: matchedId, ...update });
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[RevenueCat] webhook error', err);
         return sendJson(res, 500, { error: err?.message || 'webhook_error' });
+      }
+    })();
+    return;
+  }
+
+  // ── RevenueCat reconciliation (client-triggered, synchronous) ──
+  // The webhook is the primary activation path, but it's asynchronous and can
+  // lag or fail. The iOS app calls this immediately after a successful
+  // purchase/restore so Pro activates synchronously instead of depending on a
+  // webhook landing: we verify the entitlement straight from RevenueCat's
+  // REST API (source of truth) and grant tier='pro' on the spot.
+  //
+  // Grant-only — see reconcileEntitlementFromRevenueCat(). Authenticated as
+  // the calling user, and we reconcile THAT user's own id only, so it can't
+  // be used to flip anyone else's account.
+  if (parsed.pathname === '/api/revenuecat/sync' && req.method === 'POST') {
+    (async () => {
+      try {
+        const u = await requireSupabaseUser(req);
+        const result = await reconcileEntitlementFromRevenueCat(u.id);
+        return sendJson(res, 200, {
+          is_pro: !!result.isPro,
+          pro_until: result.proUntil || null,
+          reason: result.reason,
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        if (status === 503) {
+          // Secret key not configured — client silently falls back to
+          // webhook-only activation. Not an error worth alerting on.
+          console.warn('[RevenueCat] /sync called but REVENUECAT_SECRET_KEY not set');
+        } else {
+          console.error('[RevenueCat] /sync failed', { status, error: error?.message });
+        }
+        return sendJson(res, status, { error: error?.message || 'sync_failed' });
       }
     })();
     return;

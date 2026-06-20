@@ -6,7 +6,7 @@ import CoreMedia
 /// Gemini editorial analysis on the Modal worker.
 ///
 /// **Why this exists:** without a client proxy, the worker must encode
-/// its own 480p@10fps proxy before Gemini can start watching the video.
+/// its own 480p@30fps proxy before Gemini can start watching the video.
 /// That on-server encode sits on the render-time critical path for
 /// ~7-10 seconds. When the client uploads a matching proxy, the worker
 /// skips that step entirely — Gemini analysis starts the instant the
@@ -15,7 +15,11 @@ import CoreMedia
 ///
 /// **Spec match (Modal worker reads this exact shape):**
 ///   - Video: H.264, 480-pixel displayed height (width auto, rounded
-///     to multiple of 2), 10 fps CFR, ~800 kbps target bitrate
+///     to multiple of 2), 30 fps CFR, ~2.4 Mbps target bitrate (~3×
+///     the prior 800 kbps since we're carrying 3× the frames). The
+///     Modal worker passes `video_metadata.fps=30` to Gemini so it
+///     samples at 30 fps — a 10 fps source would produce duplicate
+///     frames every third sample, wasting the higher sample rate.
 ///   - Audio: AAC mono, 48 kHz, 48 kbps
 ///   - Container: MP4 with shouldOptimizeForNetworkUse = true (moov atom
 ///     at front so the worker can start streaming before download
@@ -33,7 +37,7 @@ import CoreMedia
 /// transform — meaning portrait-shot videos would be sideways. An
 /// AVMutableVideoComposition handles orientation + scaling + frame-
 /// rate decimation in one pass, producing already-correctly-oriented
-/// 10fps frames to feed into the writer.
+/// 30fps frames to feed into the writer.
 @MainActor
 enum VideoProxyExtractor {
 
@@ -100,13 +104,13 @@ enum VideoProxyExtractor {
         // Build the video composition. This does THREE things in one
         // pass: apply preferredTransform (orient the source correctly),
         // scale to the target render size, and decimate frame timing
-        // to 10 fps (CFR). The composition's frameDuration is what
-        // tells the composition output to emit one frame per 100ms,
+        // to 30 fps (CFR). The composition's frameDuration is what
+        // tells the composition output to emit one frame per ~33ms,
         // dropping/duplicating from the source as needed — no manual
         // frame-stride logic required.
         let composition = AVMutableVideoComposition()
         composition.renderSize = renderSize
-        composition.frameDuration = CMTime(value: 1, timescale: 10)
+        composition.frameDuration = CMTime(value: 1, timescale: 30)
         composition.renderScale = 1.0
 
         let instruction = AVMutableVideoCompositionInstruction()
@@ -123,7 +127,7 @@ enum VideoProxyExtractor {
         composition.instructions = [instruction]
 
         // Reader: pulls source samples, runs them through the
-        // composition (transform + scale + 10fps), hands us BGRA
+        // composition (transform + scale + 30fps), hands us BGRA
         // pixel buffers at the target render size.
         let reader: AVAssetReader
         do {
@@ -182,9 +186,14 @@ enum VideoProxyExtractor {
             AVVideoWidthKey: renderSize.width,
             AVVideoHeightKey: renderSize.height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 800_000,
-                AVVideoExpectedSourceFrameRateKey: 10,
-                AVVideoMaxKeyFrameIntervalKey: 30,
+                // Scaled 3× from the previous 800 kbps because we're now
+                // carrying 3× the frames (30 fps vs 10 fps). Keeps the
+                // per-frame bitrate budget approximately constant so
+                // Gemini sees the same visual quality per sample, just
+                // at the higher sample rate it requested.
+                AVVideoAverageBitRateKey: 2_400_000,
+                AVVideoExpectedSourceFrameRateKey: 30,
+                AVVideoMaxKeyFrameIntervalKey: 60,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264MainAutoLevel,
                 AVVideoAllowFrameReorderingKey: false,
             ]
@@ -258,7 +267,7 @@ enum VideoProxyExtractor {
         let elapsed = Date().timeIntervalSince(t0)
         let size = (try? FileManager.default.attributesOfItem(atPath: outUrl.path)[.size] as? Int64) ?? 0
         let mb = Double(size) / 1_048_576.0
-        print(String(format: "[proxy] encoded %.1fMB %.0fx%.0f@10fps in %.2fs → %@",
+        print(String(format: "[proxy] encoded %.1fMB %.0fx%.0f@30fps in %.2fs → %@",
                      mb, renderSize.width, renderSize.height, elapsed, outUrl.lastPathComponent))
 
         return outUrl
