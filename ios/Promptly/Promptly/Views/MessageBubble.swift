@@ -319,20 +319,158 @@ struct ThinkingDots: View {
     }
 }
 
+// MARK: - Smooth progress animator
+//
+// Drives a continuously-moving progress value from sparse backend
+// updates. This replaces the old "bar = whatever the backend last said,
+// 0.4s tween" model, which had two fatal flaws on a long render:
+//
+//   1. Between the worker's heartbeats (one every ~4s, with big jumps at
+//      stage boundaries) the bar sat dead-still, then snapped — it could
+//      never count smoothly 1,2,3,4.
+//   2. When a stage outran its backend duration estimate the worker's
+//      heartbeat CAPPED (render→bar 90, upload→bar 99) and held there,
+//      so the bar froze at the cap for 30-90s and read as broken. The
+//      monotonic clamp meant any high value, once shown, could never
+//      recede — so a premature/stale high pinned it at "99%".
+//
+// This animator instead runs on its OWN ~30fps clock and always glides:
+//   - `displayed` eases toward a ceiling derived from the latest
+//     backend-confirmed target. Big jumps in target are absorbed over a
+//     couple seconds, never snapped.
+//   - When the backend goes quiet, `displayed` keeps creeping a BOUNDED
+//     amount past the confirmed target (`maxDrift`) so motion never dies
+//     — but the bound means the bar can't run ahead of the real stage
+//     (during Gemini, target ≈ 60, so the bar physically can't exceed
+//     ~63). That is what makes a premature "99%" impossible.
+//   - The value is hard-capped below 100 until `complete()` — the real
+//     completion event — so it never claims done early.
+//
+// Monotonic by construction: `displayed` only ever increases.
+@MainActor
+final class TrickleProgress: ObservableObject {
+    /// 0–100, the value the UI shows. Updated ~30×/s while a render runs.
+    @Published private(set) var displayed: Double = 0
+
+    /// Highest backend-confirmed bar value (0–100). Never decreases.
+    private var confirmedTarget: Double = 0
+    /// When `confirmedTarget` last increased — drives the idle-creep ramp.
+    private var lastBumpAt = Date()
+    private var lastTickAt = Date()
+    private var isComplete = false
+    private var driver: Task<Void, Never>?
+
+    // Feel tunables. Pacing is mostly inherited from how fast the backend
+    // raises the target; these only shape the in-between motion.
+    private let hardCap: Double = 99            // never reach 100 until complete()
+    private let maxDrift: Double = 3            // max creep past a stalled target
+    private let driftRampSeconds: Double = 120  // time for drift to reach maxDrift
+    private let easePerSecond: Double = 0.8     // fraction of the gap closed per second
+    private let minCreepPerSecond: Double = 0.16 // guaranteed motion (pts/s) while a gap remains
+
+    /// Feed the latest backend-mapped bar value (0–100). Monotonic — a
+    /// value at or below the current target is ignored for positioning.
+    func update(target raw: Int) {
+        let v = min(100, max(0, Double(raw)))
+        if v > confirmedTarget {
+            confirmedTarget = v
+            lastBumpAt = Date()
+        }
+        start()
+    }
+
+    /// Real completion — release the cap and glide to 100.
+    func complete() {
+        isComplete = true
+        start()
+    }
+
+    func start() {
+        guard driver == nil else { return }
+        lastTickAt = Date()
+        driver = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 33_000_000) // ~30 fps
+                guard let self else { return }
+                if self.tick() { break }
+            }
+        }
+    }
+
+    func stop() {
+        driver?.cancel()
+        driver = nil
+    }
+
+    deinit { driver?.cancel() }
+
+    /// Advance one frame. Returns true only when fully complete (nothing
+    /// left to animate); otherwise keeps ticking so drift + future
+    /// updates can resume motion.
+    private func tick() -> Bool {
+        let now = Date()
+        let dt = min(0.1, max(0, now.timeIntervalSince(lastTickAt))) // clamp scheduler jitter
+        lastTickAt = now
+        let next = Self.advance(
+            displayed: displayed,
+            confirmedTarget: confirmedTarget,
+            secondsSinceBump: now.timeIntervalSince(lastBumpAt),
+            dt: dt,
+            isComplete: isComplete,
+            hardCap: hardCap,
+            maxDrift: maxDrift,
+            driftRampSeconds: driftRampSeconds,
+            easePerSecond: easePerSecond,
+            minCreepPerSecond: minCreepPerSecond
+        )
+        if next != displayed { displayed = next }
+        return isComplete && displayed >= 99.95
+    }
+
+    /// Pure pacing function — no clock, no state — so the behavior is
+    /// auditable and deterministic. Always returns a value >= `displayed`
+    /// (monotonic) and <= the ceiling, so the bar never jumps or reverses.
+    static func advance(
+        displayed: Double,
+        confirmedTarget: Double,
+        secondsSinceBump: Double,
+        dt: Double,
+        isComplete: Bool,
+        hardCap: Double,
+        maxDrift: Double,
+        driftRampSeconds: Double,
+        easePerSecond: Double,
+        minCreepPerSecond: Double
+    ) -> Double {
+        let ceiling: Double
+        if isComplete {
+            ceiling = 100
+        } else {
+            let drift = maxDrift * min(1, max(0, secondsSinceBump) / driftRampSeconds)
+            ceiling = min(hardCap, confirmedTarget + drift)
+        }
+        let gap = ceiling - displayed
+        if gap <= 0.01 { return displayed }
+        // Exponential ease toward the ceiling absorbs big target jumps
+        // smoothly instead of snapping.
+        var step = gap * (1 - exp(-easePerSecond * dt))
+        // Guarantee visible motion so the bar never looks frozen while a
+        // gap remains — this is what keeps it counting 1,2,3,4 during the
+        // long opaque stages.
+        if gap > 0.4 { step = max(step, minCreepPerSecond * dt) }
+        return min(ceiling, displayed + step)
+    }
+}
+
 // MARK: - Processing Indicator (ChatGPT-style — inline, thin progress line)
 //
-// Monotonic-clamped bar position driven directly by the backend's pct.
-// .animation(.easeOut(duration: 0.4)) handles all the visual smoothing —
-// no local timer, no extrapolation, no random nudges. The bar position
-// is whatever the backend says it should be, smoothly tweened.
+// Bar position is owned by TrickleProgress: a self-driving ~30fps ramp
+// that eases toward the backend target and never freezes or snaps.
 
 struct ProcessingIndicator: View {
     let stepMessage: String
     let progress: Int              // target from upload/SSE
-    // Monotonic-clamped position. Same model as PipelineProgressView:
-    // backend pcts are the truth; we just animate the visible bar to
-    // catch up over 400ms.
-    @State private var smoothedProgress: Int = 0
+    @StateObject private var trickle = TrickleProgress()
     @State private var pulse = false
 
     var body: some View {
@@ -363,7 +501,7 @@ struct ProcessingIndicator: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(max(smoothedProgress, 1))%")
+                Text("\(max(Int(trickle.displayed), 1))%")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
@@ -376,23 +514,25 @@ struct ProcessingIndicator: View {
                         .fill(Color(.separator).opacity(0.5))
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(smoothedProgress) / 100.0))))
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, trickle.displayed / 100.0))))
                 }
             }
             .frame(height: 3)
         }
         .frame(maxWidth: 320, alignment: .leading)
-        // 400ms ease-out per the bar contract — animate the visual
-        // position to the latest backend value with no local timer.
-        .animation(.easeOut(duration: 0.4), value: smoothedProgress)
-        .onAppear { pulse = true }
-        // Monotonic clamp: out-of-order heartbeats can land with a
-        // lower pct than what we've already shown. Ignore the pct in
-        // that case — the bar never goes backwards.
+        // No implicit .animation here — TrickleProgress already moves the
+        // bar continuously at ~30fps, so the width follows it frame-by-
+        // frame. An ease-out tween on top would fight that and re-introduce
+        // the snap we're getting rid of.
+        .onAppear {
+            pulse = true
+            trickle.update(target: progress)
+        }
+        .onDisappear { trickle.stop() }
+        // Feed the backend value in as a target ceiling. The animator owns
+        // monotonicity and all visual motion.
         .onChange(of: progress, initial: true) { _, new in
-            if new > smoothedProgress {
-                smoothedProgress = new
-            }
+            trickle.update(target: new)
         }
     }
 }
@@ -422,10 +562,11 @@ struct PipelineProgressView: View {
     /// while the backend cycles through more detailed copy, and the
     /// progress UI reads as frozen even though work is happening.
     var subMessage: String? = nil
-    // Monotonic bar position — only ever increases. Real signals from
-    // backend pct are the truth; we just animate the visible bar to
-    // catch up over 400ms.
-    @State private var smoothedProgress: Int = 0
+    // Self-driving bar position: TrickleProgress glides continuously at
+    // ~30fps toward the backend target and never freezes or snaps. See
+    // its definition above for why the old "mirror the backend pct"
+    // model produced the stuck-at-90/99 and jumpy behavior.
+    @StateObject private var trickle = TrickleProgress()
     @State private var lastUpdateAt: Date = Date()
     // Rotating fallback message shown when no SSE event has arrived
     // for several seconds. Nil when a real subMessage is available
@@ -500,7 +641,7 @@ struct PipelineProgressView: View {
                         .lineLimit(2)
                         .transition(.opacity)
                     Spacer(minLength: 8)
-                    Text("\(max(smoothedProgress, 1))%")
+                    Text("\(max(Int(trickle.displayed), 1))%")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
                         .monospacedDigit()
@@ -524,16 +665,16 @@ struct PipelineProgressView: View {
                 }
             }
 
-            // Progress bar. Width is driven by `smoothedProgress`, which
-            // animates over 400ms ease-out when a new event arrives (see
-            // the .animation modifier near the bottom of the view).
+            // Progress bar. Width follows `trickle.displayed`, which the
+            // animator advances continuously at ~30fps — no implicit
+            // tween needed (or wanted: it would re-introduce the snap).
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color(.separator).opacity(0.5))
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(smoothedProgress) / 100.0))))
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, trickle.displayed / 100.0))))
                 }
             }
             .frame(height: 3)
@@ -590,24 +731,16 @@ struct PipelineProgressView: View {
             }
         }
         .frame(maxWidth: 340, alignment: .leading)
-        // 400ms ease-out is the spec: just animate the visual position
-        // to the latest backend value. NO local extrapolation, NO timer
-        // creep, NO random nudges. Bar position = whatever the backend
-        // says it should be, smoothly tweened.
-        .animation(.easeOut(duration: 0.4), value: smoothedProgress)
-        // Monotonic clamp. The backend can occasionally emit an out-of-
-        // order heartbeat with a LOWER pct than what we've already
-        // shown (e.g. plan heartbeat at 38 lands after we've already
-        // jumped to 52 for broll_search). Per the contract, we ignore
-        // the pct in that case — but we DO still treat it as activity
-        // so the stale-watcher resets.
+        .onDisappear { trickle.stop() }
+        // Feed the backend value in as a target ceiling. TrickleProgress
+        // owns monotonicity (a lower pct is ignored for positioning) and
+        // all visual motion — it glides continuously rather than snapping.
+        // Every event also counts as activity so the stale-watcher resets.
         .onChange(of: progress, initial: true) { _, new in
             lastUpdateAt = Date()
             fallbackMessage = nil
             fallbackIndex = 0
-            if new > smoothedProgress {
-                smoothedProgress = new
-            }
+            trickle.update(target: new)
         }
         // Any backend message change is also activity — reset stale.
         .onChange(of: subMessage) { _, _ in
