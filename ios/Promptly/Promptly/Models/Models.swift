@@ -35,6 +35,12 @@ struct ChatMessage: Identifiable {
     var thumbnailUrl: String?
     var error: String?
     var isThinking: Bool = false
+    /// Transient (not persisted): set true the moment a job truly completes,
+    /// just before the processing bubble is swapped for the finished video.
+    /// The progress views observe this to release the bar's cap and let it
+    /// sweep to 100 over ~0.7s, so the bar visibly finishes instead of
+    /// vanishing mid-fill. See TrickleProgress.complete().
+    var isFinishing: Bool = false
     var stageTimeline: StageTimeline?  // Pipeline stage narrative (reference type so mutations propagate)
     var originalVibe: String?          // For in-chat Re-edit: the vibe that produced this video
     /// True for the auto-generated welcome message injected into empty

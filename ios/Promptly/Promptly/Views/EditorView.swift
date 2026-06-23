@@ -2535,16 +2535,16 @@ struct EditorView: View {
                 let streaming = videoUrl.map { isStreamingReadyUrl($0) } ?? false
 
                 if streaming {
-                    messages[messageIndex].jobStatus = "completed"
-                    messages[messageIndex].content = "Your video is ready!"
-                    messages[messageIndex].stageTimeline?.finish()
+                    // Finish beat: let the progress bar visibly sweep to 100
+                    // before swapping in the video, instead of vanishing
+                    // mid-fill. The asset is already pre-warmed above, so the
+                    // ~0.7s hold costs nothing perceptible and reads as "done!".
+                    messages[messageIndex].jobProgress = 100
+                    messages[messageIndex].isFinishing = true
                     persistMessages()
-                    if isFinalEvent {
-                        client.disconnect()
-                        sseClients.removeValue(forKey: jobId)
-                    }
                     // Background prefetch so offline replay works after
                     // first watch — same as iMessage / WhatsApp's pattern.
+                    // Kick it off now (not after the hold) so bytes land ASAP.
                     if let videoUrl {
                         Task.detached(priority: .background) {
                             await VideoCache.shared.downloadIfNeeded(
@@ -2552,6 +2552,18 @@ struct EditorView: View {
                                 from: videoUrl,
                                 priority: .prefetch
                             )
+                        }
+                    }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(0.7))
+                        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                        messages[idx].jobStatus = "completed"
+                        messages[idx].content = "Your video is ready!"
+                        messages[idx].stageTimeline?.finish()
+                        persistMessages()
+                        if isFinalEvent {
+                            client.disconnect()
+                            sseClients.removeValue(forKey: jobId)
                         }
                     }
                 } else {
@@ -2579,9 +2591,16 @@ struct EditorView: View {
                             }
                         }
                         guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
-                        messages[idx].jobStatus = "completed"
-                        messages[idx].content = "Your video is ready!"
-                        messages[idx].stageTimeline?.finish()
+                        // Finish beat: sweep the bar to 100, hold ~0.7s, then
+                        // reveal — same polished completion as the streaming path.
+                        messages[idx].jobProgress = 100
+                        messages[idx].isFinishing = true
+                        persistMessages()
+                        try? await Task.sleep(for: .seconds(0.7))
+                        guard let revealIdx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                        messages[revealIdx].jobStatus = "completed"
+                        messages[revealIdx].content = "Your video is ready!"
+                        messages[revealIdx].stageTimeline?.finish()
                         persistMessages()
                         if isFinalEvent {
                             client.disconnect()
