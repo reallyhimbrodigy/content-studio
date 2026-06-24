@@ -22,7 +22,12 @@ struct MovieFile: Transferable {
 }
 
 struct ChatMessage: Identifiable {
-    let id = UUID()
+    // `var` (not `let`) so a restored message can keep its ORIGINAL id across a
+    // persist→reload round-trip. The in-flight render lifecycle (upload →
+    // jobId → SSE) is keyed by this id; if reload minted a fresh UUID, an
+    // in-progress dispatch could no longer find its own bubble after the user
+    // switched chats and came back. Set once at construction/restore only.
+    var id = UUID()
     let role: MessageRole
     var content: String
     var videoAttachment: VideoAttachment?
@@ -195,11 +200,19 @@ struct SerializedMessage: Codable, Hashable {
         if message.renderedVideoUrl != nil || message.error != nil {
             return true
         }
-        // In-flight assistant placeholder with a real jobId. Persist it
-        // so the user can navigate away mid-render and find the progress
-        // bubble still there on return. The chat reloader restarts SSE
-        // and runs reconcile against the DB so the bar isn't stale.
-        if message.jobId != nil && message.role == .assistant {
+        // In-flight assistant placeholder. Persist it so the user can navigate
+        // away mid-render — OR mid-UPLOAD, before a jobId exists yet — and find
+        // the progress bubble still there on return. Two recovery paths re-bind
+        // it: (1) if it already has a jobId, the reloader restarts SSE +
+        // reconciles vs the DB; (2) if it's still uploading (no jobId), the
+        // dispatch coordinator routes the jobId back onto this message by its
+        // stable id the moment the upload completes (see EditorView's outcome
+        // routing). Persisting the no-jobId upload phase is what stops the
+        // bubble from vanishing when you switch chats while it's uploading.
+        if message.role == .assistant
+            && (message.jobId != nil
+                || message.jobStatus == "processing"
+                || message.jobStatus == "queued") {
             return true
         }
         // Otherwise: assistant text bubbles with content but no job.
@@ -248,6 +261,9 @@ struct SerializedMessage: Codable, Hashable {
             }
         }()
         var msg = ChatMessage(role: parsedRole, content: content)
+        // Keep the original id so an in-flight dispatch/SSE keyed on it can
+        // still find this bubble after a persist→reload round-trip.
+        if let uuid = UUID(uuidString: id) { msg.id = uuid }
         msg.jobId = jobId
         msg.jobStatus = jobStatus
         msg.renderedVideoUrl = renderedVideoUrl
@@ -267,9 +283,13 @@ struct SerializedMessage: Codable, Hashable {
         // We default to the "full" pipeline catalog — re-edit timelines
         // share the same stage IDs, so the first real `step` token
         // re-anchors the right one regardless.
-        let isInFlight = jobId != nil
-            && (jobStatus == "processing" || jobStatus == "queued" || jobStatus == nil)
-            && renderedVideoUrl == nil
+        // In-flight if the render hasn't produced a video yet AND it's either
+        // actively processing/queued (covers the UPLOAD phase, which has no
+        // jobId) or a jobId-bearing placeholder with no status yet.
+        let isInFlight = renderedVideoUrl == nil
+            && (jobStatus == "processing"
+                || jobStatus == "queued"
+                || (jobId != nil && jobStatus == nil))
         if isInFlight && parsedRole == .assistant {
             msg.stageTimeline = StageTimeline(mode: "full")
             if jobStatus == nil { msg.jobStatus = "processing" }

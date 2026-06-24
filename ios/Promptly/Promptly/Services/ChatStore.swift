@@ -144,6 +144,19 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    /// Mutate a single persisted message in any chat — even one that isn't
+    /// currently on screen — then schedule a save. Used by the render dispatch
+    /// to land a jobId (or a failure) on the right bubble after the user has
+    /// navigated away to another chat mid-upload, so it's there on return.
+    /// No-op if the chat or message isn't found.
+    func updateStoredMessage(chatId: String, messageId: String, _ transform: (inout SerializedMessage) -> Void) {
+        guard let cIdx = chats.firstIndex(where: { $0.id == chatId }) else { return }
+        var msgs = chats[cIdx].messages
+        guard let mIdx = msgs.firstIndex(where: { $0.id == messageId }) else { return }
+        transform(&msgs[mIdx])
+        scheduleSave(chatId: chatId, messages: msgs)
+    }
+
     private func flushPending() async {
         let snapshot = pendingSaves
         pendingSaves.removeAll()

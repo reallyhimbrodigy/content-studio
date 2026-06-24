@@ -2171,6 +2171,10 @@ struct EditorView: View {
             Task { @MainActor in
             _ = await ensureActiveChat()
             persistMessages()
+            // The chat these renders belong to. Captured so a dispatch that
+            // completes AFTER the user switched chats can still route its
+            // jobId/result onto the right (now off-screen) bubble's stored copy.
+            let dispatchChatId = chatStore.activeChatId
 
             // hasVideos is guaranteed true here: the text-only fast path
             // returned at the top of send(), and the re-edit branch
@@ -2190,6 +2194,28 @@ struct EditorView: View {
                         // 10-clip Pro cap while smoothing the rate.
                         if clipIndex > 0 {
                             try? await Task.sleep(for: .milliseconds(200 * clipIndex))
+                        }
+                        // Keep the upload→createVideoJob→startSSE handshake
+                        // alive if the user backgrounds the app right after
+                        // sending. The upload itself runs on a background
+                        // URLSession (fine), but the main-actor upload-wait
+                        // poll loop suspends on background — without this
+                        // assertion the job is never CREATED until the user
+                        // returns ("stuck on upload forever"). iOS grants
+                        // ~30s, enough to finish a quick upload + create the
+                        // job so the render proceeds server-side regardless.
+                        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+                        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "render-dispatch") {
+                            if bgTaskId != .invalid {
+                                UIApplication.shared.endBackgroundTask(bgTaskId)
+                                bgTaskId = .invalid
+                            }
+                        }
+                        defer {
+                            if bgTaskId != .invalid {
+                                UIApplication.shared.endBackgroundTask(bgTaskId)
+                                bgTaskId = .invalid
+                            }
                         }
                         // Helper: find the live index of the processing
                         // message by id. Returns nil if it's been removed
@@ -2248,6 +2274,16 @@ struct EditorView: View {
                                 messages[i].jobId = jobId
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
+                            } else if let cid = dispatchChatId {
+                                // User switched chats while this was uploading.
+                                // Land the jobId on the off-screen bubble's
+                                // persisted copy so resumeSSE + reconcile
+                                // re-link it the moment they return — instead
+                                // of the bubble being orphaned with no jobId.
+                                chatStore.updateStoredMessage(chatId: cid, messageId: msgId.uuidString) { m in
+                                    m.jobId = jobId
+                                    if m.jobStatus == nil { m.jobStatus = "processing" }
+                                }
                             }
                             scheduleStuckDetector(messageId: msgId, jobId: jobId)
                             // Async-refresh the usage snapshot so the
@@ -2265,16 +2301,27 @@ struct EditorView: View {
                             if hf.isPaymentRequired {
                                 // Same flow as the old APIError.paymentRequired
                                 // branch: pull the stub processing bubble
-                                // and pop the paywall.
+                                // and pop the paywall — but only when the
+                                // bubble is on screen. If the user switched
+                                // away, popping a paywall on an unrelated chat
+                                // is jarring; instead persist the limit message
+                                // onto the off-screen bubble so they see why on
+                                // return.
                                 if let i = indexOfProcessingMsg() {
                                     messages.remove(at: i)
                                     persistMessages()
-                                }
-                                if hf.paymentKind == "reedit" {
-                                    appState.paywallReason = .reedit
-                                } else {
-                                    let lim = hf.paymentLimit ?? 3
-                                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                                    if hf.paymentKind == "reedit" {
+                                        appState.paywallReason = .reedit
+                                    } else {
+                                        let lim = hf.paymentLimit ?? 3
+                                        appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                                    }
+                                } else if let cid = dispatchChatId {
+                                    chatStore.updateStoredMessage(chatId: cid, messageId: msgId.uuidString) { m in
+                                        m.jobStatus = "failed"
+                                        m.error = hf.userMessage
+                                        m.isRetryable = false
+                                    }
                                 }
                                 await UsageService.shared.refresh()
                             } else {
@@ -2293,8 +2340,23 @@ struct EditorView: View {
                                     messages[i].cachedProxyUrl = video.proxyUploadedUrl
                                     messages[i].cachedVibe = vibe
                                     persistMessages()
+                                } else if let cid = dispatchChatId {
+                                    // Off-screen failure — persist it so the
+                                    // error (and Try Again) is waiting on return
+                                    // instead of a forever-spinning bubble.
+                                    chatStore.updateStoredMessage(chatId: cid, messageId: msgId.uuidString) { m in
+                                        m.jobStatus = "failed"
+                                        m.error = hf.userMessage
+                                        m.isRetryable = !hf.requiresNewVideo
+                                        m.cachedSourceUrl = video.uploadedUrl
+                                        m.cachedProxyUrl = video.proxyUploadedUrl
+                                        m.cachedVibe = vibe
+                                    }
                                 }
-                                if hf.requiresNewVideo {
+                                // UI redirects (picker / vibe focus) only when
+                                // the failing bubble is on screen — firing them
+                                // while the user is in another chat is jarring.
+                                if hf.requiresNewVideo, failedMessageId != nil {
                                     await MainActor.run {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         showVideoPicker = true
@@ -2557,6 +2619,9 @@ struct EditorView: View {
                     Task { @MainActor in
                         try? await Task.sleep(for: .seconds(0.7))
                         guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                        // Never finalize a videoless "ready". If somehow no URL
+                        // landed, stay in-flight so reconcile/SSE fills it in.
+                        guard messages[idx].renderedVideoUrl != nil || messages[idx].hlsManifestUrl != nil else { return }
                         messages[idx].jobStatus = "completed"
                         messages[idx].content = "Your video is ready!"
                         messages[idx].stageTimeline?.finish()
@@ -2598,6 +2663,11 @@ struct EditorView: View {
                         persistMessages()
                         try? await Task.sleep(for: .seconds(0.7))
                         guard let revealIdx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                        // Never finalize a videoless "ready". If the completion
+                        // event carried no playable URL, stay in-flight so the
+                        // reconciler fills it in rather than stranding the user
+                        // on "Your video is ready!" with nothing to play.
+                        guard messages[revealIdx].renderedVideoUrl != nil || messages[revealIdx].hlsManifestUrl != nil else { return }
                         messages[revealIdx].jobStatus = "completed"
                         messages[revealIdx].content = "Your video is ready!"
                         messages[revealIdx].stageTimeline?.finish()
@@ -2723,12 +2793,22 @@ struct EditorView: View {
 
             switch row.status {
             case "completed", "complete":
-                messages[idx].jobStatus = "completed"
-                messages[idx].content = "Your video is ready!"
-                messages[idx].error = nil
                 if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
                 if let h = row.hls_manifest_url { messages[idx].hlsManifestUrl = h }
                 if let t = row.thumbnail_url { messages[idx].thumbnailUrl = t }
+                // Don't finalize a videoless "ready": if the DB says completed
+                // but no playable URL is populated yet, stay in-flight so the
+                // next reconcile/SSE tick fills it in. A completed message is
+                // never re-reconciled, so finalizing without a URL would
+                // permanently show "Your video is ready!" with no video.
+                guard messages[idx].renderedVideoUrl != nil || messages[idx].hlsManifestUrl != nil else {
+                    persistMessages()
+                    print("[reconcile] \(jobId) completed but no video URL yet — staying in-flight")
+                    return
+                }
+                messages[idx].jobStatus = "completed"
+                messages[idx].content = "Your video is ready!"
+                messages[idx].error = nil
                 messages[idx].stageTimeline?.finish()
                 print("[reconcile] \(jobId) → completed")
             case "failed":
