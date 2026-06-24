@@ -1152,10 +1152,6 @@ async function handlePhylloAccounts(req, res) {
 function isUserPro(req) {
   const plan = req?.user?.plan;
   const tier = req?.user?.tier;
-  // Admin comp mirrored from profiles.comp_pro (see hydrateUserTier). Matches
-  // the lib/entitlement.js isUserPro(profile) comp path so both entitlement
-  // entry points agree.
-  if (req?.user?.comp_pro === true) return true;
   if (req?.user?.isPro) return true;
   const normalizedTier = tier ? String(tier).toLowerCase().trim() : '';
   if (normalizedTier === 'pro' || normalizedTier === 'paid' || normalizedTier === 'premium') return true;
@@ -1406,7 +1402,7 @@ async function hydrateUserTier(req, context = 'Tier') {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('subscription_plan, tier, comp_pro')
+      .select('subscription_plan, tier')
       .eq('id', req.user.id)
       .maybeSingle();
     if (error) {
@@ -1417,8 +1413,6 @@ async function hydrateUserTier(req, context = 'Tier') {
       return null;
     }
     if (data) {
-      // Mirror the admin comp flag so isUserPro(req) honors it everywhere.
-      if (data.comp_pro === true) req.user.comp_pro = true;
       const rawTier = String(data.subscription_plan || data.tier || '').toLowerCase().trim();
       const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
       if (mappedTier) {
