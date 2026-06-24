@@ -222,6 +222,34 @@ class APIService {
         print("[prewarm] dispatch failed after retry (non-fatal): \(lastError?.localizedDescription ?? "unknown")")
     }
 
+    /// Fire-and-forget GPU render-container warmup. Hits Modal's warmup web
+    /// endpoint directly (no auth, body `{}`), which spins up the heavy GPU
+    /// render container + CUDA init and keeps it warm for ~3 min. Firing this
+    /// the moment an upload begins means the container is already hot by the
+    /// time we submit the render job, so the pipeline starts with no 15-30s
+    /// cold start. This is the GPU-render counterpart to `prewarmRender`,
+    /// which warms the CPU pre-processing (S3 download + transcript).
+    ///
+    /// Best-effort by contract: idempotent (calling again just keeps it warm),
+    /// never awaited in a way that blocks the upload/UI, and ALL errors are
+    /// swallowed — a failed warmup simply means we fall back to the cold-start
+    /// path. Short timeout because we only care about the side effect (starting
+    /// the container), never the response.
+    func warmupRenderContainer() async {
+        guard let url = URL(string: "https://reallyhimbrodigy--promptly-gpu-worker-promptlyworker-warmup.modal.run") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        request.timeoutInterval = 3
+        do {
+            _ = try await URLSession.shared.data(for: request)
+            print("[warmup] GPU render container warmup dispatched")
+        } catch {
+            print("[warmup] dispatch failed (non-fatal): \(error.localizedDescription)")
+        }
+    }
+
     /// Kick off a re-edit derived from an existing completed job. Server loads
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.

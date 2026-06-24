@@ -1153,6 +1153,18 @@ struct EditorView: View {
     /// handlePickedVideos so the precheck can gate it without
     /// duplicating logic.
     private func addPendingVideoAndStartUpload(_ video: PickedVideo) {
+        // Warm the GPU render container the instant an upload begins — the
+        // earliest possible point — so its ~15-30s cold start (heavy import +
+        // CUDA init) overlaps the entire upload + preprocessing and the render
+        // starts hot instead of stalling on container boot. Fire-and-forget:
+        // detached, never awaited, all errors swallowed inside the call, so it
+        // can't block or fail the upload. Idempotent — firing once per picked
+        // clip just keeps the container warm. (GPU-side counterpart to the
+        // prewarm call fired later once the S3 URL is known.)
+        Task.detached(priority: .utility) {
+            await APIService.shared.warmupRenderContainer()
+        }
+
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
         pending.isLoading = false
