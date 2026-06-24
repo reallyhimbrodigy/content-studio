@@ -219,6 +219,29 @@ final class SubscriptionService: ObservableObject {
         if entitled != isPro {
             isPro = entitled
         }
+        // Self-heal divergence: RevenueCat says Pro but the server profile
+        // hasn't caught up (webhook lag/failure, restore on a fresh install,
+        // a cross-device renewal). The server is the authoritative render
+        // gate, so reconcile it now instead of waiting for the user's next
+        // purchase. Fires only while diverged and is overlap-guarded, so it
+        // can't spam: once the server reflects Pro, UsageService.isPro flips
+        // true and this stops triggering.
+        if entitled && !UsageService.shared.isPro {
+            reconcileEntitlementIfNeeded()
+        }
+    }
+
+    private var isReconciling = false
+
+    /// Best-effort, debounced server reconciliation. Safe to call from any
+    /// customerInfo update (launch, identify, delegate renewal).
+    private func reconcileEntitlementIfNeeded() {
+        guard !isReconciling else { return }
+        isReconciling = true
+        Task { @MainActor in
+            await syncEntitlementWithServer()
+            isReconciling = false
+        }
     }
 }
 

@@ -83,3 +83,53 @@ test('reconciliation write shape satisfies isUserPro()', () => {
   };
   assert.strictEqual(isUserPro(profileRowAfterWrite), true);
 });
+
+// --- isUserPro: core profile cases (RevenueCat + admin comp) ---
+
+const future = new Date(NOW + 30 * 864e5).toISOString();
+const past = new Date(NOW - 864e5).toISOString();
+
+test('tier=pro with future pro_until is pro', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: future }), true);
+});
+
+test('tier=pro with expired pro_until is NOT pro', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: past }), false);
+});
+
+test('tier=pro with rc_app_user_id (webhook just landed) is pro', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro', rc_app_user_id: 'uuid' }), true);
+});
+
+test('free tier is not pro', () => {
+  assert.strictEqual(isUserPro({ tier: 'free' }), false);
+});
+
+// The fail-closed guard against the removed self-promote bypass: a bare
+// tier=pro (no pro_until, no rc_app_user_id, no comp) must NOT grant pro.
+test('bare tier=pro with no pro_until/rc_app_user_id/comp is NOT pro (fail-closed)', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro' }), false);
+});
+
+test('tier=pro with comp_pro=false stays fail-closed', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro', comp_pro: false }), false);
+});
+
+// Admin comp: comp_pro=true is an explicit, service-role-only signal (RLS
+// blocks clients from writing it), so it grants pro on its own.
+test('comp_pro=true grants pro (standalone admin comp)', () => {
+  assert.strictEqual(isUserPro({ comp_pro: true }), true);
+});
+
+test('comp_pro=true grants pro even alongside tier=pro and no dates', () => {
+  assert.strictEqual(isUserPro({ tier: 'pro', comp_pro: true }), true);
+});
+
+test('comp_pro=true grants pro even if tier still says free', () => {
+  assert.strictEqual(isUserPro({ tier: 'free', comp_pro: true }), true);
+});
+
+test('comp_pro truthy-but-not-true (e.g. string) does NOT grant pro', () => {
+  // Strict boolean only — avoids a stray truthy DB value silently comping.
+  assert.strictEqual(isUserPro({ comp_pro: 'yes' }), false);
+});

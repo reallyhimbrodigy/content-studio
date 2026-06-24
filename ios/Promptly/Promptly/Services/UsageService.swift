@@ -32,8 +32,14 @@ final class UsageService: ObservableObject {
     var chatLimit: Int { snapshot?.chat_limit ?? 50 }
     var rendersLeft: Int { max(0, renderLimit - rendersToday) }
     var chatsLeft: Int { max(0, chatLimit - chatsToday) }
-    var atRenderLimit: Bool { !isPro && rendersLeft <= 0 }
-    var atChatLimit: Bool { !isPro && chatsLeft <= 0 }
+    // Gate on the COMPOSITE Pro signal (RevenueCat OR server), matching the
+    // contract in SubscriptionService.effectiveIsPro and the picker/re-edit
+    // gates. Using the server-only `isPro` here meant a user who is Pro on
+    // RevenueCat but not-yet-synced server-side would still hit these
+    // paywalls while re-edit + 10-video select already worked — the exact
+    // split that read as "my Pro account isn't recognized."
+    var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && rendersLeft <= 0 }
+    var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && chatsLeft <= 0 }
 
     private init() {}
 
