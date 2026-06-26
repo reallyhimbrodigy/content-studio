@@ -17,8 +17,10 @@ CloudFront, Supabase, server.js routing, Supabase auth).
 - **Tracking:** per-submission `status` (new / approved / needs_changes) + a
   private `review_notes` field for the owner.
 - **Paths:** submission form at `/submit`, review dashboard at `/review`.
-- **Admin gate:** env allowlist `SUBMISSION_ADMIN_EMAILS` (comma-separated),
-  defaulting to the owner's login email. Enforced SERVER-SIDE on admin endpoints.
+- **Admin gate:** env allowlist `SUBMISSION_ADMIN_EMAILS` (comma-separated).
+  Enforced SERVER-SIDE on admin endpoints. **Fails closed** — if the env var is
+  unset the allowlist is empty and all admin requests get 403 (no hardcoded
+  default email). Owner must set it on the server to unlock /review.
 
 ## Form fields (/submit)
 - **Name** — required (non-empty after trim).

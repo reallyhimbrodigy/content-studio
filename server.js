@@ -55,6 +55,12 @@ const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendRenderCompleteNotification } = require('./services/pushNotifier');
+const {
+  validateUploadRequest,
+  validateSubmission,
+  isSubmissionAdmin,
+  isValidStatus,
+} = require('./lib/submissions');
 
 // SSE client registry — maps jobId -> Set of response objects
 const sseClients = new Map();
@@ -10294,6 +10300,163 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { ok: true });
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Abort failed' });
+      }
+    })();
+    return;
+  }
+
+  // ── Creator Submissions: presigned upload URL (PUBLIC, per-IP rate-limited) ──
+  // Anonymous creators request a presigned PUT URL to upload a video. The S3
+  // key is ALWAYS server-generated under submissions/ — we never trust a
+  // client-supplied prefix or key.
+  if (parsed.pathname === '/api/submissions/upload-url' && req.method === 'POST') {
+    (async () => {
+      try {
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+        if (!checkRateLimit(res, 'submissions:upload-url', clientIp, 10, 900)) return;
+        const body = await readJsonBody(req);
+        const result = validateUploadRequest({
+          fileName: body?.fileName,
+          contentType: body?.contentType,
+          size: body?.size,
+        });
+        if (!result.ok) {
+          return sendJson(res, 400, { error: result.error });
+        }
+        if (!s3.isConfigured()) {
+          return sendJson(res, 500, { error: 'Storage not configured' });
+        }
+        // Key is always server-generated under submissions/ — never trust client prefix.
+        const key = `submissions/${Date.now()}-${crypto.randomUUID()}-${result.safeName}`;
+        const uploadUrl = await s3.createPresignedPutUrl(key, 600);
+        const publicUrl = s3.getPublicUrl(key);
+        return sendJson(res, 200, { uploadUrl, publicUrl, key });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
+      }
+    })();
+    return;
+  }
+
+  // ── Creator Submissions: create submission (PUBLIC, per-IP rate-limited) ──
+  // Body: {creator_name, creator_email, notes, videos:[{key,filename,size,content_type}]}.
+  // Each video URL is derived server-side from its (validated) key — client url is ignored.
+  if (parsed.pathname === '/api/submissions' && req.method === 'POST') {
+    (async () => {
+      try {
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+        if (!checkRateLimit(res, 'submissions:submit', clientIp, 10, 900)) return;
+        const body = await readJsonBody(req);
+        const result = validateSubmission({
+          creator_name: body?.creator_name,
+          creator_email: body?.creator_email,
+          notes: body?.notes,
+          videos: body?.videos,
+        });
+        if (!result.ok) {
+          return sendJson(res, 400, { error: result.error });
+        }
+        if (!supabaseAdmin) {
+          return sendJson(res, 501, { error: 'Supabase admin client not configured' });
+        }
+        // Derive each video URL from its validated key (keys are guaranteed
+        // under submissions/ by lib/submissions). Ignore any client-supplied url.
+        const videos = result.value.videos.map((v) => ({
+          key: v.key,
+          filename: v.filename,
+          size: v.size,
+          content_type: v.content_type,
+          url: s3.getPublicUrl(v.key),
+        }));
+        const { data, error } = await supabaseAdmin
+          .from('creator_submissions')
+          .insert({
+            creator_name: result.value.creator_name,
+            creator_email: result.value.creator_email,
+            notes: result.value.notes,
+            videos,
+          })
+          .select('id')
+          .single();
+        if (error) {
+          throw Object.assign(new Error(error.message || 'Failed to create submission'), { statusCode: 500 });
+        }
+        return sendJson(res, 200, { ok: true, id: data.id });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to create submission' });
+      }
+    })();
+    return;
+  }
+
+  // ── Creator Submissions: list all (ADMIN) ──
+  // Gated by the SUBMISSION_ADMIN_EMAILS allowlist (comma-separated emails).
+  // Fails CLOSED: if the env var is unset, the allowlist is empty and every
+  // request is rejected (403) — set SUBMISSION_ADMIN_EMAILS to the owner's
+  // login email(s) on the server to unlock /review. No email is hardcoded.
+  if (parsed.pathname === '/api/admin/submissions' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        const allowlist = process.env.SUBMISSION_ADMIN_EMAILS || '';
+        if (!isSubmissionAdmin(user.email, allowlist)) {
+          return sendJson(res, 403, { error: 'Forbidden' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('creator_submissions')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) {
+          throw Object.assign(new Error(error.message || 'Failed to load submissions'), { statusCode: 500 });
+        }
+        return sendJson(res, 200, { submissions: data || [] });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to load submissions' });
+      }
+    })();
+    return;
+  }
+
+  // ── Creator Submissions: update one (ADMIN) ──
+  // PATCH /api/admin/submissions/:id  Body: {status?, review_notes?}.
+  if (parsed.pathname.startsWith('/api/admin/submissions/') && req.method === 'PATCH') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        const allowlist = process.env.SUBMISSION_ADMIN_EMAILS || '';
+        if (!isSubmissionAdmin(user.email, allowlist)) {
+          return sendJson(res, 403, { error: 'Forbidden' });
+        }
+        const id = parsed.pathname.slice('/api/admin/submissions/'.length);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+          return sendJson(res, 400, { error: 'Invalid submission id' });
+        }
+        const body = await readJsonBody(req);
+        const patch = {};
+        if (body?.status !== undefined) {
+          if (!isValidStatus(body.status)) {
+            return sendJson(res, 400, { error: 'Invalid status' });
+          }
+          patch.status = String(body.status).toLowerCase().trim();
+        }
+        if (body?.review_notes !== undefined) {
+          patch.review_notes = body.review_notes === null ? null : String(body.review_notes);
+        }
+        if (Object.keys(patch).length === 0) {
+          return sendJson(res, 400, { error: 'No fields to update' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('creator_submissions')
+          .update(patch)
+          .eq('id', id)
+          .select('*')
+          .single();
+        if (error) {
+          throw Object.assign(new Error(error.message || 'Failed to update submission'), { statusCode: 500 });
+        }
+        return sendJson(res, 200, data);
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to update submission' });
       }
     })();
     return;
