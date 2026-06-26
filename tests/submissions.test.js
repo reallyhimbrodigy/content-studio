@@ -12,6 +12,7 @@ const {
   MAX_EMAIL_LEN,
   VALID_STATUSES,
   isSubmissionAdmin,
+  isSubmissionAdminUserId,
   isValidVideoKey,
   isValidStatus,
   validateUploadRequest,
@@ -56,6 +57,29 @@ test('isSubmissionAdmin: matches within multiple comma-separated allowlist', () 
   assert.strictEqual(isSubmissionAdmin('admin@example.com', list), true);
   assert.strictEqual(isSubmissionAdmin('third@example.com', list), true);
   assert.strictEqual(isSubmissionAdmin('missing@example.com', list), false);
+});
+
+// --- isSubmissionAdminUserId ---
+
+test('isSubmissionAdminUserId: uid in allowlist (case-insensitive + trimmed)', () => {
+  const uid = 'EC702499-CA10-49E6-8850-DF8F99840904';
+  assert.strictEqual(isSubmissionAdminUserId('ec702499-ca10-49e6-8850-df8f99840904', ` ${uid} `), true);
+});
+
+test('isSubmissionAdminUserId: uid not in allowlist', () => {
+  assert.strictEqual(isSubmissionAdminUserId('aaaaaaaa-0000-0000-0000-000000000000', 'ec702499-ca10-49e6-8850-df8f99840904'), false);
+});
+
+test('isSubmissionAdminUserId: empty uid or empty allowlist is not admin', () => {
+  assert.strictEqual(isSubmissionAdminUserId('', 'ec702499-ca10-49e6-8850-df8f99840904'), false);
+  assert.strictEqual(isSubmissionAdminUserId('ec702499-ca10-49e6-8850-df8f99840904', ''), false);
+  assert.strictEqual(isSubmissionAdminUserId('ec702499-ca10-49e6-8850-df8f99840904', undefined), false);
+});
+
+test('isSubmissionAdminUserId: matches within multiple comma-separated allowlist', () => {
+  const list = 'aaaa1111-0000-0000-0000-000000000000, ec702499-ca10-49e6-8850-df8f99840904 ,bbbb2222-0000-0000-0000-000000000000';
+  assert.strictEqual(isSubmissionAdminUserId('ec702499-ca10-49e6-8850-df8f99840904', list), true);
+  assert.strictEqual(isSubmissionAdminUserId('cccc3333-0000-0000-0000-000000000000', list), false);
 });
 
 // --- isValidVideoKey ---

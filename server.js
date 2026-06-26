@@ -59,8 +59,24 @@ const {
   validateUploadRequest,
   validateSubmission,
   isSubmissionAdmin,
+  isSubmissionAdminUserId,
   isValidStatus,
 } = require('./lib/submissions');
+
+// The owner's Supabase user id is always authorized to review submissions, so
+// /review works with zero env config. Additional reviewers can be added via
+// SUBMISSION_ADMIN_USER_IDS (uids) or SUBMISSION_ADMIN_EMAILS (emails) —
+// both comma-separated. A user id is stable and not a credential, so gating by
+// the owner's id (vs. a guessable/forgeable value) is safe: only that account's
+// authenticated session passes requireSupabaseUser.
+const SUBMISSION_OWNER_USER_ID = 'ec702499-ca10-49e6-8850-df8f99840904';
+function isAuthorizedSubmissionReviewer(user) {
+  if (!user) return false;
+  if (user.id && String(user.id) === SUBMISSION_OWNER_USER_ID) return true;
+  if (isSubmissionAdminUserId(user.id, process.env.SUBMISSION_ADMIN_USER_IDS || '')) return true;
+  if (isSubmissionAdmin(user.email, process.env.SUBMISSION_ADMIN_EMAILS || '')) return true;
+  return false;
+}
 
 // SSE client registry — maps jobId -> Set of response objects
 const sseClients = new Map();
@@ -10390,16 +10406,14 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Creator Submissions: list all (ADMIN) ──
-  // Gated by the SUBMISSION_ADMIN_EMAILS allowlist (comma-separated emails).
-  // Fails CLOSED: if the env var is unset, the allowlist is empty and every
-  // request is rejected (403) — set SUBMISSION_ADMIN_EMAILS to the owner's
-  // login email(s) on the server to unlock /review. No email is hardcoded.
+  // Gated by isAuthorizedSubmissionReviewer: the owner's user id (always), plus
+  // optional SUBMISSION_ADMIN_USER_IDS / SUBMISSION_ADMIN_EMAILS env allowlists.
+  // Non-owner sessions with no matching env entry are rejected (403).
   if (parsed.pathname === '/api/admin/submissions' && req.method === 'GET') {
     (async () => {
       try {
         const user = await requireSupabaseUser(req);
-        const allowlist = process.env.SUBMISSION_ADMIN_EMAILS || '';
-        if (!isSubmissionAdmin(user.email, allowlist)) {
+        if (!isAuthorizedSubmissionReviewer(user)) {
           return sendJson(res, 403, { error: 'Forbidden' });
         }
         const { data, error } = await supabaseAdmin
@@ -10423,8 +10437,7 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const user = await requireSupabaseUser(req);
-        const allowlist = process.env.SUBMISSION_ADMIN_EMAILS || '';
-        if (!isSubmissionAdmin(user.email, allowlist)) {
+        if (!isAuthorizedSubmissionReviewer(user)) {
           return sendJson(res, 403, { error: 'Forbidden' });
         }
         const id = parsed.pathname.slice('/api/admin/submissions/'.length);
