@@ -10996,9 +10996,12 @@ const server = http.createServer((req, res) => {
         // aliased to a signed-in user) — treating it as a revoke would strip
         // Pro from a paying customer at the exact moment they sign in. It
         // falls through to the ack branch instead.
+        // NOTE: BILLING_ISSUE is intentionally NOT here — a failed renewal
+        // payment doesn't mean the user lost access yet (Apple offers a billing
+        // grace period). It's handled in its own branch below so we keep Pro
+        // through the grace window instead of yanking it instantly.
         const revokesProNow = new Set([
           'EXPIRATION',
-          'BILLING_ISSUE',
           'SUBSCRIPTION_PAUSED',
           'REFUND',
         ]);
@@ -11013,10 +11016,34 @@ const server = http.createServer((req, res) => {
             rc_period_type: periodType,
           };
         } else if (type === 'CANCELLATION') {
-          // User cancelled but keeps access until expiration_at_ms. No
-          // change to tier — isUserPro will flip to false naturally when
-          // pro_until passes. Just record the new (unchanged) expiration.
+          // User cancelled but keeps access until expiration_at_ms. No change
+          // to tier — isUserPro flips to false naturally when pro_until passes.
+          // Guard: only move pro_until if we actually got a valid expiration;
+          // a missing/zero expiration must NOT null it out (that would revoke a
+          // still-paid period the instant the cancellation is logged).
+          if (!expirationIso) {
+            return sendJson(res, 200, { ok: true, ignored: 'CANCELLATION_no_expiration' });
+          }
           update = { pro_until: expirationIso, rc_app_user_id: appUserId };
+        } else if (type === 'BILLING_ISSUE') {
+          // A renewal payment failed, but the user is still entitled during
+          // Apple's billing grace period. Keep Pro through
+          // grace_period_expiration_at_ms (or expiration_at_ms) when that's in
+          // the future; only fully revoke once no entitlement remains. A
+          // successful retry fires RENEWAL and extends pro_until normally.
+          const graceMs = Number(event.grace_period_expiration_at_ms || 0);
+          const keepUntilMs = Math.max(graceMs, expirationMs);
+          if (keepUntilMs > Date.now()) {
+            update = { pro_until: new Date(keepUntilMs).toISOString(), rc_period_type: periodType };
+          } else {
+            update = {
+              tier: 'free',
+              pro_until: null,
+              rc_app_user_id: appUserId,
+              rc_product_id: productId,
+              rc_period_type: periodType,
+            };
+          }
         } else if (revokesProNow.has(type)) {
           update = {
             tier: 'free',
