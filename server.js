@@ -48,6 +48,7 @@ const {
   isUserPro: isProfilePro,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
+  revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
@@ -10950,9 +10951,11 @@ const server = http.createServer((req, res) => {
           console.warn('[RevenueCat] webhook called but REVENUECAT_WEBHOOK_AUTH not set');
           return sendJson(res, 503, { error: 'webhook_not_configured' });
         }
-        const got = String(req.headers.authorization || '');
-        const expectedHeader = `Bearer ${expected}`;
-        if (got !== expectedHeader) {
+        // Accept the secret whether RevenueCat's dashboard sends it bare or as
+        // "Bearer <secret>" (and ignore stray whitespace) — a prefix mismatch
+        // was 401ing every webhook and silently breaking billing sync. The
+        // secret VALUE still has to match, so this grants nothing extra.
+        if (!revenuecatWebhookAuthMatches(req.headers.authorization, expected)) {
           console.warn('[RevenueCat] webhook auth mismatch');
           return sendJson(res, 401, { error: 'unauthorized' });
         }

@@ -3,7 +3,7 @@
 // Run with:  node --test tests/entitlement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isUserPro, proEntitlementFromV2ActiveList } = require('../lib/entitlement');
+const { isUserPro, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -69,6 +69,45 @@ test('empty / garbage lists are not active', () => {
   assert.strictEqual(proEntitlementFromV2ActiveList([], PRO_ID, NOW).active, false);
   assert.strictEqual(proEntitlementFromV2ActiveList(null, PRO_ID, NOW).active, false);
   assert.strictEqual(proEntitlementFromV2ActiveList([{}], PRO_ID, NOW).active, false);
+});
+
+// --- revenuecatWebhookAuthMatches: tolerate the dashboard's Bearer/bare forms ---
+// This is the exact bug that 401'd every production webhook: the dashboard sent
+// one form, the server expected the other.
+
+test('webhook auth: bare header matches bare secret', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('s3cr3t', 's3cr3t'), true);
+});
+
+test('webhook auth: "Bearer <secret>" header matches bare secret', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer s3cr3t', 's3cr3t'), true);
+});
+
+test('webhook auth: bare header matches "Bearer <secret>" configured', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('s3cr3t', 'Bearer s3cr3t'), true);
+});
+
+test('webhook auth: Bearer on both sides matches', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer s3cr3t', 'Bearer s3cr3t'), true);
+});
+
+test('webhook auth: case-insensitive prefix + stray whitespace tolerated', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('  bearer   s3cr3t  ', '  s3cr3t '), true);
+});
+
+test('webhook auth: wrong secret is rejected', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer nope', 's3cr3t'), false);
+});
+
+test('webhook auth: empty configured secret fails closed', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer s3cr3t', ''), false);
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer s3cr3t', '   '), false);
+  assert.strictEqual(revenuecatWebhookAuthMatches('Bearer s3cr3t', 'Bearer   '), false);
+});
+
+test('webhook auth: missing/empty header is rejected', () => {
+  assert.strictEqual(revenuecatWebhookAuthMatches('', 's3cr3t'), false);
+  assert.strictEqual(revenuecatWebhookAuthMatches(undefined, 's3cr3t'), false);
 });
 
 // Guards the contract the reconciliation write depends on: an active RC
