@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Feedback • Promptly</title>
+    <link rel="icon" type="image/png" href="/assets/promptly-logo-white-on-black.png" />
+    <link rel="apple-touch-icon" href="/assets/promptly-logo-white-on-black.png" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  background: var(--bg-body);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 1.5rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* ===== HEADER ===== */
+.page-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.wordmark img { display: block; }
+
+.page-head h1 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.head-spacer { flex: 1; }
+
+/* ===== TOOLBAR ===== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.filter-group {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
+
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.toolbar-spacer { flex: 1; }
+
+button.ghost {
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.825rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.15s ease;
+}
+
+button.ghost:hover { border-color: var(--text-tertiary); }
+button.ghost:disabled { opacity: 0.5; cursor: default; }
+
+/* ===== STATE PANELS ===== */
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  max-width: 420px;
+  margin: 3rem auto;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.panel .mark { margin-bottom: 1.25rem; display: inline-flex; }
+.panel h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+.panel p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; }
+
+button.primary, a.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.primary:hover, a.primary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== CARDS ===== */
+.cards { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.card-head .meta { min-width: 0; flex: 1; }
+.card-head .meta .when { font-size: 0.82rem; color: var(--text-secondary); }
+.card-head .meta .who { margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-tertiary); word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.badge {
+  flex-shrink: 0;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.badge.up { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+.badge.down { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.badge.comment { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+.badge svg { display: block; }
+
+/* ===== FEEDBACK BODY ===== */
+.feedback-text {
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 1rem;
+}
+.feedback-text.empty { color: var(--text-tertiary); font-style: italic; }
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+.tag .label { color: var(--text-tertiary); font-weight: 600; }
+.tag a { color: var(--accent); text-decoration: none; }
+.tag a:hover { text-decoration: underline; }
+.tag .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+
+.empty-list {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 3rem 1rem;
+  font-size: 0.95rem;
+}
+
+.global-error {
+  color: #ef4444;
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 600px) {
+  body { padding: 1rem; }
+}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="page-head">
+        <span class="wordmark">
+          <picture>
+            <source srcset="/assets/promptly-mark-black.png" media="(prefers-color-scheme: light)" />
+            <img src="/assets/promptly-mark-white.png" alt="" width="24" height="24" />
+          </picture>
+          <span>Promptly</span>
+        </span>
+        <div class="head-spacer"></div>
+        <h1 id="page-title" style="display:none;">Feedback</h1>
+      </div>
+
+      <!-- Authenticated toolbar (hidden until ready) -->
+      <div class="toolbar" id="toolbar" style="display:none;">
+        <div class="filter-group" id="filter-group">
+          <button class="chip" type="button" data-filter="all" aria-pressed="true">All</button>
+          <button class="chip" type="button" data-filter="up" aria-pressed="false">Thumbs up</button>
+          <button class="chip" type="button" data-filter="down" aria-pressed="false">Thumbs down</button>
+          <button class="chip" type="button" data-filter="comment" aria-pressed="false">Has comment</button>
+        </div>
+        <div class="toolbar-spacer"></div>
+        <button class="ghost" type="button" id="refresh-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      <div id="global-error" class="global-error" style="display:none;"></div>
+
+      <!-- Content slot: panels or cards rendered here -->
+      <div id="content"></div>
+    </div>
+
+    <script type="module">
+      import { supabase } from './supabase-client.js';
+
+      // ?mode=login so /auth opens directly on the Sign In form (it defaults to
+      // Sign Up otherwise — auth.js reads this param).
+      const SIGNIN_URL = '/auth?mode=login';
+
+      const contentEl = document.getElementById('content');
+      const toolbarEl = document.getElementById('toolbar');
+      const titleEl = document.getElementById('page-title');
+      const globalErrorEl = document.getElementById('global-error');
+      const refreshBtn = document.getElementById('refresh-btn');
+      const filterGroup = document.getElementById('filter-group');
+
+      let accessToken = null;
+      let feedback = [];
+      let activeFilter = 'all';
+
+      // ---------- escaping ----------
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // ---------- panels (unauthenticated / error states) ----------
+      const MARK = `
+        <span class="mark">
+          <picture>
+            <source srcset="/assets/promptly-mark-black.png" media="(prefers-color-scheme: light)" />
+            <img src="/assets/promptly-mark-white.png" alt="" width="32" height="32" />
+          </picture>
+        </span>`;
+
+      function showPanel(title, message, ctaLabel, ctaHref) {
+        toolbarEl.style.display = 'none';
+        titleEl.style.display = 'none';
+        globalErrorEl.style.display = 'none';
+        const cta = ctaLabel
+          ? `<a class="primary" href="${esc(ctaHref)}">${esc(ctaLabel)}</a>`
+          : '';
+        contentEl.innerHTML = `
+          <section class="panel">
+            ${MARK}
+            <h2>${esc(title)}</h2>
+            <p>${esc(message)}</p>
+            ${cta}
+          </section>`;
+      }
+
+      function showSignIn() {
+        showPanel(
+          'Sign in to view feedback',
+          'You need to be signed in as an owner to view user feedback.',
+          'Sign in',
+          SIGNIN_URL
+        );
+      }
+
+      function showAdminRequired() {
+        showPanel(
+          'Admin access required',
+          'This account is not authorized to view feedback. Sign in with an owner account.',
+          'Sign in',
+          SIGNIN_URL
+        );
+      }
+
+      // ---------- date ----------
+      function fmtDate(value) {
+        if (!value) return 'Unknown date';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return 'Unknown date';
+        try {
+          return d.toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit',
+          });
+        } catch (_) {
+          return d.toLocaleString();
+        }
+      }
+
+      function normRating(r) {
+        const v = String(r || '').toLowerCase().trim();
+        return (v === 'up' || v === 'down') ? v : null;
+      }
+
+      // ---------- badges (inline SVG so we never inject untrusted markup) ----------
+      const THUMB_UP = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M7 10v11M2 13v6a2 2 0 0 0 2 2h13.5a2 2 0 0 0 1.97-1.64l1.36-7A2 2 0 0 0 18.86 10H14V5a2 2 0 0 0-2-2l-3 7H7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const THUMB_DOWN = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M17 14V3M22 11V5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-1.97 1.64l-1.36 7A2 2 0 0 0 5.14 14H10v5a2 2 0 0 0 2 2l3-7h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const COMMENT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+      function badgeFor(rating) {
+        if (rating === 'up') return `<span class="badge up">${THUMB_UP}<span>Thumbs up</span></span>`;
+        if (rating === 'down') return `<span class="badge down">${THUMB_DOWN}<span>Thumbs down</span></span>`;
+        return `<span class="badge comment">${COMMENT}<span>Comment</span></span>`;
+      }
+
+      // ---------- rendering ----------
+      function render() {
+        globalErrorEl.style.display = 'none';
+        toolbarEl.style.display = '';
+        titleEl.style.display = '';
+
+        const filtered = feedback.filter((f) => {
+          const rating = normRating(f.rating);
+          if (activeFilter === 'all') return true;
+          if (activeFilter === 'up') return rating === 'up';
+          if (activeFilter === 'down') return rating === 'down';
+          if (activeFilter === 'comment') {
+            return !!(f.text && String(f.text).trim());
+          }
+          return true;
+        });
+
+        if (!feedback.length) {
+          contentEl.innerHTML = '<div class="empty-list">No feedback yet.</div>';
+          return;
+        }
+        if (!filtered.length) {
+          contentEl.innerHTML = '<div class="empty-list">No feedback matches this filter.</div>';
+          return;
+        }
+
+        const cards = document.createElement('div');
+        cards.className = 'cards';
+        filtered.forEach((f) => cards.appendChild(buildCard(f)));
+        contentEl.innerHTML = '';
+        contentEl.appendChild(cards);
+      }
+
+      function buildCard(f) {
+        const rating = normRating(f.rating);
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const text = f.text ? String(f.text).trim() : '';
+        const textHtml = text
+          ? `<div class="feedback-text">${esc(text)}</div>`
+          : '<div class="feedback-text empty">No comment provided.</div>';
+
+        const jobId = f.job_id ? String(f.job_id).trim() : '';
+        const userId = f.user_id ? String(f.user_id).trim() : '';
+        const appVersion = f.app_version ? String(f.app_version).trim() : '';
+
+        const tags = [];
+        if (jobId) {
+          tags.push(`<span class="tag"><span class="label">Video</span><span class="mono">${esc(jobId)}</span></span>`);
+        }
+        if (appVersion) {
+          tags.push(`<span class="tag"><span class="label">Version</span><span>${esc(appVersion)}</span></span>`);
+        }
+        const tagsHtml = tags.length ? `<div class="tags">${tags.join('')}</div>` : '';
+
+        const whoHtml = userId
+          ? `<div class="who">${esc(userId)}</div>`
+          : `<div class="who">Unknown user</div>`;
+
+        card.innerHTML = `
+          <div class="card-head">
+            <div class="meta">
+              <div class="when">${esc(fmtDate(f.created_at))}</div>
+              ${whoHtml}
+            </div>
+            ${badgeFor(rating)}
+          </div>
+          ${textHtml}
+          ${tagsHtml}
+        `;
+
+        return card;
+      }
+
+      // ---------- API ----------
+      async function fetchFeedback() {
+        const res = await fetch('/api/admin/feedback', {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (res.status === 401 || res.status === 403) {
+          const e = new Error('Unauthorized');
+          e.authBlocked = true;
+          throw e;
+        }
+        if (!res.ok) throw new Error('Failed to load feedback');
+        const data = await res.json().catch(() => null);
+        const list = Array.isArray(data) ? data
+          : (data && Array.isArray(data.feedback)) ? data.feedback
+          : (data && Array.isArray(data.data)) ? data.data
+          : [];
+        return list;
+      }
+
+      function sortNewestFirst(list) {
+        return list.slice().sort((a, b) => {
+          const da = new Date(a.created_at || 0).getTime() || 0;
+          const db = new Date(b.created_at || 0).getTime() || 0;
+          return db - da;
+        });
+      }
+
+      async function load() {
+        refreshBtn.disabled = true;
+        try {
+          const list = await fetchFeedback();
+          feedback = sortNewestFirst(list);
+          render();
+        } catch (err) {
+          if (err && err.authBlocked) {
+            showAdminRequired();
+          } else {
+            toolbarEl.style.display = '';
+            titleEl.style.display = '';
+            globalErrorEl.textContent = 'Could not load feedback. Try refreshing.';
+            globalErrorEl.style.display = '';
+            contentEl.innerHTML = '';
+          }
+        } finally {
+          refreshBtn.disabled = false;
+        }
+      }
+
+      // ---------- toolbar wiring ----------
+      filterGroup.addEventListener('click', (e) => {
+        const btn = e.target.closest('.chip');
+        if (!btn) return;
+        activeFilter = btn.dataset.filter;
+        filterGroup.querySelectorAll('.chip').forEach((c) => {
+          c.setAttribute('aria-pressed', c === btn ? 'true' : 'false');
+        });
+        render();
+      });
+
+      refreshBtn.addEventListener('click', () => { load(); });
+
+      // ---------- boot ----------
+      (async () => {
+        let session = null;
+        try {
+          const { data } = await supabase.auth.getSession();
+          session = data ? data.session : null;
+        } catch (_) {
+          session = null;
+        }
+        accessToken = session && session.access_token ? session.access_token : null;
+        if (!accessToken) {
+          showSignIn();
+          return;
+        }
+        await load();
+      })();
+    </script>
+  </body>
+</html>

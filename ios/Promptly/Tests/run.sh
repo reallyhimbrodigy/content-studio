@@ -1,10 +1,18 @@
 #!/bin/bash
-# Runs the standalone TricklePacing unit tests. The Xcode project has no test
-# target; these are pure Foundation and compile/run natively in well under a
-# second. Exit code is non-zero if any check fails.
+# Runs the standalone unit tests. The Xcode project has no test target; these
+# are pure Foundation and compile/run natively in well under a second. Exit
+# code is non-zero if any check fails.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# TricklePacing — render progress bar pacing math.
 swiftc "$DIR/../Promptly/Views/TricklePacing.swift" \
        "$DIR/TricklePacingTests.swift" \
        -o "${TMPDIR:-/tmp}/pacingtest"
 "${TMPDIR:-/tmp}/pacingtest"
+
+# FeedbackGate — in-app feedback prompt cadence decisions.
+swiftc "$DIR/../Promptly/Views/FeedbackGate.swift" \
+       "$DIR/FeedbackGateTests.swift" \
+       -o "${TMPDIR:-/tmp}/feedbacktest"
+"${TMPDIR:-/tmp}/feedbacktest"

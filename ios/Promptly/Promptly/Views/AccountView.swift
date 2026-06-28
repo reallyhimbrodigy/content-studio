@@ -32,6 +32,9 @@ struct AccountView: View {
     @State private var passwordResetSent = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
+    @State private var showFeedbackSheet = false
+    @State private var feedbackText = ""
+    @State private var feedbackSent = false
 
     var body: some View {
         NavigationStack {
@@ -75,6 +78,13 @@ struct AccountView: View {
                         if let url = URL(string: "https://usepromptly.app/help.html") {
                             UIApplication.shared.open(url)
                         }
+                    }
+                    divider
+
+                    row("Send feedback") {
+                        feedbackText = ""
+                        feedbackSent = false
+                        showFeedbackSheet = true
                     }
                     divider
 
@@ -176,6 +186,45 @@ struct AccountView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(deleteAccountError ?? "")
+            }
+            .sheet(isPresented: $showFeedbackSheet) {
+                feedbackSheet
+            }
+        }
+    }
+
+    // MARK: - Feedback sheet (passive "Send feedback" entry)
+
+    private var feedbackSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("What's on your mind? Bugs, ideas, anything — it comes straight to us.")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(.secondaryLabel))
+
+                TextField("Your feedback", text: $feedbackText, axis: .vertical)
+                    .lineLimit(5...12)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Send feedback")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showFeedbackSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send") {
+                        let text = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Task { await FeedbackManager.shared.submitFeedback(rating: nil, text: text, jobId: nil) }
+                        showFeedbackSheet = false
+                    }
+                    .disabled(feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
             }
         }
     }

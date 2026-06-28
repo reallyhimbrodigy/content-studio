@@ -63,6 +63,7 @@ const {
   isSubmissionAdminUserId,
   isValidStatus,
 } = require('./lib/submissions');
+const { validateFeedback } = require('./lib/feedback');
 
 // The owner's Supabase user id is always authorized to review submissions, so
 // /review works with zero env config. Additional reviewers can be added via
@@ -10527,6 +10528,60 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, data);
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to update submission' });
+      }
+    })();
+    return;
+  }
+
+  // ── In-app feedback: submit (AUTHENTICATED) ──
+  // The signed-in app user POSTs { rating: 'up'|'down'|null, text?, job_id?,
+  // app_version? }. user_id is taken from the auth token, NEVER the client.
+  if (parsed.pathname === '/api/feedback' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const v = validateFeedback(body || {});
+        if (!v.ok) return sendJson(res, 400, { error: v.error });
+        const { error } = await supabaseAdmin
+          .from('app_feedback')
+          .insert({
+            user_id: user.id,
+            rating: v.value.rating,
+            text: v.value.text,
+            job_id: v.value.job_id,
+            app_version: v.value.app_version,
+          });
+        if (error) {
+          throw Object.assign(new Error(error.message || 'Failed to save feedback'), { statusCode: 500 });
+        }
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to save feedback' });
+      }
+    })();
+    return;
+  }
+
+  // ── In-app feedback: list all (ADMIN) ──
+  // Owner-gated by the same allowlist as the submission review dashboard.
+  if (parsed.pathname === '/api/admin/feedback' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!isAuthorizedSubmissionReviewer(user)) {
+          return sendJson(res, 403, { error: 'Forbidden' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('app_feedback')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) {
+          throw Object.assign(new Error(error.message || 'Failed to load feedback'), { statusCode: 500 });
+        }
+        return sendJson(res, 200, { feedback: data || [] });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to load feedback' });
       }
     })();
     return;

@@ -1178,6 +1178,10 @@ struct CompletedVideoView: View {
     @State private var liveVideoUrl: String?
     @State private var liveThumbnailUrl: String?
     @State private var refreshAttempted = false
+    /// Shows the subtle "Happy with this edit?" feedback card under this video.
+    /// Set only when the user taps play AND FeedbackManager says we're due
+    /// (rare, frequency-capped). Lives per-video so only the watched one asks.
+    @State private var showFeedbackPrompt = false
 
     /// Drives the loading-vs-playable thumbnail state. Updates the
     /// instant `VideoCache.shared.cachedIds` flips for this jobId.
@@ -1206,6 +1210,16 @@ struct CompletedVideoView: View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
                 guard isPlayable else { return }
+                // The user is watching a finished render — the natural, earned
+                // moment to (occasionally) ask for feedback. Record the watch,
+                // then let FeedbackManager decide if we're due (rare + capped).
+                // The card renders under the video, so it's waiting when they
+                // close the player rather than interrupting playback.
+                FeedbackManager.shared.recordRenderWatched()
+                if FeedbackManager.shared.shouldShowPrompt() {
+                    FeedbackManager.shared.recordPromptShown()
+                    withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = true }
+                }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
                     hlsManifestUrl: hlsManifestUrl,
@@ -1287,6 +1301,29 @@ struct CompletedVideoView: View {
             )
             .opacity(isPlayable ? 1 : 0.4)
             .disabled(!isPlayable)
+
+            if showFeedbackPrompt {
+                FeedbackPromptView(
+                    onThumbsUp: {
+                        FeedbackManager.shared.recordThumbsUp()
+                        Task { await FeedbackManager.shared.submitFeedback(rating: "up", text: nil, jobId: jobId) }
+                        withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
+                    },
+                    onThumbsDown: { note in
+                        FeedbackManager.shared.recordThumbsDown()
+                        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Task { await FeedbackManager.shared.submitFeedback(rating: "down", text: trimmed.isEmpty ? nil : trimmed, jobId: jobId) }
+                        withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
+                    },
+                    onDismiss: {
+                        FeedbackManager.shared.recordDismissed()
+                        withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
+                    }
+                )
+                .frame(maxWidth: 320, alignment: .leading)
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
     }
 
