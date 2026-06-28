@@ -1246,6 +1246,32 @@ function resolveEntitlementDecision(entitlement) {
   return { isPro: false, reason: 'TIER_NOT_PRO', plan, status };
 }
 
+// Throttle the gate-side self-heal so a free-appearing ex-subscriber can't make
+// us call RevenueCat on every request. Map<userId, nextAllowedMs>.
+const _selfHealNextAllowed = new Map();
+const SELF_HEAL_TTL_MS = 5 * 60 * 1000; // 5 minutes between RC checks per user
+function _selfHealDue(userId) {
+  return Date.now() >= (_selfHealNextAllowed.get(userId) || 0);
+}
+function _markSelfHeal(userId) {
+  _selfHealNextAllowed.set(userId, Date.now() + SELF_HEAL_TTL_MS);
+  if (_selfHealNextAllowed.size > 5000) {
+    const now = Date.now();
+    for (const [k, v] of _selfHealNextAllowed) if (v < now) _selfHealNextAllowed.delete(k);
+  }
+}
+// Has this profile EVER carried subscription signal? If so, a "not Pro" DB read
+// might just be stale (a missed/delayed/historically-401'd webhook), so it's
+// worth verifying against RevenueCat before denying. A never-subscribed free
+// user (no rc id, no expiry, free tier) is skipped — we never call RC for them.
+function _hasSubscriptionHistory(row) {
+  if (!row) return false;
+  if (row.rc_app_user_id) return true;
+  if (row.pro_until) return true;
+  const tier = String(row.tier || '').toLowerCase().trim();
+  return tier === 'pro' || tier === 'teams' || tier === 'premium';
+}
+
 async function assertProEntitled(userId) {
   if (!supabaseAdmin) {
     const err = new Error('supabase_not_configured');
@@ -1254,6 +1280,32 @@ async function assertProEntitled(userId) {
   }
   const entitlement = await fetchSubscriptionEntitlement(userId);
   const decision = resolveEntitlementDecision(entitlement);
+  if (decision.isPro) {
+    return { ...decision, sourceTable: entitlement.sourceTable };
+  }
+
+  // SELF-HEAL — the guarantee that a paying user is NEVER denied, even if the
+  // webhook was missed, delayed, or (as happened) silently 401'd. The DB says
+  // "not Pro", but RevenueCat is the source of truth. If this user has any
+  // subscription history, verify against RC (grant-only — it can only upgrade,
+  // never wrongly revoke) before returning a denial. Throttled per user so a
+  // genuinely-free ex-subscriber can't hammer RC, and skipped entirely for
+  // never-subscribed users so the common free/Pro paths stay a single DB read.
+  if (_hasSubscriptionHistory(entitlement.row) && _selfHealDue(userId)) {
+    _markSelfHeal(userId);
+    try {
+      const healed = await reconcileEntitlementFromRevenueCat(userId);
+      if (healed && healed.isPro) {
+        console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
+        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', sourceTable: entitlement.sourceTable };
+      }
+    } catch (e) {
+      // RC unreachable / not configured — fall through to the DB decision.
+      // Grant-only means we can never wrongly revoke here; we just couldn't
+      // upgrade this instant, and the next request retries after the TTL.
+      console.warn('[entitlement] self-heal reconcile failed (non-fatal)', { userId, error: e?.message });
+    }
+  }
   return { ...decision, sourceTable: entitlement.sourceTable };
 }
 
