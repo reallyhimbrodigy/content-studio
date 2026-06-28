@@ -1249,12 +1249,13 @@ function resolveEntitlementDecision(entitlement) {
 // Throttle the gate-side self-heal so a free-appearing ex-subscriber can't make
 // us call RevenueCat on every request. Map<userId, nextAllowedMs>.
 const _selfHealNextAllowed = new Map();
-const SELF_HEAL_TTL_MS = 5 * 60 * 1000; // 5 minutes between RC checks per user
+const SELF_HEAL_TTL_MS = 5 * 60 * 1000;       // after a DEFINITIVE RC answer
+const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — retry soon
 function _selfHealDue(userId) {
   return Date.now() >= (_selfHealNextAllowed.get(userId) || 0);
 }
-function _markSelfHeal(userId) {
-  _selfHealNextAllowed.set(userId, Date.now() + SELF_HEAL_TTL_MS);
+function _markSelfHeal(userId, isError) {
+  _selfHealNextAllowed.set(userId, Date.now() + (isError ? SELF_HEAL_ERROR_TTL_MS : SELF_HEAL_TTL_MS));
   if (_selfHealNextAllowed.size > 5000) {
     const now = Date.now();
     for (const [k, v] of _selfHealNextAllowed) if (v < now) _selfHealNextAllowed.delete(k);
@@ -1292,17 +1293,20 @@ async function assertProEntitled(userId) {
   // genuinely-free ex-subscriber can't hammer RC, and skipped entirely for
   // never-subscribed users so the common free/Pro paths stay a single DB read.
   if (_hasSubscriptionHistory(entitlement.row) && _selfHealDue(userId)) {
-    _markSelfHeal(userId);
     try {
       const healed = await reconcileEntitlementFromRevenueCat(userId);
+      // Definitive answer from RC → throttle the next check for the full window.
+      _markSelfHeal(userId, false);
       if (healed && healed.isPro) {
         console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
         return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', sourceTable: entitlement.sourceTable };
       }
     } catch (e) {
-      // RC unreachable / not configured — fall through to the DB decision.
-      // Grant-only means we can never wrongly revoke here; we just couldn't
-      // upgrade this instant, and the next request retries after the TTL.
+      // Transient RC error/outage: short throttle so a paying user retries
+      // within ~60s instead of being locked out for the full window, while
+      // still bounding calls during an outage. Grant-only → never wrongly
+      // revokes; we just couldn't upgrade this instant.
+      _markSelfHeal(userId, true);
       console.warn('[entitlement] self-heal reconcile failed (non-fatal)', { userId, error: e?.message });
     }
   }
