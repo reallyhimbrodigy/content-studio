@@ -16,3 +16,10 @@ swiftc "$DIR/../Promptly/Views/FeedbackGate.swift" \
        "$DIR/FeedbackGateTests.swift" \
        -o "${TMPDIR:-/tmp}/feedbacktest"
 "${TMPDIR:-/tmp}/feedbacktest"
+
+# ModelSelection — Flare/Lumen tier-gate logic (free can never select Lumen
+# or emit the premium flag; downgrade falls back to Flare).
+swiftc "$DIR/../Promptly/Models/VideoModel.swift" \
+       "$DIR/ModelSelectionTests.swift" \
+       -o "${TMPDIR:-/tmp}/modeltest"
+"${TMPDIR:-/tmp}/modeltest"

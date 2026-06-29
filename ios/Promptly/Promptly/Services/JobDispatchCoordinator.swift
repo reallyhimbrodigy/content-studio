@@ -83,6 +83,7 @@ final class JobDispatchCoordinator {
     func dispatch(
         pendingVideo: PendingVideo,
         vibe: String,
+        premiumPipeline: Bool = false,
         onPhase: @escaping (AttemptPhase) -> Void = { _ in }
     ) async -> Outcome {
         let startTime = Date()
@@ -140,7 +141,8 @@ final class JobDispatchCoordinator {
                 let jobId = try await APIService.shared.createVideoJob(
                     videoUrl: sourceUrl,
                     proxyVideoUrl: pendingVideo.proxyUploadedUrl,
-                    vibe: vibe
+                    vibe: vibe,
+                    premiumPipeline: premiumPipeline
                 )
                 print("[dispatch-coord] success jobId=\(jobId) attempt=\(attempt)")
                 return .success(jobId: jobId)

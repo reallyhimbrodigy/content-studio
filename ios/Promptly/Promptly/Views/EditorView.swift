@@ -5,6 +5,10 @@ import UIKit
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var chatStore = ChatStore.shared
+    // Observed so the model picker can reconcile its selection the moment
+    // entitlement changes (effectiveIsPro = subscription.isPro || usage.isPro).
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @ObservedObject private var usageService = UsageService.shared
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -182,6 +186,10 @@ struct EditorView: View {
                 }
             }
             .onAppear {
+                // Downgrade safety: if entitlement lapsed while a premium
+                // model was selected, fall back to Flare so nobody is
+                // stranded on an inaccessible model. No-op for everyone else.
+                ModelService.shared.reconcile(isPro: SubscriptionService.shared.effectiveIsPro)
                 // Pick up any pending re-edit session posted by Library and consume it.
                 if let pending = appState.pendingReedit {
                     reeditSession = pending
@@ -197,6 +205,14 @@ struct EditorView: View {
                 if chatStore.chats.isEmpty {
                     await chatStore.loadChats()
                 }
+            }
+            // Downgrade safety, live: if entitlement lapses while the editor is
+            // on screen, fall back to Flare immediately so the pill never
+            // advertises a model the user can no longer use. (The render path
+            // is already safe — premiumPipelineFlag reads effectiveIsPro live
+            // at send time.)
+            .onChange(of: subscriptionService.effectiveIsPro) { _, isPro in
+                ModelService.shared.reconcile(isPro: isPro)
             }
             // Ghost-text rotation task removed in build 172 — replaced
             // with always-visible vibe chips above the input. No more
@@ -815,6 +831,17 @@ struct EditorView: View {
                 .padding(.trailing, 5)
                 .padding(.bottom, 5)
             }
+
+            // Model picker pill — bottom-left of the composer (the
+            // "Opus 4.8 High" slot in the Claude reference). Sets which
+            // pipeline the next render runs; tap to switch Flare/Lumen.
+            HStack(spacing: 0) {
+                ModelPickerPill()
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 10)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
         }
         .background(
             ZStack {
@@ -1608,7 +1635,9 @@ struct EditorView: View {
                 let jobId = try await APIService.shared.createVideoJob(
                     videoUrl: sourceUrl,
                     proxyVideoUrl: proxyUrl,
-                    vibe: vibe
+                    vibe: vibe,
+                    premiumPipeline: ModelService.shared.premiumPipelineFlag(
+                        isPro: SubscriptionService.shared.effectiveIsPro)
                 )
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobId = jobId
@@ -2151,6 +2180,12 @@ struct EditorView: View {
             isSending = true
             let videos = pendingVideos
             let vibe = textSnapshot.isEmpty ? "Create a clean, engaging edit" : textSnapshot
+            // Which pipeline this render runs — captured at send time from the
+            // selected model + current entitlement. The ONLY client path that
+            // can set premium true, and only for (Pro AND Lumen); a free client
+            // always sends false. The server re-derives this authoritatively.
+            let premiumPipeline = ModelService.shared.premiumPipelineFlag(
+                isPro: SubscriptionService.shared.effectiveIsPro)
 
             clearInputField()
             withAnimation { pendingVideos = [] }
@@ -2248,7 +2283,8 @@ struct EditorView: View {
                         //   - cancelled → user explicitly cancelled
                         let outcome = await JobDispatchCoordinator.shared.dispatch(
                             pendingVideo: video,
-                            vibe: vibe
+                            vibe: vibe,
+                            premiumPipeline: premiumPipeline
                         ) { phase in
                             // Phase callback drives the bar's Phase 1
                             // (iOS → S3 upload) portion. Per the new

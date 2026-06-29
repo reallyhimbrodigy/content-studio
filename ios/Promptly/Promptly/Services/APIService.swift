@@ -131,15 +131,28 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
-        var body: [String: String] = [
-            "video_url": videoUrl,
-            "vibe_input": vibe
-        ]
-        if let proxyVideoUrl, !proxyVideoUrl.isEmpty {
-            body["proxy_video_url"] = proxyVideoUrl
+        // Typed body so we can send the boolean `premium_pipeline_enabled`
+        // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
+        // optionals, so a nil field is OMITTED from the JSON — proxy_video_url
+        // when absent, and premium_pipeline_enabled when false (backend defaults
+        // off). `model` is informational (aids worker [model] logging); the
+        // server re-derives the authoritative routing decision from entitlement.
+        struct Body: Encodable {
+            let video_url: String
+            let vibe_input: String
+            let proxy_video_url: String?
+            let model: String
+            let premium_pipeline_enabled: Bool?
         }
+        let body = Body(
+            video_url: videoUrl,
+            vibe_input: vibe,
+            proxy_video_url: (proxyVideoUrl?.isEmpty == false) ? proxyVideoUrl : nil,
+            model: premiumPipeline ? "lumen" : "flare",
+            premium_pipeline_enabled: premiumPipeline ? true : nil
+        )
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)

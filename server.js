@@ -11462,6 +11462,15 @@ const server = http.createServer((req, res) => {
         });
         console.log('  ✅ Job created:', job.id);
 
+        // Premium pipeline (Lumen) gate — DEFENSE IN DEPTH. The client only
+        // sends premium_pipeline_enabled:true for an entitled Pro user, but
+        // the server is the real lock: a free/unverified user can NEVER route
+        // premium here no matter what the client (or a hand-rolled curl) sends.
+        // The worker double-gates again (route_premium = is_premium AND flag).
+        const premiumPipeline = entitlement.isPro === true && body?.premium_pipeline_enabled === true;
+        console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s) job=%s',
+          premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true, job.id);
+
         await dispatchJobToModal({
           pushProgressToSSE,
           jobId: job.id,
@@ -11469,6 +11478,7 @@ const server = http.createServer((req, res) => {
           proxyVideoUrl: proxyVideoUrl || null,
           vibe: vibeInput,
           userId: authUser.id,
+          premiumPipeline,
         });
         console.log('  ✅ Modal dispatch started for job:', job.id);
 

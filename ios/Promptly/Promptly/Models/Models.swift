@@ -420,6 +420,8 @@ enum PaywallReason: Equatable, Hashable {
     case dailyChats(used: Int, limit: Int)
     case reedit
     case manual
+    /// User tapped the locked premium model (Lumen) in the composer picker.
+    case lumen
 }
 
 // MARK: - Pipeline stages (render progress narrative)

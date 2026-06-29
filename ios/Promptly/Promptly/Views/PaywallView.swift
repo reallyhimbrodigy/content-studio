@@ -57,6 +57,7 @@ struct PaywallView: View {
         case .dailyChats:   return "You're out of free chats for today"
         case .reedit:       return "Re-edit is a Pro feature"
         case .manual:       return "Unlock Promptly Pro"
+        case .lumen:        return "Lumen is a Pro model"
         }
     }
     private var subtitle: String {
@@ -69,6 +70,8 @@ struct PaywallView: View {
             return "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats."
         case .manual:
             return "Unlimited renders, unlimited chats, and the re-edit feature."
+        case .lumen:
+            return "Lumen renders premium cinematic edits with generated graphics. Pro unlocks it — plus unlimited renders, chats, and re-edit."
         }
     }
 
