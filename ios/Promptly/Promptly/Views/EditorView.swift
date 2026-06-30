@@ -267,6 +267,11 @@ struct EditorView: View {
             // when the worker eventually completes a render that was
             // prematurely marked failed.
             .task {
+                // Immediate poll on launch/appear so a relaunch resumes the
+                // bar at TRUE progress (or jumps straight to a video that
+                // finished while the app was closed) without waiting for the
+                // first heartbeat tick.
+                await reconcileInProgressJobs(includeFailed: true)
                 while !Task.isCancelled {
                     let hasInFlight = messages.contains { m in
                         guard m.jobId != nil else { return false }
@@ -2808,7 +2813,7 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -2817,6 +2822,9 @@ struct EditorView: View {
 
         struct JobStatusRow: Codable {
             let status: String?
+            let progress: Double?       // durable 0–100; the authoritative bar position
+            let current_step: String?   // phase token → StageTimeline
+            let step_message: String?   // fine-grained human label
             let rendered_video_url: String?
             let hls_manifest_url: String?
             let thumbnail_url: String?
@@ -2839,6 +2847,35 @@ struct EditorView: View {
             }
             guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
 
+            // Poll is authoritative for the bar. Rehydrate progress + phase
+            // from the durable row on EVERY tick (foreground, heartbeat,
+            // relaunch) — monotonic, so it can never move the bar backward.
+            // This runs before the terminal switch so an in-flight render's
+            // bar tracks reality even when SSE missed events.
+            // Map the raw worker pct onto the SAME 30–100 display band the SSE
+            // handler uses (30 + pct*0.7), so the durable poll lands on ONE
+            // scale with SSE. Without this the poll's raw value (e.g. render
+            // pct 65) sits below the SSE-mapped value (75) and loses the
+            // monotonic max() — i.e. the poll wouldn't actually win. Skip
+            // pct==0 (queued / worker-not-started) so we don't jump the bar to
+            // 30 during the client-side upload band.
+            if let p = row.progress, p > 0 {
+                let mapped = 30 + Int(p * 0.7)
+                let clamped = max(0, min(100, mapped))
+                if clamped > (messages[idx].jobProgress ?? 0) {
+                    messages[idx].jobProgress = clamped
+                }
+            }
+            if let step = row.current_step, !step.isEmpty {
+                messages[idx].stageTimeline?.receive(stepToken: step)
+            }
+            // Mirror the SSE handler's suppression: don't overwrite the locally
+            // owned "Finalizing your video..." copy during the finish hold.
+            if let sm = row.step_message, !sm.isEmpty,
+               messages[idx].stepMessage != "Finalizing your video..." {
+                messages[idx].stepMessage = sm
+            }
+
             switch row.status {
             case "completed", "complete":
                 if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
@@ -2854,11 +2891,32 @@ struct EditorView: View {
                     print("[reconcile] \(jobId) completed but no video URL yet — staying in-flight")
                     return
                 }
-                messages[idx].jobStatus = "completed"
-                messages[idx].content = "Your video is ready!"
-                messages[idx].error = nil
-                messages[idx].stageTimeline?.finish()
-                print("[reconcile] \(jobId) → completed")
+                // Finish beat (parity with the SSE completion path): sweep the
+                // bar to 100 before revealing the video instead of popping it
+                // away at a partial value. isFinishing keeps the progress view
+                // mounted (MessageBubble's guard) so trickle.complete() can
+                // ease to 100 during the 0.7s hold, then we flip to completed.
+                if messages[idx].isFinishing {
+                    // A prior tick already started the finish beat; let it run.
+                    persistMessages()
+                    return
+                }
+                messages[idx].jobProgress = 100
+                messages[idx].isFinishing = true
+                persistMessages()
+                let finishId = messages[idx].id
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.7))
+                    guard let fi = messages.firstIndex(where: { $0.id == finishId }) else { return }
+                    guard messages[fi].renderedVideoUrl != nil || messages[fi].hlsManifestUrl != nil else { return }
+                    messages[fi].jobStatus = "completed"
+                    messages[fi].content = "Your video is ready!"
+                    messages[fi].error = nil
+                    messages[fi].stageTimeline?.finish()
+                    persistMessages()
+                }
+                print("[reconcile] \(jobId) → finishing → completed")
+                return
             case "failed":
                 messages[idx].jobStatus = "failed"
                 messages[idx].error = row.error_message ?? "Something went wrong."

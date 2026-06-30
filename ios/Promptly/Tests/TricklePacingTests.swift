@@ -137,6 +137,57 @@ check(rush.trace.last! >= 99.9,
 let snap = p.advance(displayed: 99.93, elapsed: 200, backendBar: 100, dt: 1.0/30.0, isComplete: true)
 check(snap == 100, "advance snaps to exactly 100 when complete and within reach (got \(snap))")
 
+// 9. elapsedForBar — the clock-realignment inverse used when the bar is
+//    rehydrated to a durable polled value after background/relaunch.
+
+// 9a. Exact round-trip: feeding elapsedForBar(v) back into target reproduces v
+//     (with a non-binding tether), so the schedule continues forward from a
+//     rehydrated value instead of stalling.
+for v in [2.0, 20, 45, 90, 95, 98] {
+    let back = p.target(elapsed: p.elapsedForBar(v), backendBar: 100_000, isComplete: false)
+    check(approx(back, v, 0.05),
+          "elapsedForBar round-trip: target(elapsedForBar(\(v)))≈\(v) (got \(back))")
+}
+
+// 9b. Monotonic in bar.
+var prevE = -1.0, mono = true
+for i in 0...99 { let e = p.elapsedForBar(Double(i)); if e < prevE - 1e-9 { mono = false }; prevE = e }
+check(mono, "elapsedForBar is monotonic in bar value")
+
+// 9c. Boundaries.
+check(approx(p.elapsedForBar(0), 0, 1e-9), "elapsedForBar(0) == 0")
+check(approx(p.elapsedForBar(p.scheduledCap), p.estimateSeconds, 0.01),
+      "elapsedForBar(scheduledCap) == estimateSeconds")
+check(p.elapsedForBar(95) > p.estimateSeconds, "elapsedForBar in overrun region > estimateSeconds")
+
+// 9d. THE REHYDRATION FIX: a view recreated on relaunch rehydrates to 50 and
+//     realigns its clock to elapsedForBar(50). Running forward, the bar must
+//     hold/advance from 50 — never snap back, never stall below — proving the
+//     50%→1% bug cannot recur. (Without the realign, startElapsed≈0 would peg
+//     the schedule at kickstart and the bar would freeze for ~217s.)
+let rehydElapsed = p.elapsedForBar(50)
+let resumed = simulate(p, seconds: 4, start: 50, startElapsed: rehydElapsed, backend: { _ in 50 })
+check(resumed.minDelta >= -1e-9, "after rehydrate→50, bar never moves backward (min Δ \(resumed.minDelta))")
+check(resumed.trace.first! == 50 && resumed.trace.last! >= 50,
+      "after rehydrate→50, bar holds/advances from 50 (got \(resumed.trace.last!))")
+check(resumed.trace.last! <= 50 + p.overshootMargin + 0.5,
+      "after rehydrate→50, bar leads the milestone by at most overshootMargin (got \(resumed.trace.last!))")
+check(resumed.trace.last! > 50,
+      "after rehydrate→50, the realigned clock keeps the bar gliding forward, not frozen (got \(resumed.trace.last!))")
+
+// 9e. Lead-restore on view-recreate (scroll-off/on, relaunch): the live bar
+//     leads the milestone by overshootMargin. rehydrate restores displayed to
+//     milestone + overshootMargin (what the live bar showed) and the realigned
+//     clock holds it there — so a recreated view shows NO backward jump.
+let milestone = 75.0
+let restored = milestone + p.overshootMargin     // value rehydrate sets displayed to
+let afterRecreate = simulate(p, seconds: 3, start: restored,
+                             startElapsed: p.elapsedForBar(restored), backend: { _ in milestone })
+check(afterRecreate.trace.first! == restored,
+      "rehydrate restores the +overshootMargin lead (\(restored)), not the bare milestone (got \(afterRecreate.trace.first!))")
+check(afterRecreate.minDelta >= -1e-9 && afterRecreate.trace.last! >= restored,
+      "after lead-restore the bar holds at the lead, never snapping back down (got \(afterRecreate.trace.last!))")
+
 print("\n\(checks - failures)/\(checks) checks passed")
 exit(failures == 0 ? 0 : 1)
 

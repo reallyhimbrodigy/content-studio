@@ -366,6 +366,32 @@ final class TrickleProgress: ObservableObject {
         start()
     }
 
+    /// Rehydrate the bar to a durable, polled progress value (the source of
+    /// truth) — the lifecycle fix. Called on view-appear / foreground /
+    /// relaunch. Snaps `displayed` UP to `polled` (never down — monotonic), and
+    /// realigns the time schedule so the ramp continues forward from there
+    /// instead of stalling until elapsed catches up. A no-op when the bar is
+    /// already at or past `polled` (the normal scroll-off/on case), so it never
+    /// rewinds an in-flight animation — it only heals a view that restarted at
+    /// 0 (relaunch / SwiftUI recreate), which is what caused the 50%→1% snap.
+    func rehydrate(to polled: Int) {
+        let v = min(100, max(0, Double(polled)))
+        if v > confirmedTarget { confirmedTarget = v }
+        // The live bar LEADS the confirmed milestone by up to overshootMargin
+        // (the time-paced tether). That lead lives only in this ephemeral
+        // animator, so a view recreated on relaunch / scroll-back must
+        // RECONSTRUCT it — otherwise displayed snaps down to the bare milestone,
+        // a visible backward jump. Restore to milestone + allowed lead (≤ hardCap).
+        let lead = min(pacing.hardCap, v + pacing.overshootMargin)
+        if lead > displayed {
+            displayed = lead
+            // Back-date startedAt so the time schedule maps "now" to `lead`,
+            // letting the pacing glide forward from the snapped position.
+            startedAt = Date().addingTimeInterval(-pacing.elapsedForBar(lead))
+        }
+        start()
+    }
+
     /// Real completion — release the cap and glide to 100.
     func complete() {
         isComplete = true
@@ -477,14 +503,18 @@ struct ProcessingIndicator: View {
         // the snap we're getting rid of.
         .onAppear {
             pulse = true
-            trickle.update(target: progress)
+            // Rehydrate from the persisted/polled progress so a view that was
+            // recreated (relaunch, scroll-on) starts at TRUE progress, not 0.
+            // Clamp below 100 unless actually finishing, so a completed-but-
+            // videoless row (progress=100, still in-flight) doesn't show 100%.
+            trickle.rehydrate(to: finishing ? progress : min(progress, 99))
             if finishing { trickle.complete() }
         }
         .onDisappear { trickle.stop() }
         // Feed the backend value in as a target ceiling. The animator owns
         // monotonicity and all visual motion.
         .onChange(of: progress, initial: true) { _, new in
-            trickle.update(target: new)
+            trickle.update(target: finishing ? new : min(new, 99))
         }
         // Real completion → release the cap and sweep to 100.
         .onChange(of: finishing) { _, done in
@@ -689,6 +719,12 @@ struct PipelineProgressView: View {
             }
         }
         .frame(maxWidth: 340, alignment: .leading)
+        // Rehydrate from the persisted/polled progress so a view recreated on
+        // relaunch (or scrolled back on) resumes at TRUE progress instead of
+        // re-ramping from 0 — the 50%→1% snap-back fix.
+        // Clamp below 100 unless actually finishing, so a completed-but-
+        // videoless row (progress=100, still in-flight) never shows 100%.
+        .onAppear { trickle.rehydrate(to: finishing ? progress : min(progress, 99)) }
         .onDisappear { trickle.stop() }
         // Feed the backend value in as a target ceiling. TrickleProgress
         // owns monotonicity (a lower pct is ignored for positioning) and
@@ -698,7 +734,7 @@ struct PipelineProgressView: View {
             lastUpdateAt = Date()
             fallbackMessage = nil
             fallbackIndex = 0
-            trickle.update(target: new)
+            trickle.update(target: finishing ? new : min(new, 99))
         }
         // Any backend message change is also activity — reset stale.
         .onChange(of: subMessage) { _, _ in

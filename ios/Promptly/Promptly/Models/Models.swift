@@ -144,9 +144,11 @@ class PendingVideo: Identifiable, ObservableObject {
 // A chat is a serialized conversation thread that survives app restarts
 // and is synced across devices via Supabase. Each chat owns an ordered
 // list of `SerializedMessage` records — the at-rest shape of ChatMessage,
-// stripped of transient render state (jobProgress, stepMessage,
-// stageTimeline, isThinking) so we never persist mid-flight progress
-// values that would look stale on reload.
+// stripped of transient render state (stepMessage, stageTimeline, isThinking).
+// jobProgress IS persisted (last-known bar position) so a relaunch can
+// rehydrate the bar to true progress immediately; the durable poll then
+// corrects it monotonically, so a slightly-stale persisted value never shows
+// backward motion.
 
 struct Chat: Codable, Identifiable, Hashable {
     let id: String
@@ -170,6 +172,9 @@ struct SerializedMessage: Codable, Hashable {
     var content: String
     var jobId: String?
     var jobStatus: String?        // final state only ("completed" / "failed" / "needs_clarification")
+    var jobProgress: Int?         // last-known bar position (30–100 display band) — persisted so a
+                                  // relaunch rehydrates the bar to TRUE progress instead of 0; the
+                                  // immediate durable poll then corrects it (monotonic, only rises).
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
     var thumbnailUrl: String?
@@ -185,6 +190,15 @@ struct SerializedMessage: Codable, Hashable {
     var cachedProxyUrl: String?
     var cachedVibe: String?
     var isRetryable: Bool?
+
+    /// True for a persisted render placeholder still in flight (no video yet).
+    /// Used to decide whether a cold relaunch should reopen this chat so the
+    /// progress bar resumes (force-quit→relaunch acceptance).
+    var isInFlightRender: Bool {
+        role == "assistant" && renderedVideoUrl == nil
+            && (jobStatus == "processing" || jobStatus == "queued"
+                || (jobId != nil && jobStatus == nil))
+    }
 
     /// Decide whether a live ChatMessage is worth persisting at all.
     /// Includes mid-render placeholders that have a jobId — those re-bind
@@ -230,6 +244,7 @@ struct SerializedMessage: Codable, Hashable {
         self.content = message.content
         self.jobId = message.jobId
         self.jobStatus = message.jobStatus
+        self.jobProgress = message.jobProgress
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
@@ -266,6 +281,7 @@ struct SerializedMessage: Codable, Hashable {
         if let uuid = UUID(uuidString: id) { msg.id = uuid }
         msg.jobId = jobId
         msg.jobStatus = jobStatus
+        msg.jobProgress = jobProgress
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl

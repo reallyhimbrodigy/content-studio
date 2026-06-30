@@ -10,9 +10,21 @@ final class ChatStore: ObservableObject {
     static let shared = ChatStore()
 
     @Published private(set) var chats: [Chat] = []
-    @Published var activeChatId: String? = nil
+    @Published var activeChatId: String? = nil {
+        didSet {
+            // Remember the last real active chat so a cold relaunch can reopen
+            // it to resume an in-flight render (see loadChats). Only persist
+            // non-nil — a transient nil (active-chat-gone reset, deletion) must
+            // not wipe the remembered chat.
+            if let id = activeChatId {
+                UserDefaults.standard.set(id, forKey: Self.lastActiveChatKey)
+            }
+        }
+    }
     @Published private(set) var isLoading: Bool = false
     @Published var loadError: String? = nil
+
+    private static let lastActiveChatKey = "lastActiveChatId"
 
     private var saveDebounceTask: Task<Void, Never>?
     private var pendingSaves: [String: (messages: [SerializedMessage], title: String?)] = [:]
@@ -25,6 +37,7 @@ final class ChatStore: ObservableObject {
     /// the previous user's chats under the new user's token.
     func clearForSignOut() {
         chats = []
+        UserDefaults.standard.removeObject(forKey: Self.lastActiveChatKey)
         activeChatId = nil
         isLoading = false
         loadError = nil
@@ -50,6 +63,18 @@ final class ChatStore: ObservableObject {
             }
             // If the user has no chats at all, leave activeChatId nil — the
             // editor's first send will lazily create one.
+            //
+            // Cold-relaunch resume: if nothing is active yet, reopen the last
+            // active chat ONLY when it still has a render in flight — so the
+            // progress bar resumes at true progress (or jumps to the finished
+            // video) without waiting for a manual sidebar tap. We don't reopen
+            // otherwise, to leave normal launch UX unchanged.
+            if activeChatId == nil,
+               let saved = UserDefaults.standard.string(forKey: Self.lastActiveChatKey),
+               let chat = fetched.first(where: { $0.id == saved }),
+               chat.messages.contains(where: { $0.isInFlightRender }) {
+                self.activeChatId = saved
+            }
             isLoading = false
             // Retry-on-launch: walk every completed message and prefetch
             // any rendered video that isn't already on disk. Closes the

@@ -89,4 +89,25 @@ struct TricklePacing {
         if isComplete && next >= 99.9 { return 100 }
         return min(ceiling, next)
     }
+
+    /// Inverse of the time schedule: the `elapsed` at which the pure time fill
+    /// (ignoring the backend tether) reaches `bar`. Used to REALIGN the clock
+    /// when the bar is rehydrated to a durable polled value after the app was
+    /// backgrounded / relaunched — so the schedule continues forward from the
+    /// snapped-up value instead of stalling until elapsed catches up. Monotonic
+    /// in `bar`; exact round-trip with `target` (target(elapsedForBar(v)) == v
+    /// for kickstart ≤ v < hardCap when the tether doesn't bind).
+    func elapsedForBar(_ bar: Double) -> Double {
+        let v = min(hardCap, max(0, bar))
+        if v <= scheduledCap {
+            // Linear region: base = scheduledCap * (elapsed / estimateSeconds).
+            return estimateSeconds * (v / scheduledCap)
+        }
+        // Overrun region: invert
+        //   v = scheduledCap + (hardCap - scheduledCap) * (1 - exp(-(t-est)/tau))
+        let span = hardCap - scheduledCap
+        let frac = span > 0 ? (v - scheduledCap) / span : 0
+        let clamped = min(0.999, max(0, frac))   // keep log() in domain
+        return estimateSeconds - overrunTau * log(1 - clamped)
+    }
 }
