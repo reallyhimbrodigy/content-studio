@@ -20,6 +20,10 @@ struct MessageBubble: View {
     /// re-type, single tap.
     var onRetry: (() -> Void)? = nil
 
+    /// Phase D ask-back: called when the user answers or skips the ask, so the
+    /// parent flips this bubble back to "processing" and the bar resumes.
+    var onAskResolved: (() -> Void)? = nil
+
     /// SwiftUI-rendered markdown view for chat text.
     ///
     /// AttributedString(markdown:) handles **bold**, *italic*, `inline
@@ -166,6 +170,16 @@ struct MessageBubble: View {
                         finishing: message.isFinishing
                     )
                 }
+            }
+
+            // Phase D ask-back: the job is parked on a question — render Lumen's
+            // ask right under the (held) progress bar, in the same bubble.
+            if message.jobStatus == "needs_input", let ask = message.ask, ask.isRenderable {
+                AskCard(ask: ask, jobId: message.jobId ?? "") {
+                    onAskResolved?()
+                }
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             if !message.content.isEmpty {

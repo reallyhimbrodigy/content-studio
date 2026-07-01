@@ -23,3 +23,10 @@ swiftc "$DIR/../Promptly/Models/VideoModel.swift" \
        "$DIR/ModelSelectionTests.swift" \
        -o "${TMPDIR:-/tmp}/modeltest"
 "${TMPDIR:-/tmp}/modeltest"
+
+# AskPayload — Phase D ask-back model decode + answer builder (unknown-kind
+# forward-compat; text/image/clip/choice/skip request bodies).
+swiftc "$DIR/../Promptly/Models/AskPayload.swift" \
+       "$DIR/AskPayloadTests.swift" \
+       -o "${TMPDIR:-/tmp}/asktest"
+"${TMPDIR:-/tmp}/asktest"

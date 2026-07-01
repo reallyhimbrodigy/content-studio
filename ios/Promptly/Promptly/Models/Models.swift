@@ -35,6 +35,9 @@ struct ChatMessage: Identifiable {
     var jobStatus: String?
     var jobProgress: Int?
     var stepMessage: String?
+    /// Phase D ask-back: set when the job is parked at needs_input with an ask.
+    /// The progress bubble renders the ask card; cleared on answer/skip.
+    var ask: AskPayload?
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
@@ -175,6 +178,8 @@ struct SerializedMessage: Codable, Hashable {
     var jobProgress: Int?         // last-known bar position (30–100 display band) — persisted so a
                                   // relaunch rehydrates the bar to TRUE progress instead of 0; the
                                   // immediate durable poll then corrects it (monotonic, only rises).
+    var ask: AskPayload?          // Phase D ask-back — persisted so a parked question survives
+                                  // background/relaunch and re-shows from the polled row.
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
     var thumbnailUrl: String?
@@ -197,6 +202,7 @@ struct SerializedMessage: Codable, Hashable {
     var isInFlightRender: Bool {
         role == "assistant" && renderedVideoUrl == nil
             && (jobStatus == "processing" || jobStatus == "queued"
+                || jobStatus == "needs_input"   // parked on a Phase D question — reopen to show it
                 || (jobId != nil && jobStatus == nil))
     }
 
@@ -245,6 +251,7 @@ struct SerializedMessage: Codable, Hashable {
         self.jobId = message.jobId
         self.jobStatus = message.jobStatus
         self.jobProgress = message.jobProgress
+        self.ask = message.ask
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
@@ -282,6 +289,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.jobId = jobId
         msg.jobStatus = jobStatus
         msg.jobProgress = jobProgress
+        msg.ask = ask
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
@@ -305,11 +313,13 @@ struct SerializedMessage: Codable, Hashable {
         let isInFlight = renderedVideoUrl == nil
             && (jobStatus == "processing"
                 || jobStatus == "queued"
+                || jobStatus == "needs_input"   // Phase D: parked on a question
                 || (jobId != nil && jobStatus == nil))
         if isInFlight && parsedRole == .assistant {
             msg.stageTimeline = StageTimeline(mode: "full")
             if jobStatus == nil { msg.jobStatus = "processing" }
-            msg.stepMessage = "Picking up where it left off..."
+            // Keep the parked question label; the poll re-shows the ask card.
+            msg.stepMessage = jobStatus == "needs_input" ? "Lumen has a question" : "Picking up where it left off..."
         }
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {
             // Restore the local UIImage from disk if we cached it during

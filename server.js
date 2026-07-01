@@ -64,6 +64,7 @@ const {
   isValidStatus,
 } = require('./lib/submissions');
 const { validateFeedback } = require('./lib/feedback');
+const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
 
 // The owner's Supabase user id is always authorized to review submissions, so
 // /review works with zero env config. Additional reviewers can be added via
@@ -11521,6 +11522,127 @@ const server = http.createServer((req, res) => {
         const originalJobId = String(body?.original_job_id || body?.originalJobId || '').trim();
         const changeRequest = String(body?.change_request || body?.changeRequest || '').trim();
         if (!originalJobId) return sendJson(res, 400, { error: 'original_job_id is required' });
+
+        // ── Phase D ask-back: an ANSWER submission (carries ask_id) resumes the
+        // SAME parked job in place, rather than creating a fresh re-edit. Guard,
+        // validate, clear the ask, flip to processing, and re-dispatch a resume.
+        if (isAnswerSubmission(body)) {
+          const askId = String(body.ask_id || body.askId || '').trim();
+          const validated = validateAnswer(body);
+          if (!validated.ok) return sendJson(res, 400, { error: validated.error });
+
+          // Cross-user asset guard: an answer may only reference the caller's
+          // OWN uploads. Upload keys are `sources/${userId}/…`, so any other
+          // key is forged/borrowed → reject (prevents folding another user's
+          // S3 object into this render).
+          const ownPrefix = `sources/${authUser.id}/`;
+          for (const k of [validated.value.image_key, validated.value.clip_key]) {
+            if (k && !k.startsWith(ownPrefix)) {
+              console.log(`[ask-answer] rejected foreign asset key job=${originalJobId}`);
+              return sendJson(res, 400, { error: 'invalid_asset_key' });
+            }
+          }
+
+          // Load the parked job WITH its ask so the guard can match ask_id.
+          const { data: parked, error: parkedErr } = await supabaseAdmin
+            .from('video_jobs')
+            .select('id, user_id, status, ask, video_url, vibe_input')
+            .eq('id', originalJobId)
+            .single();
+          if (parkedErr && parkedErr.code !== 'PGRST116') {
+            console.error('[ask-answer] load failed:', parkedErr);
+            return sendJson(res, 500, { error: 'Failed to load job' });
+          }
+
+          // THE guard. A reject here is a SAFE no-op the client treats as
+          // "already resumed / completed" — covers double-answer,
+          // answer-after-timeout, stale ask, and wrong user.
+          const gate = canAcceptAnswer({ job: parked, userId: authUser.id, askId });
+          if (!gate.ok) {
+            const code = gate.reason === 'forbidden' ? 403
+              : gate.reason === 'not_found' ? 404
+              : 409; // not_awaiting_input / ask_id_mismatch — stale, safe no-op
+            console.log(`[ask-answer] rejected job=${originalJobId} reason=${gate.reason}`);
+            return sendJson(res, code, { error: gate.reason, noop: true });
+          }
+
+          // Pro gate — parity with the change-request re-edit path (ask-back is
+          // Lumen, a Pro model). Defense in depth even though the ask only ever
+          // reaches Pro users.
+          const entitlement = await assertProEntitled(authUser.id);
+          if (!entitlement.isPro) {
+            return sendJson(res, 402, {
+              error: 'pro_required', kind: 'reedit',
+              message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
+            });
+          }
+
+          // A picked choice must be one the parked ask actually offered.
+          if (validated.value.choice) {
+            const offered = Array.isArray(parked.ask?.choices)
+              ? parked.ask.choices.map((c) => (typeof c === 'string' ? c : (c?.value ?? c?.id))).filter(Boolean).map(String)
+              : [];
+            if (offered.length && !offered.includes(String(validated.value.choice))) {
+              return sendJson(res, 400, { error: 'invalid_choice' });
+            }
+          }
+
+          // Snapshot the parked ask so we can roll back if the resume dispatch
+          // fails after we've optimistically flipped the row to processing.
+          const parkedAsk = parked.ask;
+
+          // Clear the ask + flip to processing under an OPTIMISTIC LOCK
+          // (.eq('status','needs_input')) so exactly one concurrent answer wins.
+          // Supabase doesn't error on 0 matched rows, so we .select() and check:
+          // an empty result means another request already resumed → safe no-op.
+          const { data: locked, error: updErr } = await supabaseAdmin
+            .from('video_jobs')
+            .update({ status: 'processing', ask: null, current_step: 'resuming', step_message: 'Folding in your answer…' })
+            .eq('id', originalJobId)
+            .eq('user_id', authUser.id)
+            .eq('status', 'needs_input')
+            .select('id');
+          if (updErr) {
+            console.error('[ask-answer] update failed:', updErr);
+            return sendJson(res, 500, { error: 'Failed to resume job' });
+          }
+          if (!locked || locked.length === 0) {
+            console.log(`[ask-answer] lost race job=${originalJobId} — already resumed`);
+            return sendJson(res, 409, { error: 'not_awaiting_input', noop: true });
+          }
+
+          console.log(`[ask-answer] resuming job=${originalJobId} ask=${askId} skip=${validated.value.skip}`);
+          try {
+            await dispatchJobToModal({
+              pushProgressToSSE,
+              jobId: originalJobId,
+              videoUrl: parked.video_url || '',
+              vibe: parked.vibe_input || '',
+              userId: authUser.id,
+              mode: 'resume_ask',
+              resumeAsk: true,
+              askId,
+              answer: validated.value,
+              parentJobId: originalJobId,
+            });
+          } catch (dispatchErr) {
+            // The row is already flipped to processing but no worker is running.
+            // Roll it back to needs_input with the ORIGINAL ask so the client's
+            // retry (which didn't get a 200, so it stayed on the ask) is accepted
+            // again and nothing is stranded on an infinite spinner.
+            console.error('[ask-answer] resume dispatch failed, rolling back:', dispatchErr);
+            await supabaseAdmin
+              .from('video_jobs')
+              .update({ status: 'needs_input', ask: parkedAsk, current_step: null, step_message: null })
+              .eq('id', originalJobId)
+              .eq('user_id', authUser.id)
+              .eq('status', 'processing');
+            return sendJson(res, 503, { error: 'resume_dispatch_failed', retryable: true });
+          }
+
+          return sendJson(res, 200, { success: true, job_id: originalJobId, status: 'processing', resumed: true });
+        }
+
         if (!changeRequest) return sendJson(res, 400, { error: 'change_request is required' });
 
         // Load the original job — must exist, belong to this user, and have a source URL
@@ -11620,7 +11742,7 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -11646,6 +11768,7 @@ const server = http.createServer((req, res) => {
           progress: Number(data.progress || 0),
           current_step: data.current_step || '',
           step_message: data.step_message || '',
+          ask: data.ask || null,
           rendered_video_url: data.rendered_video_url || data.result_url || null,
           thumbnail_url: data.thumbnail_url || null,
           result_url: data.result_url || null,

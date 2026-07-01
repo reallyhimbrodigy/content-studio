@@ -302,6 +302,27 @@ class APIService {
         return jobId
     }
 
+    /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
+    /// job in place. A 404/409/403 means the job is no longer awaiting THIS input
+    /// (already resumed, self-completed on timeout, double-answered, or a stale
+    /// ask) — a SAFE no-op the caller absorbs by letting the poll refresh the
+    /// bubble to its real state. Only genuine failures (400 validation, 5xx,
+    /// network) throw, so the ask card can show an error and stay for a retry.
+    enum AnswerAskResult { case resumed, alreadyHandled }
+    func answerAsk(originalJobId: String, askId: String, answer: AskAnswer) async throws -> AnswerAskResult {
+        var request = await authorizedRequest("/api/video-jobs/re-edit", method: "POST")
+        request.httpBody = try JSONEncoder().encode(answer.requestBody(originalJobId: originalJobId, askId: askId))
+
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.jobCreationFailed("No response from server")
+        }
+        if http.statusCode == 200 { return .resumed }
+        if [403, 404, 409].contains(http.statusCode) { return .alreadyHandled }
+        let msg = (try? JSONDecoder().decode(JobCreateResponse.self, from: data))?.error
+        throw APIError.jobCreationFailed(msg ?? "Couldn't send your answer")
+    }
+
     /// Ask the server for fresh signed URLs for a job. Used when the
     /// client detects a 403/expired video or thumbnail URL — the server
     /// has the underlying S3 keys and can re-sign for another 7 days.

@@ -18,6 +18,9 @@ struct EditorView: View {
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
     @State private var reeditSession: ReeditSession?
+    /// Ask-back ids the user has already answered this session — so a stale
+    /// in-flight poll (captured before the answer) can't re-park the same ask.
+    @State private var answeredAskIds: Set<String> = []
     @State private var loadedChatId: String? = nil
     // ghostIndex removed — the rotating ghost-text suggestion was
     // replaced in build 172 with always-visible vibe chips above the
@@ -277,6 +280,7 @@ struct EditorView: View {
                         guard m.jobId != nil else { return false }
                         return m.jobStatus == "processing" ||
                                m.jobStatus == "queued" ||
+                               m.jobStatus == "needs_input" ||   // parked on a question — keep polling
                                m.jobStatus == nil
                     }
                     let interval: Duration = hasInFlight ? .seconds(5) : .seconds(15)
@@ -605,7 +609,8 @@ struct EditorView: View {
                             message: message,
                             onRegenerate: regenerateClosure(for: message),
                             onEdit: editClosure(for: message),
-                            onRetry: retryClosure(for: message)
+                            onRetry: retryClosure(for: message),
+                            onAskResolved: askResolvedClosure(for: message)
                         )
                         .id(message.id)
                     }
@@ -1583,6 +1588,30 @@ struct EditorView: View {
     /// On tap: flip the bubble back to "processing", clear the error,
     /// and call createVideoJob with the cached values — no upload, no
     /// re-typing. New job_id replaces the old one on the same message.
+    /// Phase D ask-back: after the user answers/skips (the ask card already
+    /// posted to the re-edit rail), optimistically flip this bubble back to
+    /// processing and clear the ask so the bar resumes immediately — then poll
+    /// to confirm the resumed job (or catch a self-completed one).
+    private func askResolvedClosure(for message: ChatMessage) -> (() -> Void)? {
+        guard message.jobStatus == "needs_input", message.jobId != nil else { return nil }
+        let messageId = message.id
+        let askId = message.ask?.askId
+        return {
+            guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            // Remember this ask as answered so a stale poll can't re-park it.
+            if let askId { answeredAskIds.insert(askId) }
+            // Don't clobber a video the poll may have already revealed while the
+            // user was answering (self-complete-on-timeout race) — only flip a
+            // still-parked bubble.
+            guard messages[i].jobStatus == "needs_input" else { return }
+            messages[i].jobStatus = "processing"
+            messages[i].ask = nil
+            messages[i].stepMessage = "Resuming your edit…"
+            persistMessages()
+            Task { @MainActor in await reconcileInProgressJobs(includeFailed: true) }
+        }
+    }
+
     private func retryClosure(for message: ChatMessage) -> (() -> Void)? {
         guard message.role == .assistant,
               message.jobStatus == "failed" || message.jobStatus == "error",
@@ -2498,7 +2527,12 @@ struct EditorView: View {
             // flip is gated on the local video cache being warm — see the
             // dedicated branch below — so the play UI never appears until
             // the file is on disk and tapping is guaranteed instant.
-            if let status = event.status, status != "completed", status != "complete" {
+            if let status = event.status, status != "completed", status != "complete",
+               status != "needs_input" {
+                // needs_input is owned by the poll (reconcileJobStatus), which sets
+                // `ask` + jobStatus atomically. SSE carries no ask payload, so
+                // applying needs_input here would show a held bar with no card
+                // until the next poll — let the poll transition it instead.
                 messages[messageIndex].jobStatus = status
             }
             if let progress = event.progress {
@@ -2813,7 +2847,7 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -2825,6 +2859,7 @@ struct EditorView: View {
             let progress: Double?       // durable 0–100; the authoritative bar position
             let current_step: String?   // phase token → StageTimeline
             let step_message: String?   // fine-grained human label
+            let ask: AskPayload?        // Phase D: the parked question (status=needs_input)
             let rendered_video_url: String?
             let hls_manifest_url: String?
             let thumbnail_url: String?
@@ -2922,6 +2957,28 @@ struct EditorView: View {
                 messages[idx].error = row.error_message ?? "Something went wrong."
                 messages[idx].stageTimeline?.finish()
                 print("[reconcile] \(jobId) → failed")
+            case "needs_input":
+                // Phase D ask-back: the worker parked on a question. Surface it —
+                // the bubble renders the ask card and holds the bar ("Lumen has a
+                // question"). Keeps getting polled (needs_input is in the in-flight
+                // filter) so a resume / self-complete-on-timeout is caught.
+                if let ask = row.ask, ask.isRenderable {
+                    // A stale poll (captured before the user answered) must not
+                    // re-park an ask the user already resolved.
+                    if answeredAskIds.contains(ask.askId) {
+                        print("[reconcile] \(jobId) needs_input ask=\(ask.askId) already answered — ignoring stale poll")
+                        return
+                    }
+                    messages[idx].ask = ask
+                    messages[idx].jobStatus = "needs_input"
+                    messages[idx].stepMessage = "Lumen has a question"
+                    print("[reconcile] \(jobId) → needs_input (ask=\(ask.askId))")
+                } else {
+                    // No renderable ask (legacy re-edit needs_clarification) —
+                    // leave to the SSE clarification path; don't finalize here.
+                    print("[reconcile] \(jobId) → needs_input, no renderable ask — leaving in-flight")
+                    return
+                }
             default:
                 // Still processing or unknown — don't touch the message.
                 // SSE auto-reconnect will pick up live updates again.
@@ -2949,6 +3006,7 @@ struct EditorView: View {
             guard let jobId = msg.jobId else { return nil }
             let inFlight = msg.jobStatus == "processing" ||
                            msg.jobStatus == "queued" ||
+                           msg.jobStatus == "needs_input" ||   // parked on a question — keep polling
                            msg.jobStatus == nil
             let recheckFailed = includeFailed && (msg.jobStatus == "failed" || msg.jobStatus == "error")
             return (inFlight || recheckFailed) ? jobId : nil
