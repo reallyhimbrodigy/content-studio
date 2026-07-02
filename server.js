@@ -1430,6 +1430,12 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
     tier: 'pro',
     pro_until: decision.proUntil,
     rc_app_user_id: id,
+    // Advance the webhook ordering stamp. This reconcile reflects RC's CURRENT
+    // source-of-truth (live active_entitlements), so a webhook whose event
+    // predates now must not later clobber it — its eventMs < now → rejected by
+    // the webhook guard. A webhook that fires AFTER this reconcile has
+    // eventMs > now and correctly wins. (Column added in 20260701_rc_event_ordering.)
+    rc_last_event_ms: Date.now(),
   };
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -11088,6 +11094,10 @@ const server = http.createServer((req, res) => {
         }
         const productId = event.product_id ? String(event.product_id) : null;
         const periodType = event.period_type ? String(event.period_type).toLowerCase() : null;
+        // When this event actually occurred (RevenueCat clock). Used as an
+        // ordering/idempotency guard so a late or duplicate stale event can't
+        // overwrite a fresher one — see applyTo below.
+        const eventMs = Number(event.event_timestamp_ms || 0);
         const expirationMs = Number(event.expiration_at_ms || 0);
         const expirationIso = expirationMs > 0 ? new Date(expirationMs).toISOString() : null;
 
@@ -11203,20 +11213,47 @@ const server = http.createServer((req, res) => {
         // `$RCAnonymousID` because logIn() hadn't aliased yet, or the row is
         // missing — would log "applied" and 200 while the user never becomes
         // Pro. That's the worst failure for a paid flow: silent, logs lying.
+        // ORDERING/IDEMPOTENCY GUARD (billing gap #2). Stamp the event time and
+        // apply ONLY when this event is newer than the last one processed for
+        // the row (rc_last_event_ms null or < eventMs). A late/duplicate stale
+        // event (e.g. a delayed BILLING_ISSUE arriving after a RENEWAL) then
+        // matches zero rows and is ignored instead of clobbering fresher state.
+        // The conditional lives in the WHERE clause, so concurrent deliveries
+        // are resolved atomically at the DB — the newest event always wins
+        // regardless of arrival order. Events with no timestamp (eventMs===0)
+        // fall back to an unguarded write (can't order what has no clock).
+        // Returns 'applied' | 'stale' | 'nomatch'.
         const applyTo = async (id) => {
-          const { data, error } = await supabaseAdmin
-            .from('profiles')
-            .update(update)
-            .eq('id', id)
-            .select('id');
+          const useOrdering = eventMs > 0;
+          const payload = useOrdering ? { ...update, rc_last_event_ms: eventMs } : update;
+          let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
+          if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
+          const { data, error } = await q.select('id');
           if (error) throw error;
-          return Array.isArray(data) ? data.length : 0;
+          if (Array.isArray(data) && data.length > 0) return 'applied';
+          if (!useOrdering) return 'nomatch';
+          // Zero rows under the guard: either no such profile, or it exists but
+          // this event is stale. Disambiguate — but honor the SAME ordering
+          // predicate the UPDATE used, so a row inserted between the UPDATE and
+          // this read (the anonymous-purchase→alias race) with a null/older
+          // stamp is NOT mislabeled 'stale' (which would 200-ack + drop the
+          // event forever). Only a row whose stamp is genuinely >= this event
+          // is 'stale'; anything else is 'nomatch' → 500 → RC retries → applies.
+          const { data: exists } = await supabaseAdmin
+            .from('profiles').select('id, rc_last_event_ms').eq('id', id).limit(1);
+          const row = Array.isArray(exists) ? exists[0] : null;
+          if (row && row.rc_last_event_ms != null && Number(row.rc_last_event_ms) >= eventMs) return 'stale';
+          return 'nomatch';
         };
 
         let matchedId = null;
+        let staleForExisting = false;
         try {
-          if ((await applyTo(appUserId)) > 0) {
+          const r0 = await applyTo(appUserId);
+          if (r0 === 'applied') {
             matchedId = appUserId;
+          } else if (r0 === 'stale') {
+            staleForExisting = true;
           } else {
             // app_user_id matched no profile. Fall back to this subscriber's
             // other known identities before giving up — covers the
@@ -11228,12 +11265,21 @@ const server = http.createServer((req, res) => {
               .map((x) => String(x || '').trim())
               .filter((x) => x && x !== appUserId && !x.startsWith('$RCAnonymousID'));
             for (const cand of candidates) {
-              if ((await applyTo(cand)) > 0) { matchedId = cand; break; }
+              const rc = await applyTo(cand);
+              if (rc === 'applied') { matchedId = cand; break; }
+              if (rc === 'stale') { staleForExisting = true; break; }
             }
           }
         } catch (error) {
           console.error('[RevenueCat] profile update failed', { type, appUserId, error: error.message });
           return sendJson(res, 500, { error: 'profile_update_failed' });
+        }
+
+        // A profile exists but this event is older than one we already applied:
+        // safe no-op. Ack so RevenueCat stops retrying a stale event.
+        if (!matchedId && staleForExisting) {
+          console.log('[RevenueCat] ignored stale/out-of-order event', { type, appUserId, eventMs });
+          return sendJson(res, 200, { ok: true, ignored: 'stale_event' });
         }
 
         if (!matchedId) {
