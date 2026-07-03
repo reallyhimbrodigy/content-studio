@@ -522,6 +522,21 @@ enum PipelineCatalog {
     static func stage(id: String) -> PipelineStage? {
         all.first { $0.id == id }
     }
+
+    /// Index of the `plan` stage in `all` — the cancel cutoff. The cheap CPU
+    /// work (download/transcribe/analyze) precedes it; the edit recipe + the
+    /// expensive GPU render start at `plan`.
+    static let planIndex: Int = all.firstIndex(where: { $0.id == "plan" }) ?? all.count
+
+    /// True iff a render currently at `currentStageId` can still be cancelled:
+    /// there is a known current stage and it comes BEFORE `plan`. Pure — unit
+    /// tested. Terminal (completed/failed) is handled by the caller, which
+    /// clears the stage when the render ends.
+    static func isCancellable(currentStageId: String?) -> Bool {
+        guard let id = currentStageId,
+              let idx = all.firstIndex(where: { $0.id == id }) else { return false }
+        return idx < planIndex
+    }
 }
 
 @MainActor
@@ -531,6 +546,12 @@ final class StageTimeline: ObservableObject {
     @Published private(set) var currentStageId: String?
     @Published private(set) var currentDerivedId: String?
     @Published private(set) var isFinished: Bool = false
+
+    /// Whether the in-progress render can still be cancelled — current stage is
+    /// before the edit recipe (`plan`) and the render hasn't finished.
+    var isCancellable: Bool {
+        !isFinished && PipelineCatalog.isCancellable(currentStageId: currentStageId)
+    }
 
     private var derivedTask: Task<Void, Never>?
 

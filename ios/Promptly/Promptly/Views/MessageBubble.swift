@@ -20,6 +20,11 @@ struct MessageBubble: View {
     /// re-type, single tap.
     var onRetry: (() -> Void)? = nil
 
+    /// Tap the red Cancel button on a processing render bubble (shown only
+    /// before the edit recipe). Runs the full cancel: server cancel + daily-slot
+    /// refund, SSE teardown, and bubble removal.
+    var onCancel: (() -> Void)? = nil
+
     /// Phase D ask-back: called when the user answers or skips the ask, so the
     /// parent flips this bubble back to "processing" and the bar resumes.
     var onAskResolved: (() -> Void)? = nil
@@ -161,7 +166,8 @@ struct MessageBubble: View {
                         timeline: timeline,
                         progress: message.jobProgress ?? 0,
                         subMessage: message.stepMessage,
-                        finishing: message.isFinishing
+                        finishing: message.isFinishing,
+                        onCancel: onCancel
                     )
                 } else {
                     ProcessingIndicator(
@@ -564,6 +570,11 @@ struct PipelineProgressView: View {
     var subMessage: String? = nil
     /// True on real completion → release the bar's cap and sweep to 100.
     var finishing: Bool = false
+    /// Cancel action, provided only while the render is still cancellable
+    /// (before the edit recipe). When set AND `timeline.isCancellable`, a small
+    /// red Cancel button shows on the steps row; tapping it confirms, then runs
+    /// this. Nil → no button (e.g. re-edits or past the cutoff).
+    var onCancel: (() -> Void)? = nil
     // Self-driving bar position: TrickleProgress glides continuously at
     // ~30fps toward the backend target and never freezes or snaps. See
     // its definition above for why the old "mirror the backend pct"
@@ -576,6 +587,7 @@ struct PipelineProgressView: View {
     @State private var fallbackMessage: String? = nil
     @State private var fallbackIndex: Int = 0
     @State private var expanded: Bool = false
+    @State private var showCancelConfirm: Bool = false
 
     /// Rotated through when SSE goes quiet for 3.5s+. Keeps the user
     /// reassured that work is still happening even when the bar can't
@@ -700,20 +712,60 @@ struct PipelineProgressView: View {
                 .transition(.opacity)
             }
 
-            // Expandable steps list
-            Button {
-                withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(expanded ? "Hide steps" : "View all steps")
-                        .font(.system(size: 12, weight: .medium))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .rotationEffect(.degrees(expanded ? 180 : 0))
+            // Steps disclosure (leading) + a red Cancel button (trailing), the
+            // latter only while the render is still cancellable — before the
+            // edit recipe. It fades/scales out the instant the pipeline reaches
+            // `plan`, so the affordance disappears exactly when cancelling can no
+            // longer save the GPU work.
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(expanded ? "Hide steps" : "View all steps")
+                            .font(.system(size: 12, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .rotationEffect(.degrees(expanded ? 180 : 0))
+                    }
+                    .foregroundColor(Color(.secondaryLabel))
                 }
-                .foregroundColor(Color(.secondaryLabel))
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 8)
+
+                if let onCancel, timeline.isCancellable {
+                    Button(role: .destructive) {
+                        showCancelConfirm = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Cancel")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 10)
+                        .background(
+                            Capsule().fill(Color.red.opacity(0.12))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .confirmationDialog(
+                        "Cancel this render?",
+                        isPresented: $showCancelConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Cancel render", role: .destructive) { onCancel() }
+                        Button("Keep rendering", role: .cancel) {}
+                    } message: {
+                        Text("This stops the edit before it starts — your daily render won't be used.")
+                    }
+                }
             }
-            .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 0.2), value: timeline.isCancellable)
 
             if expanded {
                 // Only reveal stages that have actually begun (in_progress /

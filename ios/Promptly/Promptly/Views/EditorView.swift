@@ -610,6 +610,7 @@ struct EditorView: View {
                             onRegenerate: regenerateClosure(for: message),
                             onEdit: editClosure(for: message),
                             onRetry: retryClosure(for: message),
+                            onCancel: cancelClosure(for: message),
                             onAskResolved: askResolvedClosure(for: message)
                         )
                         .id(message.id)
@@ -1630,6 +1631,45 @@ struct EditorView: View {
                 )
             }
         }
+    }
+
+    /// Provides the cancel action for a processing render bubble. Non-nil only
+    /// while the job is still in flight (queued/processing) and has a stage
+    /// timeline — the FINER "before the recipe" gate lives in the view
+    /// (`timeline.isCancellable`), which shows/hides the button as stages fire.
+    private func cancelClosure(for message: ChatMessage) -> (() -> Void)? {
+        guard message.role == .assistant,
+              let jobId = message.jobId,
+              let status = message.jobStatus,
+              status == "processing" || status == "queued",
+              message.stageTimeline != nil else { return nil }
+        let messageId = message.id
+        return {
+            Task { @MainActor in
+                cancelRender(messageId: messageId, jobId: jobId)
+            }
+        }
+    }
+
+    /// Cancel an in-progress render before the edit recipe. Optimistic + best-
+    /// effort: tear down the SSE, remove the processing bubble, and persist right
+    /// away so the UI responds instantly; then tell the server to cancel + refund
+    /// the daily slot (the worker polls /api/render-cancelled and aborts before
+    /// the GPU render) and refresh usage so the freed slot shows immediately.
+    @MainActor
+    private func cancelRender(messageId: UUID, jobId: String) {
+        sseClients[jobId]?.disconnect()
+        sseClients.removeValue(forKey: jobId)
+        withAnimation(.easeOut(duration: 0.2)) {
+            messages.removeAll { $0.id == messageId }
+        }
+        persistMessages()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            try? await APIService.shared.cancelRender(jobId: jobId)
+            await UsageService.shared.refresh()
+        }
+        print("[cancel] user cancelled render job=\(jobId)")
     }
 
     /// Re-dispatch a previously-failed render with the cached S3 URLs

@@ -27,6 +27,7 @@ const {
 } = require('./lib/submissions');
 const { validateFeedback } = require('./lib/feedback');
 const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
+const { isJobCancellable } = require('./lib/cancel');
 
 // The owner's Supabase user id is always authorized to review submissions, so
 // /review works with zero env config. Additional reviewers can be added via
@@ -2710,6 +2711,86 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         console.error('[prewarm] route error:', error?.message);
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'prewarm failed' });
+      }
+    })();
+    return;
+  }
+
+  // Cancel an in-progress render — owner-only, idempotent. Sets status=cancelled
+  // (the worker polls /api/render-cancelled and aborts before the GPU render) and
+  // refunds one of today's daily render slots. A finished render is a no-op
+  // (completion wins, no refund).
+  const cancelJobMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/cancel$/i);
+  if (cancelJobMatch && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const jobId = decodeURIComponent(cancelJobMatch[1] || '').trim();
+        if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
+
+        // Owner-only: load the caller's own job (a wrong user_id -> not found).
+        const { data: job, error: readErr } = await supabaseAdmin
+          .from('video_jobs').select('id, user_id, status')
+          .eq('id', jobId).eq('user_id', authUser.id).maybeSingle();
+        if (readErr) return sendJson(res, 500, { error: 'job_read_failed' });
+        if (!job) return sendJson(res, 404, { error: 'not_found' });
+        if (!isJobCancellable(job)) return sendJson(res, 200, { ok: true, noop: true });
+
+        const { error: updErr } = await supabaseAdmin
+          .from('video_jobs')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('id', jobId).eq('user_id', authUser.id);
+        if (updErr) return sendJson(res, 500, { error: 'cancel_failed' });
+
+        // Refund one of today's render usage events (best-effort; a cancel that
+        // can't refund still succeeds). usage_events isn't job-linked, so we
+        // remove the most recent 'render' event for this user today.
+        try {
+          const { data: ev } = await supabaseAdmin
+            .from('usage_events').select('id')
+            .eq('user_id', authUser.id).eq('kind', 'render')
+            .gte('created_at', utcDayStart())
+            .order('created_at', { ascending: false }).limit(1);
+          if (Array.isArray(ev) && ev[0] && ev[0].id != null) {
+            await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+          }
+        } catch (refundErr) {
+          console.warn('[cancel] refund skipped:', refundErr.message);
+        }
+
+        // Tell any live SSE client the render is cancelled + terminal.
+        pushProgressToSSE(jobId, {
+          status: 'cancelled', progress: 0, step: 'cancelled',
+          message: 'Render cancelled', videoUrl: null, thumbnailUrl: null,
+          final: true, error: null,
+        });
+        console.log('[cancel] job cancelled', { jobId, userId: authUser.id });
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'cancel_error' });
+      }
+    })();
+    return;
+  }
+
+  // Worker-facing: has this render been cancelled? Polled by the GPU worker
+  // before the recipe + before the render so it can abort. Fail-OPEN (cancelled
+  // false on any error) — a check failure must never abort a legitimate render.
+  // Mirrors the modal-callback trust model (unguessable job uuid + optional
+  // shared secret).
+  if (parsed.pathname === '/api/render-cancelled' && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
+        if (!supabaseAdmin) return sendJson(res, 200, { cancelled: false });
+        const jobId = String(parsed.query.job_id || '').trim();
+        if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
+        const { data } = await supabaseAdmin
+          .from('video_jobs').select('status').eq('id', jobId).maybeSingle();
+        return sendJson(res, 200, { cancelled: data?.status === 'cancelled' });
+      } catch (e) {
+        return sendJson(res, 200, { cancelled: false });
       }
     })();
     return;

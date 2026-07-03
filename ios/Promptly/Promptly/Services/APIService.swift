@@ -349,6 +349,19 @@ class APIService {
         }
     }
 
+    /// Cancel an in-progress render. Owner-only + idempotent on the server; a
+    /// finished render is a server-side no-op (no refund). Best-effort — the UI
+    /// already removed the bubble optimistically, so failures here are just
+    /// logged (the worker's before-render cancel check is the real safeguard).
+    func cancelRender(jobId: String) async throws {
+        let request = await authorizedRequest("/api/video-jobs/\(jobId)/cancel", method: "POST")
+        let (_, resp) = try await requestData(request)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if !(200...299).contains(code) {
+            print("[cancel] server cancel non-2xx status=\(code) job=\(jobId)")
+        }
+    }
+
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
               let token = await validToken() else {
