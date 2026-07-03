@@ -1737,7 +1737,13 @@ function parsePhylloSignatureHeader(signatureHeader) {
 }
 
 function verifyPhylloWebhookSignature(rawBody, signatureHeader) {
-  if (!PHYLLO_WEBHOOK_SIGNING_SECRET) return true;
+  // Fail CLOSED when no signing secret is configured. This webhook mutates the
+  // DB (phyllo_posts / phyllo_post_metrics); accepting unsigned calls let anyone
+  // inject analytics rows. If Phyllo is in use, set PHYLLO_WEBHOOK_SIGNING_SECRET.
+  if (!PHYLLO_WEBHOOK_SIGNING_SECRET) {
+    console.warn('[Phyllo] webhook rejected: PHYLLO_WEBHOOK_SIGNING_SECRET not set (fail-closed)');
+    return false;
+  }
   const signature = parsePhylloSignatureHeader(signatureHeader);
   if (!signature) return false;
   try {
@@ -1752,6 +1758,73 @@ function verifyPhylloWebhookSignature(rawBody, signatureHeader) {
   } catch (err) {
     console.error('[Phyllo] webhook signature verification error', err);
     return false;
+  }
+}
+
+// Authenticates inbound Modal worker callbacks (/api/modal-progress,
+// /api/modal-webhook). When MODAL_CALLBACK_SECRET is set, the worker must echo
+// it in the X-Modal-Secret header. Backward-compatible: if the secret is unset
+// (worker not yet updated) this returns true — so roll the worker's header out
+// FIRST, then set the env to switch enforcement on with zero downtime.
+function modalCallbackAuthed(req) {
+  const secret = process.env.MODAL_CALLBACK_SECRET || '';
+  if (!secret) return true;
+  const got = String((req.headers && req.headers['x-modal-secret']) || '').trim();
+  if (!got || got.length !== secret.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
+  } catch {
+    return false;
+  }
+}
+
+// SSRF guard for a client-supplied media URL that the GPU worker will download.
+// Rejects non-https and internal/loopback/link-local/private/metadata targets
+// (e.g. 169.254.169.254 — cloud metadata) while allowing any normal public
+// https host, so legitimate S3 / CloudFront / Supabase source URLs pass.
+function isSafeRemoteMediaUrl(urlStr) {
+  if (!urlStr) return false;
+  let u;
+  try { u = new URL(String(urlStr)); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.localhost') ||
+      host.endsWith('.internal') || host.endsWith('.local')) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    const p = host.split('.').map(Number);
+    if (p.some((n) => n > 255)) return false;
+    if (p[0] === 0 || p[0] === 127 || p[0] === 10 ||
+        (p[0] === 169 && p[1] === 254) ||           // link-local + cloud metadata
+        (p[0] === 192 && p[1] === 168) ||
+        (p[0] === 172 && p[1] >= 16 && p[1] <= 31)) return false;
+  }
+  // IPv6 loopback / unique-local (fc00::/7) / link-local (fe80::/10)
+  if (host === '[::1]' || host === '::1' ||
+      host.startsWith('[fc') || host.startsWith('[fd') || host.startsWith('[fe8') ||
+      host.startsWith('[fe9') || host.startsWith('[fea') || host.startsWith('[feb')) return false;
+  return true;
+}
+
+// Per-key async mutex. Serializes async critical sections that share a key
+// (e.g. one user's concurrent quota claims) WITHIN this process, so a burst of
+// parallel requests can't each pass a check-then-write gate before any write
+// lands (TOCTOU). Single-process scope; the DB advisory-lock RPC covers the
+// multi-instance case. Map holds one (settled) promise per active key.
+const _keyLocks = new Map();
+async function withKeyLock(key, fn) {
+  const prev = _keyLocks.get(key) || Promise.resolve();
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const chained = prev.then(() => held);
+  _keyLocks.set(key, chained);
+  try {
+    await prev;
+    return await fn();
+  } finally {
+    release();
+    // Drop the entry once this holder is the tail, to bound map growth.
+    if (_keyLocks.get(key) === chained) _keyLocks.delete(key);
   }
 }
 
@@ -9918,13 +9991,20 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'storage_not_configured' });
         }
 
+        // Authenticate and derive the owner from the token — NEVER from a client
+        // field. Previously this route was unauthenticated and used a
+        // client-supplied fields.userId, allowing anyone to write into any
+        // user's storage prefix and trigger paid pre-analysis. (Legacy route;
+        // the live client uploads via /api/upload-url + /api/upload-multipart-*.)
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'legacy-upload', authUser.id, 10, 900)) return;
+        const userId = authUser.id;
+
         const rawBody = await readRawBodyWithLimit(req, MAX_UPLOAD_BODY);
         const { fields, files } = parseMultipartFormData(rawBody, req.headers['content-type'] || '');
         const file = files.video;
-        const userId = String(fields.userId || '').trim();
 
         if (!file) return sendJson(res, 400, { error: 'No video file provided' });
-        if (!userId) return sendJson(res, 400, { error: 'User ID is required' });
         if (file.size > MAX_VIDEO_FILE_SIZE) {
           return sendJson(res, 400, { error: 'File size exceeds 500MB limit' });
         }
@@ -10005,6 +10085,20 @@ const server = http.createServer((req, res) => {
     const jobId = decodeURIComponent(sseStreamMatch[1] || '').trim();
     if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
 
+    (async () => {
+    // Authenticate + verify ownership BEFORE opening the stream. Without this,
+    // anyone holding a job UUID could read its status + signed rendered_video_url.
+    // The iOS SSEClient already sends Authorization: Bearer <token>.
+    let authUser;
+    try { authUser = await requireSupabaseUser(req); }
+    catch (e) { return sendJson(res, e?.statusCode || 401, { error: 'unauthorized' }); }
+    if (supabaseAdmin) {
+      const { data: sseOwner, error: sseOwnerErr } = await supabaseAdmin
+        .from('video_jobs').select('user_id').eq('id', jobId).maybeSingle();
+      if (sseOwnerErr) return sendJson(res, 500, { error: 'ownership_check_failed' });
+      if (!sseOwner || sseOwner.user_id !== authUser.id) return sendJson(res, 404, { error: 'not_found' });
+    }
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -10053,6 +10147,7 @@ const server = http.createServer((req, res) => {
         if (clients.size === 0) sseClients.delete(jobId);
       }
     });
+    })();
 
     return;
   }
@@ -10060,6 +10155,13 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/modal-progress' && req.method === 'POST') {
     (async () => {
       try {
+        // Authenticate the Modal worker callback. When MODAL_CALLBACK_SECRET is
+        // configured, require the worker to echo it as X-Modal-Secret; without
+        // it anyone who knows a job UUID could forge progress/completion, inject
+        // a rendered_video_url, and trigger a push to the real owner. Backward-
+        // compatible: if the secret isn't set yet (worker rollout pending) this
+        // is a no-op, so deploy the worker's header first, then set the env.
+        if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
         const body = await readJsonBody(req);
         const { job_id, step, pct, message } = body || {};
         if (!job_id) return sendJson(res, 400, { error: 'job_id required' });
@@ -10171,6 +10273,12 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/modal-webhook' && req.method === 'POST') {
     (async () => {
       try {
+        // NOTE: this callback is invoked by Modal's PLATFORM (the `webhook` URL
+        // in callModalRender), not our worker, so it can't carry X-Modal-Secret.
+        // It's keyed by an opaque, server-issued Modal call id — settlePending-
+        // ModalJob is a no-op for any id that isn't currently in flight — so a
+        // forged call can't settle a real render (audit-verified). Do NOT add
+        // modalCallbackAuthed here: it would 401 every legitimate settlement.
         const body = await readJsonBody(req);
         const id = body?.id;
         const status = body?.status;
@@ -10287,6 +10395,32 @@ const server = http.createServer((req, res) => {
       wrapped.statusCode = 503;
       throw wrapped;
     }
+  }
+
+  // Atomically claim one daily-quota slot: check today's count AND insert the
+  // usage event under a per-(user,kind) advisory lock, so concurrent requests
+  // can't both pass the cap (TOCTOU double-spend). Returns { ok } — ok=false
+  // means the daily limit is already reached. Falls back to the old
+  // count-then-insert (best effort) if the RPC isn't deployed yet, so this is
+  // safe to ship before the migration lands. Errors fail CLOSED (throw 503).
+  async function claimDailyUsage(userId, kind, dailyLimit) {
+    if (!supabaseAdmin || !userId) {
+      const e = new Error('usage_claim_unavailable'); e.statusCode = 503; throw e;
+    }
+    const { data, error } = await supabaseAdmin.rpc('claim_usage_slot', {
+      p_user: userId, p_kind: kind, p_daily_limit: dailyLimit,
+    });
+    if (!error) return { ok: data === true };
+    // RPC not present yet (migration pending) → fall back to the racy path.
+    if (error.code === '42883' || error.code === 'PGRST202'
+        || /claim_usage_slot|function .* does not exist/i.test(error.message || '')) {
+      const today = await countTodayUsage(userId, kind);
+      if (today >= dailyLimit) return { ok: false };
+      await logUsageEvent(userId, kind);
+      return { ok: true };
+    }
+    console.error('[usage] claim_usage_slot failed — refusing action', { userId, kind, error: error.message });
+    const e = new Error('usage_claim_failed'); e.statusCode = 503; throw e;
   }
 
   // ── Presigned S3 upload URL ──
@@ -11344,10 +11478,16 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/prewarm' && req.method === 'POST') {
     (async () => {
       try {
-        await requireSupabaseUser(req);  // auth check, don't care about the user object
+        const prewarmUser = await requireSupabaseUser(req);
+        // Cap GPU prewarm dispatches per user — each one downloads + transcribes
+        // on a paid Modal container. Generous for real use (one per intended
+        // render) but stops a loop from spraying GPU spend.
+        if (!checkRateLimit(res, 'prewarm', prewarmUser.id, 20, 900)) return;
         const body = await readJsonBody(req);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         if (!videoUrl) return sendJson(res, 400, { error: 'video_url is required' });
+        // SSRF guard — the Modal worker downloads this URL.
+        if (!isSafeRemoteMediaUrl(videoUrl)) return sendJson(res, 400, { error: 'invalid_video_url' });
 
         // Derive the prewarm endpoint URL from the main run-job URL unless
         // overridden. Modal URLs follow the pattern:
@@ -11416,7 +11556,9 @@ const server = http.createServer((req, res) => {
         console.log('  Time:', new Date().toISOString());
         console.log('  Method:', req.method);
         console.log('  URL:', req.url);
-        console.log('  Headers:', req.headers);
+        // Never log the raw headers — they carry the caller's live Supabase JWT
+        // (Authorization) and any cookies. Redact before logging.
+        console.log('  Headers:', { ...req.headers, authorization: '[redacted]', cookie: '[redacted]' });
         if (!supabaseAdmin) {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
@@ -11429,7 +11571,10 @@ const server = http.createServer((req, res) => {
         if (!checkRateLimit(res, 'video-job-create', authUser.id, 10, 900)) return;
 
         const body = await readJsonBody(req);
-        console.log('  Request body:', body);
+        // Don't dump the whole body — video_url / proxy_video_url are presigned
+        // storage URLs (bearer-capability tokens in the query string). Log only
+        // the non-sensitive shape.
+        console.log('  Request body keys:', body && typeof body === 'object' ? Object.keys(body) : typeof body);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
         // Optional low-res proxy. When the client extracts a 640x480
@@ -11439,9 +11584,21 @@ const server = http.createServer((req, res) => {
         // flight. Quality of the FINAL render is unchanged — Gemini
         // analyzes video at thumbnail resolution internally regardless.
         const proxyVideoUrl = String(body?.proxy_video_url || body?.proxyVideoUrl || '').trim();
-        console.log('  Video URL:', videoUrl);
-        console.log('  Proxy URL:', proxyVideoUrl || '(none)');
+        // Log presigned URLs without their query string (the ?...signature is a
+        // capability token). stripQuery is a no-op on plain paths.
+        const stripQuery = (u) => (u ? String(u).split('?')[0] : u);
+        console.log('  Video URL:', stripQuery(videoUrl));
+        console.log('  Proxy URL:', stripQuery(proxyVideoUrl) || '(none)');
         console.log('  Vibe:', vibeInput);
+
+        // SSRF guard: the worker downloads these URLs. Block internal/metadata
+        // targets before dispatch. Legit uploaded sources are public https.
+        if (videoUrl && !isSafeRemoteMediaUrl(videoUrl)) {
+          return sendJson(res, 400, { error: 'invalid_video_url' });
+        }
+        if (proxyVideoUrl && !isSafeRemoteMediaUrl(proxyVideoUrl)) {
+          return sendJson(res, 400, { error: 'invalid_proxy_url' });
+        }
 
         const entitlement = await assertProEntitled(authUser.id);
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
@@ -11454,59 +11611,69 @@ const server = http.createServer((req, res) => {
         // (rate_limit = 10) for a Pro user, with no per-user concurrency
         // gate. Counts queued + processing rows; failed/completed/cancelled
         // don't count against the cap.
-        if (supabaseAdmin) {
-          const { count: pendingCount, error: pendingErr } = await supabaseAdmin
-            .from('video_jobs')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', authUser.id)
-            .in('status', ['queued', 'processing']);
-          if (pendingErr) {
-            console.error('  [paywall] pending-count failed, refusing action',
-              { userId: authUser.id, error: pendingErr.message });
-            return sendJson(res, 503, { error: 'pending_check_failed' });
+        // Reserve atomically. withKeyLock serializes THIS user's concurrent
+        // render reservations in-process, and claimDailyUsage claims the daily
+        // slot under a DB advisory lock — together closing the TOCTOU where a
+        // burst of parallel requests each passed the concurrency (1 free / 10
+        // pro) or daily (3 free) cap before any write landed (GPU double-spend).
+        // The lock wraps only the check+reserve+insert; the Modal dispatch runs
+        // outside it. Returns { job } on success or { status, body } to reject.
+        const reservation = await withKeyLock(`render:${authUser.id}`, async () => {
+          if (supabaseAdmin) {
+            const { count: pendingCount, error: pendingErr } = await supabaseAdmin
+              .from('video_jobs')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', authUser.id)
+              .in('status', ['queued', 'processing']);
+            if (pendingErr) {
+              console.error('  [paywall] pending-count failed, refusing action',
+                { userId: authUser.id, error: pendingErr.message });
+              return { status: 503, body: { error: 'pending_check_failed' } };
+            }
+            const concurrencyCap = entitlement.isPro ? 10 : 1;
+            if ((pendingCount || 0) >= concurrencyCap) {
+              console.log('  [paywall] 402 concurrency_limit_reached userId=%s pending=%d cap=%d',
+                authUser.id, pendingCount, concurrencyCap);
+              return { status: 402, body: {
+                error: 'concurrency_limit_reached',
+                kind: entitlement.isPro ? 'concurrency_pro' : 'concurrency_free',
+                limit: concurrencyCap,
+                message: entitlement.isPro
+                  ? `You can have up to ${concurrencyCap} renders in flight at once.`
+                  : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
+              } };
+            }
           }
-          const concurrencyCap = entitlement.isPro ? 10 : 1;
-          if ((pendingCount || 0) >= concurrencyCap) {
-            console.log('  [paywall] 402 concurrency_limit_reached userId=%s pending=%d cap=%d',
-              authUser.id, pendingCount, concurrencyCap);
-            return sendJson(res, 402, {
-              error: 'concurrency_limit_reached',
-              kind: entitlement.isPro ? 'concurrency_pro' : 'concurrency_free',
-              limit: concurrencyCap,
-              message: entitlement.isPro
-                ? `You can have up to ${concurrencyCap} renders in flight at once.`
-                : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
-            });
+
+          if (!entitlement.isPro) {
+            // Atomic check-and-increment of the free daily render cap. This both
+            // enforces the limit and records the usage event; if it fails
+            // (outage) it throws 503 and we abort rather than free-render.
+            const claim = await claimDailyUsage(authUser.id, 'render', FREE_DAILY_RENDERS);
+            if (!claim.ok) {
+              console.log('  [paywall] 402 daily_limit_reached for userId=%s', authUser.id);
+              return { status: 402, body: {
+                error: 'daily_limit_reached',
+                kind: 'render',
+                limit: FREE_DAILY_RENDERS,
+                message: `You've used your ${FREE_DAILY_RENDERS} free renders today. Upgrade to Pro for unlimited.`,
+              } };
+            }
+          } else {
+            // Pro: no daily cap, but still record the render for tracking.
+            await logUsageEvent(authUser.id, 'render');
           }
-        }
 
-        if (!entitlement.isPro) {
-          const todayCount = await countTodayUsage(authUser.id, 'render');
-          console.log('  [paywall] free user count=%d limit=%d', todayCount, FREE_DAILY_RENDERS);
-          if (todayCount >= FREE_DAILY_RENDERS) {
-            console.log('  [paywall] 402 daily_limit_reached for userId=%s', authUser.id);
-            return sendJson(res, 402, {
-              error: 'daily_limit_reached',
-              kind: 'render',
-              limit: FREE_DAILY_RENDERS,
-              message: `You've used your ${FREE_DAILY_RENDERS} free renders today. Upgrade to Pro for unlimited.`,
-            });
-          }
-        }
-
-        // Increment the counter BEFORE creating the job row. If the
-        // increment fails (Supabase outage, schema drift, etc.) we abort
-        // here rather than dispatch a render that wouldn't count against
-        // the daily cap. Previous order was: createJob → logUsage, with
-        // logUsage failures swallowed — that turned a counter outage
-        // into a permanent free-renders bug.
-        await logUsageEvent(authUser.id, 'render');
-
-        const job = await createQueuedVideoJob({
-          userId: authUser.id,
-          videoUrl,
-          vibeInput,
+          const created = await createQueuedVideoJob({
+            userId: authUser.id,
+            videoUrl,
+            vibeInput,
+          });
+          return { job: created };
         });
+
+        if (reservation.status) return sendJson(res, reservation.status, reservation.body);
+        const job = reservation.job;
         console.log('  ✅ Job created:', job.id);
 
         // Premium pipeline (Lumen) gate — DEFENSE IN DEPTH. The client only
@@ -11881,6 +12048,11 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
 
+        // Authenticate + scope to the caller's own jobs (edit_jobs has a
+        // user_id column). Previously any UUID could read another user's job
+        // status + rendered_video_url.
+        const authUser = await requireSupabaseUser(req);
+
         const jobId = decodeURIComponent(videoJobMatch[1] || '').trim();
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
@@ -11888,6 +12060,7 @@ const server = http.createServer((req, res) => {
           .from('edit_jobs')
           .select('id, status, progress, rendered_video_url, error, updated_at, completed_at')
           .eq('id', jobId)
+          .eq('user_id', authUser.id)
           .maybeSingle();
 
         if (error) {
@@ -12163,6 +12336,11 @@ const server = http.createServer((req, res) => {
     removedFeaturePath === '/api/generate-calendar' ||
     removedFeaturePath === '/api/brand-brain/settings' ||
     removedFeaturePath.startsWith('/api/calendar') ||
+    // Brand Brain is retired; /api/brand/ingest + /api/brand/profile were
+    // orphaned (no live caller) and unauthenticated — they trusted a
+    // client-supplied userId, allowing cross-user writes/reads via the
+    // service-role client and unbounded OpenAI-embedding spend. Kill them here.
+    removedFeaturePath.startsWith('/api/brand/') ||
     /^\/api\/calendars\/[^/]+$/i.test(removedFeaturePath)
   ) {
     res.writeHead(410, { 'Content-Type': 'application/json' });
@@ -15341,10 +15519,18 @@ const server = http.createServer((req, res) => {
           const isPro = isUserPro(req);
           if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
           if (!OPENAI_API_KEY) return sendJson(res, 500, { ok: false, error: 'openai_not_configured' });
+          // Throttle: this fans out to a paid OpenAI call with caller-supplied
+          // content. Without a cap a loop drives unbounded spend.
+          if (!checkRateLimit(res, 'analytics-insights', userId, 10, 900)) return;
 
           const posts = Array.isArray(body?.posts) ? body.posts : null;
           if (!posts) {
             return sendJson(res, 400, { ok: false, error: 'invalid_posts_array' });
+          }
+          // Bound the attacker-controlled array that gets stuffed into the
+          // prompt — cap count and serialized size to keep token spend sane.
+          if (posts.length > 200 || JSON.stringify(posts).length > 200000) {
+            return sendJson(res, 413, { ok: false, error: 'posts_too_large' });
           }
 
           const promptText = `
