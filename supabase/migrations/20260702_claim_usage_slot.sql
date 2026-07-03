@@ -30,8 +30,11 @@ begin
     return false;
   end if;
 
-  -- Serialize all concurrent claims for this (user, kind) for the txn.
-  perform pg_advisory_xact_lock(hashtextextended(p_user::text, 0), hashtext(p_kind));
+  -- Serialize all concurrent claims for this (user, kind) for the txn. Use the
+  -- single-arg bigint overload with a combined key — the two-arg form is
+  -- (int4,int4) only, and hashtextextended() returns bigint, so mixing it with
+  -- hashtext() (int4) resolves to no overload and throws 42883 at call time.
+  perform pg_advisory_xact_lock(hashtextextended(p_user::text || ':' || p_kind, 0));
 
   -- UTC midnight today as a timestamptz instant, matching the app's
   -- utcDayStart() cutoff used by countTodayUsage (created_at is timestamptz).
