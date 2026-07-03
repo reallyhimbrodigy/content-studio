@@ -29,6 +29,155 @@ const { validateFeedback } = require('./lib/feedback');
 const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
 const { isJobCancellable } = require('./lib/cancel');
 
+// [restored dep]
+function normalizePlanLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'paid' || raw === 'premium') return 'pro';
+  return raw;
+}
+
+
+
+// ── [restored: over-deletion regression fix, from 858d19d] ──
+const isProduction = process.env.NODE_ENV === 'production';
+
+const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
+
+function _consumeRateToken(scope, key, capacity, refillSeconds) {
+  const id = `${scope}:${key}`;
+  const now = Date.now();
+  const refillRateMs = (refillSeconds * 1000) / capacity; // ms per single token
+  const bucket = _rateBuckets.get(id) || { tokens: capacity, lastRefill: now };
+  // Refill based on elapsed time
+  const elapsed = now - bucket.lastRefill;
+  if (elapsed > 0) {
+    const refilled = elapsed / refillRateMs;
+    bucket.tokens = Math.min(capacity, bucket.tokens + refilled);
+    bucket.lastRefill = now;
+  }
+  if (bucket.tokens < 1) {
+    _rateBuckets.set(id, bucket);
+    const retryAfterMs = Math.ceil((1 - bucket.tokens) * refillRateMs);
+    return { ok: false, retryAfterSeconds: Math.ceil(retryAfterMs / 1000) };
+  }
+  bucket.tokens -= 1;
+  _rateBuckets.set(id, bucket);
+  return { ok: true };
+}
+
+function checkRateLimit(res, scope, key, capacity, refillSeconds) {
+  const result = _consumeRateToken(scope, key, capacity, refillSeconds);
+  if (result.ok) return true;
+  res.setHeader('Retry-After', String(result.retryAfterSeconds));
+  sendJson(res, 429, {
+    error: 'Too many requests. Slow down and try again shortly.',
+    retry_after_seconds: result.retryAfterSeconds,
+  });
+  return false;
+}
+
+async function fetchSubscriptionEntitlement(userId) {
+  if (!supabaseAdmin || !userId) {
+    return { status: null, plan: null, sourceTable: 'profiles', row: null };
+  }
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    const err = new Error(error?.message || 'entitlements_lookup_failed');
+    err.statusCode = 500;
+    err.sourceTable = 'profiles';
+    throw err;
+  }
+  if (!data) {
+    return { status: null, plan: null, sourceTable: 'profiles', row: null };
+  }
+  // RevenueCat era: tier + pro_until are the authoritative source. We
+  // still expose `plan` and `status` in the return shape because other
+  // code paths read them, but they're derived from tier now.
+  const plan = normalizePlanLabel(data?.tier || data?.subscription_plan || null);
+  const status = isProfilePro(data) ? 'active' : null;
+  return { status, plan, sourceTable: 'profiles', row: data };
+}
+
+function resolveEntitlementDecision(entitlement) {
+  const row = entitlement?.row || null;
+  const plan = entitlement?.plan || null;
+  const status = entitlement?.status || null;
+  const isPro = isProfilePro(row);
+  if (isPro) {
+    return { isPro: true, reason: 'IS_USER_PRO', plan, status };
+  }
+  if (!row) {
+    return { isPro: false, reason: 'NO_ENTITLEMENT_ROW', plan, status };
+  }
+  return { isPro: false, reason: 'TIER_NOT_PRO', plan, status };
+}
+
+function _selfHealDue(userId) {
+  return Date.now() >= (_selfHealNextAllowed.get(userId) || 0);
+}
+
+function _markSelfHeal(userId, isError) {
+  _selfHealNextAllowed.set(userId, Date.now() + (isError ? SELF_HEAL_ERROR_TTL_MS : SELF_HEAL_TTL_MS));
+  if (_selfHealNextAllowed.size > 5000) {
+    const now = Date.now();
+    for (const [k, v] of _selfHealNextAllowed) if (v < now) _selfHealNextAllowed.delete(k);
+  }
+}
+
+function _hasSubscriptionHistory(row) {
+  if (!row) return false;
+  if (row.rc_app_user_id) return true;
+  if (row.pro_until) return true;
+  const tier = String(row.tier || '').toLowerCase().trim();
+  return tier === 'pro' || tier === 'teams' || tier === 'premium';
+}
+
+async function assertProEntitled(userId) {
+  if (!supabaseAdmin) {
+    const err = new Error('supabase_not_configured');
+    err.statusCode = 500;
+    throw err;
+  }
+  const entitlement = await fetchSubscriptionEntitlement(userId);
+  const decision = resolveEntitlementDecision(entitlement);
+  if (decision.isPro) {
+    return { ...decision, sourceTable: entitlement.sourceTable };
+  }
+
+  // SELF-HEAL — the guarantee that a paying user is NEVER denied, even if the
+  // webhook was missed, delayed, or (as happened) silently 401'd. The DB says
+  // "not Pro", but RevenueCat is the source of truth. If this user has any
+  // subscription history, verify against RC (grant-only — it can only upgrade,
+  // never wrongly revoke) before returning a denial. Throttled per user so a
+  // genuinely-free ex-subscriber can't hammer RC, and skipped entirely for
+  // never-subscribed users so the common free/Pro paths stay a single DB read.
+  if (_hasSubscriptionHistory(entitlement.row) && _selfHealDue(userId)) {
+    try {
+      const healed = await reconcileEntitlementFromRevenueCat(userId);
+      // Definitive answer from RC → throttle the next check for the full window.
+      _markSelfHeal(userId, false);
+      if (healed && healed.isPro) {
+        console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
+        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', sourceTable: entitlement.sourceTable };
+      }
+    } catch (e) {
+      // Transient RC error/outage: short throttle so a paying user retries
+      // within ~60s instead of being locked out for the full window, while
+      // still bounding calls during an outage. Grant-only → never wrongly
+      // revokes; we just couldn't upgrade this instant.
+      _markSelfHeal(userId, true);
+      console.warn('[entitlement] self-heal reconcile failed (non-fatal)', { userId, error: e?.message });
+    }
+  }
+  return { ...decision, sourceTable: entitlement.sourceTable };
+}
+
+
 // The owner's Supabase user id is always authorized to review submissions, so
 // /review works with zero env config. Additional reviewers can be added via
 // SUBMISSION_ADMIN_USER_IDS (uids) or SUBMISSION_ADMIN_EMAILS (emails) —
