@@ -255,6 +255,17 @@ async function resolveProEntitlementInternalId(projectId, secret) {
  * a `.statusCode` on misconfiguration / RC outage so callers can surface a
  * 5xx WITHOUT writing the DB.
  */
+// True when a Supabase error is "column rc_last_event_ms doesn't exist" — i.e.
+// migration 20260701_rc_event_ordering hasn't been applied yet. Lets the webhook
+// + reconcile fall back to a plain write so they never 500 on the missing
+// column; the ordering guard activates automatically once the column exists.
+function rcOrderingColumnMissing(error) {
+  if (!error) return false;
+  if (error.code === 'PGRST204' || error.code === '42703') return true;
+  const blob = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+  return /rc_last_event_ms/i.test(blob);
+}
+
 async function reconcileEntitlementFromRevenueCat(appUserId) {
   const secret = process.env.REVENUECAT_SECRET_KEY || '';
   const projectId = process.env.REVENUECAT_PROJECT_ID || '';
@@ -324,11 +335,16 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
     // eventMs > now and correctly wins. (Column added in 20260701_rc_event_ordering.)
     rc_last_event_ms: Date.now(),
   };
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('profiles')
     .update(update)
     .eq('id', id)
     .select('id');
+  if (error && rcOrderingColumnMissing(error)) {
+    // Ordering column not migrated yet — retry without the stamp.
+    const { rc_last_event_ms, ...plain } = update;
+    ({ data, error } = await supabaseAdmin.from('profiles').update(plain).eq('id', id).select('id'));
+  }
   if (error) {
     const err = new Error('profile_update_failed');
     err.statusCode = 500;
@@ -2504,7 +2520,15 @@ const server = http.createServer((req, res) => {
           const payload = useOrdering ? { ...update, rc_last_event_ms: eventMs } : update;
           let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
           if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
-          const { data, error } = await q.select('id');
+          let { data, error } = await q.select('id');
+          // Tolerate the ordering column not existing yet (migration 20260701 not
+          // applied): fall back to a plain, unguarded update so the webhook never
+          // 500s on a missing column. Ordering activates once the column exists.
+          if (error && rcOrderingColumnMissing(error)) {
+            ({ data, error } = await supabaseAdmin.from('profiles').update(update).eq('id', id).select('id'));
+            if (error) throw error;
+            return (Array.isArray(data) && data.length > 0) ? 'applied' : 'nomatch';
+          }
           if (error) throw error;
           if (Array.isArray(data) && data.length > 0) return 'applied';
           if (!useOrdering) return 'nomatch';
