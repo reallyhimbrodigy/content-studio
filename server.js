@@ -40,6 +40,11 @@ function normalizePlanLabel(value) {
 
 
 // ── [restored: over-deletion regression fix, from 858d19d] ──
+// Module-level state the restored rate-limiter + self-heal functions depend on.
+const _rateBuckets = new Map(); // `${scope}:${key}` -> { tokens, lastRefill }
+const _selfHealNextAllowed = new Map();
+const SELF_HEAL_TTL_MS = 5 * 60 * 1000;       // after a DEFINITIVE RC answer
+const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — retry soon
 const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
