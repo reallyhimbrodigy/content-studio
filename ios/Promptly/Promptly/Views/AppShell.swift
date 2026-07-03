@@ -138,7 +138,11 @@ struct AppShell: View {
     private var openSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .local)
             .onChanged { value in
-                guard !appState.sidebarOpen else { return }
+                // Chat sidebar belongs to the Edit tab only. On Library (1) /
+                // Account (2) a right-swipe must NOT pull it open. Both handlers
+                // gate on this — .onEnded computes shouldOpen independently, so
+                // guarding only .onChanged would still let a flick commit.
+                guard !appState.sidebarOpen, appState.selectedTab == 0 else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
                 // Direction lock — vertical scrolls in chat / library
@@ -152,7 +156,7 @@ struct AppShell: View {
                 sidebarDragX = dx
             }
             .onEnded { value in
-                guard !appState.sidebarOpen else {
+                guard !appState.sidebarOpen, appState.selectedTab == 0 else {
                     sidebarDragX = 0
                     return
                 }
