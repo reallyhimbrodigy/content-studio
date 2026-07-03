@@ -485,7 +485,9 @@ function isSafeRemoteMediaUrl(urlStr) {
   let u;
   try { u = new URL(String(urlStr)); } catch { return false; }
   if (u.protocol !== 'https:') return false;
-  const host = u.hostname.toLowerCase();
+  // Strip a trailing dot (FQDN root) so `169.254.169.254.` / `foo.internal.`
+  // can't slip past the IP-literal regex and the suffix checks below.
+  const host = u.hostname.toLowerCase().replace(/\.+$/, '');
   if (!host) return false;
   if (host === 'localhost' || host.endsWith('.localhost') ||
       host.endsWith('.internal') || host.endsWith('.local')) return false;
