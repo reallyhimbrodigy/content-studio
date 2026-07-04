@@ -476,6 +476,22 @@ enum StageState: String {
     case upcoming, inProgress, completed, skipped
 }
 
+/// Single source of truth for "is this render finished?". Covers the WORKER's
+/// authoritative durable vocab (complete/canceled/needs_input), the app/client
+/// vocab (completed/cancelled/needs_clarification), and failed/error. The
+/// progress UI MUST stop on any of these — no screen may spin past a terminal
+/// row — and pollers/SSE must treat them all as done.
+enum JobLifecycle {
+    static let terminal: Set<String> = [
+        "complete", "completed", "failed", "error",
+        "canceled", "cancelled", "needs_input", "needs_clarification",
+    ]
+    static func isTerminal(_ status: String?) -> Bool {
+        guard let s = status else { return false }
+        return terminal.contains(s)
+    }
+}
+
 enum PipelineCatalog {
     // Baked-in snapshot of shared/pipeline-stages.json — keep in sync.
     //

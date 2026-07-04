@@ -373,7 +373,11 @@ class APIService {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        let urlStr = "\(supabaseUrl)/rest/v1/video_jobs?user_id=eq.\(userId)&status=in.(completed,processing,queued,failed)&order=created_at.desc&select=id,status,vibe_input,rendered_video_url,hls_manifest_url,thumbnail_url,created_at,error_message"
+        // Include the WORKER's success vocab ('complete') alongside the app's
+        // ('completed') so a worker-completed render still shows in the library,
+        // plus the parked-question states. 'canceled'/'cancelled' are omitted on
+        // purpose — a cancelled render shouldn't appear.
+        let urlStr = "\(supabaseUrl)/rest/v1/video_jobs?user_id=eq.\(userId)&status=in.(completed,complete,processing,queued,failed,needs_clarification,needs_input)&order=created_at.desc&select=id,status,vibe_input,rendered_video_url,hls_manifest_url,thumbnail_url,created_at,error_message"
         var request = URLRequest(url: URL(string: urlStr)!)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

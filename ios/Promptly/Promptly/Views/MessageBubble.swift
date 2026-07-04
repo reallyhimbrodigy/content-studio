@@ -179,8 +179,10 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
-            if let status = message.jobStatus,
-               !["completed", "complete", "failed", "error"].contains(status) {
+            // Show the progress UI ONLY while the job is not terminal. Any
+            // terminal status — completed/complete, failed/error, canceled/
+            // cancelled, needs_input/needs_clarification — stops the spinner.
+            if let status = message.jobStatus, !JobLifecycle.isTerminal(status) {
                 if let timeline = message.stageTimeline {
                     PipelineProgressView(
                         timeline: timeline,

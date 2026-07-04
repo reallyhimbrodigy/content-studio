@@ -212,6 +212,7 @@ class SSEClient {
             }
 
             DispatchQueue.main.async { [weak self] in
+                // Success — the worker writes 'complete', the app 'completed'.
                 if job.status == "completed" || job.status == "complete" {
                     self?.onEvent?(SSEEvent(
                         status: "completed", progress: 100, step: "complete",
@@ -221,13 +222,22 @@ class SSEClient {
                         errorCode: nil, userMessage: nil, retryable: nil,
                         requiresNewVideo: nil, requiresVibeChange: nil
                     ))
-                } else if job.status == "failed" {
+                } else if JobLifecycle.isTerminal(job.status) {
+                    // ANY other terminal status — failed/error, canceled/cancelled,
+                    // needs_input/needs_clarification. Emit a final event so the
+                    // spinner stops no matter which vocab the worker used. Pass the
+                    // status through (the UI branches on it) and carry the stored
+                    // reason as the error message for the failure cases.
+                    let isFailure = job.status == "failed" || job.status == "error"
                     self?.onEvent?(SSEEvent(
-                        status: "failed", progress: nil, step: nil,
-                        message: nil, videoUrl: nil,
+                        status: job.status, progress: nil, step: nil,
+                        message: job.error_message, videoUrl: nil,
                         hlsManifestUrl: nil,
                         thumbnailUrl: nil,
-                        error: job.error_message ?? "Something went wrong. Please try again.", final: true,
+                        error: isFailure
+                            ? (job.error_message ?? "Something went wrong. Please try again.")
+                            : nil,
+                        final: true,
                         errorCode: nil, userMessage: nil, retryable: nil,
                         requiresNewVideo: nil, requiresVibeChange: nil
                     ))

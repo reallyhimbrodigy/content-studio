@@ -201,6 +201,14 @@ function isAuthorizedSubmissionReviewer(user) {
 // SSE client registry — maps jobId -> Set of response objects
 const sseClients = new Map();
 
+// FIRST-TERMINAL-WINS. Once video_jobs.status is one of these the job is
+// finished; the app must not overwrite it (that clobbers the worker's write-once
+// result/phase + respells the monitoring vocab, or resurrects a user's cancel).
+// Covers the worker's durable vocab (complete/canceled/needs_input) + the
+// app/client vocab (completed/cancelled/needs_clarification) + failed.
+const TERMINAL_JOB_STATUSES_SQL =
+  '(complete,completed,failed,canceled,cancelled,needs_input,needs_clarification)';
+
 function pushProgressToSSE(jobId, data) {
   const clients = sseClients.get(jobId);
   if (!clients || clients.size === 0) return;
@@ -1526,10 +1534,15 @@ const server = http.createServer((req, res) => {
         };
         if (completionVideoUrl) updateData.rendered_video_url = completionVideoUrl;
 
+        // First-terminal-wins: this fast-path progress write must never land on
+        // a terminal row — it would respell the worker's status (dropping its
+        // write-once result/phase) or resurrect a cancelled render. The SSE
+        // push below still fires regardless, so the client stays live.
         await supabaseAdmin
           .from('video_jobs')
           .update(updateData)
-          .eq('id', job_id);
+          .eq('id', job_id)
+          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL);
 
         if (step === 'complete') {
           // Fast-path: tell the UI the video is ready as soon as the worker
@@ -2904,11 +2917,21 @@ const server = http.createServer((req, res) => {
         if (!job) return sendJson(res, 404, { error: 'not_found' });
         if (!isJobCancellable(job)) return sendJson(res, 200, { ok: true, noop: true });
 
-        const { error: updErr } = await supabaseAdmin
+        // Atomic first-terminal-wins: cancel ONLY if the row isn't already
+        // terminal. Closes the TOCTOU between the read above and this write — if
+        // the worker's render completed (or failed) in that window, the cancel
+        // matches 0 rows, the completion stands, and we do NOT refund a finished
+        // render or resurrect it. (Mirror of the worker's write-once terminal.)
+        const { data: cancelled, error: updErr } = await supabaseAdmin
           .from('video_jobs')
           .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-          .eq('id', jobId).eq('user_id', authUser.id);
+          .eq('id', jobId).eq('user_id', authUser.id)
+          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL)
+          .select('id');
         if (updErr) return sendJson(res, 500, { error: 'cancel_failed' });
+        if (!Array.isArray(cancelled) || cancelled.length === 0) {
+          return sendJson(res, 200, { ok: true, noop: true });
+        }
 
         // Refund one of today's render usage events (best-effort; a cancel that
         // can't refund still succeeds). usage_events isn't job-linked, so we
