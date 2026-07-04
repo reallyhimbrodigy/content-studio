@@ -12,7 +12,7 @@ test('cancellable while queued/processing', () => {
 test('NOT cancellable once terminal', () => {
   assert.equal(isJobCancellable({ status: 'completed' }), false);
   assert.equal(isJobCancellable({ status: 'failed' }), false);
-  assert.equal(isJobCancellable({ status: 'cancelled' }), false);
+  assert.equal(isJobCancellable({ status: 'canceled' }), false);
 });
 
 test('null / malformed job is not cancellable', () => {
@@ -25,5 +25,5 @@ test('null / malformed job is not cancellable', () => {
 test('refund only when actually cancellable (never on a finished render)', () => {
   assert.equal(shouldRefundOnCancel({ status: 'processing' }), true);
   assert.equal(shouldRefundOnCancel({ status: 'completed' }), false);
-  assert.equal(shouldRefundOnCancel({ status: 'cancelled' }), false);
+  assert.equal(shouldRefundOnCancel({ status: 'canceled' }), false);
 });

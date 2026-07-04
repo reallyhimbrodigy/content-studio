@@ -203,11 +203,12 @@ const sseClients = new Map();
 
 // FIRST-TERMINAL-WINS. Once video_jobs.status is one of these the job is
 // finished; the app must not overwrite it (that clobbers the worker's write-once
-// result/phase + respells the monitoring vocab, or resurrects a user's cancel).
-// Covers the worker's durable vocab (complete/canceled/needs_input) + the
-// app/client vocab (completed/cancelled/needs_clarification) + failed.
+// result/phase, or resurrects a user's cancel). Canonical durable terminals only
+// (ratified set): completed, failed, canceled, needs_input. The migration
+// normalizes legacy 'complete'/'cancelled' away, and the worker (v193) + this app
+// both speak canonical, so no both-spellings tax here.
 const TERMINAL_JOB_STATUSES_SQL =
-  '(complete,completed,failed,canceled,cancelled,needs_input,needs_clarification)';
+  '(completed,failed,canceled,needs_input)';
 
 function pushProgressToSSE(jobId, data) {
   const clients = sseClients.get(jobId);
@@ -2924,7 +2925,7 @@ const server = http.createServer((req, res) => {
         // render or resurrect it. (Mirror of the worker's write-once terminal.)
         const { data: cancelled, error: updErr } = await supabaseAdmin
           .from('video_jobs')
-          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .update({ status: 'canceled', updated_at: new Date().toISOString() })
           .eq('id', jobId).eq('user_id', authUser.id)
           .not('status', 'in', TERMINAL_JOB_STATUSES_SQL)
           .select('id');
@@ -2949,10 +2950,10 @@ const server = http.createServer((req, res) => {
           console.warn('[cancel] refund skipped:', refundErr.message);
         }
 
-        // Tell any live SSE client the render is cancelled + terminal.
+        // Tell any live SSE client the render is canceled + terminal.
         pushProgressToSSE(jobId, {
-          status: 'cancelled', progress: 0, step: 'cancelled',
-          message: 'Render cancelled', videoUrl: null, thumbnailUrl: null,
+          status: 'canceled', progress: 0, step: 'canceled',
+          message: 'Render canceled', videoUrl: null, thumbnailUrl: null,
           final: true, error: null,
         });
         console.log('[cancel] job cancelled', { jobId, userId: authUser.id });
@@ -2978,7 +2979,9 @@ const server = http.createServer((req, res) => {
         if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
         const { data } = await supabaseAdmin
           .from('video_jobs').select('status').eq('id', jobId).maybeSingle();
-        return sendJson(res, 200, { cancelled: data?.status === 'cancelled' });
+        // Response KEY stays `cancelled` (worker's is_cancelled reads that bool);
+        // the STATUS compare is canonical 'canceled'.
+        return sendJson(res, 200, { cancelled: data?.status === 'canceled' });
       } catch (e) {
         return sendJson(res, 200, { cancelled: false });
       }

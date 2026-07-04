@@ -212,8 +212,8 @@ class SSEClient {
             }
 
             DispatchQueue.main.async { [weak self] in
-                // Success — the worker writes 'complete', the app 'completed'.
-                if job.status == "completed" || job.status == "complete" {
+                // Success — canonical 'completed' (worker v193 + app both write it).
+                if job.status == "completed" {
                     self?.onEvent?(SSEEvent(
                         status: "completed", progress: 100, step: "complete",
                         message: "Your video is ready!", videoUrl: job.rendered_video_url,

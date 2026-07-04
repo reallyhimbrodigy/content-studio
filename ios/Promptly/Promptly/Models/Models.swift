@@ -476,15 +476,17 @@ enum StageState: String {
     case upcoming, inProgress, completed, skipped
 }
 
-/// Single source of truth for "is this render finished?". Covers the WORKER's
-/// authoritative durable vocab (complete/canceled/needs_input), the app/client
-/// vocab (completed/cancelled/needs_clarification), and failed/error. The
+/// Single source of truth for "is this render finished?". Canonical durable
+/// terminals (`completed, failed, canceled, needs_input`) + the transient re-edit
+/// SSE status `needs_clarification` + the legacy `error` alias for `failed`. The
 /// progress UI MUST stop on any of these — no screen may spin past a terminal
-/// row — and pollers/SSE must treat them all as done.
+/// row — and pollers/SSE must treat them all as done. (No `complete`/`cancelled`:
+/// those redundant spellings are normalized away by the canonical migration and
+/// the worker v193 + app now write canonical.)
 enum JobLifecycle {
     static let terminal: Set<String> = [
-        "complete", "completed", "failed", "error",
-        "canceled", "cancelled", "needs_input", "needs_clarification",
+        "completed", "failed", "canceled", "needs_input",
+        "needs_clarification", "error",
     ]
     static func isTerminal(_ status: String?) -> Bool {
         guard let s = status else { return false }
