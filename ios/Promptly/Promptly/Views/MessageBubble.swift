@@ -51,6 +51,26 @@ struct MessageBubble: View {
         }
     }
 
+    /// Display-time safety net: never render engineering output in a failure
+    /// bubble. A raw string that reads like an internal error (a code, JSON,
+    /// "is not defined", a stack, an over-long blob) is swapped for a generic,
+    /// friendly line. Belt-and-suspenders — callers already map to friendly
+    /// copy, but this guarantees it even if a new code path forgets to.
+    static func displaySafeError(_ raw: String?) -> String {
+        let generic = "Something went wrong. Please try again."
+        guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return generic }
+        let looksTechnical =
+            s.contains("is not defined") || s.contains("undefined") ||
+            s.localizedCaseInsensitiveContains("error:") || s.contains("{") || s.hasPrefix("[") ||
+            s.count > 160 ||
+            s.range(of: "^[a-z][a-z0-9_]*$", options: .regularExpression) != nil   // snake_case code
+        if looksTechnical {
+            print("[error] suppressed technical error from bubble: \(s)")
+            return generic
+        }
+        return s
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             if message.role == .user {
@@ -248,7 +268,7 @@ struct MessageBubble: View {
 
             if message.jobStatus == "failed" || message.jobStatus == "error" {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(message.error ?? "Something went wrong.")
+                    Text(Self.displaySafeError(message.error))
                         .font(.system(size: 14))
                         .foregroundColor(.red)
 

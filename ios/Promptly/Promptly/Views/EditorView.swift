@@ -1637,6 +1637,43 @@ struct EditorView: View {
     /// while the job is still in flight (queued/processing) and has a stage
     /// timeline — the FINER "before the recipe" gate lives in the view
     /// (`timeline.isCancellable`), which shows/hides the button as stages fire.
+    /// Maps any caught error to a SHORT, user-safe message for the chat bubble.
+    /// Raw technical errors (ReferenceErrors, "X is not defined", DB/stack noise)
+    /// must NEVER surface — they collapse to a generic line and get logged. Only
+    /// server-curated copy (structured failures, paywall, validation) passes
+    /// through, since the backend wrote those for users.
+    private func friendlyError(_ error: Error) -> String {
+        switch error {
+        case APIError.structuredFailure(_, let m, _, _, _): return m
+        case APIError.validationRejected(let m, _, _): return m
+        case APIError.paymentRequired(_, _, let m): return m
+        case APIError.notAuthenticated: return "Please sign in to continue."
+        case is URLError: return "Connection problem — check your network and try again."
+        default:
+            print("[error] suppressed technical error from UI: \(error)")
+            return "Something went wrong on our end. Please try again."
+        }
+    }
+
+    /// Last line of defense for a raw error string arriving over SSE. The backend
+    /// should already send friendly copy; anything that reads like engineering
+    /// output (a code, JSON, "is not defined", a stack, an over-long blob) is
+    /// swapped for a generic line so a user never sees internals.
+    private func friendlySSEError(_ raw: String?) -> String {
+        let generic = "Something went wrong on our end. Please try again."
+        guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return generic }
+        let looksTechnical =
+            s.contains("is not defined") || s.contains("undefined") ||
+            s.localizedCaseInsensitiveContains("error:") || s.contains("{") || s.hasPrefix("[") ||
+            s.count > 160 ||
+            s.range(of: "^[a-z][a-z0-9_]*$", options: .regularExpression) != nil   // snake_case code
+        if looksTechnical {
+            print("[error] suppressed technical SSE error: \(s)")
+            return generic
+        }
+        return s
+    }
+
     private func cancelClosure(for message: ChatMessage) -> (() -> Void)? {
         guard message.role == .assistant,
               let jobId = message.jobId,
@@ -1734,7 +1771,7 @@ struct EditorView: View {
             } catch {
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobStatus = "failed"
-                messages[i].error = error.localizedDescription
+                messages[i].error = friendlyError(error)
                 persistMessages()
             }
         }
@@ -2206,7 +2243,7 @@ struct EditorView: View {
                 } catch {
                     if let i = idx() {
                         messages[i].jobStatus = "failed"
-                        messages[i].error = error.localizedDescription
+                        messages[i].error = friendlyError(error)
                         persistMessages()
                     }
                 }
@@ -2606,7 +2643,7 @@ struct EditorView: View {
             if let msg = event.message, !isCompletedEvent, !alreadyFinalizing {
                 messages[messageIndex].stepMessage = msg
             }
-            if let err = event.error { messages[messageIndex].error = err }
+            if let err = event.error { messages[messageIndex].error = friendlySSEError(err) }
 
             // Structured-error forward-compat. If the worker ever
             // sends structured failure fields via SSE (currently it

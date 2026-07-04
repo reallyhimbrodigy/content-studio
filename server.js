@@ -260,6 +260,19 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+// Returns a user-safe error message for a client response. 4xx errors carry
+// intentional, user-appropriate copy (validation / quota / auth) and pass
+// through; a 5xx or any unexpected error (ReferenceError, DB message, stack)
+// collapses to a generic line so internals never reach the user. The real error
+// is always logged at the call site — this only governs what the CLIENT sees.
+function clientSafeMessage(error, fallback = 'Something went wrong. Please try again.') {
+  const status = error && error.statusCode;
+  if (typeof status === 'number' && status >= 400 && status < 500 && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 // ─── Rate limiter ──────────────────────────────────────────────────────────
 //
 // In-memory token-bucket per (key, scope). Used for cheap abuse-prevention
@@ -1394,7 +1407,7 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][Upload] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error during upload' });
+        return sendJson(res, status, { error: clientSafeMessage(error, 'Upload failed. Please try again.') });
       }
     })();
     return;
@@ -3107,7 +3120,7 @@ const server = http.createServer((req, res) => {
         console.error('  Stack:', error.stack);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsCreate] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3395,7 +3408,7 @@ const server = http.createServer((req, res) => {
         console.error('  ❌ Error:', error);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsStatus] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3435,7 +3448,7 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsList] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3476,7 +3489,7 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][JobStatus] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3548,7 +3561,7 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[refresh-urls] error:', error?.message);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3595,7 +3608,7 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[devices-register] error:', error?.message);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
@@ -3618,7 +3631,7 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { ok: true });
       } catch (error) {
         const status = error?.statusCode || 500;
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+        return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
     return;
