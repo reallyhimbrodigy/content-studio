@@ -4036,6 +4036,29 @@ if (require.main === module) {
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
+  // Generalized refund leg (Wave 1): worker marks (INTEGRITY_TRIP /
+  // designed_rejection:true on result), app refunds — single-writer law.
+  // Interval sweep, structurally idempotent (see lib/refund-leg.js), with an
+  // in-flight guard so a slow pass never overlaps the next tick. Retires the
+  // manual same-day refund protocol: the refund promise becomes true by code.
+  if (supabaseAdmin) {
+    const { sweepRefundLeg } = require('./lib/refund-leg');
+    let refundLegBusy = false;
+    const runRefundLeg = async () => {
+      if (refundLegBusy) return;
+      refundLegBusy = true;
+      try {
+        await sweepRefundLeg(supabaseAdmin);
+      } catch (err) {
+        console.error('[refund-leg] sweep crashed:', err?.message || err);
+      } finally {
+        refundLegBusy = false;
+      }
+    };
+    setTimeout(runRefundLeg, 15 * 1000); // boot pass
+    setInterval(runRefundLeg, 60 * 1000);
+  }
+
   process.on('uncaughtException', (err) => {
     console.error('[FATAL] Uncaught exception:', err?.message || err);
     if (err?.stack) console.error(err.stack);
