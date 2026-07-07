@@ -41,7 +41,7 @@ struct LibraryView: View {
                 } else if edits.isEmpty {
                     emptyState
                 } else {
-                    editList
+                    editGrid
                 }
 
                 // Bottom action bar — slides in when selection mode is on.
@@ -272,44 +272,48 @@ struct LibraryView: View {
         .buttonStyle(.plain)
     }
 
-    private var editList: some View {
-        List {
-            ForEach(edits) { edit in
-                EditRow(
-                    edit: edit,
-                    isSelecting: isSelecting,
-                    isSelected: selectedIds.contains(edit.id),
-                    onTap: {
-                        if isSelecting {
-                            toggleSelection(edit.id)
-                        } else if edit.status == "completed" {
-                            selectedEdit = edit
+    // Two-column card grid — the video-first Library look. Each card is a
+    // square thumbnail with a centered play button, title, and time below.
+    // Every behavior the List had is preserved (tap → detail sheet, selection
+    // mode, cache/prefetch, download + status states, re-edit via context menu).
+    private var gridColumns: [GridItem] {
+        [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    }
+
+    private var editGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 20) {
+                ForEach(edits) { edit in
+                    EditCard(
+                        edit: edit,
+                        isSelecting: isSelecting,
+                        isSelected: selectedIds.contains(edit.id),
+                        onTap: {
+                            if isSelecting {
+                                toggleSelection(edit.id)
+                            } else if edit.status == "completed" {
+                                selectedEdit = edit
+                            }
+                        },
+                        onDelete: {
+                            editToDelete = edit
+                            showDeleteConfirm = true
+                        },
+                        onReedit: {
+                            startReedit(edit)
                         }
-                    },
-                    onShare: {},
-                    onDelete: {
-                        editToDelete = edit
-                        showDeleteConfirm = true
-                    },
-                    onReedit: {
-                        startReedit(edit)
-                    }
-                )
-                .listRowBackground(Color(.secondarySystemBackground))
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowSeparatorTint(Color(.separator))
+                    )
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            // Reserve room for the floating bulk-action bar so the last row
+            // never sits underneath it.
+            .padding(.bottom, isSelecting ? 78 : 28)
+            .animation(.easeInOut(duration: 0.22), value: isSelecting)
         }
-        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
-        // Reserve space for the floating action bar so the last row
-        // never sits underneath it.
-        .safeAreaInset(edge: .bottom) {
-            if isSelecting {
-                Color.clear.frame(height: 50)
-            }
-        }
     }
 
     private func startReedit(_ edit: VideoJob) {
@@ -375,17 +379,15 @@ struct LibraryView: View {
     }
 }
 
-// MARK: - Edit Row
+// MARK: - Edit Card (grid)
 
-struct EditRow: View {
+struct EditCard: View {
     let edit: VideoJob
     let isSelecting: Bool
     let isSelected: Bool
     let onTap: () -> Void
-    let onShare: () -> Void
     let onDelete: () -> Void
     let onReedit: () -> Void
-    @State private var showMenu = false
     @ObservedObject private var cache = VideoCache.shared
     @StateObject private var exporter: VideoExporter
 
@@ -394,7 +396,6 @@ struct EditRow: View {
         isSelecting: Bool,
         isSelected: Bool,
         onTap: @escaping () -> Void,
-        onShare: @escaping () -> Void,
         onDelete: @escaping () -> Void,
         onReedit: @escaping () -> Void
     ) {
@@ -402,7 +403,6 @@ struct EditRow: View {
         self.isSelecting = isSelecting
         self.isSelected = isSelected
         self.onTap = onTap
-        self.onShare = onShare
         self.onDelete = onDelete
         self.onReedit = onReedit
         _exporter = StateObject(wrappedValue: VideoExporter(
@@ -411,155 +411,71 @@ struct EditRow: View {
         ))
     }
 
-    /// True when the actual rendered video file is on local disk and
-    /// playback would be instant. Until then, the row's tap is disabled
-    /// (outside selection mode) and a small spinner sits over the
-    /// thumbnail to signal "downloading."
+    /// True when the rendered file is on local disk and playback is instant.
     private var isCached: Bool {
         edit.status == "completed" && cache.cachedIds.contains(edit.id)
     }
-    /// CDN-backed URLs stream smoothly from the edge — tap is enabled
-    /// immediately. Cache fills in the background for offline replay.
+    /// CDN-backed URLs stream smoothly from the edge — tap enabled immediately.
     private var isStreamingReady: Bool {
         guard edit.status == "completed",
               let url = edit.rendered_video_url else { return false }
         return isStreamingReadyUrl(url)
     }
     private var isPlayable: Bool { isCached || isStreamingReady }
-    private var isDownloading: Bool {
-        edit.status == "completed" && !isPlayable
-    }
+    private var isDownloading: Bool { edit.status == "completed" && !isPlayable }
+    private var isCompleted: Bool { edit.status == "completed" }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 14) {
-                // Selection circle slides in from the leading edge when
-                // selection mode activates. Native Photos pattern: empty
-                // circle at tertiary, filled checkmark at accent when on.
-                if isSelecting {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundColor(isSelected ? Color.accentColor : Color(.tertiaryLabel))
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(width: 22, height: 22)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                        .accessibilityHidden(true)
-                }
+            VStack(alignment: .leading, spacing: 9) {
+                thumbnail
 
-                // Thumbnail with download state overlay. While the video
-                // file is still being pulled down, the row dims the
-                // thumbnail and spins a small indicator on top so the
-                // user can see exactly which rows are loading.
-                ZStack {
-                    if let thumbUrl = edit.thumbnail_url, let url = URL(string: thumbUrl) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            default:
-                                Color(.tertiarySystemBackground)
-                            }
-                        }
-                        .frame(width: 64, height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.tertiarySystemBackground))
-                            .frame(width: 64, height: 80)
-                            .overlay {
-                                Image(systemName: "video.fill")
-                                    .foregroundColor(Color(.separator))
-                            }
-                    }
-
-                    if isDownloading {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.black.opacity(0.45))
-                            .frame(width: 64, height: 80)
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.18), value: isCached)
-
-                // Info
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(edit.vibe_input ?? "Video edit")
-                        .font(.system(size: 15, weight: .medium))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(edit.vibe_input?.isEmpty == false ? edit.vibe_input! : "Video edit")
+                        .font(.system(size: 14.5, weight: .medium))
                         .foregroundColor(.white)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 6, height: 6)
-
-                        Text(statusText)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-
-                        Text("·")
-                            .foregroundColor(Color(.separator))
-
-                        Text(formatDate(edit.created_at ?? ""))
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(.tertiaryLabel))
-                    }
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(isCompleted ? Color(.tertiaryLabel) : statusColor)
+                        .lineLimit(1)
                 }
-
-                Spacer()
-
-                // Three-dot menu — hidden during selection mode so the
-                // entire row becomes a clean toggle target.
-                if !isSelecting {
-                    Menu {
-                        if edit.status == "completed" {
-                            Button(action: onReedit) {
-                                Label("Re-edit", systemImage: "wand.and.stars")
-                            }
-                        }
-                        if edit.status == "completed", let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                            Button {
-                                exporter.save()
-                            } label: {
-                                Label("Save to Photos", systemImage: "square.and.arrow.down")
-                            }
-                            ShareLink(item: url) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                            }
-                        }
-
-                        Button(role: .destructive, action: onDelete) {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("More options")
-                    .transition(.opacity)
-                }
+                .padding(.horizontal, 2)
             }
-            .padding(.vertical, 4)
-            .animation(.easeInOut(duration: 0.22), value: isSelecting)
         }
         .buttonStyle(.plain)
-        // Outside selection mode, completed rows aren't tappable until
-        // the video is playable — either cached locally OR served from
-        // the CDN (which streams smoothly without needing a local file).
-        // In selection mode, every row is always tappable so the user
-        // can include in-flight videos in a bulk delete.
-        .disabled(!isSelecting && edit.status == "completed" && !isPlayable)
+        // Outside selection mode, completed cards aren't tappable until the
+        // video is playable (cached OR CDN-streamable). In selection mode
+        // every card is tappable so in-flight videos can be bulk-deleted.
+        .disabled(!isSelecting && isCompleted && !isPlayable)
+        .contextMenu {
+            if !isSelecting {
+                if isCompleted {
+                    Button(action: onReedit) {
+                        Label("Re-edit", systemImage: "wand.and.stars")
+                    }
+                }
+                if isCompleted, let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                    Button { exporter.save() } label: {
+                        Label("Save to Photos", systemImage: "square.and.arrow.down")
+                    }
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                }
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
         .task(id: edit.id) {
-            // Auto-warm this row's cache the moment it appears. No-op
-            // for already-cached rows or rows still processing on the
-            // server. Coalesces with the bulk Library prefetch via
-            // VideoCache's in-flight task map.
-            guard edit.status == "completed",
+            // Auto-warm this card's cache the moment it appears. No-op for
+            // already-cached or still-processing rows. Coalesces with the
+            // bulk Library prefetch via VideoCache's in-flight task map.
+            guard isCompleted,
                   let url = edit.rendered_video_url,
                   !cache.cachedIds.contains(edit.id) else { return }
             _ = await VideoCache.shared.downloadIfNeeded(jobId: edit.id, from: url)
@@ -570,10 +486,120 @@ struct EditRow: View {
         .accessibilityAddTraits(isSelecting && isSelected ? [.isSelected] : [])
     }
 
+    // Square thumbnail with a centered play button + status/selection overlays.
+    private var thumbnail: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let thumbUrl = edit.thumbnail_url, let url = URL(string: thumbUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        case .empty:
+                            ZStack {
+                                Color(.tertiarySystemBackground)
+                                ProgressView().tint(.white.opacity(0.5))
+                            }
+                        default:
+                            placeholderFill
+                        }
+                    }
+                } else {
+                    placeholderFill
+                }
+            }
+            // Subtle vignette so the play button reads on bright frames.
+            .overlay {
+                LinearGradient(
+                    colors: [.black.opacity(0.28), .black.opacity(0.0), .black.opacity(0.12)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+            }
+            .overlay { centerOverlay }
+            .overlay(alignment: .topTrailing) {
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(
+                            isSelected ? Color.white : Color.white.opacity(0.9),
+                            isSelected ? Color.accentColor : Color.black.opacity(0.25)
+                        )
+                        .padding(8)
+                        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(isSelected ? 0.0 : 0.06), lineWidth: 0.5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.accentColor, lineWidth: isSelected ? 2.5 : 0)
+            )
+            .animation(.easeInOut(duration: 0.18), value: isCached)
+            .animation(.easeInOut(duration: 0.18), value: isSelected)
+    }
+
+    private var placeholderFill: some View {
+        ZStack {
+            Color(.tertiarySystemBackground)
+            Image(systemName: "video.fill")
+                .font(.system(size: 26))
+                .foregroundColor(Color(.separator))
+        }
+    }
+
+    @ViewBuilder
+    private var centerOverlay: some View {
+        if isDownloading {
+            ZStack {
+                Color.black.opacity(0.35)
+                ProgressView().progressViewStyle(.circular).tint(.white)
+            }
+        } else if isCompleted {
+            // Play button — the video-first affordance from the mockup.
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 46, height: 46)
+                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .offset(x: 1.5)
+            }
+            .allowsHitTesting(false)
+        } else if edit.status == "failed" {
+            ZStack {
+                Color.black.opacity(0.35)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+        } else {
+            // processing / queued
+            ZStack {
+                Color.black.opacity(0.3)
+                ProgressView().progressViewStyle(.circular).tint(.white)
+            }
+        }
+    }
+
+    private var subtitle: String {
+        isCompleted ? formatDate(edit.created_at ?? "") : statusText
+    }
+
     private var statusColor: Color {
         switch edit.status {
         case "completed": return .green
-        case "processing", "queued": return Color.white
+        case "processing", "queued": return Color(.secondaryLabel)
         case "failed": return .red
         default: return .gray
         }
@@ -582,7 +608,7 @@ struct EditRow: View {
     private var statusText: String {
         switch edit.status {
         case "completed": return "Completed"
-        case "processing": return "Processing"
+        case "processing": return "Processing…"
         case "queued": return "Queued"
         case "failed": return "Failed"
         default: return edit.status
@@ -601,6 +627,7 @@ struct EditRow: View {
         if diff < 60 { return "Now" }
         if diff < 3600 { return "\(Int(diff / 60))m ago" }
         if diff < 86400 { return "\(Int(diff / 3600))h ago" }
+        if diff < 172800 { return "Yesterday" }
         if diff < 604800 { return "\(Int(diff / 86400))d ago" }
         let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: d)
     }
