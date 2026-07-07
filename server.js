@@ -164,12 +164,25 @@ async function assertProEntitled(userId) {
   if (_hasSubscriptionHistory(entitlement.row) && _selfHealDue(userId)) {
     try {
       const healed = await reconcileEntitlementFromRevenueCat(userId);
-      // Definitive answer from RC → throttle the next check for the full window.
-      _markSelfHeal(userId, false);
       if (healed && healed.isPro) {
+        // Definitive POSITIVE: we granted + persisted pro_until, so the next
+        // read short-circuits before self-heal. Full-window throttle is fine.
+        _markSelfHeal(userId, false);
         console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
         return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', sourceTable: entitlement.sourceTable };
       }
+      // RC says NOT active — but for a user WITH subscription history this is
+      // NOT a definitive negative right after a conversion/renewal. RC's REST
+      // active_entitlements view is eventually-consistent and can briefly lag
+      // Apple's renewal while the RENEWAL webhook is still in flight. The full
+      // 5-min throttle here would suppress the self-heal backstop for the exact
+      // window the webhook is most likely delayed — gating a paying, just-
+      // converted user to free-tier limits (402s, 3/day cap, non-Lumen). Use
+      // the SHORT (60s) throttle so the backstop re-checks RC within ~60s.
+      // Grant-only, so the extra checks never wrongly revoke; the only cost is
+      // a few more RC reads for a genuinely-lapsed ex-subscriber, bounded to
+      // ~1/min and only while they keep hitting a Pro gate.
+      _markSelfHeal(userId, true);
     } catch (e) {
       // Transient RC error/outage: short throttle so a paying user retries
       // within ~60s instead of being locked out for the full window, while
