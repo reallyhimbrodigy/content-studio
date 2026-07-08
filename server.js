@@ -1881,7 +1881,14 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-        if (!checkRateLimit(res, 'submissions:upload-url', clientIp, 10, 900)) return;
+        // Generous: this only mints a presigned PUT (cheap, keys are server-
+        // generated under submissions/, and every submission is human-reviewed).
+        // The old 10/15min blocked legit creators — each failed-upload RETRY of a
+        // large file burns a token, and mobile carriers NAT many users behind one
+        // IP, so a real creator hit "Too many requests" after a few retries.
+        // 100/10min (refill ~1 token/6s) covers retries + CGNAT while still
+        // bounding abuse to junk uploads that never auto-process.
+        if (!checkRateLimit(res, 'submissions:upload-url', clientIp, 100, 600)) return;
         const body = await readJsonBody(req);
         const result = validateUploadRequest({
           fileName: body?.fileName,
@@ -1913,7 +1920,9 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-        if (!checkRateLimit(res, 'submissions:submit', clientIp, 10, 900)) return;
+        // Bumped from 10/15min for the same reason (retries + mobile CGNAT sharing
+        // one IP). A submission is reviewed, so a higher ceiling is low-risk.
+        if (!checkRateLimit(res, 'submissions:submit', clientIp, 30, 900)) return;
         const body = await readJsonBody(req);
         const result = validateSubmission({
           creator_name: body?.creator_name,
