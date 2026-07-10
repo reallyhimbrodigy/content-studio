@@ -28,6 +28,7 @@ const {
 const { validateFeedback } = require('./lib/feedback');
 const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
 const { isJobCancellable } = require('./lib/cancel');
+const { isTrivialMessage, TRIVIAL_REPLY, isStatusQuestion, statusAnswerFromJob, jobContextLine } = require('./lib/chat-router');
 
 // [restored dep]
 function normalizePlanLabel(value) {
@@ -1655,25 +1656,45 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
 
+    const insertRow = {
+      user_id: userId,
+      video_url: videoUrl,
+      vibe_input: vibeInput,
+      status: 'queued',
+      progress: 0,
+      current_step: 'Queued',
+    };
+    // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
+    // UUID at message creation, before upload starts. We insert under that id;
+    // a double-submit (retry mashing, network replay) hits the primary-key
+    // conflict and returns the EXISTING row flagged __replayed so the caller
+    // can unwind the just-claimed charge — one job, one charge, by construction.
+    if (clientJobId) insertRow.id = clientJobId;
+
     const { data, error } = await supabaseAdmin
       .from('video_jobs')
-      .insert({
-        user_id: userId,
-        video_url: videoUrl,
-        vibe_input: vibeInput,
-        status: 'queued',
-        progress: 0,
-        current_step: 'Queued',
-      })
+      .insert(insertRow)
       .select()
       .single();
 
     if (error) {
+      // 23505 unique_violation on the client-supplied id → idempotent replay.
+      if (clientJobId && (error.code === '23505' || /duplicate key/i.test(error.message || ''))) {
+        const { data: existing } = await supabaseAdmin
+          .from('video_jobs')
+          .select('*')
+          .eq('id', clientJobId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (existing) return { ...existing, __replayed: true };
+        // The id exists but belongs to someone else — reject, never leak it.
+        throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
+      }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
     }
     return data;
@@ -2140,6 +2161,36 @@ const server = http.createServer((req, res) => {
         const message = String(body?.message || '').trim();
         if (!message) return sendJson(res, 400, { error: 'Message is required' });
 
+        // ── Class 1: trivial input (a bare comma, "...", stray character) ──
+        // Never reaches Gemini, never burns quota, never becomes a render.
+        if (isTrivialMessage(message)) {
+          return sendJson(res, 200, { reply: TRIVIAL_REPLY });
+        }
+
+        // Most recent job (last 2h) — powers the status fast-path AND grounds
+        // the LLM's system prompt. One indexed read; null when none.
+        let recentJob = null;
+        if (supabaseAdmin) {
+          try {
+            const { data: jobs } = await supabaseAdmin
+              .from('video_jobs')
+              .select('id, status, progress, current_step, updated_at, error_message')
+              .eq('user_id', authUser.id)
+              .gte('updated_at', new Date(Date.now() - 2 * 3600 * 1000).toISOString())
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            recentJob = Array.isArray(jobs) ? jobs[0] || null : null;
+          } catch (e) { /* context is best-effort; chat still answers */ }
+        }
+
+        // ── Class 2: status questions → deterministic answer from the row ──
+        // No LLM, no quota: stage name + honest typical duration + freshness.
+        if (isStatusQuestion(message)) {
+          const answer = statusAnswerFromJob(recentJob);
+          if (answer) return sendJson(res, 200, { reply: answer });
+          // No job to talk about → fall through to the conversational LLM.
+        }
+
         // Daily chat limit (free tier). Pro bypasses entirely.
         const chatEnt = await assertProEntitled(authUser.id);
         if (!chatEnt.isPro) {
@@ -2161,7 +2212,8 @@ const server = http.createServer((req, res) => {
         // Build Gemini request
         const contents = [];
 
-        const systemPrompt = promptlyChatSystemPrompt();
+        const jobCtx = jobContextLine(recentJob);
+        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '');
 
         // Add conversation history
         for (const h of history.slice(-18)) {
@@ -2212,6 +2264,13 @@ const server = http.createServer((req, res) => {
 
         const geminiData = await geminiRes.json();
         const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Decode gate (server half): an empty candidate (safety block, model
+        // hiccup) must be an ERROR, never a 200 with a blank reply — the
+        // client's retry handler needs a throw to fire.
+        if (!reply.trim()) {
+          console.error('[Chat] Gemini returned an empty candidate');
+          return sendJson(res, 502, { error: 'empty_ai_reply' });
+        }
 
         // Log usage AFTER a successful AI hit. Counts AI-reaching messages
         // only — burning a chat message that errored out shouldn't deplete
@@ -2240,6 +2299,39 @@ const server = http.createServer((req, res) => {
         const message = String(body?.message || '').trim();
         if (!message) return sendJson(res, 400, { error: 'Message is required' });
 
+        // Router classes 1+2 (same as /api/chat — the client tries THIS
+        // endpoint first, so the gates must live here too). Canned replies
+        // stream as a single token frame: no Gemini, no quota burn.
+        const emitCanned = (reply) => {
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+          });
+          res.write(`data: ${JSON.stringify({ token: reply })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        };
+        if (isTrivialMessage(message)) return emitCanned(TRIVIAL_REPLY);
+
+        let streamRecentJob = null;
+        if (supabaseAdmin) {
+          try {
+            const { data: jobs } = await supabaseAdmin
+              .from('video_jobs')
+              .select('id, status, progress, current_step, updated_at, error_message')
+              .eq('user_id', streamUser.id)
+              .gte('updated_at', new Date(Date.now() - 2 * 3600 * 1000).toISOString())
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            streamRecentJob = Array.isArray(jobs) ? jobs[0] || null : null;
+          } catch (e) { /* best-effort */ }
+        }
+        if (isStatusQuestion(message)) {
+          const answer = statusAnswerFromJob(streamRecentJob);
+          if (answer) return emitCanned(answer);
+        }
+
         // Daily chat limit (free tier). Pro bypasses entirely.
         const streamEnt = await assertProEntitled(streamUser.id);
         if (!streamEnt.isPro) {
@@ -2259,7 +2351,8 @@ const server = http.createServer((req, res) => {
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini contents (same shape as /api/chat).
-        const systemPrompt = promptlyChatSystemPrompt();
+        const streamJobCtx = jobContextLine(streamRecentJob);
+        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '');
         const contents = [];
         for (const h of history.slice(-18)) {
           if (h.role === 'user' || h.role === 'assistant') {
@@ -3080,7 +3173,30 @@ const server = http.createServer((req, res) => {
         // pro) or daily (3 free) cap before any write landed (GPU double-spend).
         // The lock wraps only the check+reserve+insert; the Modal dispatch runs
         // outside it. Returns { job } on success or { status, body } to reject.
+        // Idempotency key (stuck-jobs directive): a client-minted job UUID.
+        // Optional — legacy clients omit it and get server-generated ids.
+        const rawClientJobId = String(body?.client_job_id || '').trim().toLowerCase();
+        const clientJobId =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rawClientJobId)
+            ? rawClientJobId : null;
+
         const reservation = await withKeyLock(`render:${authUser.id}`, async () => {
+          // Idempotent replay fast-path: if the client's UUID already has a
+          // row, this is a double-submit (retry mash / network replay). Return
+          // the existing job — no new charge, no new concurrency slot, and the
+          // caller skips re-dispatch (the first submit already dispatched).
+          if (clientJobId && supabaseAdmin) {
+            const { data: existing } = await supabaseAdmin
+              .from('video_jobs')
+              .select('*')
+              .eq('id', clientJobId)
+              .eq('user_id', authUser.id)
+              .maybeSingle();
+            if (existing) {
+              console.log('  [idempotency] replay for client_job_id=%s status=%s', clientJobId, existing.status);
+              return { job: existing, replayed: true };
+            }
+          }
           if (supabaseAdmin) {
             const { count: pendingCount, error: pendingErr } = await supabaseAdmin
               .from('video_jobs')
@@ -3130,12 +3246,42 @@ const server = http.createServer((req, res) => {
             userId: authUser.id,
             videoUrl,
             vibeInput,
+            clientJobId,
           });
+          if (created.__replayed) {
+            // Cross-instance race: another request inserted this UUID between
+            // our fast-path check and the insert. Unwind the charge we just
+            // claimed (one job, one charge) — delete the render event we
+            // logged milliseconds ago — and treat as a replay.
+            try {
+              const { data: ev } = await supabaseAdmin
+                .from('usage_events').select('id')
+                .eq('user_id', authUser.id).eq('kind', 'render')
+                .gte('created_at', new Date(Date.now() - 10_000).toISOString())
+                .order('created_at', { ascending: false }).limit(1);
+              if (Array.isArray(ev) && ev[0]) {
+                await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+              }
+            } catch (e) {
+              console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
+            }
+            return { job: created, replayed: true };
+          }
           return { job: created };
         });
 
         if (reservation.status) return sendJson(res, reservation.status, reservation.body);
         const job = reservation.job;
+        if (reservation.replayed) {
+          // Double-submit resolved to the original job. The first submit owns
+          // the dispatch — do NOT re-dispatch (that would double-render).
+          return sendJson(res, 200, {
+            success: true,
+            job_id: job.id,
+            status: job.status || 'queued',
+            replayed: true,
+          });
+        }
         console.log('  ✅ Job created:', job.id);
 
         // Premium pipeline (Lumen) gate — DEFENSE IN DEPTH. The client only
@@ -4079,6 +4225,26 @@ if (require.main === module) {
     };
     setTimeout(runRefundLeg, 15 * 1000); // boot pass
     setInterval(runRefundLeg, 60 * 1000);
+
+    // Job reaper (stuck-jobs directive): no job rests non-terminal past its
+    // lease — terminalize + refund (claim-gated) + SSE the failure so live
+    // spinners die. Census 2026-07-10 found zero server zombies; this keeps
+    // it that way by construction. 2-min cadence is plenty for 10/20-min leases.
+    const { sweepJobReaper } = require('./lib/job-reaper');
+    let reaperBusy = false;
+    const runReaper = async () => {
+      if (reaperBusy) return;
+      reaperBusy = true;
+      try {
+        await sweepJobReaper(supabaseAdmin, { pushProgressToSSE });
+      } catch (err) {
+        console.error('[reaper] sweep crashed:', err?.message || err);
+      } finally {
+        reaperBusy = false;
+      }
+    };
+    setTimeout(runReaper, 30 * 1000); // boot pass
+    setInterval(runReaper, 120 * 1000);
   }
 
   process.on('uncaughtException', (err) => {
