@@ -80,6 +80,12 @@ struct ChatMessage: Identifiable {
     /// requires_new_video / requires_vibe_change to push the user
     /// toward a fresh start instead).
     var isRetryable: Bool = false
+    /// TRANSIENT (never persisted): true once the server-side job row is
+    /// KNOWN to exist (dispatch success / a reconcile decode / an SSE event).
+    /// Gates the cancel button — jobId now exists during upload (pre-row),
+    /// and cancelling a row that doesn't exist yet is a 404 no-op that would
+    /// leave the dispatch running and the user charged after "cancelling".
+    var serverRowExists: Bool = false
 }
 
 enum MessageRole {
@@ -316,10 +322,22 @@ struct SerializedMessage: Codable, Hashable {
                 || jobStatus == "needs_input"   // Phase D: parked on a question
                 || (jobId != nil && jobStatus == nil))
         if isInFlight && parsedRole == .assistant {
-            msg.stageTimeline = StageTimeline(mode: "full")
-            if jobStatus == nil { msg.jobStatus = "processing" }
-            // Keep the parked question label; the poll re-shows the ask card.
-            msg.stepMessage = jobStatus == "needs_input" ? "Lumen has a question" : "Picking up where it left off..."
+            if jobId == nil {
+                // TERMINAL AT LOAD (stuck-jobs directive): an in-flight bubble
+                // with no job id died during upload — there is no row to
+                // reconcile against and never will be. The infinite
+                // "Picking up where it left off..." corpse is not representable:
+                // it terminalizes into the failure card right here.
+                msg.jobStatus = "failed"
+                msg.error = "This upload didn't finish — your video is safe on your device. Please send it again."
+                msg.stageTimeline = nil
+                msg.stepMessage = nil
+            } else {
+                msg.stageTimeline = StageTimeline(mode: "full")
+                if jobStatus == nil { msg.jobStatus = "processing" }
+                // Keep the parked question label; the poll re-shows the ask card.
+                msg.stepMessage = jobStatus == "needs_input" ? "Lumen has a question" : "Picking up where it left off..."
+            }
         }
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {
             // Restore the local UIImage from disk if we cached it during

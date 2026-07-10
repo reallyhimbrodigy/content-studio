@@ -611,6 +611,11 @@ struct PipelineProgressView: View {
     @State private var expanded: Bool = false
     @State private var showCancelConfirm: Bool = false
 
+    private func relativeQuiet(_ s: TimeInterval) -> String {
+        if s < 90 { return "\(Int(s))s" }
+        return "\(Int(s / 60))m"
+    }
+
     /// Rotated through when SSE goes quiet for 3.5s+. Keeps the user
     /// reassured that work is still happening even when the bar can't
     /// move (typical: bar sits at the cap of plan / render / upload
@@ -698,6 +703,22 @@ struct PipelineProgressView: View {
                         .id(sub)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                         .animation(.easeInOut(duration: 0.28), value: sub)
+                }
+
+                // Honest liveness (stuck-jobs directive): when events go
+                // quiet for 20s+, say exactly HOW stale we are instead of
+                // only rotating reassurance copy. Slow-and-alive must look
+                // different from dead — that's what makes the failure card
+                // trustworthy when it does appear.
+                TimelineView(.periodic(from: .now, by: 5)) { context in
+                    let quiet = context.date.timeIntervalSince(lastUpdateAt)
+                    if quiet >= 20 {
+                        Text("still working — last update \(relativeQuiet(quiet)) ago")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.white.opacity(0.45))
+                            .padding(.leading, 28)
+                            .transition(.opacity)
+                    }
                 }
             }
 

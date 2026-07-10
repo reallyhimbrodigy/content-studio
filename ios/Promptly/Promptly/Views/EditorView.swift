@@ -1679,6 +1679,12 @@ struct EditorView: View {
               let jobId = message.jobId,
               let status = message.jobStatus,
               status == "processing" || status == "queued",
+              // Review fix: jobId now exists DURING upload, before any server
+              // row. Cancelling then is a 404 no-op that leaves the dispatch
+              // running (user "cancelled" but still gets charged). The button
+              // only appears once the row is known to exist server-side —
+              // same timing the user saw before the idempotency change.
+              message.serverRowExists,
               message.stageTimeline != nil else { return nil }
         let messageId = message.id
         return {
@@ -2317,6 +2323,13 @@ struct EditorView: View {
                     var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: nil)
                     processingMsg.stageTimeline = StageTimeline(mode: "full", startWith: "upload_local")
                     processingMsg.originalVibe = vibe
+                    // ONE IDENTITY (stuck-jobs directive): mint the job UUID
+                    // now, BEFORE upload starts. It is (a) the idempotency key
+                    // on POST /api/video-jobs, (b) persisted on this message,
+                    // (c) the reconciliation handle after any relaunch. A
+                    // restored in-flight bubble that cannot resolve is no
+                    // longer representable.
+                    processingMsg.jobId = UUID().uuidString.lowercased()
                     messages.append(processingMsg)
                     pendingMsgIds.append((video, processingMsg.id))
                 }
@@ -2340,6 +2353,11 @@ struct EditorView: View {
             // is only ever reached on the video flow.
             if hasVideos {
                 for (clipIndex, (video, msgId)) in pendingMsgIds.enumerated() {
+                    // Capture the minted UUID NOW (review fix): looking it up
+                    // from `messages` at dispatch time silently returns nil
+                    // after a chat switch, disabling idempotency exactly when
+                    // it matters most.
+                    let mintedJobId = messages.first(where: { $0.id == msgId })?.jobId
                     Task { @MainActor in
                         // Stagger fan-out: clip 0 dispatches immediately,
                         // clip 1 at +200ms, clip 2 at +400ms, etc. The
@@ -2395,7 +2413,8 @@ struct EditorView: View {
                         let outcome = await JobDispatchCoordinator.shared.dispatch(
                             pendingVideo: video,
                             vibe: vibe,
-                            premiumPipeline: premiumPipeline
+                            premiumPipeline: premiumPipeline,
+                            clientJobId: mintedJobId
                         ) { phase in
                             // Phase callback drives the bar's Phase 1
                             // (iOS → S3 upload) portion. Per the new
@@ -2431,6 +2450,7 @@ struct EditorView: View {
                         case .success(let jobId):
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
+                                messages[i].serverRowExists = true
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
                             } else if let cid = dispatchChatId {
@@ -2954,10 +2974,40 @@ struct EditorView: View {
                 return
             }
             guard let row = (try? JSONDecoder().decode([JobStatusRow].self, from: data))?.first else {
-                print("[reconcile] \(jobId) decode failed or empty row")
+                // EMPTY ROW = the job doesn't exist server-side. Two cases
+                // (stuck-jobs directive — never a silent return):
+                //   - a LIVE dispatch this session: the row simply isn't
+                //     created yet (upload still running). The coordinator owns
+                //     it and its 20-min deadline bounds it — leave it alone.
+                //   - anything else (restored bubble, pruned/deleted row):
+                //     nothing can ever resolve it — terminalize into the
+                //     failure card NOW instead of spinning forever.
+                guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
+                // Already terminal (failed/completed/canceled): nothing to
+                // heal — NEVER rewrite persisted failure copy (review fix:
+                // includeFailed reconciles re-check failed messages, and this
+                // branch was clobbering their real error copy on every load).
+                if let st = messages[idx].jobStatus, JobLifecycle.isTerminal(st) { return }
+                // A dispatch alive in THIS process owns the row-less window
+                // (upload still running; its 20-min deadline bounds it). The
+                // registry survives chat switches — a message-transient flag
+                // does not (review critical: reload reset it and this branch
+                // killed LIVE uploads with "you weren't charged" while the
+                // coordinator went on to charge).
+                if JobDispatchCoordinator.shared.isDispatchActive(jobId) { return }
+                let wasProcessing = messages[idx].jobStatus == "processing" || messages[idx].jobStatus == "queued"
+                print("[reconcile] \(jobId) row missing — terminalizing (wasProcessing=\(wasProcessing))")
+                messages[idx].jobStatus = "failed"
+                messages[idx].stageTimeline = nil
+                messages[idx].stepMessage = nil
+                messages[idx].error = wasProcessing
+                    ? "This render expired on our side — you weren't charged. Please try again."
+                    : "This upload didn't finish — your video is safe on your device. Please send it again."
+                persistMessages()
                 return
             }
             guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
+            messages[idx].serverRowExists = true  // a row decoded — cancel is meaningful now
 
             // Poll is authoritative for the bar. Rehydrate progress + phase
             // from the durable row on EVERY tick (foreground, heartbeat,

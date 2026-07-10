@@ -131,7 +131,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
@@ -145,13 +145,18 @@ class APIService {
             let proxy_video_url: String?
             let model: String
             let premium_pipeline_enabled: Bool?
+            // Idempotency keystone: the client-minted job UUID. The server
+            // inserts under this id; a double-submit replays the existing
+            // job (one job, one charge) instead of minting a duplicate.
+            let client_job_id: String?
         }
         let body = Body(
             video_url: videoUrl,
             vibe_input: vibe,
             proxy_video_url: (proxyVideoUrl?.isEmpty == false) ? proxyVideoUrl : nil,
             model: premiumPipeline ? "lumen" : "flare",
-            premium_pipeline_enabled: premiumPipeline ? true : nil
+            premium_pipeline_enabled: premiumPipeline ? true : nil,
+            client_job_id: clientJobId
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -315,7 +320,7 @@ class APIService {
 
         let (data, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse else {
-            throw APIError.jobCreationFailed("No response from server")
+            throw APIError.jobCreationFailed("The server did not answer. Check your connection and try again.")
         }
         if http.statusCode == 200 { return .resumed }
         if [403, 404, 409].contains(http.statusCode) { return .alreadyHandled }
@@ -1120,8 +1125,19 @@ class APIService {
                 message: payload?.message ?? "Daily chat limit reached."
             )
         }
-        let result = try JSONDecoder().decode(ChatResponse.self, from: data)
-        return result.reply ?? "No response"
+        // Decode gate (stuck-jobs directive): status-code check FIRST — a
+        // 5xx error body must THROW (so the caller's retry handler fires),
+        // never decode into a nil-reply "success". Then the success decode
+        // requires a real reply: an empty one is an error, not a message.
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.jobCreationFailed("Chat failed (HTTP \(http.statusCode))")
+        }
+        struct StrictChatResponse: Decodable { let reply: String }
+        let result = try JSONDecoder().decode(StrictChatResponse.self, from: data)
+        guard !result.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw APIError.jobCreationFailed("Empty chat reply")
+        }
+        return result.reply
     }
 
     /// Streaming chat. Each yielded String is a token chunk (could be

@@ -24,6 +24,18 @@ import Foundation
 @MainActor
 final class JobDispatchCoordinator {
     static let shared = JobDispatchCoordinator()
+
+    /// PROCESS-LEVEL live-dispatch registry (review fix): keyed by the
+    /// client-minted job UUID. Unlike any message-transient flag, this
+    /// survives chat switches and store reloads (the messages array is
+    /// rebuilt; this singleton isn't) and correctly dies with the process
+    /// (after a relaunch nothing is live, so a row-less bubble is a corpse).
+    /// The reconciler consults it before terminalizing an empty-row job.
+    private(set) var activeClientJobIds: Set<String> = []
+    func isDispatchActive(_ clientJobId: String?) -> Bool {
+        guard let id = clientJobId?.lowercased() else { return false }
+        return activeClientJobIds.contains(id)
+    }
     private init() {}
 
     enum Outcome {
@@ -62,12 +74,12 @@ final class JobDispatchCoordinator {
     private static let backoff: [TimeInterval] = [5, 15, 45, 90, 180, 300]
     private static let maxBackoff: TimeInterval = 300
 
-    /// Absolute give-up ceiling. After 24h of retrying we surface a
-    /// generic hard failure with retry option. In practice the user
-    /// has cancelled or force-quit long before this, but the ceiling
-    /// prevents a permanently broken job from looping forever and
-    /// burning cellular data.
-    private static let totalRetryCeiling: TimeInterval = 24 * 60 * 60
+    /// Absolute give-up ceiling (stuck-jobs directive: the while(true)
+    /// zombie loop dies). 20 minutes: the stagnation detector already
+    /// tolerates slow-but-alive uploads (progress resets it), so anything
+    /// still unresolved after 20 min of wall-clock retrying is genuinely
+    /// dead — surface the failure card instead of spinning at ~11% forever.
+    private static let totalRetryCeiling: TimeInterval = 20 * 60
 
     /// Stagnation threshold for the upload-wait phase. If neither
     /// source nor proxy upload progress advances for this many seconds,
@@ -84,8 +96,11 @@ final class JobDispatchCoordinator {
         pendingVideo: PendingVideo,
         vibe: String,
         premiumPipeline: Bool = false,
+        clientJobId: String? = nil,
         onPhase: @escaping (AttemptPhase) -> Void = { _ in }
     ) async -> Outcome {
+        if let id = clientJobId?.lowercased() { activeClientJobIds.insert(id) }
+        defer { if let id = clientJobId?.lowercased() { activeClientJobIds.remove(id) } }
         let startTime = Date()
         var attempt = 0
 
@@ -94,7 +109,7 @@ final class JobDispatchCoordinator {
             if Date().timeIntervalSince(startTime) > Self.totalRetryCeiling {
                 return .hardFailure(HardFailure(
                     errorCode: "DISPATCH_CEILING",
-                    userMessage: "We couldn't process your video. Tap to try again.",
+                    userMessage: "This upload didn't finish — your video is safe on your device. Tap to try again.",
                     requiresNewVideo: false,
                     requiresVibeChange: false,
                     isPaymentRequired: false,
@@ -142,7 +157,8 @@ final class JobDispatchCoordinator {
                     videoUrl: sourceUrl,
                     proxyVideoUrl: pendingVideo.proxyUploadedUrl,
                     vibe: vibe,
-                    premiumPipeline: premiumPipeline
+                    premiumPipeline: premiumPipeline,
+                    clientJobId: clientJobId
                 )
                 print("[dispatch-coord] success jobId=\(jobId) attempt=\(attempt)")
                 return .success(jobId: jobId)
