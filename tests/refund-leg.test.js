@@ -140,6 +140,21 @@ test('manual-era marked row (no charge in window) claims + no-ops, then stays ou
 });
 
 // ---- guards (first-pass correctness) ---------------------------------------
+test('W4 cap widening: a charge minted 500ms BEFORE the job (real -33..-521ms dist) is now RETURNED', async () => {
+  // Charges are minted just before the job row (charge-then-insert); the W4
+  // measurement showed the delta reaching -521ms. The old 400ms cap left that
+  // tail CLAIMED-but-not-returned (silent under-refund). 800ms covers it.
+  assert.ok(DELETE_DELTA_CAP_MS >= 800, 'cap widened to cover the observed -521ms tail');
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'jFar', user_id: 'uFar', created_at: iso(T), result: { error_code: 'RENDER_FATAL' } })],
+    usage_events: [{ id: 20, user_id: 'uFar', kind: 'render', created_at: iso(T - 500) }], // 500ms before job
+  });
+  const out = await sweepRefundLeg(fake);
+  assert.equal(out.refunded, 1, 'far-but-in-cap charge is returned, not noop-capped');
+  assert.equal(out.outcomes[0].action, 'refunded');
+  assert.equal(fake._state.usage_events.length, 0, 'charge actually gone (returned)');
+});
+
 test('delta cap: a lone in-window charge farther than the cap is not deleted (own charge already gone)', async () => {
   const fake = makeFake({
     video_jobs: [vj({ id: 'j4', user_id: 'u4', created_at: iso(T), result: { designed_rejection: true } })],
@@ -178,7 +193,7 @@ test('cross-user / cross-kind charges at the same instant are never touched', as
   assert.equal(fake._state.usage_events.length, 2);
 });
 
-test('unmarked failed row is UNTOUCHED (never claimed, never refunded)', async () => {
+test('2026-07-11 LAW: an unmarked explicit failure (RENDER_FATAL) IS refunded (W1/W4 #6 gap closed)', async () => {
   const fake = makeFake({
     video_jobs: [vj({ id: 'j2', user_id: 'u7', created_at: iso(T), result: { error_code: 'RENDER_FATAL' } })],
     usage_events: [{ id: 8, user_id: 'u7', kind: 'render', created_at: iso(T - 100) }],
