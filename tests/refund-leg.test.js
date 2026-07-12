@@ -180,13 +180,14 @@ test('cross-user / cross-kind charges at the same instant are never touched', as
 
 test('unmarked failed row is UNTOUCHED (never claimed, never refunded)', async () => {
   const fake = makeFake({
-    video_jobs: [vj({ id: 'j2', user_id: 'u7', created_at: iso(T), result: { error_code: 'CLIP_TOO_LONG' } })],
+    video_jobs: [vj({ id: 'j2', user_id: 'u7', created_at: iso(T), result: { error_code: 'RENDER_FATAL' } })],
     usage_events: [{ id: 8, user_id: 'u7', kind: 'render', created_at: iso(T - 100) }],
   });
   const out = await sweepRefundLeg(fake);
-  assert.equal(out.eligible, 0);
-  assert.equal(fake._state.usage_events.length, 1);
-  assert.equal(fake._state.video_jobs[0].refunded_at, null, 'unmarked row never claimed');
+  assert.equal(out.eligible, 1, 'every failed primary row is eligible now');
+  assert.equal(out.refunded, 1, 'explicit failures refund — the W1 gap closed');
+  assert.equal(fake._state.usage_events.length, 0, 'charge returned');
+  assert.ok(fake._state.video_jobs[0].refunded_at != null, 'claim marked (one-shot)');
 });
 
 test('out-of-window charge is invisible to the sweep', async () => {
