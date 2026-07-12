@@ -3416,9 +3416,17 @@ const server = http.createServer((req, res) => {
           // (.eq('status','needs_input')) so exactly one concurrent answer wins.
           // Supabase doesn't error on 0 matched rows, so we .select() and check:
           // an empty result means another request already resumed → safe no-op.
+          //
+          // INVARIANT: every transition INTO 'processing' MUST stamp started_at
+          // atomically. The reaper's execution wall (job-reaper.js) treats a
+          // processing row whose started_at is > EXEC_WALL old as a confirmed
+          // timeout death. An ask can sit in needs_input for minutes-to-hours, so
+          // without re-stamping, this flip would leave started_at at the ORIGINAL
+          // dispatch instant and the wall would false-reap (and refund) a healthy
+          // resume mid-flight. Stamping it here makes the wall track THIS execution.
           const { data: locked, error: updErr } = await supabaseAdmin
             .from('video_jobs')
-            .update({ status: 'processing', ask: null, current_step: 'resuming', step_message: 'Folding in your answer…' })
+            .update({ status: 'processing', ask: null, started_at: new Date().toISOString(), current_step: 'resuming', step_message: 'Folding in your answer…' })
             .eq('id', originalJobId)
             .eq('user_id', authUser.id)
             .eq('status', 'needs_input')

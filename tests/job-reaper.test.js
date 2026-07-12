@@ -1,7 +1,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { sweepJobReaper, isPastLease, LEASE_MS, STALLED_COPY } = require('../lib/job-reaper');
+const {
+  sweepJobReaper, isPastLease, isPastExecutionWall, reapReason,
+  LEASE_MS, EXEC_WALL_MS, STALLED_COPY,
+} = require('../lib/job-reaper');
 
 // Reuse the refund-leg fake pattern: minimal supabase-js chainable over memory.
 function makeFake(tables) {
@@ -135,4 +138,71 @@ test('first-terminal-wins: a worker terminal landing between read and write beat
   const out = await sweepJobReaper(fake, {});
   assert.equal(out.reaped, 0);
   assert.equal(fake._state.video_jobs[0].status, 'completed', 'worker terminal stands');
+});
+
+// ─── W4 #1: the 900s SIGKILL execution wall ──────────────────────────────────
+
+test('execution-wall selector: processing past started_at wall; needs started_at; not for queued', () => {
+  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-21 * 60000) }, NOW), true);
+  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-19 * 60000) }, NOW), false);
+  assert.equal(isPastExecutionWall({ status: 'processing', started_at: null }, NOW), false, 'no anchor -> stall lease only');
+  assert.equal(isPastExecutionWall({ status: 'processing' }, NOW), false, 'legacy null started_at');
+  assert.equal(isPastExecutionWall({ status: 'queued', started_at: iso(-99 * 60000) }, NOW), false, 'queued never executes');
+  assert.equal(EXEC_WALL_MS, 20 * 60 * 1000);
+});
+
+test('reapReason: timeout (execution wall) takes priority over stall (heartbeat lease)', () => {
+  // SIGKILL shape: started 21min ago, last heartbeat only 5min ago (under the 20min lease)
+  assert.equal(reapReason({ status: 'processing', started_at: iso(-21 * 60000), updated_at: iso(-5 * 60000) }, NOW), 'timeout');
+  // pure stall: no started_at, heartbeat 21min silent
+  assert.equal(reapReason({ status: 'processing', started_at: null, updated_at: iso(-21 * 60000) }, NOW), 'stall');
+  // healthy long render: started 15min ago, heartbeating -> neither
+  assert.equal(reapReason({ status: 'processing', started_at: iso(-15 * 60000), updated_at: iso(-10000) }, NOW), null);
+});
+
+test('W4 #1 REGRESSION: a 900s SIGKILL the heartbeat lease MISSES is caught by the execution wall', async () => {
+  // The exact silent death: worker heartbeated updated_at right up to the 900s
+  // kill (so it's only ~5min stale — UNDER the 20min lease, isPastLease=false),
+  // but started_at is 21min old. Old reaper: waits ~15 more min. New: reaps now.
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'kill1', user_id: 'uk', status: 'processing',
+      created_at: iso(-22 * 60000), started_at: iso(-21 * 60000), updated_at: iso(-5 * 60000) })],
+    usage_events: [{ id: 1, user_id: 'uk', kind: 'render', created_at: iso(-22 * 60000 - 90) }],
+  });
+  assert.equal(isPastLease(fake._state.video_jobs[0], NOW), false, 'heartbeat lease would NOT catch it yet');
+  const sse = [];
+  const out = await sweepJobReaper(fake, { pushProgressToSSE: (id, ev) => sse.push({ id, ev }) });
+  assert.equal(out.reaped, 1, 'execution wall catches the SIGKILL the lease missed');
+  const row = fake._state.video_jobs[0];
+  assert.equal(row.status, 'failed');
+  assert.equal(row.error_message, STALLED_COPY.timeout, 'honest time-limit copy, not stall copy');
+  assert.ok(/time limit/i.test(row.error_message) && !/error:|stalled_/i.test(row.error_message));
+  assert.equal(fake._state.usage_events.length, 0, 'charge refunded');
+  assert.ok(row.refunded_at != null);
+  assert.equal(sse[0].ev.final, true);
+  assert.equal(sse[0].ev.error, STALLED_COPY.timeout);
+});
+
+test('execution wall respects first-terminal-wins (worker terminal between read and write)', async () => {
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'kill2', user_id: 'uk2', status: 'processing',
+      created_at: iso(-25 * 60000), started_at: iso(-24 * 60000), updated_at: iso(-2 * 60000) })],
+    usage_events: [],
+  });
+  fake._state.video_jobs[0].status = 'completed'; // worker landed a terminal first
+  const out = await sweepJobReaper(fake, {});
+  assert.equal(out.reaped, 0, 'wall does not resurrect/clobber a completed row');
+  assert.equal(fake._state.video_jobs[0].status, 'completed');
+});
+
+test('re-entered processing (started_at just reset) is NOT wall-reaped despite old created_at', async () => {
+  // Ask-back resume: created_at 9h old, but started_at freshly stamped this run.
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'resume1', user_id: 'ur', status: 'processing',
+      created_at: iso(-9 * 3600000), started_at: iso(-2 * 60000), updated_at: iso(-15000) })],
+    usage_events: [],
+  });
+  const out = await sweepJobReaper(fake, {});
+  assert.equal(out.reaped, 0, 'wall tracks the CURRENT execution, not the original creation');
+  assert.equal(fake._state.video_jobs[0].status, 'processing');
 });
