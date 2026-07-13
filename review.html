@@ -338,8 +338,9 @@ select:focus, textarea:focus {
       import { supabase } from './supabase-client.js';
 
       // ?mode=login so /auth opens directly on the Sign In form (it defaults to
-      // Sign Up otherwise — auth.js reads this param).
-      const SIGNIN_URL = '/auth?mode=login';
+      // Sign Up otherwise — auth.js reads this param). next=/review so a successful
+      // sign-in returns here instead of the removed /editor.
+      const SIGNIN_URL = '/auth?mode=login&next=/review';
       const STATUS_LABELS = { new: 'New', approved: 'Approved', needs_changes: 'Needs changes' };
       const STATUS_ORDER = ['new', 'approved', 'needs_changes'];
 
