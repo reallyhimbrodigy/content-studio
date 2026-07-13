@@ -346,12 +346,22 @@ const emailInput = document.getElementById("email");
             emitAnalytics('signup_complete');
           }
           try { sessionStorage.setItem('promptly_show_app', '1'); } catch (_) {}
+          // Prefer a same-origin ?next= path (e.g. /review sends next=/review so
+          // sign-in returns there). Guard against open-redirect: must be a local
+          // path ("/..."), never a protocol-relative ("//host") or absolute URL.
+          const nextDest = (() => {
+            try {
+              const n = new URLSearchParams(window.location.search || '').get('next') || '';
+              if (n.startsWith('/') && !n.startsWith('//')) return n;
+            } catch {}
+            return '/editor';
+          })();
           // Verify session is established before redirecting
           const verifyAndRedirect = async () => {
             try {
               const user = await getCurrentUser();
               if (user) {
-                window.location.href = "/editor";
+                window.location.href = nextDest;
               } else {
                 // Session not ready yet, try again
                 setTimeout(verifyAndRedirect, 300);
