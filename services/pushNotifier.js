@@ -237,4 +237,84 @@ function truncate(s, n) {
   return s.slice(0, n - 1).trim() + '…';
 }
 
-module.exports = { sendRenderCompleteNotification };
+// Owner alert — a visible push to the founder's own device(s), used as the
+// operational [ALERT] channel for terminal REAL render failures (RENDER_FATAL /
+// UNKNOWN / INTEGRITY_TRIP / CONTAINER_TEARDOWN — never designed rejections).
+// Same APNs machinery as the render-complete push, targeted at ownerUserId's
+// registered iOS tokens instead of the job's user. Best-effort: a notification
+// failure must never propagate — this is an operator convenience, not a
+// user-facing path.
+async function sendOwnerAlert({ ownerUserId, title, body, threadId, supabaseAdmin }) {
+  try {
+    if (!ownerUserId) {
+      console.warn('[alert] skipping owner alert: no ownerUserId');
+      return;
+    }
+    const topic = process.env.APNS_BUNDLE_ID;
+    if (!topic) {
+      console.warn('[alert] APNS_BUNDLE_ID not set — skipping owner alert');
+      return;
+    }
+    const { data: tokens, error } = await supabaseAdmin
+      .from('device_tokens')
+      .select('token, bundle_id, platform')
+      .eq('user_id', ownerUserId)
+      .eq('platform', 'ios');
+    if (error) {
+      console.error('[alert] DB lookup error:', error.message);
+      return;
+    }
+    const validTokens = (tokens || [])
+      .filter((t) => t.token && (!t.bundle_id || t.bundle_id === topic))
+      .map((t) => t.token);
+    if (validTokens.length === 0) {
+      console.log(`[alert] no registered iOS tokens for owner=${ownerUserId}`);
+      return;
+    }
+
+    let jwt;
+    try {
+      jwt = buildAPNsJWT();
+    } catch (e) {
+      console.error('[alert] JWT build failed:', e.message);
+      return;
+    }
+
+    const gateway = (process.env.APNS_PRODUCTION === 'true')
+      ? 'https://api.push.apple.com'
+      : 'https://api.sandbox.push.apple.com';
+    const client = http2.connect(gateway);
+
+    const apsPayload = {
+      aps: {
+        alert: { title: title || 'Promptly alert', body: body || '' },
+        sound: 'default',
+        // Group operator alerts so a burst collapses into one thread.
+        'thread-id': threadId || 'ops-alert',
+      },
+      type: 'ops-alert',
+    };
+
+    const results = await Promise.all(validTokens.map((deviceToken) =>
+      sendOne({ client, deviceToken, jwt, topic, payload: apsPayload })
+    ));
+    client.close();
+
+    let okCount = 0;
+    const deadTokens = [];
+    for (const r of results) {
+      if (r.ok) okCount++;
+      else if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered' || r.status === 410) {
+        deadTokens.push(r.deviceToken);
+      }
+    }
+    console.log(`[alert] owner=${ownerUserId} sent=${okCount}/${validTokens.length} title="${truncate(title, 40)}"`);
+    if (deadTokens.length > 0) {
+      await supabaseAdmin.from('device_tokens').delete().in('token', deadTokens);
+    }
+  } catch (err) {
+    console.error('[alert] unexpected error:', err.message);
+  }
+}
+
+module.exports = { sendRenderCompleteNotification, sendOwnerAlert };
