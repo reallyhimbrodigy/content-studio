@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { dispatchErrorMessage, clarificationMessage } = require('../lib/failure-copy');
+const { dispatchErrorMessage, clarificationMessage, renderTooShortMessage } = require('../lib/failure-copy');
 
 // Mirror of the iOS display filters (MessageBubble.displaySafeError /
 // EditorView.friendlySSEError): anything matching this is suppressed to the
@@ -36,6 +36,15 @@ test('Path B copy: empty/missing question falls back to a clean prompt', () => {
     assert.equal(copy, 'Can you describe the change in more detail?');
     assert.equal(looksTechnicalToiOS(copy), false);
   }
+});
+
+test('RENDER_TOO_SHORT copy: honest, credit-returned, guiding, display-safe', () => {
+  const copy = renderTooShortMessage();
+  assert.equal(looksTechnicalToiOS(copy), false, 'must not be suppressed on device');
+  assert.ok(!/unknown|something went wrong|error|failed|exception/i.test(copy), 'no UNKNOWN mask, no engineering vocab');
+  assert.ok(/return|back/i.test(copy), 'confirms the credit was returned (refunded class)');
+  assert.ok(/again|longer|try/i.test(copy), 'gives one clear, actionable next step');
+  assert.ok(copy.length > 20 && copy.length <= 160);
 });
 
 test('cold-load per class: every stored failure copy is display-safe', () => {
