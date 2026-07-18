@@ -4385,6 +4385,27 @@ if (require.main === module) {
     };
     setTimeout(runReaper, 30 * 1000); // boot pass
     setInterval(runReaper, 120 * 1000);
+
+    // Bleed meter (daily [REPORT] cost digest): once/day at a fixed UTC hour,
+    // push the founder a 5-line summary of what the pipeline produced in the
+    // last 24h and roughly what it cost — a silent cost runaway becomes visible
+    // within a day instead of at the next Modal invoice. Report-only; excludes
+    // internal + test-prefixed jobs. Hourly tick, self-dedupes to once/day.
+    const { maybeRunBleedMeter } = require('./lib/bleed-meter');
+    let bleedBusy = false;
+    const runBleedMeter = async () => {
+      if (bleedBusy) return;
+      bleedBusy = true;
+      try {
+        await maybeRunBleedMeter(supabaseAdmin);
+      } catch (err) {
+        console.error('[bleed-meter] tick crashed:', err?.message || err);
+      } finally {
+        bleedBusy = false;
+      }
+    };
+    setTimeout(runBleedMeter, 90 * 1000); // boot pass (fires if past report hour)
+    setInterval(runBleedMeter, 60 * 60 * 1000); // hourly
   }
 
   process.on('uncaughtException', (err) => {

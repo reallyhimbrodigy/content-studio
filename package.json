@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "start": "node --expose-gc server.js",
+    "validate": "node validate_deploy.js",
     "worker": "node --expose-gc worker.js",
     "dev": "node --expose-gc server.js",
     "export-logos": "node tools/export-logos.js",
