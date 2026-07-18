@@ -17,7 +17,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
-const { sendRenderCompleteNotification } = require('./services/pushNotifier');
+const { sendRenderCompleteNotification, sendOwnerAlert } = require('./services/pushNotifier');
 const {
   validateUploadRequest,
   validateSubmission,
@@ -1535,14 +1535,23 @@ const server = http.createServer((req, res) => {
         // dedup decision and the push payload.
         const { data: prevState } = await supabaseAdmin
           .from('video_jobs')
-          .select('status, user_id, vibe_input, hls_manifest_url')
+          .select('status, user_id, vibe_input, hls_manifest_url, progress')
           .eq('id', job_id)
           .maybeSingle();
         const wasAlreadyCompleted = prevState?.status === 'completed';
 
+        // MONOTONIC PROGRESS CLAMP (Phase 3): a preempted job retries from
+        // scratch → the fresh attempt restarts progress at ~0. Clamp so the bar
+        // NEVER rewinds — a retry reads as a pause at the high-water mark until
+        // it climbs past it, not a jarring 60%→0% reset. Completion (pct>=100)
+        // always wins.
+        const incomingPct = Number(pct || 0);
+        const priorPct = Number(prevState?.progress || 0);
+        const clampedPct = incomingPct >= 100 ? incomingPct : Math.max(incomingPct, priorPct);
+
         const updateData = {
           status,
-          progress: Number(pct || 0),
+          progress: clampedPct,
           current_step: step || '',
           step_message: message || '',
           updated_at: new Date().toISOString(),
@@ -1626,6 +1635,75 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         console.error('[modal-progress] error:', err.message);
         return sendJson(res, 200, { ok: false });
+      }
+    })();
+    return;
+  }
+
+  // ── Internal: render-failure alert (worker → owner push) ──
+  // The worker POSTs here when a job fails terminally with a REAL error (never
+  // a designed rejection — those are honest and expected). Auth: the same
+  // X-Modal-Secret the worker echoes on /api/modal-progress. Fire-and-forget:
+  // log a grep-stable [ALERT] line (survives even if push is down) and push to
+  // the founder's own device(s) via sendOwnerAlert. Always 202; never blocks
+  // the worker's teardown.
+  if (parsed.pathname === '/api/internal/render-alert' && req.method === 'POST') {
+    (async () => {
+      if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      let body = null;
+      try { body = await readJsonBody(req); } catch (_) { body = null; }
+      sendJson(res, 202, { ok: true });
+      try {
+        const jobId = (body && body.job_id) || 'unknown';
+        const code = (body && body.error_code) || 'UNKNOWN';
+        const detail = (body && body.detail) || '';
+        const dur = body && body.duration_s;
+        const elapsed = body && body.elapsed_s;
+        console.error(`[ALERT] render failure job=${jobId} code=${code}`
+          + (dur ? ` dur=${dur}s` : '') + (elapsed ? ` elapsed=${elapsed}s` : '')
+          + (detail ? ` detail=${String(detail).slice(0, 200)}` : ''));
+        const bodyLine = `job ${String(jobId).slice(0, 8)}`
+          + (dur ? ` · ${Math.round(dur)}s source` : '')
+          + (elapsed ? ` · died @${Math.round(elapsed)}s` : '');
+        await sendOwnerAlert({
+          ownerUserId: SUBMISSION_OWNER_USER_ID,
+          title: `⚠️ Render failed: ${code}`,
+          body: bodyLine,
+          threadId: 'render-alert',
+          supabaseAdmin,
+        });
+      } catch (e) {
+        console.error('[ALERT] handler error:', e && e.message ? e.message : e);
+      }
+    })();
+    return;
+  }
+
+  // ── Worker completion callback (spawn refactor, Phase 2) ──
+  // On the spawn path the worker POSTs the FULL pipeline result here at pipeline
+  // end — the reliable, worker-controlled completion delivery. We settle the
+  // pending promise the dispatch IIFE is awaiting → the completion tail runs.
+  // Auth: the same X-Modal-Secret the worker echoes on progress. SETTLE-ONCE:
+  // settlePendingModalJob dedups on call_id (map delete on first settle), so a
+  // duplicate POST, a racing Modal platform webhook, or a late fallback are ALL
+  // structural no-ops — the tail runs exactly once. Always 202; never blocks the
+  // worker. Inert until Phase 3 (nothing POSTs here until the worker spawns).
+  if (parsed.pathname === '/api/modal-complete' && req.method === 'POST') {
+    (async () => {
+      if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      let body = null;
+      try { body = await readJsonBody(req); } catch (_) { body = null; }
+      sendJson(res, 202, { ok: true });
+      try {
+        const callId = body && String(body.call_id || body.id || '').trim();
+        if (!callId) { console.warn('[modal-complete] missing call_id'); return; }
+        // The worker's return value (success payload OR classified error envelope);
+        // the dispatch tail branches on it exactly as it did on the sync response.
+        const output = (body && (body.result || body.output)) || {};
+        const settled = settlePendingModalJob({ id: callId, status: 'completed', output });
+        console.log(`[modal-complete] call=${callId} job=${(body && body.job_id) || '?'} settled=${settled}`);
+      } catch (e) {
+        console.error('[modal-complete] error:', e && e.message ? e.message : e);
       }
     })();
     return;
@@ -2082,6 +2160,60 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { ok: true });
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to save feedback' });
+      }
+    })();
+    return;
+  }
+
+  // ── Analytics events sink (fire-and-forget) ──
+  // Receives the six client-emitted commerce events (paywall_view,
+  // offerings_loaded, offerings_load_failed, purchase_attempt, purchase_error,
+  // trial_start). This endpoint must NEVER block, slow, or fail the client:
+  // it always responds 202 up front and does the insert best-effort, logging
+  // (never surfacing) any failure. Anon-first — we store the RevenueCat
+  // appUserID from the body, not the auth session, so an event lands even
+  // before/without a Supabase token. See migrations/20260717_analytics_events.sql.
+  if (parsed.pathname === '/api/events' && req.method === 'POST') {
+    (async () => {
+      let body = null;
+      try {
+        body = await readJsonBody(req);
+      } catch (_) {
+        body = null; // bad/oversized JSON — drop, but still 202 below
+      }
+      // Respond immediately. Analytics is never on the client's critical path.
+      if (!res.headersSent) sendJson(res, 202, { ok: true });
+      try {
+        if (!body || typeof body.event !== 'string') return;
+        const ALLOWED = new Set([
+          'paywall_view', 'offerings_loaded', 'offerings_load_failed',
+          'purchase_attempt', 'purchase_error', 'trial_start',
+        ]);
+        if (!ALLOWED.has(body.event)) {
+          console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
+          return;
+        }
+        // Cheap abuse guard on an open endpoint — generous, drops silently
+        // (never 429s the client, which ignores the response anyway).
+        const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+          || (req.socket && req.socket.remoteAddress) || 'unknown';
+        if (!_consumeRateToken('events', ip, 600, 300).ok) return; // 600 / 5 min / IP
+        const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
+        const props = (body.props && typeof body.props === 'object' && !Array.isArray(body.props))
+          ? body.props : {};
+        const row = {
+          event: body.event,
+          anon_user_id: str(body.anon_user_id, 128),
+          territory: str(body.territory, 8),
+          storefront: str(body.storefront, 64),
+          app_version: str(body.app_version, 32),
+          platform: str(body.platform, 16) || 'ios',
+          props,
+        };
+        const { error } = await supabaseAdmin.from('analytics_events').insert(row);
+        if (error) console.warn(`[events] insert failed event=${row.event}: ${error.message}`);
+      } catch (e) {
+        console.warn(`[events] handler error: ${e && e.message ? e.message : e}`);
       }
     })();
     return;
