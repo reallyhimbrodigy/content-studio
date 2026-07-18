@@ -80,6 +80,12 @@ struct PaywallView: View {
     @State private var isPurchasing = false
     @State private var showError = false
     @State private var errorMessage = ""
+    /// Non-nil once a purchase/trial completes here — swaps the paywall for the
+    /// confirmation screen (trust-package Fix 3) instead of a silent dismiss.
+    @State private var confirmation: SubscriptionService.PurchaseConfirmation?
+    /// True from the moment the user taps buy, so the `isPro` auto-dismiss below
+    /// doesn't race the confirmation screen out of existence.
+    @State private var didPurchaseHere = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -112,19 +118,38 @@ struct PaywallView: View {
 
                     Spacer().frame(height: 28)
 
-                    if let packages = currentPackages {
+                    if let packages = currentPackages, !packages.isEmpty {
                         packagePicker(packages: packages)
                             .padding(.horizontal, 24)
-                    } else {
+                    } else if subscription.isLoadingOfferings {
                         ProgressView()
                             .tint(.white)
                             .padding(.vertical, 40)
+                    } else {
+                        // Offerings settled with nothing to show (empty or a
+                        // fetch error). Never an infinite spinner — a visible
+                        // message + Retry. The single point of failure for all
+                        // revenue does not get to fail invisibly.
+                        offeringsUnavailable
+                            .padding(.horizontal, 28)
                     }
 
                     Spacer().frame(height: 24)
 
                     ctaButton
                         .padding(.horizontal, 24)
+
+                    // Fix 2 (copy): the reassurance the shipped paywall lacks —
+                    // shown for a trial so the last thing read before committing
+                    // isn't only the auto-renew warning.
+                    if selectedIsTrial {
+                        Text(TrialCopy.ctaReassurance)
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.top, 10)
+                    }
 
                     fineprint
                         .padding(.horizontal, 32)
@@ -158,9 +183,16 @@ struct PaywallView: View {
             }
             .padding(.trailing, 18)
             .padding(.top, 14)
+
+            // Fix 3: post-purchase confirmation replaces the silent dismiss —
+            // rendered over the paywall the moment a purchase/trial completes.
+            if let c = confirmation {
+                confirmationView(c)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
+            Analytics.track("paywall_view", props: ["reason": reasonKey])
             await subscription.refreshOfferings()
             // Default selection: pick the yearly package if present (better
             // value, hint at savings) — otherwise the first available.
@@ -169,7 +201,11 @@ struct PaywallView: View {
             }
         }
         .onChange(of: subscription.isPro) { _, isPro in
-            if isPro { isPresented = false }
+            // Auto-dismiss only when Pro is granted OUT OF BAND (a restore, or a
+            // webhook/delegate update while the paywall is open). A purchase made
+            // here shows the confirmation screen instead of vanishing, so don't
+            // pull it out from under the user.
+            if isPro && confirmation == nil && !didPurchaseHere { isPresented = false }
         }
         .alert("Purchase didn't complete", isPresented: $showError) {
             Button("OK") {}
@@ -243,6 +279,48 @@ struct PaywallView: View {
         return offering.availablePackages
     }
 
+    /// Short, stable key for the paywall's trigger reason — travels with the
+    /// `paywall_view` event so the funnel can attribute views to their source.
+    private var reasonKey: String {
+        switch reason {
+        case .dailyRenders: return "daily_renders"
+        case .dailyChats:   return "daily_chats"
+        case .reedit:       return "reedit"
+        case .manual:       return "manual"
+        case .lumen:        return "lumen"
+        }
+    }
+
+    /// Shown when offerings settle with no purchasable packages — either the
+    /// fetch threw or it returned zero packages (e.g. products not published
+    /// for this storefront). Replaces the old infinite spinner: a visible
+    /// reason + a Retry that re-runs the fetch.
+    private var offeringsUnavailable: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundColor(.white.opacity(0.75))
+            Text(subscription.offeringsError
+                 ?? "We couldn't load subscription options. Please try again.")
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+            Button {
+                Task { await subscription.refreshOfferings() }
+            } label: {
+                Text("Retry")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 30)
+                    .frame(height: 46)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+            }
+            .disabled(subscription.isLoadingOfferings)
+        }
+        .padding(.vertical, 28)
+    }
+
     private func packagePicker(packages: [Package]) -> some View {
         VStack(spacing: 10) {
             ForEach(packages, id: \.identifier) { pkg in
@@ -299,6 +377,14 @@ struct PaywallView: View {
                     Text("\(priceText) \(intervalText)")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
+                    // Fix 1: honest per-month divisor under the yearly sticker —
+                    // keeps the full annual number, kills the sticker shock.
+                    if pkg.packageType == .annual,
+                       let monthly = TrialCopy.monthlyEquivalent(perMonthPrice: pkg.storeProduct.localizedPricePerMonth) {
+                        Text(monthly)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(PromptlyGold.solid)
+                    }
                 }
                 Spacer()
             }
@@ -320,14 +406,21 @@ struct PaywallView: View {
     private var ctaButton: some View {
         Button {
             guard let pkg = selectedPackage else { return }
+            didPurchaseHere = true
             Task {
                 let ok = await subscription.purchase(pkg)
                 if ok {
-                    isPresented = false
                     await UsageService.shared.refresh()
-                } else if let err = subscription.lastError {
-                    errorMessage = err
-                    showError = true
+                    // Show the confirmation screen (Fix 3) instead of dismissing.
+                    // Fall back to a plain dismiss only if no payload was produced.
+                    confirmation = subscription.lastConfirmation
+                    if confirmation == nil { isPresented = false }
+                } else {
+                    didPurchaseHere = false
+                    if let err = subscription.lastError {
+                        errorMessage = err
+                        showError = true
+                    }
                 }
             }
         } label: {
@@ -359,10 +452,97 @@ struct PaywallView: View {
         return "Continue"
     }
 
+    /// Whether the selected package carries a free-trial intro offer — drives
+    /// the trial-specific reassurance copy, CTA text, fineprint, and confirmation.
+    private var selectedIsTrial: Bool {
+        selectedPackage?.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
+    }
+
     private var fineprint: some View {
-        Text("Auto-renews until cancelled. Cancel anytime in Settings.")
+        // Fix 4: keep the required auto-renew disclosure, but for a trial pair it
+        // with the reminder reassurance so the last line isn't only a warning.
+        Text(TrialCopy.fineprint(isTrial: selectedIsTrial))
             .font(.system(size: 11))
             .foregroundColor(.white.opacity(0.4))
             .multilineTextAlignment(.center)
+    }
+
+    /// Fix 3: post-purchase confirmation — certainty over a silent dismiss. Names
+    /// the trial-end date, the exact charge, and (only when a reminder was
+    /// actually scheduled) the reminder promise. Fully covers the paywall.
+    private func confirmationView(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
+        ZStack(alignment: .topTrailing) {
+            backdrop.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 96)
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 80, height: 80)
+                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
+                            .shadow(color: PromptlyGold.solid.opacity(0.4), radius: 30, y: 0)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(PromptlyGold.gradient)
+                    }
+                    .padding(.bottom, 24)
+
+                    Text(TrialCopy.confirmationTitle)
+                        .font(.system(size: 27, weight: .bold))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text(TrialCopy.confirmationBody(
+                        isTrial: c.isTrial, price: c.price,
+                        trialEnd: c.trialEnd, reminderScheduled: c.reminderScheduled))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 34)
+                        .padding(.top, 12)
+
+                    if let nudge = TrialCopy.confirmationReminderFallback(
+                        reminderScheduled: c.reminderScheduled, isTrial: c.isTrial) {
+                        Text(nudge)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(PromptlyGold.solid)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 34)
+                            .padding(.top, 12)
+                    }
+
+                    Spacer().frame(height: 36)
+
+                    Button {
+                        isPresented = false
+                    } label: {
+                        Text("Start creating")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.white)
+                            .clipShape(Capsule())
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                }
+            }
+
+            Button {
+                isPresented = false
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+            }
+            .padding(.trailing, 18)
+            .padding(.top, 14)
+        }
     }
 }

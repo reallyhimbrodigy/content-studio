@@ -30,3 +30,17 @@ swiftc "$DIR/../Promptly/Models/AskPayload.swift" \
        "$DIR/AskPayloadTests.swift" \
        -o "${TMPDIR:-/tmp}/asktest"
 "${TMPDIR:-/tmp}/asktest"
+
+# TrialCopy — paywall trust-package copy + trial-reminder date math (pure
+# Foundation: monthly-equivalent anchor, reminder fire-date, confirmation copy).
+swiftc "$DIR/../Promptly/Services/TrialCopy.swift" \
+       "$DIR/TrialCopyTests.swift" \
+       -o "${TMPDIR:-/tmp}/trialcopytest"
+"${TMPDIR:-/tmp}/trialcopytest"
+
+# PaywallRouting — wedge/deferral state machine behind the RACE 1/RACE 2 fixes
+# (park-behind-modal, flush-on-dismiss, re-drive-so-nothing-gets-wedged).
+swiftc "$DIR/../Promptly/Services/PaywallRouting.swift" \
+       "$DIR/PaywallRoutingTests.swift" \
+       -o "${TMPDIR:-/tmp}/prtest"
+"${TMPDIR:-/tmp}/prtest"

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import RevenueCat
+import UserNotifications
 
 /// Single source of truth for Pro entitlement on the client.
 ///
@@ -56,6 +57,30 @@ final class SubscriptionService: ObservableObject {
     @Published var offerings: Offerings?
     @Published var isLoadingPurchase: Bool = false
     @Published var lastError: String?
+
+    /// Offerings load-state for the paywall. `isLoadingOfferings` is true only
+    /// while a fetch is in flight; when it settles false, either
+    /// `currentPackages` has options OR `offeringsError` is set. This is what
+    /// lets the paywall show a real error+Retry instead of an infinite spinner
+    /// when offerings come back empty or the fetch throws.
+    @Published var isLoadingOfferings: Bool = false
+    @Published var offeringsError: String?
+
+    /// Post-purchase confirmation payload (trust-package Fix 3). Set on a
+    /// successful purchase/trial so PaywallView can show a real confirmation
+    /// screen — the trial-end date, the exact charge, and (only when true) the
+    /// reminder promise — instead of the old silent dismiss.
+    @Published var lastConfirmation: PurchaseConfirmation?
+
+    struct PurchaseConfirmation: Equatable {
+        let isTrial: Bool
+        let price: String
+        let trialEnd: Date?
+        let reminderScheduled: Bool
+    }
+
+    /// Stable id so a re-purchase/renewal replaces rather than stacks reminders.
+    static let trialReminderId = "promptly.trial.reminder"
 
     private var initialized = false
 
@@ -123,13 +148,45 @@ final class SubscriptionService: ObservableObject {
     }
 
     /// Pull the current offering (monthly + yearly packages) for the paywall.
+    ///
+    /// The single point of failure for all revenue does not get to fail
+    /// invisibly. This tracks load-state so the paywall can render a real
+    /// error+Retry (never an infinite spinner), logs any failure properly
+    /// (not print-swallowed), and emits the funnel events:
+    ///   - `offerings_loaded {count}` on every successful fetch
+    ///   - `offerings_load_failed` when the fetch throws OR returns zero
+    ///     packages (a zero-package result almost always means the products
+    ///     aren't published/priced for this storefront — the India hypothesis).
     func refreshOfferings() async {
         guard initialized else { return }
+        isLoadingOfferings = true
+        offeringsError = nil
+        defer { isLoadingOfferings = false }
         do {
             let result = try await Purchases.shared.offerings()
             self.offerings = result
+            let offering = result.current ?? result[Self.defaultOfferingId]
+            let count = offering?.availablePackages.count ?? 0
+            Analytics.track("offerings_loaded", props: ["count": count])
+            if count == 0 {
+                // Fetch succeeded but there is nothing to sell here. Surface it
+                // as a visible failure state, not a spinner, and flag it as a
+                // load failure so it shows up in the funnel.
+                offeringsError = "Subscriptions aren't available in your region yet. Please try again later."
+                Analytics.track("offerings_load_failed", props: ["reason": "empty", "count": 0])
+                NSLog("[Subscription] offerings loaded but EMPTY (0 packages) — check App Store product availability/pricing for this storefront")
+            }
         } catch {
-            print("[Subscription] offerings failed: \(error.localizedDescription)")
+            let ns = error as NSError
+            offeringsError = "We couldn't load subscription options. Please check your connection and try again."
+            Analytics.track("offerings_load_failed", props: [
+                "reason": "fetch_error",
+                "code": ns.code,
+                "domain": ns.domain,
+                "message": error.localizedDescription,
+            ])
+            NSLog("[Subscription] offerings fetch FAILED: %@ (domain=%@ code=%ld)",
+                  error.localizedDescription, ns.domain, ns.code)
         }
     }
 
@@ -141,11 +198,44 @@ final class SubscriptionService: ObservableObject {
         guard initialized else { return false }
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }
+        let isFreeTrial = package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
+        Analytics.track("purchase_attempt", props: [
+            "product": package.storeProduct.productIdentifier,
+            "package": package.identifier,
+            "free_trial": isFreeTrial,
+        ])
         do {
             let result = try await Purchases.shared.purchase(package: package)
             applyCustomerInfo(result.customerInfo)
             if !result.userCancelled {
                 lastError = nil
+                // The exact charge and trial-end the user is committing to —
+                // sourced from the transaction, so the confirmation screen and
+                // the reminder state the real number/date, not an estimate.
+                let priceString = package.storeProduct.localizedPriceString
+                let trialEnd = result.customerInfo.entitlements[Self.proEntitlementId]?.expirationDate
+                var reminderScheduled = false
+                if isFreeTrial {
+                    // A completed free-trial purchase starts the trial (the
+                    // entitlement is active immediately for its duration).
+                    Analytics.track("trial_start", props: [
+                        "product": package.storeProduct.productIdentifier,
+                    ])
+                    // Trust-package Fix 2: schedule the local trial-end reminder
+                    // so the paywall's "we'll remind you" promise is real. The
+                    // returned flag gates the confirmation copy so we never claim
+                    // a reminder we couldn't set (notifications off / trial too
+                    // short to leave a 24h lead).
+                    reminderScheduled = await scheduleTrialReminder(trialEnd: trialEnd, price: priceString)
+                }
+                // Trust-package Fix 3: feed the confirmation screen (replaces the
+                // silent dismiss) with concrete facts.
+                lastConfirmation = PurchaseConfirmation(
+                    isTrial: isFreeTrial,
+                    price: priceString,
+                    trialEnd: trialEnd,
+                    reminderScheduled: reminderScheduled
+                )
                 // Reconcile with the server immediately so the render gate
                 // (which trusts ONLY the server, not RevenueCat's client
                 // cache) unlocks without waiting for the webhook to land.
@@ -153,9 +243,19 @@ final class SubscriptionService: ObservableObject {
             }
             return isPro
         } catch {
-            // Skip noisy alerts on user-cancel.
             let nsErr = error as NSError
-            if nsErr.code != ErrorCode.purchaseCancelledError.rawValue {
+            let cancelled = nsErr.code == ErrorCode.purchaseCancelledError.rawValue
+            // Emit for BOTH real errors and user-cancels — a cancel is a funnel
+            // drop we need to see. `cancelled` in props keeps them separable
+            // without adding a seventh event.
+            Analytics.track("purchase_error", props: [
+                "code": nsErr.code,
+                "domain": nsErr.domain,
+                "cancelled": cancelled,
+                "product": package.storeProduct.productIdentifier,
+            ])
+            // Skip noisy alerts on user-cancel.
+            if !cancelled {
                 lastError = error.localizedDescription
                 print("[Subscription] purchase failed: \(error.localizedDescription)")
             }
@@ -210,6 +310,57 @@ final class SubscriptionService: ObservableObject {
         // Reflect the server's (now-updated) entitlement regardless of the
         // sync call's outcome.
         await UsageService.shared.refresh()
+    }
+
+    /// Schedule the local trial-end reminder ~24h before expiry so the paywall's
+    /// "we'll remind you before your trial ends" promise is backed by a real
+    /// mechanism — the single best-documented reducer of instant renewal opt-outs.
+    ///
+    /// Best-effort and permission-aware. Returns false (and the confirmation copy
+    /// softens to a "turn on notifications" nudge) when we can't deliver: the
+    /// trial is too short to leave a 24h lead, or notifications are denied. If
+    /// permission is undetermined we ask now — trial start is the honest,
+    /// high-intent moment to request it.
+    ///
+    /// NOTE ON THE PROMISE: a local notification only fires if the app remains
+    /// installed and notifications stay enabled. The durable fallback — a
+    /// server-side email off the existing RevenueCat trial-start webhook — is
+    /// proposed separately; it is not built here.
+    func scheduleTrialReminder(trialEnd: Date?, price: String) async -> Bool {
+        guard let trialEnd,
+              let fireDate = TrialCopy.reminderFireDate(trialEnd: trialEnd, now: Date()) else {
+            return false
+        }
+        let center = UNUserNotificationCenter.current()
+        switch await center.notificationSettings().authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            break
+        case .notDetermined:
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            if !granted { return false }
+        case .denied:
+            return false
+        @unknown default:
+            return false
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = TrialCopy.reminderTitle
+        content.body = TrialCopy.reminderBody(price: price)
+        content.sound = .default
+
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        let request = UNNotificationRequest(identifier: Self.trialReminderId, content: content, trigger: trigger)
+        // Clear any prior reminder first so a renewal/re-purchase replaces it.
+        center.removePendingNotificationRequests(withIdentifiers: [Self.trialReminderId])
+        do {
+            try await center.add(request)
+            return true
+        } catch {
+            print("[Subscription] trial reminder scheduling failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Internal
