@@ -245,7 +245,7 @@ struct AccountView: View {
                     UIApplication.shared.open(url)
                 }
             } else {
-                AppState.shared.paywallReason = .manual
+                AppState.shared.presentPaywall(.manual)
             }
         } label: {
             HStack(spacing: 8) {

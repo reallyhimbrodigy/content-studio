@@ -73,7 +73,7 @@ struct ModelPickerPill: View {
         .sheet(isPresented: $showPicker, onDismiss: {
             if pendingUpgrade {
                 pendingUpgrade = false
-                AppState.shared.paywallReason = .lumen
+                AppState.shared.presentPaywall(.lumen)
             }
         }) {
             ModelPickerSheet(onRequestUpgrade: { pendingUpgrade = true })

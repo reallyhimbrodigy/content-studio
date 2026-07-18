@@ -1100,7 +1100,7 @@ struct EditorView: View {
                 return
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            appState.paywallReason = .manual
+            appState.presentPaywall(.manual)
             return
         }
         showVideoPicker = true
@@ -1773,7 +1773,7 @@ struct EditorView: View {
                 messages[i].isRetryable = retryable
                 persistMessages()
             } catch let APIError.paymentRequired(_, _, _) {
-                appState.paywallReason = .manual
+                appState.presentPaywall(.manual)
             } catch {
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobStatus = "failed"
@@ -1987,7 +1987,7 @@ struct EditorView: View {
         // ── Finalize ──────────────────────────────────────────────────
         if hitPaywall {
             if let reason = paywallReason {
-                appState.paywallReason = reason
+                appState.presentPaywall(reason)
             }
             await UsageService.shared.refresh()
             if let i = idx() {
@@ -2085,7 +2085,7 @@ struct EditorView: View {
         // get bounced.
         if UsageService.shared.atChatLimit {
             let lim = UsageService.shared.chatLimit
-            appState.paywallReason = .dailyChats(used: lim, limit: lim)
+            appState.presentPaywall(.dailyChats(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
@@ -2240,10 +2240,10 @@ struct EditorView: View {
                     }
                     persistMessages()
                     if kind == "reedit" {
-                        appState.paywallReason = .reedit
+                        appState.presentPaywall(.reedit)
                     } else {
                         let lim = limit ?? 3
-                        appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                        appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     }
                     await UsageService.shared.refresh()
                 } catch {
@@ -2265,7 +2265,7 @@ struct EditorView: View {
         // zero latency.
         if hasVideos && UsageService.shared.atRenderLimit {
             let lim = UsageService.shared.renderLimit
-            appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+            appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
@@ -2288,7 +2288,7 @@ struct EditorView: View {
                 await UsageService.shared.refresh()
                 if UsageService.shared.atRenderLimit {
                     let lim = UsageService.shared.renderLimit
-                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                    appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     return
                 }
@@ -2490,10 +2490,10 @@ struct EditorView: View {
                                     messages.remove(at: i)
                                     persistMessages()
                                     if hf.paymentKind == "reedit" {
-                                        appState.paywallReason = .reedit
+                                        appState.presentPaywall(.reedit)
                                     } else {
                                         let lim = hf.paymentLimit ?? 3
-                                        appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                                        appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                                     }
                                 } else if let cid = dispatchChatId {
                                     chatStore.updateStoredMessage(chatId: cid, messageId: msgId.uuidString) { m in
@@ -2718,7 +2718,7 @@ struct EditorView: View {
                code == "tier_concurrency_limit" {
                 Task { @MainActor in
                     let lim = UsageService.shared.renderLimit
-                    appState.paywallReason = .dailyRenders(used: lim, limit: lim)
+                    appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }

@@ -449,12 +449,58 @@ final class AppState: ObservableObject {
     /// transition. Lives on AppState so any view can dismiss it without
     /// having to plumb a binding through the hierarchy.
     @Published var sidebarOpen: Bool = false
-    /// Request a paywall sheet from anywhere in the view tree. The root
-    /// (AppShell) presents PaywallView when this becomes non-nil and
-    /// clears it on dismiss. Setting from a leaf view (re-edit tap,
-    /// usage badge, server 402 handler) is what triggers the flow —
-    /// no binding plumbing required.
-    @Published var paywallReason: PaywallReason?
+    /// The paywall the root sheet (AppShell) is bound to — non-nil ⇒ presented.
+    /// READ-ONLY to the rest of the app: trigger sites must go through
+    /// `presentPaywall` / `deferPaywall` / `flushDeferredPaywall`, never set this
+    /// directly. That routing is what stops a presentation dropped behind a
+    /// blocking modal (a full-screen player, a mid-dismiss sheet) from leaving
+    /// this stuck non-nil and muting every later trigger for the session — the
+    /// RACE 1 / RACE 2 wedge. Decision core: `PaywallRouting`.
+    @Published private(set) var paywallReason: PaywallReason?
+    private var paywallRouting = PaywallRouting<PaywallReason>()
+
+    /// Present the paywall now (wedge-proof). Use from a trigger with no blocking
+    /// modal on screen; if a stale reason is stuck (a sheet that never actually
+    /// presented), this re-drives so the request can't be silently muted.
+    func presentPaywall(_ reason: PaywallReason) {
+        paywallRouting.request(reason)
+        mirrorPaywallRouting()
+    }
+
+    /// Park a paywall behind a blocking modal (full-screen player, or a sheet
+    /// that's mid-dismiss). Shows nothing yet — call `flushDeferredPaywall()`
+    /// from the modal's dismissal hook to present it once the context is free.
+    func deferPaywall(_ reason: PaywallReason) {
+        paywallRouting.park(reason)
+    }
+
+    /// Promote a parked paywall now that the blocking modal has dismissed.
+    /// A no-op when nothing is parked, so it's safe to call on every close.
+    func flushDeferredPaywall() {
+        paywallRouting.flush()
+        mirrorPaywallRouting()
+    }
+
+    /// Call when the paywall sheet is dismissed (user closed it) so the router
+    /// stays in sync and anything queued behind it is promoted.
+    func dismissPaywall() {
+        paywallRouting.dismissed()
+        mirrorPaywallRouting()
+    }
+
+    /// Mirror the pure router's decision onto the @Published binding. On a
+    /// non-nil→non-nil change SwiftUI's `reason != nil` binding wouldn't
+    /// re-present, so re-drive through nil across a runloop tick.
+    private func mirrorPaywallRouting() {
+        if paywallRouting.needsRedrive {
+            paywallRouting.redriveHandled()
+            let target = paywallRouting.reason
+            paywallReason = nil
+            DispatchQueue.main.async { [weak self] in self?.paywallReason = target }
+        } else {
+            paywallReason = paywallRouting.reason
+        }
+    }
 }
 
 /// Codable for symmetry with ReeditSession; only the case matters at

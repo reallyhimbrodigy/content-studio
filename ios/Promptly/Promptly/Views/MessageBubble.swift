@@ -329,7 +329,7 @@ struct MessageBubble: View {
             // effectiveIsPro consults BOTH RevenueCat and the server-derived
             // /api/usage snapshot so server-comped users (SQL update) work.
             if !SubscriptionService.shared.effectiveIsPro {
-                AppState.shared.paywallReason = .reedit
+                AppState.shared.presentPaywall(.reedit)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 return
             }

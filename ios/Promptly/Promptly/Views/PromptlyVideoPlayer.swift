@@ -686,8 +686,19 @@ struct ControlOverlay: View {
                     let isPro = SubscriptionService.shared.effectiveIsPro
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onReedit()
-                        if isPro { onClose() }
+                        if isPro {
+                            onReedit()
+                            onClose()
+                        } else {
+                            // RACE 1 fix: this player is a full-screen UIKit modal,
+                            // so setting the paywall while it's on top is silently
+                            // dropped. Park the paywall and dismiss the player; the
+                            // host's dismissal completion flushes it — a free user's
+                            // Re-edit tap now presents the paywall every time,
+                            // instead of leaving them staring at the video.
+                            AppState.shared.deferPaywall(.reedit)
+                            onClose()
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             if isPro {
@@ -944,7 +955,13 @@ final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
         self.view.backgroundColor = .black
         self.rootView = PromptlyPlayerView(
             session: session,
-            onClose: { [weak self] in self?.dismiss(animated: true) },
+            onClose: { [weak self] in
+                // Flush any paywall parked while this full-screen player owned the
+                // presentation context (RACE 1). Runs after the dismissal completes,
+                // when the root sheet can actually present. A no-op when nothing is
+                // parked, so a plain close stays a plain close.
+                self?.dismiss(animated: true) { AppState.shared.flushDeferredPaywall() }
+            },
             onReedit: onReedit,
             title: title,
             posterUrl: posterUrl

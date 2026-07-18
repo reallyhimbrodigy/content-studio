@@ -10,6 +10,9 @@ struct LibraryView: View {
     @State private var editToDelete: VideoJob?
     @State private var showDeleteConfirm = false
     @State private var selectedEdit: VideoJob?
+    /// RACE 2: the edit whose Re-edit was tapped inside the detail sheet. Held
+    /// until the sheet's onDismiss so the handoff (and paywall) fires after close.
+    @State private var reeditAfterDismiss: VideoJob?
 
     // Multi-select / bulk delete. Mirrors the Photos / Files / Mail
     // selection pattern: trailing "Select" → "Done"; leading "Select All"
@@ -119,7 +122,16 @@ struct LibraryView: View {
                 }
                 Button("Cancel", role: .cancel) { }
             }
-            .sheet(item: $selectedEdit) { edit in
+            .sheet(item: $selectedEdit, onDismiss: {
+                // RACE 2 fix: run the re-edit handoff (and, for a free user, its
+                // paywall) only AFTER the detail sheet has fully dismissed. Doing
+                // both in the same tick silently drops the paywall — the exact rule
+                // ModelPicker follows via its own onDismiss.
+                if let e = reeditAfterDismiss {
+                    reeditAfterDismiss = nil
+                    startReedit(e)
+                }
+            }) { edit in
                 VideoDetailSheet(
                     edit: edit,
                     onDelete: {
@@ -127,11 +139,9 @@ struct LibraryView: View {
                         Task { await loadEdits() }
                     },
                     onReedit: {
-                        // Same handoff as the row-level Re-edit button:
-                        // post a pending re-edit session, jump to the
-                        // Edit tab. EditorView consumes it on appear.
-                        selectedEdit = nil
-                        startReedit(edit)
+                        // Signal intent only; the sheet's own dismiss() closes it
+                        // and the onDismiss above performs the handoff post-close.
+                        reeditAfterDismiss = edit
                     }
                 )
             }
@@ -324,7 +334,7 @@ struct LibraryView: View {
         // entry points behave identically. effectiveIsPro so server-comped
         // users (SQL update, RevenueCat-out-of-sync) get through too.
         if !SubscriptionService.shared.effectiveIsPro {
-            appState.paywallReason = .reedit
+            appState.presentPaywall(.reedit)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
@@ -799,8 +809,10 @@ struct VideoDetailSheet: View {
                         // the paywall via the onReedit closure so they
                         // can convert.
                         ReeditDetailButton(isPro: SubscriptionService.shared.effectiveIsPro) {
-                            dismiss()
+                            // Stash intent, then dismiss — the parent sheet's
+                            // onDismiss fires the re-edit/paywall once closed (RACE 2).
                             onReedit()
+                            dismiss()
                         }
                         DetailActionButton(systemName: "trash", label: "Delete") {
                             showDeleteConfirm = true

@@ -79,14 +79,14 @@ struct AppShell: View {
         .sheet(
             isPresented: Binding(
                 get: { appState.paywallReason != nil },
-                set: { if !$0 { appState.paywallReason = nil } }
+                set: { if !$0 { appState.dismissPaywall() } }
             )
         ) {
             if let reason = appState.paywallReason {
                 PaywallView(
                     isPresented: Binding(
                         get: { appState.paywallReason != nil },
-                        set: { if !$0 { appState.paywallReason = nil } }
+                        set: { if !$0 { appState.dismissPaywall() } }
                     ),
                     reason: reason
                 )
