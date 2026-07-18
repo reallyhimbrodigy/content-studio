@@ -28,6 +28,18 @@ enum TrialCopy {
         return "that's \(p)/mo, billed yearly"
     }
 
+    /// Fallback anchor when RevenueCat's `localizedPricePerMonth` is nil: divide
+    /// the yearly price by 12 and format with the PRODUCT'S OWN formatter — so the
+    /// currency and locale come from StoreKit ($199.99→"$16.67", ₹19,900→"₹1,658"),
+    /// never an assumed `$`. A hardcoded currency here would re-commit the exact
+    /// presentation sin the Trust Package exists to fix.
+    static func monthlyEquivalent(fromYearlyPrice yearly: Decimal, using formatter: NumberFormatter) -> String? {
+        guard yearly > 0 else { return nil }
+        let perMonth = yearly / 12
+        guard let formatted = formatter.string(from: perMonth as NSDecimalNumber) else { return nil }
+        return monthlyEquivalent(perMonthPrice: formatted)
+    }
+
     // MARK: - Fix 2 · Trial-end reminder
 
     /// When the local reminder should fire: `reminderLead` before the trial

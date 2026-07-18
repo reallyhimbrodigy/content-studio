@@ -329,6 +329,21 @@ struct PaywallView: View {
         }
     }
 
+    /// Fix 1 anchor for a yearly plan. Prefers RevenueCat's own localized
+    /// per-month string; falls back to price ÷ 12 formatted with the product's
+    /// own formatter. Both are storefront-derived — never a hardcoded currency,
+    /// so ₹19,900 renders "₹1,658/mo" and CAD renders CAD, worldwide, for free.
+    private func monthlyAnchor(for pkg: Package) -> String? {
+        if let perMonth = pkg.storeProduct.localizedPricePerMonth,
+           let line = TrialCopy.monthlyEquivalent(perMonthPrice: perMonth) {
+            return line
+        }
+        if let formatter = pkg.storeProduct.priceFormatter {
+            return TrialCopy.monthlyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
+        }
+        return nil
+    }
+
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -378,9 +393,10 @@ struct PaywallView: View {
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
                     // Fix 1: honest per-month divisor under the yearly sticker —
-                    // keeps the full annual number, kills the sticker shock.
-                    if pkg.packageType == .annual,
-                       let monthly = TrialCopy.monthlyEquivalent(perMonthPrice: pkg.storeProduct.localizedPricePerMonth) {
+                    // keeps the full annual number, kills the sticker shock. Both
+                    // the RC per-month string and the divide-by-12 fallback derive
+                    // currency + locale from StoreKit; no price literal in code.
+                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(PromptlyGold.solid)

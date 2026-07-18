@@ -44,6 +44,25 @@ check(TrialCopy.monthlyEquivalent(perMonthPrice: nil) == nil,
 check(TrialCopy.monthlyEquivalent(perMonthPrice: "   ") == nil,
       "monthlyEquivalent returns nil for a blank string")
 
+// Fallback anchor (price ÷ 12 via the PRODUCT'S formatter) at the REAL prices —
+// proves currency + locale come from StoreKit, never an assumed "$".
+let usd = NumberFormatter()
+usd.numberStyle = .currency; usd.currencyCode = "USD"; usd.locale = Locale(identifier: "en_US")
+check(TrialCopy.monthlyEquivalent(fromYearlyPrice: Decimal(string: "199.99")!, using: usd)
+      == "that's $16.67/mo, billed yearly",
+      "$199.99/yr divides to $16.67/mo (real Promptly yearly price)")
+
+let inr = NumberFormatter()
+inr.numberStyle = .currency; inr.currencyCode = "INR"; inr.locale = Locale(identifier: "en_IN")
+let inrExpectedPerMonth = inr.string(from: (Decimal(string: "19900")! / 12) as NSDecimalNumber)!
+let inrLine = TrialCopy.monthlyEquivalent(fromYearlyPrice: Decimal(string: "19900")!, using: inr)!
+check(inrLine == "that's \(inrExpectedPerMonth)/mo, billed yearly",
+      "₹19,900/yr anchors via the product's own INR formatter, not a hardcoded currency")
+check(inrLine.contains("₹") && !inrLine.contains("$"),
+      "INR anchor renders ₹ and never a $ (India honesty, for free)")
+check(TrialCopy.monthlyEquivalent(fromYearlyPrice: 0, using: usd) == nil,
+      "zero/invalid yearly price yields no anchor")
+
 // MARK: Fix 2 — reminder fire date
 let end = date(2026, 7, 20, 13)          // trial ends Jul 20 13:00 UTC
 let fire = TrialCopy.reminderFireDate(trialEnd: end, now: date(2026, 7, 17))
