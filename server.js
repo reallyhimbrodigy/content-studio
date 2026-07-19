@@ -8,6 +8,7 @@ const { supabaseAdmin } = require('./services/supabase-admin');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   isUserPro: isProfilePro,
+  entitlementTier,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
   revenuecatWebhookAuthMatches,
@@ -2628,16 +2629,25 @@ const server = http.createServer((req, res) => {
         // renewal date). Read straight from profiles so the client can
         // show a friendly "Trial ends Mar 5" line.
         let proUntil = null;
+        // Trial-wall tier (N+1): 'none' | 'trial' | 'paid'. Additive field — old
+        // clients ignore it; the trial-wall client gates features on it. Default
+        // mirrors is_pro until the profile row is read.
+        let tier = ent.isPro ? 'paid' : 'none';
         if (supabaseAdmin) {
           const { data } = await supabaseAdmin
             .from('profiles')
-            .select('pro_until')
+            .select('tier, comp_pro, pro_until, rc_period_type, rc_app_user_id')
             .eq('id', u.id)
             .maybeSingle();
           proUntil = data?.pro_until || null;
+          tier = entitlementTier(data);
+          // assertProEntitled may have self-healed Pro after this row was read;
+          // keep tier consistent with is_pro so a just-granted user isn't walled.
+          if (ent.isPro && tier === 'none') tier = 'paid';
         }
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
+          tier,
           pro_until: proUntil,
           renders_today: renders,
           chats_today: chats,
