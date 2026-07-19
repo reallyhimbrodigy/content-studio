@@ -33,9 +33,18 @@ test('effectiveTier: none + not enforcing → trial (today\'s capped free tier)'
 test('effectiveTier: none + enforcing → none (the wall)', () => {
   assert.strictEqual(effectiveTier('none', true), 'none');
 });
-test('effectiveTier: trial/paid unchanged by enforce flag', () => {
+test('effectiveTier: trial enforcing → trial (limited); paid always paid', () => {
   assert.strictEqual(effectiveTier('trial', true), 'trial');
   assert.strictEqual(effectiveTier('paid', false), 'paid');
+  assert.strictEqual(effectiveTier('paid', true), 'paid');
+});
+test('effectiveTier: trial + NOT enforcing → paid (active trial was isPro==unlimited today)', () => {
+  assert.strictEqual(effectiveTier('trial', false), 'paid');
+});
+test('knob-off keeps a straggler trial UNLIMITED — byte-for-byte today', () => {
+  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'render', todayCount: 99999, enforce: false }).allow, true);
+  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'chat', todayCount: 99999, enforce: false }).allow, true);
+  assert.strictEqual(uploadDecision({ tier: 'trial', count: 10, enforce: false }).allow, true);
 });
 
 // ── The render gate ────────────────────────────────────────────────────────
