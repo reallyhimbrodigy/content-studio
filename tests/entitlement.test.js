@@ -3,7 +3,7 @@
 // Run with:  node --test tests/entitlement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isUserPro, entitlementTier, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
+const { isUserPro, entitlementTier, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -219,4 +219,30 @@ test('entitlementTier: expired/lapsed trial → none (fail-closed, back to the w
     entitlementTier({ tier: 'free', pro_until: past, rc_period_type: 'trial' }, NOW),
     'none'
   );
+});
+
+// --- unknownPeriodPaid: the ratified edge counter (cron-fixable population) ---
+
+test('unknownPeriodPaid: RC-linked active pro with NO period → true (the edge)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u' }, NOW), true);
+});
+
+test('unknownPeriodPaid: RC-linked active pro WITH a period → false', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'normal' }, NOW), false);
+});
+
+test('unknownPeriodPaid: active free trial → false (it is trial, not paid)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'trial' }, NOW), false);
+});
+
+test('unknownPeriodPaid: comp → false (intentional paid, excluded)', () => {
+  assert.strictEqual(unknownPeriodPaid({ comp_pro: true }, NOW), false);
+});
+
+test('unknownPeriodPaid: legacy non-RC hand-promote → false (no rc_app_user_id)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future }, NOW), false);
+});
+
+test('unknownPeriodPaid: not entitled → false', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'free' }, NOW), false);
 });

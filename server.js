@@ -9,6 +9,7 @@ const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/feat
 const {
   isUserPro: isProfilePro,
   entitlementTier,
+  unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
   revenuecatWebhookAuthMatches,
@@ -2644,6 +2645,13 @@ const server = http.createServer((req, res) => {
           // assertProEntitled may have self-healed Pro after this row was read;
           // keep tier consistent with is_pro so a just-granted user isn't walled.
           if (ent.isPro && tier === 'none') tier = 'paid';
+          // Edge counter (ratified item 1): an RC-linked entitlement promoted to
+          // paid ONLY because it lacks a period type. Near-zero once the RC->DB
+          // reconcile cron runs; surfaced here so we see it in logs/[REPORT], not
+          // in a Modal bill. No behavior change — a countable signal, no PII.
+          if (unknownPeriodPaid(data)) {
+            console.warn('[entitlement.edge] active_paid_missing_period', { rc_linked: true });
+          }
         }
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
