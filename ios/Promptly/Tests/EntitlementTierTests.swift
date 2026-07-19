@@ -54,6 +54,30 @@ check(EntitlementTier.fromServer("  PAID ") == .paid, "fromServer: case-insensit
 check(EntitlementTier.fromServer(nil) == .none, "fromServer: nil → none (field absent on an old server)")
 check(EntitlementTier.fromServer("garbage") == .none, "fromServer: unknown → none (server signal fails closed)")
 
+// ── Capability truth table (mirrors lib/tier-capabilities.js, every cell) ──
+check(EntitlementTier.none.appUsable == false && EntitlementTier.trial.appUsable && EntitlementTier.paid.appUsable,
+      "appUsable: none=false (→wall), trial=true, paid=true")
+check(EntitlementTier.none.uploadMax == 0 && EntitlementTier.trial.uploadMax == 1 && EntitlementTier.paid.uploadMax == 10,
+      "upload max: none=0, trial=1, paid=10")
+check(EntitlementTier.none.canUpload(1) == false && EntitlementTier.trial.canUpload(1) && !EntitlementTier.trial.canUpload(2)
+      && EntitlementTier.paid.canUpload(10) && !EntitlementTier.paid.canUpload(11),
+      "canUpload: none blocks all, trial exactly 1, paid up to 10")
+check(EntitlementTier.none.canRender(todayRenders: 0) == false,
+      "canRender: none blocked even at 0 used (the wall, not a cap)")
+check(EntitlementTier.trial.canRender(todayRenders: 2) && !EntitlementTier.trial.canRender(todayRenders: 3),
+      "canRender: trial allows the 3rd, blocks the 4th")
+check(EntitlementTier.paid.canRender(todayRenders: 9999), "canRender: paid unlimited")
+check(EntitlementTier.none.canChat(todayChats: 0) == false && EntitlementTier.trial.canChat(todayChats: 49)
+      && !EntitlementTier.trial.canChat(todayChats: 50) && EntitlementTier.paid.canChat(todayChats: 100000),
+      "canChat: none blocked, trial to 50, paid unlimited")
+check(EntitlementTier.none.canReedit == false && EntitlementTier.trial.canReedit == false && EntitlementTier.paid.canReedit,
+      "re-edit: paid only")
+check(EntitlementTier.none.canUseLumen == false && EntitlementTier.trial.canUseLumen == false && EntitlementTier.paid.canUseLumen,
+      "lumen: paid only")
+check(EntitlementTier.none.limitHitRouting == .wall && EntitlementTier.trial.limitHitRouting == .paywall
+      && EntitlementTier.paid.limitHitRouting == .unused,
+      "limit-hit routing: none→wall, trial→paywall, paid→unused")
+
 print("\n\(checks) checks, \(failures) failures")
 if failures > 0 { exit(1) }
 }

@@ -49,3 +49,50 @@ enum EntitlementTier: Int, Comparable {
         }
     }
 }
+
+// MARK: - Capabilities — the tier × capability truth table (Wall Correctness
+// item 1), mirrored cell-for-cell from lib/tier-capabilities.js on the server.
+// Every cell has a test in EntitlementTierTests. The SERVER is authoritative
+// (it enforces); the client uses these to gate UI and route to wall vs paywall.
+
+extension EntitlementTier {
+    struct Capabilities: Equatable {
+        let appUsable: Bool
+        let uploadMax: Int
+        let renderLimit: Int   // Int.max == unlimited
+        let chatLimit: Int
+        let reedit: Bool
+        let lumen: Bool
+        let limitHitRouting: LimitRouting
+    }
+    /// Where a DENIED action routes the UI: the pre-trial wall (`.none`), the
+    /// upgrade paywall (`.trial` hitting a cap), or nothing (`.paid`).
+    enum LimitRouting: Equatable { case wall, paywall, unused }
+
+    var capabilities: Capabilities {
+        switch self {
+        case .paid:  return Capabilities(appUsable: true,  uploadMax: 10, renderLimit: .max, chatLimit: .max, reedit: true,  lumen: true,  limitHitRouting: .unused)
+        case .trial: return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 3,    chatLimit: 50,   reedit: false, lumen: false, limitHitRouting: .paywall)
+        case .none:  return Capabilities(appUsable: false, uploadMax: 0,  renderLimit: 0,    chatLimit: 0,    reedit: false, lumen: false, limitHitRouting: .wall)
+        }
+    }
+
+    var appUsable: Bool { capabilities.appUsable }
+    var uploadMax: Int { capabilities.uploadMax }
+    var canReedit: Bool { capabilities.reedit }
+    var canUseLumen: Bool { capabilities.lumen }
+    var limitHitRouting: LimitRouting { capabilities.limitHitRouting }
+
+    func canRender(todayRenders: Int) -> Bool {
+        let c = capabilities
+        return c.appUsable && todayRenders < c.renderLimit
+    }
+    func canChat(todayChats: Int) -> Bool {
+        let c = capabilities
+        return c.appUsable && todayChats < c.chatLimit
+    }
+    func canUpload(_ count: Int) -> Bool {
+        let c = capabilities
+        return c.appUsable && count >= 1 && count <= c.uploadMax
+    }
+}
