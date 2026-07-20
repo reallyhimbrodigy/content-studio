@@ -8,10 +8,15 @@ const { supabaseAdmin } = require('./services/supabase-admin');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   isUserPro: isProfilePro,
+  entitlementTier,
+  unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
   revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
+const { capabilities } = require('./lib/tier-capabilities');
+const { shouldEnforceWall, effectiveTier, clientWallCapable } = require('./lib/wall-enforcement');
+const { wallRequiredMessage } = require('./lib/failure-copy');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
@@ -2632,16 +2637,32 @@ const server = http.createServer((req, res) => {
         // renewal date). Read straight from profiles so the client can
         // show a friendly "Trial ends Mar 5" line.
         let proUntil = null;
+        // Trial-wall tier (N+1): 'none' | 'trial' | 'paid'. Additive field — old
+        // clients ignore it; the trial-wall client gates features on it. Default
+        // mirrors is_pro until the profile row is read.
+        let tier = ent.isPro ? 'paid' : 'none';
         if (supabaseAdmin) {
           const { data } = await supabaseAdmin
             .from('profiles')
-            .select('pro_until')
+            .select('tier, comp_pro, pro_until, rc_period_type, rc_app_user_id')
             .eq('id', u.id)
             .maybeSingle();
           proUntil = data?.pro_until || null;
+          tier = entitlementTier(data);
+          // assertProEntitled may have self-healed Pro after this row was read;
+          // keep tier consistent with is_pro so a just-granted user isn't walled.
+          if (ent.isPro && tier === 'none') tier = 'paid';
+          // Edge counter (ratified item 1): an RC-linked entitlement promoted to
+          // paid ONLY because it lacks a period type. Near-zero once the RC->DB
+          // reconcile cron runs; surfaced here so we see it in logs/[REPORT], not
+          // in a Modal bill. No behavior change — a countable signal, no PII.
+          if (unknownPeriodPaid(data)) {
+            console.warn('[entitlement.edge] active_paid_missing_period', { rc_linked: true });
+          }
         }
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
+          tier,
           pro_until: proUntil,
           renders_today: renders,
           chats_today: chats,
@@ -3295,6 +3316,20 @@ const server = http.createServer((req, res) => {
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
 
+        // Wall tier (N+1). Knob OFF (default) → effectiveTier makes this
+        // byte-for-byte today: paid/active-trial → unlimited, none → 3/day free.
+        // Knob ON → paid unlimited, trial 3/day + 1 concurrent, none → the wall.
+        const wallTier = entitlementTier(entitlement.row || {});
+        const wallEnforce = shouldEnforceWall({
+          accountCreatedAt: (entitlement.row || {}).created_at,
+          clientWallCapable: clientWallCapable(req.headers),
+        });
+        const wallCaps = capabilities(effectiveTier(wallTier, wallEnforce));
+        if (!wallCaps.appUsable) {
+          console.log('  [wall] 403 wall_required userId=%s tier=%s', authUser.id, wallTier);
+          return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
+        }
+
         // Concurrency gate — server-side enforcement of the same 1-free /
         // 10-pro cap the iOS picker enforces. Without this, an alternate
         // client (curl, scripts, sideloaded build) could fire up to
@@ -3344,38 +3379,43 @@ const server = http.createServer((req, res) => {
                 { userId: authUser.id, error: pendingErr.message });
               return { status: 503, body: { error: 'pending_check_failed' } };
             }
-            const concurrencyCap = entitlement.isPro ? 10 : 1;
+            // Concurrency cap == the tier's parallel/upload cap: 10 paid / 1 trial.
+            // Pre-flip this is exactly today's `isPro ? 10 : 1`.
+            const concurrencyCap = wallCaps.uploadMax;
+            const proConcurrency = concurrencyCap >= 10;
             if ((pendingCount || 0) >= concurrencyCap) {
               console.log('  [paywall] 402 concurrency_limit_reached userId=%s pending=%d cap=%d',
                 authUser.id, pendingCount, concurrencyCap);
               return { status: 402, body: {
                 error: 'concurrency_limit_reached',
-                kind: entitlement.isPro ? 'concurrency_pro' : 'concurrency_free',
+                kind: proConcurrency ? 'concurrency_pro' : 'concurrency_free',
                 limit: concurrencyCap,
-                message: entitlement.isPro
+                message: proConcurrency
                   ? `You can have up to ${concurrencyCap} renders in flight at once.`
                   : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
               } };
             }
           }
 
-          if (!entitlement.isPro) {
-            // Atomic check-and-increment of the free daily render cap. This both
-            // enforces the limit and records the usage event; if it fails
-            // (outage) it throws 503 and we abort rather than free-render.
-            const claim = await claimDailyUsage(authUser.id, 'render', FREE_DAILY_RENDERS);
+          if (wallCaps.renderLimit === Infinity) {
+            // Unlimited (paid — and, pre-flip, any active-trial that was isPro):
+            // no daily cap, but still record the render for tracking.
+            await logUsageEvent(authUser.id, 'render');
+          } else {
+            // Capped tier (trial, or the free tier pre-flip). Atomic check-and-
+            // increment of the daily render cap — enforces the limit AND records
+            // the usage; on outage it throws 503 and we abort rather than free-render.
+            const claim = await claimDailyUsage(authUser.id, 'render', wallCaps.renderLimit);
             if (!claim.ok) {
               console.log('  [paywall] 402 daily_limit_reached for userId=%s', authUser.id);
               return { status: 402, body: {
                 error: 'daily_limit_reached',
                 kind: 'render',
-                limit: FREE_DAILY_RENDERS,
-                message: `You've used your ${FREE_DAILY_RENDERS} free renders today. Upgrade to Pro for unlimited.`,
+                route: 'paywall',
+                limit: wallCaps.renderLimit,
+                message: `You've used your ${wallCaps.renderLimit} free renders today. Upgrade to Pro for unlimited.`,
               } };
             }
-          } else {
-            // Pro: no daily cap, but still record the render for tracking.
-            await logUsageEvent(authUser.id, 'render');
           }
 
           const created = await createQueuedVideoJob({

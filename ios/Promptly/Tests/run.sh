@@ -44,3 +44,10 @@ swiftc "$DIR/../Promptly/Services/PaywallRouting.swift" \
        "$DIR/PaywallRoutingTests.swift" \
        -o "${TMPDIR:-/tmp}/prtest"
 "${TMPDIR:-/tmp}/prtest"
+
+# EntitlementTier — the trial-wall tier composition rule (most-privileged wins;
+# RC-vs-server disagreement resolution). Pure Foundation.
+swiftc "$DIR/../Promptly/Services/EntitlementTier.swift" \
+       "$DIR/EntitlementTierTests.swift" \
+       -o "${TMPDIR:-/tmp}/tiertest"
+"${TMPDIR:-/tmp}/tiertest"

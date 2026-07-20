@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { dispatchErrorMessage, clarificationMessage, renderTooShortMessage } = require('../lib/failure-copy');
+const { dispatchErrorMessage, clarificationMessage, renderTooShortMessage, wallRequiredMessage } = require('../lib/failure-copy');
 
 // Mirror of the iOS display filters (MessageBubble.displaySafeError /
 // EditorView.friendlySSEError): anything matching this is suppressed to the
@@ -44,6 +44,17 @@ test('RENDER_TOO_SHORT copy: honest, credit-returned, guiding, display-safe', ()
   assert.ok(!/unknown|something went wrong|error|failed|exception/i.test(copy), 'no UNKNOWN mask, no engineering vocab');
   assert.ok(/return|back/i.test(copy), 'confirms the credit was returned (refunded class)');
   assert.ok(/again|longer|try/i.test(copy), 'gives one clear, actionable next step');
+  assert.ok(copy.length > 20 && copy.length <= 160);
+});
+
+test('WALL copy: old-client-safe soft forced-update (item 2 edge)', () => {
+  const copy = wallRequiredMessage();
+  // A new account on an old binary has no wall UI — this string IS what they see,
+  // so it must survive the same cold-load filter and read as an update prompt.
+  assert.equal(looksTechnicalToiOS(copy), false, 'must not be suppressed on an old client');
+  assert.ok(/update/i.test(copy), 'reads as a soft forced-update');
+  assert.ok(/trial/i.test(copy), 'names the payoff — start your free trial');
+  assert.ok(!/error|failed|forbidden|403|denied/i.test(copy), 'not a technical/hostile error');
   assert.ok(copy.length > 20 && copy.length <= 160);
 });
 

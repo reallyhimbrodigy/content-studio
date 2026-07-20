@@ -3,7 +3,7 @@
 // Run with:  node --test tests/entitlement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isUserPro, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
+const { isUserPro, entitlementTier, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -120,7 +120,7 @@ test('reconciliation write shape satisfies isUserPro()', () => {
     pro_until: r.proUntil,
     rc_app_user_id: 'some-supabase-uuid',
   };
-  assert.strictEqual(isUserPro(profileRowAfterWrite), true);
+  assert.strictEqual(isUserPro(profileRowAfterWrite, NOW), true);
 });
 
 // --- isUserPro: core profile cases (RevenueCat + admin comp) ---
@@ -129,11 +129,13 @@ const future = new Date(NOW + 30 * 864e5).toISOString();
 const past = new Date(NOW - 864e5).toISOString();
 
 test('tier=pro with future pro_until is pro', () => {
-  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: future }), true);
+  // Pass the frozen NOW so the test doesn't drift once wall-clock time passes
+  // the fixture's +30d date (isUserPro compares pro_until against `now`).
+  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: future }, NOW), true);
 });
 
 test('tier=pro with expired pro_until is NOT pro', () => {
-  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: past }), false);
+  assert.strictEqual(isUserPro({ tier: 'pro', pro_until: past }, NOW), false);
 });
 
 test('tier=pro with rc_app_user_id (webhook just landed) is pro', () => {
@@ -171,4 +173,76 @@ test('comp_pro=true grants pro even if tier still says free', () => {
 test('comp_pro truthy-but-not-true (e.g. string) does NOT grant pro', () => {
   // Strict boolean only — avoids a stray truthy DB value silently comping.
   assert.strictEqual(isUserPro({ comp_pro: 'yes' }), false);
+});
+
+// --- entitlementTier: three-way none/trial/paid (trial-wall model, N+1) ---
+
+test('entitlementTier: no active entitlement → none (the wall)', () => {
+  assert.strictEqual(entitlementTier({ tier: 'free' }, NOW), 'none');
+  assert.strictEqual(entitlementTier(null, NOW), 'none');
+});
+
+test('entitlementTier: active free trial → trial (limited tier)', () => {
+  assert.strictEqual(
+    entitlementTier({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'trial' }, NOW),
+    'trial'
+  );
+});
+
+test('entitlementTier: active normal subscription → paid (full Pro)', () => {
+  assert.strictEqual(
+    entitlementTier({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'normal' }, NOW),
+    'paid'
+  );
+});
+
+test('entitlementTier: paid introductory offer (intro) → paid, not trial', () => {
+  assert.strictEqual(
+    entitlementTier({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'intro' }, NOW),
+    'paid'
+  );
+});
+
+test('entitlementTier: comp is paid even if rc_period_type=trial (comps get full Pro)', () => {
+  assert.strictEqual(entitlementTier({ comp_pro: true, rc_period_type: 'trial' }, NOW), 'paid');
+});
+
+test('entitlementTier: legacy pro with no rc_period_type → paid (never down-tiered)', () => {
+  assert.strictEqual(
+    entitlementTier({ tier: 'pro', pro_until: future, rc_app_user_id: 'u' }, NOW),
+    'paid'
+  );
+});
+
+test('entitlementTier: expired/lapsed trial → none (fail-closed, back to the wall)', () => {
+  assert.strictEqual(
+    entitlementTier({ tier: 'free', pro_until: past, rc_period_type: 'trial' }, NOW),
+    'none'
+  );
+});
+
+// --- unknownPeriodPaid: the ratified edge counter (cron-fixable population) ---
+
+test('unknownPeriodPaid: RC-linked active pro with NO period → true (the edge)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u' }, NOW), true);
+});
+
+test('unknownPeriodPaid: RC-linked active pro WITH a period → false', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'normal' }, NOW), false);
+});
+
+test('unknownPeriodPaid: active free trial → false (it is trial, not paid)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future, rc_app_user_id: 'u', rc_period_type: 'trial' }, NOW), false);
+});
+
+test('unknownPeriodPaid: comp → false (intentional paid, excluded)', () => {
+  assert.strictEqual(unknownPeriodPaid({ comp_pro: true }, NOW), false);
+});
+
+test('unknownPeriodPaid: legacy non-RC hand-promote → false (no rc_app_user_id)', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'pro', pro_until: future }, NOW), false);
+});
+
+test('unknownPeriodPaid: not entitled → false', () => {
+  assert.strictEqual(unknownPeriodPaid({ tier: 'free' }, NOW), false);
 });
