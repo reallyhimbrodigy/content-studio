@@ -686,6 +686,11 @@ struct ControlOverlay: View {
                     let isPro = SubscriptionService.shared.effectiveIsPro
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        // Funnel head for the re-edit conversion path. Paired with
+                        // paywall_view(reason:reedit): the ratio of free-user taps
+                        // that reach a view is exactly the 1.1.7 RACE-1 fix proving
+                        // itself live (pre-fix, free taps produced no view).
+                        Analytics.track("reedit_tap", props: ["source": "player", "isPro": isPro])
                         if isPro {
                             onReedit()
                             onClose()

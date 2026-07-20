@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SwiftUI
 import UniformTypeIdentifiers
 import CoreTransferable
 
@@ -476,9 +477,47 @@ final class AppState: ObservableObject {
 
     /// Promote a parked paywall now that the blocking modal has dismissed.
     /// A no-op when nothing is parked, so it's safe to call on every close.
+    ///
+    /// This is called from the video player's dismissal completion (RACE 1). The
+    /// player is a full-screen UIKit modal, and presenting the root SwiftUI
+    /// `.sheet` immediately after it dismisses is SILENTLY DROPPED — proven by
+    /// presentation (sync, one-runloop async, and a 0.35s delay all fail; only a
+    /// UIKit present works). So present the parked paywall via UIKit from the
+    /// topmost view controller instead of routing it through `paywallReason`.
     func flushDeferredPaywall() {
-        paywallRouting.flush()
-        mirrorPaywallRouting()
+        guard let reason = paywallRouting.takeParked() else { return }
+        presentPaywallFromTop(reason)
+    }
+
+    /// Present the paywall via UIKit from the topmost view controller — the only
+    /// reliable way to raise it right after a full-screen UIKit modal (the player)
+    /// dismisses. Every OTHER trigger presents from a SwiftUI context and uses the
+    /// `.sheet` via `presentPaywall`, which works there.
+    private func presentPaywallFromTop(_ reason: PaywallReason) {
+        guard let top = AppState.topViewController() else {
+            presentPaywall(reason) // no topmost found — fall back rather than drop
+            return
+        }
+        weak var hostRef: UIViewController?
+        let paywall = PaywallView(
+            isPresented: Binding(get: { true }, set: { shown in if !shown { hostRef?.dismiss(animated: true) } }),
+            reason: reason
+        )
+        let host = UIHostingController(rootView: paywall)
+        host.modalPresentationStyle = .fullScreen
+        host.modalTransitionStyle = .crossDissolve
+        hostRef = host
+        top.present(host, animated: true)
+    }
+
+    /// The topmost presented view controller — where a modal must be presented
+    /// from so it actually appears.
+    static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap { $0.windows }.first { $0.isKeyWindow } ?? scenes.first?.windows.first
+        var vc = window?.rootViewController
+        while let presented = vc?.presentedViewController { vc = presented }
+        return vc
     }
 
     /// Call when the paywall sheet is dismissed (user closed it) so the router
