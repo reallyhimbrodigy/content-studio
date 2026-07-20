@@ -304,8 +304,17 @@ async function sendOwnerAlert({ ownerUserId, title, body, threadId, supabaseAdmi
     const deadTokens = [];
     for (const r of results) {
       if (r.ok) okCount++;
-      else if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered' || r.status === 410) {
-        deadTokens.push(r.deviceToken);
+      else {
+        // Surface the APNs response code — the definitive owner-push diagnostic.
+        // status=400 reason=BadTopic → APNS_BUNDLE_ID ≠ the app bundle;
+        // status=400/410 reason=BadDeviceToken/Unregistered → stale token (deleted
+        // below, owner must re-register); status=403 → JWT/key (APNS_KEY/KEY_ID);
+        // 400 reason=DeviceTokenNotForTopic → wrong APNS_PRODUCTION gateway.
+        console.warn(`[alert] owner push failed token=${String(r.deviceToken).slice(0, 8)}... `
+          + `status=${r.status} reason=${r.reason} gateway=${process.env.APNS_PRODUCTION === 'true' ? 'prod' : 'sandbox'}`);
+        if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered' || r.status === 410) {
+          deadTokens.push(r.deviceToken);
+        }
       }
     }
     console.log(`[alert] owner=${ownerUserId} sent=${okCount}/${validTokens.length} title="${truncate(title, 40)}"`);
