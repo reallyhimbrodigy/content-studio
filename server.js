@@ -2188,6 +2188,10 @@ const server = http.createServer((req, res) => {
         const ALLOWED = new Set([
           'paywall_view', 'offerings_loaded', 'offerings_load_failed',
           'purchase_attempt', 'purchase_error', 'trial_start',
+          // 1.1.7: funnel head for the re-edit conversion path. Paired with
+          // paywall_view(reason:reedit) it measures the RACE-1 fix live —
+          // free-user re-edit taps that reach a paywall view.
+          'reedit_tap',
         ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);

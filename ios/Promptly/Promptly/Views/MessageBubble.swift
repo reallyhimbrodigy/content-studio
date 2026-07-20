@@ -323,6 +323,7 @@ struct MessageBubble: View {
         let vibe = message.originalVibe ?? ""
         let thumb = message.thumbnailUrl
         return {
+            Analytics.track("reedit_tap", props: ["source": "chat", "isPro": SubscriptionService.shared.effectiveIsPro])
             // Pro gate: re-edit is a paid feature. Free users get the
             // paywall sheet with the right reason copy; the actual re-edit
             // only fires when SubscriptionService says they're entitled.

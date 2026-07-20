@@ -41,6 +41,15 @@ struct PaywallRouting<Reason: Equatable> {
         parked = r
     }
 
+    /// Take the parked request (return it and clear it). The player path presents
+    /// the paywall via UIKit from the parked reason rather than through the
+    /// SwiftUI `.sheet` — which is silently dropped right after a UIKit full-screen
+    /// modal dismisses (proven by presentation).
+    mutating func takeParked() -> Reason? {
+        defer { parked = nil }
+        return parked
+    }
+
     /// The blocking modal finished dismissing — promote any parked request.
     mutating func flush() {
         guard let p = parked else { return }

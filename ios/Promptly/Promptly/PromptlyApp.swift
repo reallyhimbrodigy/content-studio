@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 import Sentry
 import UserNotifications
+#if DEBUG
+import AVFoundation
+#endif
 
 final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
 
@@ -224,6 +227,9 @@ struct PromptlyApp: App {
                         .transition(.opacity)
                 }
             }
+            #if DEBUG
+            .onAppear { ReeditProofHarness.runIfRequested() }
+            #endif
             // Spring-driven crossfade between launch ↔ authed ↔ unauthed
             // roots. WWDC23 'Animate with springs' (10158): ease curves
             // "jerk to a halt" when retargeted because a Bezier cannot
@@ -385,6 +391,79 @@ struct LaunchView: View {
         }
     }
 }
+
+#if DEBUG
+/// DEBUG-only presentation proof for the 1.1.7 re-edit P0 fix.
+///
+/// The live 1.1.6 bug (RACE 1): a free user taps Re-edit inside the full-screen
+/// video player; the player is a UIKit `.fullScreen` modal, so setting the
+/// paywall while it owns the presentation context is SILENTLY DROPPED — the user
+/// is left staring at the video. The fix parks the paywall and, on the player's
+/// dismissal completion, presents it via `UIHostingController` from the topmost
+/// VC (`AppState.presentPaywallFromTop`) rather than through the root `.sheet`,
+/// which stays dropped right after a full-screen UIKit modal dismisses.
+///
+/// This harness reproduces the EXACT runtime topology in the simulator using the
+/// REAL `PromptlyPlayerHostVC`, the REAL `AppState.deferPaywall`/`flushDeferredPaywall`
+/// seam, and the REAL `PaywallView`. Launch the app with `-reproReedit` and it:
+///   1. Presents the real player as a full-screen UIKit modal (as the app does).
+///   2. After it settles, fires exactly what a free user's Re-edit tap fires
+///      (PromptlyVideoPlayer.swift:699-700 `deferPaywall(.reedit)` + the host's
+///      onClose at :963 `dismiss { flushDeferredPaywall() }`).
+///   3. If the fix holds, the real re-edit PaywallView rises. If the bug were
+///      still present, the screen would fall back to whatever is behind the
+///      dismissed player with no paywall — the exact live symptom.
+///
+/// Never compiled into Release. No effect unless the launch argument is present.
+@MainActor
+enum ReeditProofHarness {
+
+    private static var didRun = false
+
+    static func runIfRequested() {
+        guard !didRun else { return }
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-reproReedit") else { return }
+        didRun = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1200)) // let the root UI mount
+            await presentPlayerThenReedit()
+        }
+    }
+
+    private static func presentPlayerThenReedit() async {
+        // Wait for a topmost VC to present over.
+        var top = AppState.topViewController()
+        while top == nil {
+            try? await Task.sleep(for: .milliseconds(500))
+            top = AppState.topViewController()
+        }
+        guard let top else { return }
+
+        // A dummy item is fine — we only need the full-screen UIKit modal on top
+        // to reproduce RACE 1's presentation topology; playback is irrelevant.
+        let url = URL(string: "https://example.com/repro.m3u8")!
+        let item = AVPlayerItem(url: url)
+        let session = PromptlyPlayerSession(item: item, urlString: url.absoluteString)
+        let host = PromptlyPlayerHostVC(session: session, title: "Repro", posterUrl: nil, onReedit: nil)
+
+        print("[ReeditProof] presenting real player host…")
+        top.present(host, animated: true)
+        try? await Task.sleep(for: .milliseconds(1500))
+
+        // EXACTLY what a free user's Re-edit tap does (PromptlyVideoPlayer.swift
+        // :699-700) + the host's onClose (:963): park, dismiss, flush.
+        print("[ReeditProof] firing free-user Re-edit seam (deferPaywall + dismiss + flush)…")
+        AppState.shared.deferPaywall(.reedit)
+        host.dismiss(animated: true) {
+            MainActor.assumeIsolated {
+                AppState.shared.flushDeferredPaywall()
+                print("[ReeditProof] flush complete — paywall should now be presented")
+            }
+        }
+    }
+}
+#endif
 
 extension Color {
     init(hex: String) {

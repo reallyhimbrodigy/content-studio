@@ -328,6 +328,7 @@ struct LibraryView: View {
 
     private func startReedit(_ edit: VideoJob) {
         guard edit.status == "completed" else { return }
+        Analytics.track("reedit_tap", props: ["source": "library", "isPro": SubscriptionService.shared.effectiveIsPro])
         // Pro gate: re-edit is paid. Free users see the paywall instead
         // of getting dropped into the editor where the dispatch would
         // eventually 402 anyway. Matches the MessageBubble gate so all
