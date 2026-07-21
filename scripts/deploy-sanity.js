@@ -81,6 +81,22 @@ async function usage(token) {
 (async () => {
   console.log(`Deploy sanity pass — ${HOST}\n`);
 
+  // ── 0. Deploy identity: is prod running the commit we think it is? ─────────
+  console.log('0) Health / deploy identity:');
+  try {
+    const r = await fetch(`${HOST}/api/health`);
+    const j = await r.json().catch(() => ({}));
+    check('/api/health 200 ok', r.status === 200 && j.ok === true);
+    console.log(`    rev=${j.rev || '(none)'}  wall_enforcement=${j.wall_enforcement}  posthog=${j.posthog}`);
+    if (env.SANITY_EXPECT_REV) {
+      check(`rev startsWith ${env.SANITY_EXPECT_REV.slice(0, 7)}`,
+        String(j.rev || '').startsWith(env.SANITY_EXPECT_REV.slice(0, 7)), `got ${j.rev}`);
+    }
+    check("wall_enforcement == 'off' (dark)", j.wall_enforcement === 'off', `got ${j.wall_enforcement}`);
+  } catch (e) {
+    check('health probe ran', false, e.message);
+  }
+
   // ── 1. Unauth equivalence: auth-first, no walls ────────────────────────────
   console.log('1) Unauthenticated surface (must 401, never wall):');
   for (const [p, body] of [

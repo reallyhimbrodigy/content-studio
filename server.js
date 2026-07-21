@@ -1724,7 +1724,7 @@ const server = http.createServer((req, res) => {
           + (elapsed ? ` · died @${Math.round(elapsed)}s` : '');
         await sendOwnerAlert({
           ownerUserId: SUBMISSION_OWNER_USER_ID,
-          title: `⚠️ Render failed: ${code}`,
+          title: `⚠️ [Promptly] render failed: ${code}`,
           body: bodyLine,
           threadId: 'render-alert',
           supabaseAdmin,
@@ -2251,6 +2251,19 @@ const server = http.createServer((req, res) => {
   // (never surfacing) any failure. Anon-first — we store the RevenueCat
   // appUserID from the body, not the auth session, so an event lands even
   // before/without a Supabase token. See migrations/20260717_analytics_events.sql.
+  // Health + deploy identity. `rev` is Render's injected commit SHA, so the
+  // deploy-sanity pass can assert prod is running the commit we just pushed —
+  // added after a blueprint-sync failure raised the question "is prod even
+  // rolling new commits?" and nothing could answer it from outside.
+  if (parsed.pathname === '/api/health' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      rev: process.env.RENDER_GIT_COMMIT || null,
+      wall_enforcement: String(process.env.WALL_ENFORCEMENT || 'off') === 'off' ? 'off' : 'set',
+      posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
+    });
+  }
+
   if (parsed.pathname === '/api/events' && req.method === 'POST') {
     (async () => {
       let body = null;

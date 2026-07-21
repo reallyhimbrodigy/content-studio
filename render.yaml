@@ -22,12 +22,11 @@ services:
         sync: false
       - key: CANONICAL_HOST
         sync: false
-      # PostHog analytics backbone — server-side sink (lib/posthog-sink.js).
-      # Dark until the key is set in the dashboard; host defaults to US cloud.
-      - key: POSTHOG_API_KEY
-        sync: false
-      - key: POSTHOG_HOST
-        sync: false
+      # NOTE: POSTHOG_API_KEY / POSTHOG_HOST are deliberately NOT declared here.
+      # They were added manually in the dashboard first; declaring them in the
+      # blueprint afterward made the blueprint sync try to claim ownership of
+      # existing manual vars — "blueprint sync failed" (2026-07-20). Manual
+      # dashboard vars + no blueprint declaration = no ownership conflict, ever.
       - key: PUBLIC_BASE_URL
         sync: false
       # Stripe Billing
