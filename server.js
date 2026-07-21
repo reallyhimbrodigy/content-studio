@@ -18,6 +18,7 @@ const {
 const { capabilities } = require('./lib/tier-capabilities');
 const { shouldEnforceWall, effectiveTier, clientWallCapable, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
 const { wallRequiredMessage } = require('./lib/failure-copy');
+const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
@@ -3150,6 +3151,47 @@ const server = http.createServer((req, res) => {
         }
 
         console.log('[RevenueCat] applied', { type, appUserId: matchedId, ...update });
+
+        // ── Transaction-truth mirror (analytics backbone) ──────────────────
+        // The webhook is the ONLY place trial/paid/renewal/expiration truth
+        // exists (audit #4/#14: the client's trial_start is config-inferred and
+        // its purchase path has silent terminal outcomes). Mirror every APPLIED
+        // event into both sinks — analytics_events (SQL / [REPORT]) and PostHog
+        // (dashboards) — keyed by the Supabase user id, the same distinct_id
+        // the client identify()s as, so funnels join across the seam. Fire-and-
+        // forget: never delays or fails the RC ack.
+        try {
+          const mirrorName =
+            type === 'INITIAL_PURCHASE' ? (periodType === 'trial' ? 'trial_start' : 'purchase_result')
+            : type === 'RENEWAL' ? 'subscription_renewal'
+            : type === 'EXPIRATION' ? 'subscription_expiration'
+            : type === 'CANCELLATION' ? 'subscription_cancellation'
+            : type === 'BILLING_ISSUE' ? 'billing_issue'
+            : null;
+          if (mirrorName) {
+            const mirrorProps = {
+              source: 'rc_webhook',
+              rc_type: type,
+              product_id: productId,
+              period_type: periodType,
+              ...(mirrorName === 'purchase_result' ? { outcome: 'success_paid' } : {}),
+            };
+            supabaseAdmin.from('analytics_events').insert({
+              event: mirrorName,
+              anon_user_id: matchedId,
+              user_id: matchedId,
+              platform: 'server',
+              app_version: 'rc-webhook',
+              props: mirrorProps,
+            }).then(({ error }) => {
+              if (error) console.warn('[RevenueCat] analytics mirror insert failed:', error.message);
+            });
+            phCapture(matchedId, mirrorName, mirrorProps);
+          }
+        } catch (e) {
+          console.warn('[RevenueCat] mirror failed (non-fatal):', e && e.message);
+        }
+
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[RevenueCat] webhook error', err);
@@ -4576,6 +4618,10 @@ if (require.main === module) {
     setTimeout(runBleedMeter, 90 * 1000); // boot pass (fires if past report hour)
     setInterval(runBleedMeter, 60 * 60 * 1000); // hourly
   }
+
+  // Flush any pending PostHog server events before the process exits (Render
+  // sends SIGTERM on deploy/scale-down). No-op while the sink is dark.
+  process.on('SIGTERM', () => { phShutdown().finally(() => process.exit(0)); });
 
   process.on('uncaughtException', (err) => {
     console.error('[FATAL] Uncaught exception:', err?.message || err);

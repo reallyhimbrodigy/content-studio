@@ -22,6 +22,12 @@ services:
         sync: false
       - key: CANONICAL_HOST
         sync: false
+      # PostHog analytics backbone — server-side sink (lib/posthog-sink.js).
+      # Dark until the key is set in the dashboard; host defaults to US cloud.
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: POSTHOG_HOST
+        sync: false
       - key: PUBLIC_BASE_URL
         sync: false
       # Stripe Billing
