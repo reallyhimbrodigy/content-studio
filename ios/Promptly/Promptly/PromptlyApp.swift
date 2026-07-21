@@ -223,6 +223,20 @@ struct PromptlyApp: App {
     }
 
     @StateObject private var appState = AppState.shared
+    @StateObject private var onboarding = OnboardingState.shared
+
+    /// The 1.2.0 wall-onboarding branch, gated on the ONE knob (read pre-auth
+    /// from /api/health — same knob as the server gates; flip once, both
+    /// halves move). Knob off (default / fetch-failed) → today's branches,
+    /// byte-for-byte. GRANDFATHER: an already-authenticated user who never
+    /// entered the flow is not forced through a signup they've already done —
+    /// the server's rollout policy governs when THEY meet the wall.
+    private var showWallOnboarding: Bool {
+        guard onboarding.wallOnboardingEnabled == true,
+              !onboarding.hasCompletedOnboarding else { return false }
+        if auth.isAuthenticated && !onboarding.startedFlow { return false }
+        return true
+    }
 
     /// LaunchView must remain on screen long enough for its entrance
     /// animation to complete and the brand moment to register. Without
@@ -239,6 +253,9 @@ struct PromptlyApp: App {
                 if auth.isLoading || !launchMinElapsed {
                     LaunchView()
                         .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                } else if showWallOnboarding {
+                    OnboardingFlow()
+                        .transition(.opacity)
                 } else if auth.isAuthenticated {
                     AppShell()
                         .transition(.opacity)
@@ -271,6 +288,9 @@ struct PromptlyApp: App {
                     try? await Task.sleep(for: .milliseconds(700))
                     launchMinElapsed = true
                 }
+                // The one knob, resolved in parallel with the auth check
+                // (pre-auth endpoint; last-known value on failure).
+                Task { await onboarding.resolveExposure() }
                 await auth.checkSession()
                 // If we already have permission from a prior install, kick
                 // off remote-registration so the server learns this run's
