@@ -23,7 +23,17 @@ everyone**, so wiring these doors changes nothing until the flip.
 | **Prewarm (GPU)** | `POST /api/prewarm` :3091 | rate-limit only | require `appUsable`: none→403 `wall` (it spends GPU) | truth-table `appUsable` |
 | **Usage (read)** | `GET /api/usage` :2624 | — | returns `tier` so the client routes wall vs paywall (no grant) | `entitlement.test.js` tier + `/api/usage` |
 
-Wiring status: decision core + tests **done**; live-endpoint wiring is the next unit (each handler computes `tier = entitlementTier(profile)` + `enforce = shouldEnforceWall(...)`, then calls the matching decision and returns `{ error, route: 'wall'|'paywall' }` on deny). Because the knob defaults OFF, the wired gates are byte-for-byte today's behavior until the flip.
+Wiring status: decision core + tests **done**; **all server doors WIRED** (render ·
+re-edit · chat ×2 incl. stream · upload ×3 incl. presign + multipart-init ·
+prewarm · usage-read). Each handler computes the tier via `tierFromEntitlement(decision)`
+(NOT the bare row — the decision may carry no row, and isPro wins over a stale
+row; see the regression fix in lib/entitlement.js) + `enforce = shouldEnforceWall(...)`,
+then calls the matching decision and returns `{ error, route: 'wall'|'paywall' }`
+on deny. Endpoints with no prior entitlement read (upload, prewarm) short-circuit
+on `wallEnabled()` — knob OFF adds zero reads — and escalate through
+`assertProEntitled` (RC self-heal) before any DENY so a paying user is never
+walled by a missed webhook. Because the knob defaults OFF, every wired gate is
+byte-for-byte today's behavior until the flip.
 
 ## Client doors (post-auth entry points — the wall UI + demo front door)
 

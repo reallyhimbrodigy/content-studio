@@ -205,6 +205,40 @@ async function assertProEntitled(userId) {
   return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable };
 }
 
+/**
+ * Lean wall decision for endpoints that had NO entitlement read before the wall
+ * (upload presigns, GPU prewarm). Called ONLY when the knob is on — knob OFF
+ * short-circuits at the call site, so today's paths gain zero reads.
+ *
+ * Reads the profile row directly (no RevenueCat round-trip on the hot path);
+ * before DENYING, escalates once through assertProEntitled so a paying user
+ * whose webhook was missed self-heals instead of hitting the wall (grant-only,
+ * internally throttled — the same never-deny-a-payer rule as every other gate).
+ */
+async function leanWallDecision(userId, req, { count = 1 } = {}) {
+  let row = null;
+  if (supabaseAdmin) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('tier, comp_pro, pro_until, rc_period_type, rc_app_user_id, created_at')
+      .eq('id', userId)
+      .maybeSingle();
+    row = data || null;
+  }
+  let tier = entitlementTier(row || {});
+  const enforce = shouldEnforceWall({
+    accountCreatedAt: (row || {}).created_at,
+    clientWallCapable: clientWallCapable(req.headers),
+  });
+  let dec = uploadDecision({ tier, count, enforce });
+  if (!dec.allow) {
+    const healed = await assertProEntitled(userId);
+    tier = tierFromEntitlement(healed);
+    dec = uploadDecision({ tier, count, enforce });
+  }
+  return { ...dec, tier };
+}
+
 
 // The owner's Supabase user id is always authorized to review submissions, so
 // /review works with zero env config. Additional reviewers can be added via
@@ -1363,6 +1397,19 @@ const server = http.createServer((req, res) => {
         // the live client uploads via /api/upload-url + /api/upload-multipart-*.)
         const authUser = await requireSupabaseUser(req);
         if (!checkRateLimit(res, 'legacy-upload', authUser.id, 10, 900)) return;
+        // Upload door (wall N+1 — NEW gate; upload was rate-limit-only before).
+        // Uploads spend S3 storage + paid pre-analysis, so an enforced `.none`
+        // is denied before any byte lands. Knob OFF (default) short-circuits —
+        // byte-for-byte today's behavior, zero extra reads.
+        if (wallEnabled()) {
+          const dec = await leanWallDecision(authUser.id, req);
+          if (!dec.allow) {
+            console.log('  [wall] %d %s (upload) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
+            return sendJson(res, dec.status, dec.route === 'wall'
+              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
+              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
+          }
+        }
         const userId = authUser.id;
 
         const rawBody = await readRawBodyWithLimit(req, MAX_UPLOAD_BODY);
@@ -1889,6 +1936,16 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
+        // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
+        if (wallEnabled()) {
+          const dec = await leanWallDecision(authUser.id, req);
+          if (!dec.allow) {
+            console.log('  [wall] %d %s (upload-url) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
+            return sendJson(res, dec.status, dec.route === 'wall'
+              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
+              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
+          }
+        }
         const body = await readJsonBody(req);
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
         const s3 = require('./services/s3');
@@ -1915,6 +1972,17 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
+        // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
+        // partCount is parts of ONE file, so the decision count stays 1.
+        if (wallEnabled()) {
+          const dec = await leanWallDecision(authUser.id, req);
+          if (!dec.allow) {
+            console.log('  [wall] %d %s (multipart-init) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
+            return sendJson(res, dec.status, dec.route === 'wall'
+              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
+              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
+          }
+        }
         const body = await readJsonBody(req);
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
         const partCount = Math.max(1, Math.min(1000, parseInt(body?.partCount, 10) || 0));
@@ -2336,18 +2404,34 @@ const server = http.createServer((req, res) => {
           // No job to talk about → fall through to the conversational LLM.
         }
 
-        // Daily chat limit (free tier). Pro bypasses entirely.
+        // Chat door (wall N+1). Knob OFF (default) → byte-for-byte today: any
+        // Pro entitlement (trial or paid) bypasses, free counts against 50/day.
+        // Knob ON → enforced `.none` gets the wall (403); trial keeps 50/day
+        // then routes to the paywall (402).
         const chatEnt = await assertProEntitled(authUser.id);
-        if (!chatEnt.isPro) {
-          const todayChats = await countTodayUsage(authUser.id, 'chat');
-          if (todayChats >= FREE_DAILY_CHATS) {
-            return sendJson(res, 402, {
-              error: 'daily_limit_reached',
-              kind: 'chat',
-              limit: FREE_DAILY_CHATS,
-              message: `You've used your ${FREE_DAILY_CHATS} free chat messages today. Upgrade to Pro for unlimited.`,
-            });
+        const chatTier = tierFromEntitlement(chatEnt);
+        const chatEnforce = shouldEnforceWall({
+          accountCreatedAt: (chatEnt.row || {}).created_at,
+          clientWallCapable: clientWallCapable(req.headers),
+        });
+        const chatCaps = capabilities(effectiveTier(chatTier, chatEnforce));
+        // Count only when the tier is actually capped — an unlimited tier skips
+        // the read, exactly like today's isPro bypass.
+        const todayChats = chatCaps.chatLimit === Infinity
+          ? 0 : await countTodayUsage(authUser.id, 'chat');
+        const chatGate = gateDecision({ tier: chatTier, kind: 'chat', todayCount: todayChats, enforce: chatEnforce });
+        if (!chatGate.allow) {
+          if (chatGate.route === 'wall') {
+            console.log('  [wall] 403 wall_required (chat) userId=%s tier=%s', authUser.id, chatTier);
+            return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
           }
+          return sendJson(res, 402, {
+            error: 'daily_limit_reached',
+            kind: 'chat',
+            route: 'paywall',
+            limit: chatCaps.chatLimit,
+            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+          });
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
@@ -2477,18 +2561,30 @@ const server = http.createServer((req, res) => {
           if (answer) return emitCanned(answer);
         }
 
-        // Daily chat limit (free tier). Pro bypasses entirely.
+        // Chat door (wall N+1) — stream twin of the /api/chat gate above; the
+        // same decision core, so the two entrances can never disagree.
         const streamEnt = await assertProEntitled(streamUser.id);
-        if (!streamEnt.isPro) {
-          const todayChats = await countTodayUsage(streamUser.id, 'chat');
-          if (todayChats >= FREE_DAILY_CHATS) {
-            return sendJson(res, 402, {
-              error: 'daily_limit_reached',
-              kind: 'chat',
-              limit: FREE_DAILY_CHATS,
-              message: `You've used your ${FREE_DAILY_CHATS} free chat messages today. Upgrade to Pro for unlimited.`,
-            });
+        const streamTier = tierFromEntitlement(streamEnt);
+        const streamEnforce = shouldEnforceWall({
+          accountCreatedAt: (streamEnt.row || {}).created_at,
+          clientWallCapable: clientWallCapable(req.headers),
+        });
+        const streamCaps = capabilities(effectiveTier(streamTier, streamEnforce));
+        const streamTodayChats = streamCaps.chatLimit === Infinity
+          ? 0 : await countTodayUsage(streamUser.id, 'chat');
+        const streamGate = gateDecision({ tier: streamTier, kind: 'chat', todayCount: streamTodayChats, enforce: streamEnforce });
+        if (!streamGate.allow) {
+          if (streamGate.route === 'wall') {
+            console.log('  [wall] 403 wall_required (chat-stream) userId=%s tier=%s', streamUser.id, streamTier);
+            return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
           }
+          return sendJson(res, 402, {
+            error: 'daily_limit_reached',
+            kind: 'chat',
+            route: 'paywall',
+            limit: streamCaps.chatLimit,
+            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+          });
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
@@ -3107,6 +3203,15 @@ const server = http.createServer((req, res) => {
         // on a paid Modal container. Generous for real use (one per intended
         // render) but stops a loop from spraying GPU spend.
         if (!checkRateLimit(res, 'prewarm', prewarmUser.id, 20, 900)) return;
+        // Prewarm door (wall N+1): each prewarm spends paid GPU, so an enforced
+        // `.none` is denied. Knob OFF (default) short-circuits — today's behavior.
+        if (wallEnabled()) {
+          const dec = await leanWallDecision(prewarmUser.id, req);
+          if (!dec.allow) {
+            console.log('  [wall] 403 wall_required (prewarm) userId=%s tier=%s', prewarmUser.id, dec.tier);
+            return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
+          }
+        }
         const body = await readJsonBody(req);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         if (!videoUrl) return sendJson(res, 400, { error: 'video_url is required' });
@@ -3676,14 +3781,27 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'Only completed edits can be re-edited' });
         }
 
-        // Re-edit is a Pro-only feature. Free users cannot use this endpoint
-        // at all — return 402 with a payload the client recognizes so the
-        // paywall sheet pops with the right "Re-edit is a Pro feature" copy.
+        // Re-edit door (wall N+1): paid-only capability. Knob OFF (default) →
+        // byte-for-byte today: any Pro entitlement (incl. active trial) passes,
+        // free gets the 402 so the paywall sheet pops with the right "Re-edit
+        // is a Pro feature" copy. Knob ON → enforced `.none` gets the wall
+        // (403), and a limited TRIAL gets the 402 paywall (re-edit stays paid).
         const entitlement = await assertProEntitled(authUser.id);
-        if (!entitlement.isPro) {
+        const reeditTier = tierFromEntitlement(entitlement);
+        const reeditEnforce = shouldEnforceWall({
+          accountCreatedAt: (entitlement.row || {}).created_at,
+          clientWallCapable: clientWallCapable(req.headers),
+        });
+        const reeditCaps = capabilities(effectiveTier(reeditTier, reeditEnforce));
+        if (!reeditCaps.appUsable) {
+          console.log('  [wall] 403 wall_required (re-edit) userId=%s tier=%s', authUser.id, reeditTier);
+          return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
+        }
+        if (!reeditCaps.reedit) {
           return sendJson(res, 402, {
             error: 'pro_required',
             kind: 'reedit',
+            route: 'paywall',
             message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
           });
         }
