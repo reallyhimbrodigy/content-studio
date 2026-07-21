@@ -1,6 +1,8 @@
 # Promptly 1.2.0 — App Store Product-Page Pass
 
-Bundle: `app.usepromptly.ios` · Current name: "Promptly - AI Video Editor" · Model: Pro $19.99/mo / $199.99/yr, 3-day free trial, no free tier.
+Bundle: `app.usepromptly.ios` · Current name: "Promptly - AI Video Editor" · Model: Pro $19.99/mo / $199.99/yr, 3-day free trial (limited), no free tier.
+
+> **Trial tier — read before writing any trial copy.** The free trial is **limited**, not full Pro (`EntitlementTier.swift` `.trial` row; `lib/tier-capabilities.js`): 3 renders/day, 50 chats/day, 1 upload, **no re-edit, no Lumen**. Copy must never say "try Pro free" or imply the trial is full Pro. Use "Start a 3-day free trial" and disclose the limits. Re-edit and Lumen are Pro-only unlocks and must never be presented as trial features.
 
 ---
 
@@ -45,7 +47,7 @@ subtitles,clips,reels,shorts,talking,head,creator,vlog,podcast,ugc,viral,trim,te
 ```
 Film a talking-head video. Tell Promptly what you want in plain words.
 Get it back with captions, dead air cut, B-roll placed, in the vibe you asked for.
-Not right? Say "make it punchier" and it re-edits. Try Promptly Pro free for 3 days.
+Get every edit captioned, cut, and B-rolled. Start a 3-day free trial.
 ```
 
 **Full body:**
@@ -53,32 +55,38 @@ Not right? Say "make it punchier" and it re-edits. Try Promptly Pro free for 3 d
 ```
 Film a talking-head video. Tell Promptly what you want in plain words.
 Get it back with captions, dead air cut, B-roll placed, in the vibe you asked for.
-Not right? Say "make it punchier" and it re-edits. Try Promptly Pro free for 3 days.
+Get every edit captioned, cut, and B-rolled. Start a 3-day free trial.
 
 Promptly is a video editor you talk to. No timeline, no keyframes, no tutorial.
 Upload a clip of you talking to camera and chat your way to a finished edit.
 
 WHAT IT DOES
-• Auto captions — word-accurate, styled, ready for sound-off viewing
+• Auto captions — word-level, styled, ready for sound-off viewing
 • Smart cuts — silences, stumbles, and dead air removed
 • B-roll — relevant footage dropped in where your story needs it
-• Vibes — the same video, rendered in multiple styles; pick the one that fits
-• Chat-driven re-edits — "bigger captions," "tighten the intro," "calmer vibe" — just say it
+• Vibes — describe the style you want and get the video in that vibe; ask for
+  a different vibe to render it again in that style (each render counts toward
+  your daily edits)
+• Chat-driven re-edits — "bigger captions," "tighten the intro," "calmer vibe" —
+  just say it (Pro)
 
 MADE FOR PEOPLE WHO TALK TO CAMERA
 Creators, coaches, founders, and anyone posting talking-head video for Reels,
 Shorts, or long-form. If your editing backlog is the reason you don't post,
 Promptly is the fix.
 
-IN 9 LANGUAGES
-Promptly 1.2.0 speaks your language — the app is localized into 9 languages,
-including Arabic and Hindi.
+CAPTIONS IN 9 LANGUAGES
+Promptly renders your video's captions in 9 languages, including Arabic and
+Hindi — the finished video comes back with subtitles in the language you ask for.
 
 HOW PRICING WORKS — NO SURPRISES
-Promptly requires a Pro subscription. Every new account starts with a 3-day
-free trial, and the app shows you a day-by-day timeline of exactly when the
-trial ends before you confirm — no silent rollover tricks. Cancel anytime in
-Settings before the trial ends and you pay nothing.
+Promptly requires a Pro subscription. Every new account starts with a 3-day free
+trial. The trial is limited: 3 edits a day with captions, cuts, and B-roll —
+re-edits and Lumen unlock when you go Pro. Before you confirm, the app shows a
+day-by-day timeline of exactly when your trial ends and when you'll be charged —
+no silent rollover tricks. Turn on notifications and we'll remind you the day
+before your trial ends. Cancel anytime in your Apple Account settings before the
+trial ends and you pay nothing.
 
 Promptly Pro is available as a monthly or annual auto-renewing subscription.
 Payment is charged to your Apple Account at confirmation of purchase after the
@@ -90,51 +98,61 @@ Privacy Policy: https://usepromptly.app/privacy
 Terms of Use: https://usepromptly.app/terms
 ```
 
-Honesty check: no user counts, no ratings, no "featured by," no "#1," no "free app" claim — "free" appears only attached to the 3-day trial, which is true. Prices stated nowhere in metadata that Apple doesn't auto-update (subscription prices live in the App Store's own IAP display; keeping dollar amounts out of the description means a price change never invalidates copy). *Confirm the privacy/terms URLs match the live domain before submission.*
+Honesty check: no user counts, no ratings, no "featured by," no "#1," no "free app" claim — "free" appears only attached to the 3-day trial, which is true. The trial is disclosed as **limited** (3 edits/day; re-edit and Lumen are Pro-only) so no trial-gated feature is presented as part of the trial. The 9-languages claim is scoped to **video caption output** (certified/true), not to app-UI localization. The reminder is stated **permission-aware** ("turn on notifications and we'll remind you"), matching the in-app confirmation which reads "enable notifications to get one" when permission isn't granted. Prices stated nowhere in metadata that Apple doesn't auto-update (subscription prices live in the App Store's own IAP display; keeping dollar amounts out of the description means a price change never invalidates copy). *Confirm the privacy/terms URLs match the live domain before submission.*
 
 ## 5. SCREENSHOT STORYBOARD (7 screens, 6.9" + 6.5" portrait)
 
-Rule applied throughout: **no dollar amounts anywhere** (price changes and regional pricing would stale them), no competitor names, no "free" except trial-scoped.
+Rules applied throughout: **no dollar amounts in overlay art** (regional pricing would stale them — the trial wall's real price row in screen 7 is the exception and is intentional); no competitor names; no "free" except trial-scoped; every UI frame must be a **genuine pipeline output** (App Review compares assets to real app behavior). Packaging is limited to **crop / split / label / trim** — never a composited effect or a fabricated number.
 
 | # | Headline overlay | UI shown |
 |---|---|---|
-| 1 | **"One take in. A finished edit out."** | Split frame: left = raw camera-roll clip (no captions, flat), right = the same frame post-Promptly (styled captions, tighter crop, B-roll inset). This is the money shot — before/after must be the *same visible moment*. |
-| 2 | **"Captions that keep up with you."** | Full-bleed player mid-video, word-level captions rendering in a bold style. Show a non-English caption chip subtly (Arabic or Hindi) to signal localization. |
+| 1 | **"One take in. A finished edit out."** | Split frame: left = raw camera-roll clip (no captions, flat), right = the same frame post-Promptly (styled captions, tighter crop, B-roll inset). This is the money shot — before/after must be the *same visible moment*, and both halves must be frames that exist in the real render (no new effect composited at the seam). |
+| 2 | **"Captions that keep up with you."** | Full-bleed player mid-video, word-level captions rendering in a bold style. A non-English caption chip (Arabic or Hindi) is allowed **only if it's a real Arabic/Hindi render from the caption pipeline** — produce the genuine Arabic render first, then screenshot it. Do not mock up the chip. This showcases the certified 9-language caption output, not app-UI localization. |
 | 3 | **"Just tell it what you want."** | The chat UI over the video: user bubble "cut the pauses and add captions," Promptly's reply, and the edit visibly applied behind it. This is the differentiator screen. |
-| 4 | **"Dead air, gone."** | Compact before/after duration readout from the real editor (e.g., original length vs edited length on an actual clip — use a real render, not an invented number) with the cut segments visualized. |
-| 5 | **"One video. Every vibe."** | The vibe/style picker: 3–4 renders of the same clip in different styles, one selected. |
-| 6 | **"Not right? Say so."** | Re-edit flow: user bubble "make the captions bigger and punchier," and the caption size visibly changed between two frames. Proves it's iterative, not one-shot. |
-| 7 | **"You'll know the day before it bills."** | The actual trial-timeline paywall: Day 1 / Day 2 (reminder) / Day 3 (trial ends) timeline, exactly as it appears in-app, **with the price row cropped or omitted**. Transparency as a selling point — rare enough to be a conversion asset, and it pre-frames the hard paywall so trial-start intent is higher quality. |
+| 4 | **"Dead air, gone."** | Compact before/after duration readout from the real editor (original length vs edited length on an actual clip — use a real render, not an invented number) with the cut segments visualized. |
+| 5 | **"One video. Every vibe."** | **Two genuine renders of the SAME clip in two different vibes, shown side by side as separate results** — both real pipeline outputs. This depicts the true chat-chip interaction (describe a vibe → get that vibe; ask for another → re-render). Do **not** show a fabricated vibe *picker* UI; the product does not pick from a grid, it re-renders on request. |
+| 6 | **"Not right? Say so."** | Re-edit flow: user bubble "make the captions bigger and punchier," and the caption size visibly changed between two real frames. Proves it's iterative, not one-shot. (Re-edit is a Pro capability — this screen sells the product, not the trial.) |
+| 7 | **"You'll know the day before it bills."** | The actual trial-timeline wall from `TrialWallView`, captured as it appears in-app — the Today / Day 2 reminder / Day 3 charge timeline **with the billed price row intact**. This is now an honest conversion asset: showing the real price and charge date up front pre-frames the paywall and raises trial-start quality. Never strip or crop the price off a billing surface. (Acceptable alternative: the post-purchase confirmation card showing trial-end date + amount — but the real wall with prices is preferred.) |
 
 Optional 8th if slots allow: library/export screen, "From camera roll to posted, in one app." Screens 1–3 do the heavy lifting; order is fixed (before/after must be first — it's the only screenshot most browsers see).
 
-## 6. PREVIEW VIDEO (one 24s cut, portrait, designed for muted autoplay)
+## 6. PREVIEW VIDEO (one ~24s cut, portrait, designed for muted autoplay)
 
-Concept: **the before/after is the video** — the entire preview is one real clip getting edited in real product UI. Captions carry the narrative because autoplay is muted (which is itself a demo of the product).
+Concept: **the before/after is the video** — the entire preview is one real clip going through the real product. Captions carry the narrative because autoplay is muted (which is itself a demo of the product). Promptly's edit is a **~2-minute async job**, so the preview must show that honestly: every place the edit "happens" is a **visible time-skip** (a hard cut with an on-screen elapsed-time cue, or the stage-timeline states jumping), never an instant live edit.
 
 | Time | Beat |
 |---|---|
 | 0:00–0:03 | Raw talking-head clip plays: flat framing, an "um," no captions. Overlay: "You filmed this." First frame must read as *deliberately* unpolished, not broken — the poster frame is this shot. |
 | 0:03–0:05 | Hard cut to the same second of footage, fully edited: captions on, pause gone. Overlay: "Promptly edited it." |
-| 0:05–0:10 | Rewind. Chat UI slides up; message types out: "add captions, cut the dead air." Edit applies live on the video behind it. |
-| 0:10–0:14 | Vibe switcher: same frame flicks through 3 styles, settles on one. Overlay: "Pick your vibe." |
-| 0:14–0:18 | B-roll insert appears exactly where the speaker mentions the thing shown. Overlay: "B-roll, placed for you." |
-| 0:18–0:21 | Second chat message: "punchier." Cut visibly tightens. Overlay: "Re-edit by asking." |
+| 0:05–0:11 | Chat UI slides up; message types out: "add captions, cut the dead air." The render kicks off — show the real stage-timeline advancing, then a **visible time-skip** (cut + on-screen "~2 min later" / elapsed cue) to the finished result. Never depict the edit applying instantly under the typing. Overlay: "It renders — takes about two minutes." |
+| 0:11–0:15 | **Two real renders of the same clip in two vibes shown as separate results** (both genuine pipeline outputs). Overlay: "Ask for a different vibe." No fake style-carousel. |
+| 0:15–0:18 | B-roll insert appears exactly where the speaker mentions the thing shown — from a real render. Overlay: "B-roll, placed for you." |
+| 0:18–0:21 | Second chat message: "punchier." Time-skip cut to the tighter re-render. Overlay: "Re-edit by asking." (Pro.) |
 | 0:21–0:24 | Finished clip plays full-bleed 2s, then end card: Promptly mark + "Talk. It edits." No price, no "free" on the end card. |
 
-Production notes: all footage must be a genuine Promptly render (App Review compares previews to real app behavior); one continuous source clip so the before/after is verifiably the same take; no hands/device frames needed — screen capture + the source video is enough.
+**Production integrity rules (apply to every screen-record beat here and to the screenshots):**
+- **Honest time-skip rule.** The edit is async (~2 min). Any "edit happens" moment must be a visible time-skip — stage-timeline states jumping with a cut, or an on-screen elapsed-time cue. Never portray an instant/live edit.
+- **Real-render rule.** All footage is a genuine Promptly render; one continuous source clip so the before/after is verifiably the same take. App Review compares previews to real app behavior.
+- **Seam rule.** Any before/after cut (incl. a ShutterFlash-style transition) must land on a frame that **exists in the real render output**. No new effect composited at the before/after seam. Packaging allowance = crop / split / label / trim only.
+- **No fabricated social proof.** Present every clip as a **capability demo only**. Never frame or imply a clip came from an organic user, a real customer, or a "found" post if it didn't. There is no "the demo is the social proof" angle.
+- **No public-figure likeness in store assets.** Do not use third-party podcast footage or any public-figure likeness in any public asset unless written rights **and** likeness releases are in hand (same ownership/rights gate as source-clip ownership). Recommendation: exclude public-figure likeness from store assets entirely.
 
-## 7. LOCALIZATION NOTE (9 languages)
+## 7. LOCALIZATION NOTE
 
-What localizes per App Store Connect locale — each of these is a **separate field per language**, and each locale's keyword field is a fresh 100 chars indexed on that storefront:
+**Two different things are called "9 languages" — keep them separate.**
+
+- **Video caption output (TRUE / certified, ship it):** the render pipeline outputs captions in 9 languages, including Arabic and Hindi. This is the only "9 languages" claim allowed in store copy, and it belongs to the *video output*, not the app.
+- **App-UI localization (NOT shipped on this branch):** the Xcode project's `knownRegions` is still `en` / `Base` only. The app UI is **not** localized into 9 languages yet, and store metadata is not localized. **Do not claim the app is localized.** The section below is forward-looking ASC strategy for when app/metadata localization actually ships — not a description of the current build.
+
+Planning notes for when metadata localization does ship (each field is per-locale; each locale's keyword field is a fresh 100 chars indexed on that storefront):
 
 - **Localize fully (per locale):** subtitle, keyword field, description, screenshot overlay text, preview-video overlay text, promotional text, What's New. Keywords must be *researched* per language, not translated — e.g., Arabic users search "ترجمة الفيديو" (video subtitling) patterns, not a literal translation of "captions."
-- **Keep global:** title's brand part ("Promptly"); the descriptor half of the title *may* be localized per locale if we want (e.g., Arabic descriptor), but recommend holding that until 1.3 — one variable at a time.
-- **Screenshots:** re-render overlay headlines per language; the *UI inside them* should show that locale's captions (an Arabic screenshot showing Arabic captions is the single strongest localization signal we have). RTL check for Arabic overlays.
+- **Keep global:** title's brand part ("Promptly"); the descriptor half of the title *may* be localized per locale later, but hold that until a follow-up — one variable at a time.
+- **Screenshots:** re-render overlay headlines per language; the *captions inside them* should be that locale's real caption render (an Arabic screenshot showing a genuine Arabic caption render is the single strongest signal we have — and it's the certified output claim, so it's honest). RTL check for Arabic overlays.
 - **Critical storefront caveats for our audience:**
-  - **App Store Connect has no Urdu (or Bengali/Punjabi) metadata locale.** If Urdu is one of our 9 app languages, the app UI localizes but store metadata cannot — Pakistan's storefront is served by English (UK) + Arabic metadata. Budget keywords accordingly.
+  - **App Store Connect has no Urdu (or Bengali/Punjabi) metadata locale.** If Urdu becomes an app language, the app UI could localize but store metadata cannot — Pakistan's storefront is served by English (UK) + Arabic metadata. Budget keywords accordingly.
   - **India** is served by English (UK) + Hindi locales — localize **en-GB separately from en-US** (it's a distinct keyword field; use it for India/Gulf English-language queries, effectively a second 100 chars).
   - **Gulf storefronts (SA/AE)** index Arabic + English (UK). Many Gulf users run phones in English, so en-GB metadata matters as much as Arabic there.
 - **Do not localize:** support URL structure, subscription legal boilerplate beyond straight translation (keep it verbatim-faithful — it's compliance text).
 
-Action item before submission: get the confirmed list of the 9 shipped languages (the repo's Xcode project at `/Users/zaclibman/content-studio/ios/Promptly/Promptly.xcodeproj` still shows only `en`/`Base` in `knownRegions`, so the localization work isn't on this branch) and map each to its App Store Connect locale, flagging any language that has no store locale.
+Action item before any app-localization claim: confirm the actual list of shipped app-UI languages (repo's `knownRegions` at `/Users/zaclibman/content-studio/ios/Promptly/Promptly.xcodeproj` still shows only `en`/`Base`, so app localization is not on this branch) and map each shipped language to its App Store Connect locale, flagging any language with no store locale. Until that lands, the store copy claims **caption output** in 9 languages only.
