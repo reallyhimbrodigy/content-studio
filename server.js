@@ -9,13 +9,14 @@ const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/feat
 const {
   isUserPro: isProfilePro,
   entitlementTier,
+  tierFromEntitlement,
   unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
   revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
-const { shouldEnforceWall, effectiveTier, clientWallCapable } = require('./lib/wall-enforcement');
+const { shouldEnforceWall, effectiveTier, clientWallCapable, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
 const { wallRequiredMessage } = require('./lib/failure-copy');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
@@ -157,7 +158,10 @@ async function assertProEntitled(userId) {
   const entitlement = await fetchSubscriptionEntitlement(userId);
   const decision = resolveEntitlementDecision(entitlement);
   if (decision.isPro) {
-    return { ...decision, sourceTable: entitlement.sourceTable };
+    // `row` rides on every return so the wall gates can compute the tier from
+    // the SAME read that decided isPro — tierFromEntitlement(entitlement) needs
+    // it, and a missing row must never make a Pro user read as tier 'none'.
+    return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable };
   }
 
   // SELF-HEAL — the guarantee that a paying user is NEVER denied, even if the
@@ -175,7 +179,7 @@ async function assertProEntitled(userId) {
         // read short-circuits before self-heal. Full-window throttle is fine.
         _markSelfHeal(userId, false);
         console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
-        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', sourceTable: entitlement.sourceTable };
+        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', row: entitlement.row || null, sourceTable: entitlement.sourceTable };
       }
       // RC says NOT active — but for a user WITH subscription history this is
       // NOT a definitive negative right after a conversion/renewal. RC's REST
@@ -198,7 +202,7 @@ async function assertProEntitled(userId) {
       console.warn('[entitlement] self-heal reconcile failed (non-fatal)', { userId, error: e?.message });
     }
   }
-  return { ...decision, sourceTable: entitlement.sourceTable };
+  return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable };
 }
 
 
@@ -3319,7 +3323,10 @@ const server = http.createServer((req, res) => {
         // Wall tier (N+1). Knob OFF (default) → effectiveTier makes this
         // byte-for-byte today: paid/active-trial → unlimited, none → 3/day free.
         // Knob ON → paid unlimited, trial 3/day + 1 concurrent, none → the wall.
-        const wallTier = entitlementTier(entitlement.row || {});
+        // tierFromEntitlement (NOT entitlementTier on the bare row): the decision
+        // may carry no row (RC self-heal), and isPro must win over a stale row —
+        // otherwise a paying user reads as 'none' and knob-off caps them at 3/day.
+        const wallTier = tierFromEntitlement(entitlement);
         const wallEnforce = shouldEnforceWall({
           accountCreatedAt: (entitlement.row || {}).created_at,
           clientWallCapable: clientWallCapable(req.headers),

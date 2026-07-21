@@ -3,7 +3,7 @@
 // Run with:  node --test tests/entitlement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isUserPro, entitlementTier, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
+const { isUserPro, entitlementTier, tierFromEntitlement, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -245,4 +245,36 @@ test('unknownPeriodPaid: legacy non-RC hand-promote → false (no rc_app_user_id
 
 test('unknownPeriodPaid: not entitled → false', () => {
   assert.strictEqual(unknownPeriodPaid({ tier: 'free' }, NOW), false);
+});
+
+// ── tierFromEntitlement: tier from the DECISION, not a bare row ──────────────
+// The wiring regression this guards: gates fed `entitlement.row || {}` computed
+// tier 'none' for EVERYONE when the decision carried no row — knob-off mapped
+// Pro users to 'trial' (3/day + 1 concurrent). isPro must win over a missing or
+// stale row; a real active trial must NOT be masked up to paid.
+
+test('tierFromEntitlement: isPro decision with NO row → paid (the live-bug cell)', () => {
+  assert.strictEqual(tierFromEntitlement({ isPro: true, reason: 'RC_SELF_HEAL' }, NOW), 'paid');
+});
+
+test('tierFromEntitlement: isPro with stale/empty row → paid (isPro wins)', () => {
+  assert.strictEqual(tierFromEntitlement({ isPro: true, row: {} }, NOW), 'paid');
+});
+
+test('tierFromEntitlement: isPro with active TRIAL row stays trial (guard must not mask)', () => {
+  assert.strictEqual(
+    tierFromEntitlement({ isPro: true, row: { tier: 'pro', pro_until: future, rc_period_type: 'trial', rc_app_user_id: 'u' } }, NOW),
+    'trial');
+});
+
+test('tierFromEntitlement: not pro, no row → none', () => {
+  assert.strictEqual(tierFromEntitlement({ isPro: false, row: null }, NOW), 'none');
+});
+
+test('tierFromEntitlement: comp row → paid', () => {
+  assert.strictEqual(tierFromEntitlement({ isPro: true, row: { comp_pro: true } }, NOW), 'paid');
+});
+
+test('tierFromEntitlement: undefined decision → none (fails closed)', () => {
+  assert.strictEqual(tierFromEntitlement(undefined, NOW), 'none');
 });
