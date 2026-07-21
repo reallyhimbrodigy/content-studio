@@ -150,7 +150,14 @@ function _hasSubscriptionHistory(row) {
   return tier === 'pro' || tier === 'teams' || tier === 'premium';
 }
 
-async function assertProEntitled(userId) {
+// True when the wall could actually deny THIS request — knob on AND the caller
+// is a wall-capable (1.2.0+) client. Only then is the extra RC rescue in
+// assertProEntitled worth doing, so the knob-off free-tier hot path pays nothing.
+function wallForceRcCheck(req) {
+  return wallEnabled() && clientWallCapable((req && req.headers) || {});
+}
+
+async function assertProEntitled(userId, opts = {}) {
   if (!supabaseAdmin) {
     const err = new Error('supabase_not_configured');
     err.statusCode = 500;
@@ -172,7 +179,17 @@ async function assertProEntitled(userId) {
   // never wrongly revoke) before returning a denial. Throttled per user so a
   // genuinely-free ex-subscriber can't hammer RC, and skipped entirely for
   // never-subscribed users so the common free/Pro paths stay a single DB read.
-  if (_hasSubscriptionHistory(entitlement.row) && _selfHealDue(userId)) {
+  // COMPED-PRO EXEMPTION (Zac 2026-07-21): a user granted Pro via the
+  // RevenueCat dashboard "Grant Entitlement" may leave NO DB fingerprint
+  // (no rc_app_user_id / pro_until / tier=pro) if the grant fired no webhook.
+  // Then _hasSubscriptionHistory is false and this self-heal is skipped — RC is
+  // never asked — and under enforcement the granted-pro would hit the 403 wall,
+  // even though reconcile keys off the userId as the RC customer id and RC WOULD
+  // report the grant. So when the wall could actually deny (opts.forceRcCheck,
+  // set only for wall-capable clients with the knob on), force the RC check even
+  // for a zero-history row. Grant-only + throttled: a genuinely-free user costs
+  // at most one throttled RC read that 404s fast, and NEVER on the knob-off path.
+  if ((_hasSubscriptionHistory(entitlement.row) || opts.forceRcCheck === true) && _selfHealDue(userId)) {
     try {
       const healed = await reconcileEntitlementFromRevenueCat(userId);
       if (healed && healed.isPro) {
@@ -233,7 +250,9 @@ async function leanWallDecision(userId, req, { count = 1 } = {}) {
   });
   let dec = uploadDecision({ tier, count, enforce });
   if (!dec.allow) {
-    const healed = await assertProEntitled(userId);
+    // Escalate through the pro gate before denying; force the RC rescue so a
+    // zero-history granted-pro is never walled at upload/prewarm.
+    const healed = await assertProEntitled(userId, { forceRcCheck: wallForceRcCheck(req) });
     tier = tierFromEntitlement(healed);
     dec = uploadDecision({ tier, count, enforce });
   }
@@ -2437,7 +2456,7 @@ const server = http.createServer((req, res) => {
         // Pro entitlement (trial or paid) bypasses, free counts against 50/day.
         // Knob ON → enforced `.none` gets the wall (403); trial keeps 50/day
         // then routes to the paywall (402).
-        const chatEnt = await assertProEntitled(authUser.id);
+        const chatEnt = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const chatTier = tierFromEntitlement(chatEnt);
         const chatEnforce = shouldEnforceWall({
           accountCreatedAt: (chatEnt.row || {}).created_at,
@@ -2592,7 +2611,7 @@ const server = http.createServer((req, res) => {
 
         // Chat door (wall N+1) — stream twin of the /api/chat gate above; the
         // same decision core, so the two entrances can never disagree.
-        const streamEnt = await assertProEntitled(streamUser.id);
+        const streamEnt = await assertProEntitled(streamUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const streamTier = tierFromEntitlement(streamEnt);
         const streamEnforce = shouldEnforceWall({
           accountCreatedAt: (streamEnt.row || {}).created_at,
@@ -3491,7 +3510,7 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'invalid_proxy_url' });
         }
 
-        const entitlement = await assertProEntitled(authUser.id);
+        const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
 
@@ -3766,8 +3785,9 @@ const server = http.createServer((req, res) => {
 
           // Pro gate — parity with the change-request re-edit path (ask-back is
           // Lumen, a Pro model). Defense in depth even though the ask only ever
-          // reaches Pro users.
-          const entitlement = await assertProEntitled(authUser.id);
+          // reaches Pro users. forceRcCheck so a wall-capable granted-pro is
+          // rescued post-flip rather than false-402'd.
+          const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
           if (!entitlement.isPro) {
             return sendJson(res, 402, {
               error: 'pro_required', kind: 'reedit',
@@ -3875,7 +3895,7 @@ const server = http.createServer((req, res) => {
         // free gets the 402 so the paywall sheet pops with the right "Re-edit
         // is a Pro feature" copy. Knob ON → enforced `.none` gets the wall
         // (403), and a limited TRIAL gets the 402 paywall (re-edit stays paid).
-        const entitlement = await assertProEntitled(authUser.id);
+        const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const reeditTier = tierFromEntitlement(entitlement);
         const reeditEnforce = shouldEnforceWall({
           accountCreatedAt: (entitlement.row || {}).created_at,
