@@ -265,7 +265,10 @@ struct PromptlyApp: App {
                 }
             }
             #if DEBUG
-            .onAppear { ReeditProofHarness.runIfRequested() }
+            .onAppear {
+                ReeditProofHarness.runIfRequested()
+                OnboardingProofHarness.runIfRequested()
+            }
             #endif
             // Spring-driven crossfade between launch ↔ authed ↔ unauthed
             // roots. WWDC23 'Animate with springs' (10158): ease curves
@@ -289,8 +292,16 @@ struct PromptlyApp: App {
                     launchMinElapsed = true
                 }
                 // The one knob, resolved in parallel with the auth check
-                // (pre-auth endpoint; last-known value on failure).
+                // (pre-auth endpoint; last-known value on failure). Skipped
+                // under the presentation-proof harness so it can't override
+                // the forced-on flag.
+                #if DEBUG
+                if !ProcessInfo.processInfo.arguments.contains("-reproOnboarding") {
+                    Task { await onboarding.resolveExposure() }
+                }
+                #else
                 Task { await onboarding.resolveExposure() }
+                #endif
                 await auth.checkSession()
                 // If we already have permission from a prior install, kick
                 // off remote-registration so the server learns this run's
@@ -463,6 +474,34 @@ struct LaunchView: View {
 ///      dismissed player with no paywall — the exact live symptom.
 ///
 /// Never compiled into Release. No effect unless the launch argument is present.
+/// DEBUG-only presentation proof for the 1.2.0 wall onboarding. Launch with
+/// `-reproOnboarding`: forces the flow on (independent of the server knob) and
+/// walks every beat (hook → quiz → building → social proof → the trial wall) on
+/// a timer, so an external capture loop records each screen. Proves the whole
+/// flow renders — the standing law (presentations proven by presentations).
+@MainActor
+enum OnboardingProofHarness {
+    private static var didRun = false
+    static func runIfRequested() {
+        guard !didRun else { return }
+        guard ProcessInfo.processInfo.arguments.contains("-reproOnboarding") else { return }
+        didRun = true
+        let s = OnboardingState.shared
+        s.debugForceRepro()
+        // Walk the beats. Signup is skipped (needs real auth); every other beat
+        // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
+        let beats: [OnboardingState.Step] = [.hook, .quiz, .building, .socialProof, .wall]
+        Task { @MainActor in
+            for beat in beats {
+                s.debugSet(beat)
+                print("[OnboardingProof] beat=\(beat.rawValue)")
+                try? await Task.sleep(for: .milliseconds(2600))
+            }
+            print("[OnboardingProof] walk complete")
+        }
+    }
+}
+
 @MainActor
 enum ReeditProofHarness {
 

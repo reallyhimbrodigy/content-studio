@@ -110,4 +110,21 @@ final class OnboardingState: ObservableObject {
             answers = a
         }
     }
+
+    #if DEBUG
+    /// Force the wall onboarding on for the presentation-proof harness
+    /// (`-reproOnboarding`), independent of the server knob: enable exposure,
+    /// clear completion, rewind to the hook. DEBUG only.
+    func debugForceRepro() {
+        wallOnboardingEnabled = true
+        hasCompletedOnboarding = false
+        UserDefaults.standard.set(false, forKey: "onboarding_started")
+        answers = QuizAnswers(language: "en", creates: "Talking-head videos",
+                              platform: "TikTok", frequency: "Daily",
+                              goal: "Grow my audience", aspiration: "First viral video")
+        step = .hook
+    }
+    /// Directly set the beat (harness walk).
+    func debugSet(_ s: Step) { step = s }
+    #endif
 }

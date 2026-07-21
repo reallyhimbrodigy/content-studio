@@ -238,8 +238,8 @@ struct TrialWallView: View {
 
             // Eligibility truth under the CTA: exactly what the tap does.
             Text(trialEligible
-                 ? "\(trialDays) days free, then \(billedPrice). Auto-renews until cancelled — cancel anytime in Settings."
-                 : "You'll be charged \(billedPrice) today. Auto-renews until cancelled — cancel anytime in Settings.")
+                 ? "\(trialDays) days free, then \(billedPrice). Auto-renews until cancelled — cancel anytime in your Apple Account settings."
+                 : "You'll be charged \(billedPrice) today. Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
                 .font(.system(size: 12))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
