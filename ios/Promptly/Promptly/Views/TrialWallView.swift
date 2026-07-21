@@ -153,7 +153,10 @@ struct TrialWallView: View {
         .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
     }
 
-    private func timelineRow(icon: String, tint: Color, title: String, line: String, last: Bool) -> some View {
+    // LocalizedStringKey params so interpolated literals (e.g. "Day \(n) — we
+    // remind you") generate format keys ("Day %lld — we remind you") that the
+    // String Catalog localizes; static literals localize by their own text.
+    private func timelineRow(icon: String, tint: Color, title: LocalizedStringKey, line: LocalizedStringKey, last: Bool) -> some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 0) {
                 Image(systemName: icon)
@@ -333,11 +336,13 @@ struct TrialWallView: View {
                 .foregroundColor(.white)
             VStack(spacing: 8) {
                 if c.isTrial, let end = c.trialEnd {
-                    confirmationRow("Trial ends", end.formatted(date: .abbreviated, time: .shortened))
+                    // Runtime values (date, price) wrapped as keys localize by
+                    // lookup then fall back to verbatim — correct for dynamic text.
+                    confirmationRow("Trial ends", LocalizedStringKey(end.formatted(date: .abbreviated, time: .shortened)))
                     confirmationRow("Then", "\(c.price) — only if you don't cancel")
                     confirmationRow("Reminder", c.reminderScheduled ? "scheduled before the charge" : "enable notifications to get one")
                 } else {
-                    confirmationRow("Billed today", c.price)
+                    confirmationRow("Billed today", LocalizedStringKey(c.price))
                 }
             }
             .padding(18)
@@ -360,7 +365,7 @@ struct TrialWallView: View {
         }
     }
 
-    private func confirmationRow(_ k: String, _ v: String) -> some View {
+    private func confirmationRow(_ k: LocalizedStringKey, _ v: LocalizedStringKey) -> some View {
         HStack {
             Text(k).font(.system(size: 14)).foregroundColor(.white.opacity(0.55))
             Spacer()

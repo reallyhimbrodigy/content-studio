@@ -19,6 +19,7 @@
 		AA000011 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000011; };
 		AA000012 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000012; };
 		AA000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB000013; };
+		AA00006B /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = AB00006B; };
 		AA000015 /* VideoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000015; };
 		AA000016 /* VideoCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000016; };
 		AA000017 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
@@ -90,6 +91,7 @@
 		AB000011 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AB000012 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		AB000013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB00006B /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		AB000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AB000015 /* VideoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPicker.swift; sourceTree = "<group>"; };
 		AB000016 /* VideoCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCompressor.swift; sourceTree = "<group>"; };
@@ -131,7 +133,7 @@
 		AD000001 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (AA000023 /* Sentry in Frameworks */, AA000030 /* RevenueCat in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 
 		AE000001 = {isa = PBXGroup; children = (AE000002, AE000006); sourceTree = "<group>"; };
-		AE000002 = {isa = PBXGroup; children = (AB000001, AE000003, AE000004, AE000005, AB000013, AB000014); path = Promptly; sourceTree = "<group>"; };
+		AE000002 = {isa = PBXGroup; children = (AB000001, AE000003, AE000004, AE000005, AB000013, AB000014, AB00006B); path = Promptly; sourceTree = "<group>"; };
 		AE000003 = {isa = PBXGroup; children = (AB000002, AB000054, AB000057); path = Models; sourceTree = "<group>"; };
 		AE000004 = {isa = PBXGroup; children = (AB000003, AB000004, AB000005, AB000006, AB000015, AB000016, AB000017, AB000018, AB000021, AB000022, AB000024, AB000025, AB000026, AB000027, AB000029, AB000030, AB000031, AB00002C, AB00002D, AB000032, AB000033, AB000055, AB000059, AB000060, AB000061, AB000062, AB000063, AB00006A); path = Services; sourceTree = "<group>"; };
 		AE000005 = {isa = PBXGroup; children = (AB000007, AB000008, AB000009, AB000010, AB000050, AB000051, AB000052, AB000053, AB000011, AB000012, AB000019, AB000020, AB000028, AB00002A, AB00002B, AB00002E, AB00002F, AB000056, AB000058, AB000069, AE000007); path = Views; sourceTree = "<group>"; };
@@ -139,8 +141,8 @@
 		AE000007 = {isa = PBXGroup; children = (AB000064, AB000065, AB000066, AB000067, AB000068); path = Onboarding; sourceTree = "<group>"; };
 
 		AF000001 = {isa = PBXNativeTarget; buildConfigurationList = AG000003; buildPhases = (AF000002, AD000001, AF000003, AF000004); buildRules = (); dependencies = (); name = Promptly; packageProductDependencies = (AJ000001 /* Sentry */, AJ000002 /* RevenueCat */, AJ000003 /* PostHog */); productName = Promptly; productReference = AC000001; productType = "com.apple.product-type.application"; };
-		AH000001 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1540; LastUpgradeCheck = 1540; }; buildConfigurationList = AG000001; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = AE000001; packageReferences = (AI000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */, AI000002 /* XCRemoteSwiftPackageReference "purchases-ios" */, AI000003 /* XCRemoteSwiftPackageReference "posthog-ios" */); productRefGroup = AE000006; projectDirPath = ""; projectRoot = ""; targets = (AF000001); };
-		AF000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (AA000013); runOnlyForDeploymentPostprocessing = 0; };
+		AH000001 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1540; LastUpgradeCheck = 1540; }; buildConfigurationList = AG000001; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, es, "pt-BR", hi, ar, id, fr, de, ja); mainGroup = AE000001; packageReferences = (AI000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */, AI000002 /* XCRemoteSwiftPackageReference "purchases-ios" */, AI000003 /* XCRemoteSwiftPackageReference "posthog-ios" */); productRefGroup = AE000006; projectDirPath = ""; projectRoot = ""; targets = (AF000001); };
+		AF000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (AA000013, AA00006B); runOnlyForDeploymentPostprocessing = 0; };
 		AF000004 = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputFileListPaths = (); inputPaths = (); name = "Upload dSYMs to Sentry"; outputFileListPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "\"${SRCROOT}/Scripts/upload-sentry-dsyms.sh\"\n"; };
 		AF000002 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AA000001, AA000002, AA000003, AA000004, AA000005, AA000006, AA000015, AA000016, AA000007, AA000008, AA000009, AA000010, AA000011, AA000012, AA000017, AA000018, AA000019, AA000020, AA000021, AA000022, AA000024, AA000025, AA000026, AA000027, AA000028, AA000029, AA000040, AA000031, AA00002A, AA00002B, AA00002C, AA00002D, AA00002E, AA00002F, AA000041, AA000042, AA000050, AA000051, AA000052, AA000053, AA000054, AA000055, AA000056, AA000057, AA000058, AA000059, AA000060, AA000061, AA000062, AA000063, AA000064, AA000065, AA000066, AA000067, AA000068, AA000069, AA00006A); runOnlyForDeploymentPostprocessing = 0; };
 

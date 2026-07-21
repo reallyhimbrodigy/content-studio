@@ -41,7 +41,7 @@ struct BuildingStudioView: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            Text(done ? aspirationLine : "Building your studio…")
+            Text(LocalizedStringKey(done ? aspirationLine : "Building your studio…"))
                 .font(.system(size: 26, weight: .heavy))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
@@ -55,7 +55,7 @@ struct BuildingStudioView: View {
                             .font(.system(size: 20))
                             .foregroundColor(idx < visibleRows ? .green : .white.opacity(0.4))
                             .frame(width: 26)
-                        Text(row.text)
+                        Text(LocalizedStringKey(row.text))
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(idx < visibleRows ? 1.0 : 0.35))
                     }

@@ -121,7 +121,10 @@ struct OnboardingQuizView: View {
                             ])
                             advance()
                         } label: {
-                            Text(option)
+                            // Localize the option label by its own text (a
+                            // catalog key). Language names ("Español", …) aren't
+                            // keys and fall back to display-as-is — correct.
+                            Text(LocalizedStringKey(option))
                                 .font(.system(size: 17, weight: .medium))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
