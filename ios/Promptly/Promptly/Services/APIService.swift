@@ -82,10 +82,23 @@ class APIService {
         await AuthService.shared.getValidToken()
     }
 
+    /// Central wall detector: a 403 body of `{error:"wall_required"}` from any
+    /// gated door throws `APIError.wallRequired`, so every call site routes the
+    /// same way (to the trial wall) without repeating the parse. Inert while
+    /// the server knob is off — the server never emits this until the flip.
+    static func throwIfWall(_ response: URLResponse, _ data: Data) throws {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 403 else { return }
+        struct WallBody: Decodable { let error: String?; let route: String?; let message: String? }
+        guard let body = try? JSONDecoder().decode(WallBody.self, from: data),
+              body.error == "wall_required" || body.route == "wall" else { return }
+        throw APIError.wallRequired(message: body.message ?? "Update to start your free trial.")
+    }
+
     private func authorizedRequest(_ path: String, method: String = "GET") async -> URLRequest {
         var request = URLRequest(url: URL(string: "\(baseUrl)\(path)")!)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        WallCapability.stamp(&request)
         if let token = await validToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -161,6 +174,7 @@ class APIService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
+        try Self.throwIfWall(response, data)
         if let http = response as? HTTPURLResponse, http.statusCode == 402 {
             // Daily render cap hit. Parse the structured payload so the
             // caller can present the right paywall reason copy.
@@ -280,6 +294,7 @@ class APIService {
         ])
 
         let (data, response) = try await requestData(request)
+        try Self.throwIfWall(response, data)
         if let http = response as? HTTPURLResponse, http.statusCode == 402 {
             // Pro-only endpoint. Caller catches APIError.paymentRequired
             // and pops the paywall.
@@ -1222,6 +1237,11 @@ enum APIError: LocalizedError {
     /// called by a free user. `kind` is "render", "chat", or "reedit" so
     /// the caller can present the right paywall reason.
     case paymentRequired(kind: String, limit: Int?, message: String)
+    /// Server returned 403 `wall_required` — an enforced `.none` account hit a
+    /// gated door (post-flip; inert while the wall knob is off). The client
+    /// routes to the trial wall (TrialWallView, context .door), never a usable
+    /// screen. `message` is old-client-safe display text for the rare straggler.
+    case wallRequired(message: String)
     /// Render dispatch returned a structured failure shape: error_code +
     /// user_message + the three behavioural flags (retryable,
     /// requires_new_video, requires_vibe_change). Callers branch on the
@@ -1246,6 +1266,7 @@ enum APIError: LocalizedError {
         case .uploadFailed: return "Upload failed"
         case .deleteFailed: return "Delete failed"
         case .paymentRequired(_, _, let msg): return msg
+        case .wallRequired(let message): return message
         case .structuredFailure(_, let userMessage, _, _, _): return userMessage
         case .validationRejected(let userMessage, _, _): return userMessage
         }

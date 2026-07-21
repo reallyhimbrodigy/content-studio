@@ -108,7 +108,7 @@ struct TrialWallView: View {
                     Text(context == .lapsed
                          ? "Everything you made is still here. Pick up where you left off."
                          : trialEligible
-                            ? "Try everything free for \(trialDays) days."
+                            ? "Start creating free for \(trialDays) days."
                             : "Full access to your AI studio.")
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))
@@ -133,9 +133,12 @@ struct TrialWallView: View {
 
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Honest to the LIMITED trial tier (3 renders/day, captions, cuts,
+            // B-roll; re-edit + Lumen stay Pro). Never claim "unlimited" or
+            // "re-edit" here — those are paid-only. Matches EntitlementTier.trial.
             timelineRow(icon: "lock.open.fill", tint: .green,
-                        title: "Today — full access",
-                        line: "Unlimited renders, chats, and re-edit. Cancel anytime.",
+                        title: "Today — start creating",
+                        line: "3 edits a day with captions, cuts & B-roll. Cancel anytime.",
                         last: false)
             timelineRow(icon: "bell.fill", tint: .yellow,
                         title: "Day \(max(trialDays - 1, 1)) — we remind you",

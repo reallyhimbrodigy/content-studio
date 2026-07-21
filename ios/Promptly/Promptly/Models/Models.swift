@@ -460,6 +460,14 @@ final class AppState: ObservableObject {
     @Published private(set) var paywallReason: PaywallReason?
     private var paywallRouting = PaywallRouting<PaywallReason>()
 
+    /// The trial WALL (distinct from the upgrade paywall): set when an enforced
+    /// `.none` account hits a gated door post-flip (APIError.wallRequired). The
+    /// shell presents TrialWallView(context: .door) as a full-screen cover — a
+    /// `.none` user reaches no usable screen. Inert while the wall knob is off.
+    @Published var wallPresented: Bool = false
+    func presentWall() { wallPresented = true }
+    func dismissWall() { wallPresented = false }
+
     /// Present the paywall now (wedge-proof). Use from a trigger with no blocking
     /// modal on screen; if a stale reason is stuck (a sheet that never actually
     /// presented), this re-drives so the request can't be silently muted.

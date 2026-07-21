@@ -54,6 +54,23 @@ final class SubscriptionService: ObservableObject {
     var effectiveIsPro: Bool {
         isPro || UsageService.shared.isPro
     }
+
+    /// The wall tier the client should act on: RevenueCat's view composed with
+    /// the server-derived tier, most-privileged wins (EntitlementTier.resolve —
+    /// mirrors the server's tierFromEntitlement rule). RC knows trial-vs-paid
+    /// from the entitlement period; the server knows comp/self-heal grants.
+    /// `.none` is the wall; `.trial` is limited; `.paid` is unlimited.
+    var effectiveTier: EntitlementTier {
+        let rc: EntitlementTier = {
+            guard isPro else { return .none }
+            // RC period type: an active trial entitlement is .trial, else .paid.
+            if let ent = lastCustomerInfo?.entitlements[Self.proEntitlementId],
+               ent.periodType == .trial { return .trial }
+            return .paid
+        }()
+        let server = EntitlementTier.fromServer(UsageService.shared.snapshot?.tier)
+        return EntitlementTier.resolve(rc: rc, server: server)
+    }
     @Published var offerings: Offerings?
     @Published var isLoadingPurchase: Bool = false
     @Published var lastError: String?
@@ -365,7 +382,12 @@ final class SubscriptionService: ObservableObject {
 
     // MARK: - Internal
 
+    /// The latest CustomerInfo, stored so `effectiveTier` can read the
+    /// entitlement's period type (trial vs paid) without an async fetch.
+    private(set) var lastCustomerInfo: CustomerInfo?
+
     fileprivate func applyCustomerInfo(_ info: CustomerInfo) {
+        lastCustomerInfo = info
         let entitled = info.entitlements[Self.proEntitlementId]?.isActive == true
         if entitled != isPro {
             isPro = entitled

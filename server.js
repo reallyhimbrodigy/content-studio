@@ -2288,6 +2288,16 @@ const server = http.createServer((req, res) => {
           // paywall_view(reason:reedit) it measures the RACE-1 fix live —
           // free-user re-edit taps that reach a paywall view.
           'reedit_tap',
+          // 1.2.0 registry — the wall onboarding + activation funnel (audit #1).
+          // Same names flow to PostHog from the client dual-sink; this mirror
+          // must accept them or the SQL half goes blind. subscription_* names
+          // are deliberately ABSENT: transaction truth only enters via the
+          // RevenueCat webhook mirror, never the open client endpoint.
+          'onboarding_step', 'wall_view', 'trial_wall_start', 'trial_wall_bounce',
+          'purchase_result', 'package_selected', 'restore_result',
+          'app_open', 'signup_start', 'signup_complete',
+          'first_render_start', 'render_complete', 'render_failed',
+          'paywall_dismiss',
         ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);

@@ -20,6 +20,10 @@ final class UsageService: ObservableObject {
         let chats_today: Int
         let render_limit: Int
         let chat_limit: Int
+        /// Server-derived wall tier ('none' | 'trial' | 'paid'). Optional so a
+        /// pre-1.2.0 server response (no tier field) still decodes. The client
+        /// composes this with RevenueCat's view via EntitlementTier.resolve.
+        let tier: String?
     }
 
     @Published var snapshot: Snapshot?

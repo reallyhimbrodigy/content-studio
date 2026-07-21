@@ -318,6 +318,21 @@ final class JobDispatchCoordinator {
                 paymentLimit: nil
             ))
 
+        case .wallRequired(let message):
+            // Enforced `.none` hit a gated door (post-flip; dark today). Treat
+            // as a payment-class terminal so the dispatch surfaces it; the UI
+            // routes to the trial wall via APIError.wallRequired at the call
+            // site. paymentKind "wall" distinguishes it from the upgrade paywall.
+            return .hard(HardFailure(
+                errorCode: "WALL_REQUIRED",
+                userMessage: message,
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: true,
+                paymentKind: "wall",
+                paymentLimit: nil
+            ))
+
         case .uploadFailed:
             return .hard(HardFailure(
                 errorCode: "UPLOAD_LOCAL_FAILED",

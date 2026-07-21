@@ -92,6 +92,15 @@ struct AppShell: View {
                 )
             }
         }
+        // The trial WALL (distinct from the upgrade paywall): a full-screen
+        // cover so an enforced `.none` account reaches no usable screen when it
+        // hits a gated door post-flip (APIError.wallRequired → presentWall()).
+        // Inert while the wall knob is off. Passing only when trial/Pro starts.
+        .fullScreenCover(isPresented: $appState.wallPresented) {
+            TrialWallView(context: .door) {
+                appState.dismissWall()
+            }
+        }
         .onChange(of: appState.sidebarOpen) { _, isOpen in
             // Keyboard always dismisses on drawer open. We dismiss on
             // close too so a stale focus from the sidebar's search

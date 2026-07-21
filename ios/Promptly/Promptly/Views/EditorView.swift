@@ -1774,6 +1774,8 @@ struct EditorView: View {
                 persistMessages()
             } catch let APIError.paymentRequired(_, _, _) {
                 appState.presentPaywall(.manual)
+            } catch APIError.wallRequired {
+                appState.presentWall()
             } catch {
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobStatus = "failed"
