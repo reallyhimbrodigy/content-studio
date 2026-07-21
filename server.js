@@ -3484,6 +3484,25 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
         }
 
+        // Gate probe (deploy-sanity invariant): runs the EXACT entitlement →
+        // tier → caps wiring above and returns the decision WITHOUT creating a
+        // job or spending GPU. The seam-bug class (a known-Pro account reading
+        // trial caps because a layer between two green layers broke) is asserted
+        // against this on every deploy — scripts/deploy-sanity.js. Authenticated;
+        // leaks only the caller's own caps.
+        if (body?.gate_probe === true) {
+          return sendJson(res, 200, {
+            probe: true,
+            tier: wallTier,
+            enforced: wallEnforce,
+            app_usable: wallCaps.appUsable,
+            render_limit: wallCaps.renderLimit === Infinity ? 'unlimited' : wallCaps.renderLimit,
+            concurrency_cap: wallCaps.uploadMax,
+            chat_limit: wallCaps.chatLimit === Infinity ? 'unlimited' : wallCaps.chatLimit,
+            reedit: wallCaps.reedit,
+          });
+        }
+
         // Concurrency gate — server-side enforcement of the same 1-free /
         // 10-pro cap the iOS picker enforces. Without this, an alternate
         // client (curl, scripts, sideloaded build) could fire up to
