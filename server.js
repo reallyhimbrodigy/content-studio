@@ -2259,7 +2259,12 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
-      wall_enforcement: String(process.env.WALL_ENFORCEMENT || 'off') === 'off' ? 'off' : 'set',
+      // The ONE knob, effective value. Pre-auth clients read this to route the
+      // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
+      // today's legacy flow, byte-for-byte. Same knob that drives the server
+      // gates — flip once, both halves move together. Default 'off' on any
+      // client fetch failure.
+      wall_enforcement: wallEnabled() ? 'on' : 'off',
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
     });
   }
