@@ -296,6 +296,15 @@ class AuthService {
         UserDefaults.standard.removeObject(forKey: tokenExpiryKey)
         accessToken = nil
         currentUser = nil
+        // Return the app to its initial route. AppState is a process-lifetime
+        // singleton, so selectedTab survives sign-out; and the Sign Out button
+        // lives on the Account tab (selectedTab == 2). Without this reset, the
+        // NEXT in-session login re-shows AppShell still on Account — while the
+        // always-mounted EditorView's composer auto-focus (EditorView.onAppear)
+        // raises the keyboard on the hidden Edit tab. Net symptom: "login lands
+        // on Account with the keyboard already up." Resetting to 0 makes every
+        // login land on Edit/chat with the composer focused — intentionally.
+        AppState.shared.selectedTab = 0
         isAuthenticated = false
     }
 
