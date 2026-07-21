@@ -4,12 +4,23 @@ This is the only human gate before launch. Everything else is machine-verified
 ([verification.md](verification.md)). Do this once on a real device with a
 **StoreKit sandbox account** (Settings → App Store → Sandbox Account) signed in.
 
-Prereqs I'll have staged for you:
-- 1.2.0 on TestFlight (build submitted by machine).
-- Your account flagged wall-capable is automatic (any 1.2.0 build sends the header).
-- To exercise the wall you flip **one server env var** when ready:
-  `WALL_ENFORCEMENT=on` in Render (I'll give you the exact toggle at ship time).
-  Leave it OFF for steps 1–2, ON for steps 3+.
+Prereqs (already staged):
+- Build **208** is on TestFlight. Install it. Any 1.2.0 build is wall-capable automatically (sends the `X-Promptly-Wall-Capable` header).
+- StoreKit **sandbox account** signed in (Settings → App Store → Sandbox Account).
+
+### The Render toggle — exact steps (for the wall parts B/C)
+To turn the wall ON for the test:
+1. Render dashboard → the **`promptly`** web service → **Environment** tab.
+2. Add a variable: key `WALL_ENFORCEMENT`, value `on` → **Save Changes**. Render auto-redeploys (~1–2 min).
+3. **Do NOT set `WALL_FLIP_DATE`.** Leaving it unset means enforcement keys ONLY on the wall-capable header — so **only your TestFlight 208 device is affected.**
+4. Verify it's on: open `https://usepromptly.app/api/health` — it should show `"wall_enforcement":"on"`.
+
+To turn it back OFF when done:
+5. Set `WALL_ENFORCEMENT` back to `off` (or delete the variable) → **Save** → wait for redeploy → confirm `api/health` shows `"wall_enforcement":"off"`.
+
+> **🛡️ SAFETY — flipping the knob during this test does NOT wall the ~1,000 live users.** They're all on pre-1.2.0 binaries that don't send the wall-capable header, so the server never enforces on them (`shouldEnforceWall` returns false). Only wall-capable (208 TestFlight) clients — i.e. your test device — are affected. The test is safe to run against production.
+
+Test order: Part A with the knob **OFF**; flip **ON** for Parts B & C; flip **OFF** again after.
 
 ---
 
