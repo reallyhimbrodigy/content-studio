@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import Sentry
+import PostHog
 import UserNotifications
 #if DEBUG
 import AVFoundation
@@ -194,6 +195,25 @@ struct PromptlyApp: App {
         // callbacks if a delegate is set at the time of delivery.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
 
+        // PostHog — the analytics backbone. The project key is a public
+        // client key by design (capture-only). Autocapture (screens, taps,
+        // app lifecycle) + our explicit events through Analytics.track's
+        // dual-sink. Session replay ON with masking defaults: text inputs
+        // and user images masked; static labels (paywall prices) visible.
+        let phConfig = PostHogConfig(
+            apiKey: "phc_zqZcVguSoeCnasjfxH9W2PSiBna3rApecQvTQtnNeetj",
+            host: "https://us.i.posthog.com"
+        )
+        phConfig.captureScreenViews = true
+        phConfig.captureApplicationLifecycleEvents = true
+        phConfig.sessionReplay = true
+        phConfig.sessionReplayConfig.maskAllTextInputs = true
+        phConfig.sessionReplayConfig.maskAllImages = true
+        // SwiftUI renders as one layer to the replay wireframe recorder —
+        // screenshot mode is the supported capture path for SwiftUI apps.
+        phConfig.sessionReplayConfig.screenshotMode = true
+        PostHogSDK.shared.setup(phConfig)
+
         // Boot RevenueCat. Pulls offerings + initial CustomerInfo so the
         // paywall has data ready the first time it's presented. Once the
         // Supabase user resolves below in `.task`, we call identify() to
@@ -264,6 +284,14 @@ struct PromptlyApp: App {
                 // Also pull the initial usage snapshot for the badge.
                 if auth.isAuthenticated, let uid = auth.currentUser?.id {
                     await SubscriptionService.shared.identify(userId: uid)
+                    // PostHog identity: merge this device's anonymous history
+                    // onto the signed-in person (same Supabase uid the server's
+                    // RC-webhook mirror captures under — funnels join across
+                    // the client/server seam).
+                    Analytics.identify(
+                        userId: uid,
+                        tier: SubscriptionService.shared.effectiveIsPro ? "paid" : "none"
+                    )
                     await UsageService.shared.refresh()
                 }
             }

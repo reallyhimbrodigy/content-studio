@@ -1,25 +1,28 @@
 import Foundation
 import StoreKit
 import RevenueCat
+import PostHog
 
-/// Fire-and-forget client analytics for the commerce funnel.
+/// Fire-and-forget client analytics — ONE call site, TWO sinks (the analytics
+/// backbone). Every `track` fires the same event name + props to:
+///   1. PostHog (dashboards, funnels, session replay, experiments) — the
+///      backbone where humans look.
+///   2. `POST /api/events` → `analytics_events` — the machine mirror ([REPORT],
+///      backend consumers, our own SQL). It stays.
+/// Same names, same properties, never let the schemas drift.
 ///
 /// Every call is best-effort: it returns immediately, never throws, never
 /// blocks the caller, and silently drops on any failure. Analytics must never
 /// sit on the purchase path — a dropped event is always preferable to a slowed
 /// or crashed checkout.
 ///
-/// Emits to `POST /api/events`, which sinks into the `analytics_events` table
-/// server-side. Every event carries a common envelope:
+/// Envelope on the /api/events sink:
 ///   - `anon_user_id` — the RevenueCat appUserID (joins profiles.rc_app_user_id)
 ///   - `territory` / `storefront` — the App Store storefront (country + id)
 ///   - `app_version` — short version + build
-/// Event-specific fields ride in `props` (e.g. offerings_loaded → count,
-/// purchase_error → code/domain).
-///
-/// The six events, emitted from SubscriptionService / PaywallView:
-///   paywall_view · offerings_loaded · offerings_load_failed ·
-///   purchase_attempt · purchase_error · trial_start
+/// PostHog carries the same fields as event properties; identity is handled by
+/// `Analytics.identify(userId:)` at sign-in (anonymous history merges onto the
+/// person — the deferred-signup funnel depends on this).
 enum Analytics {
     private static let endpoint = URL(string: "https://usepromptly.app/api/events")!
 
@@ -54,6 +57,15 @@ enum Analytics {
         let propsData: Data = (JSONSerialization.isValidJSONObject(props)
             ? (try? JSONSerialization.data(withJSONObject: props)) : nil) ?? Data("{}".utf8)
 
+        // Sink 1: PostHog. Same event name + props; the SDK batches, retries,
+        // and persists its own queue. Envelope fields ride as properties so
+        // funnels can cut by them without waiting for the person merge.
+        var phProps: [String: Any] = props
+        phProps["app_version"] = version
+        if let a = anon { phProps["rc_app_user_id"] = a }
+        PostHogSDK.shared.capture(event, properties: phProps)
+
+        // Sink 2: /api/events → analytics_events (the machine mirror).
         Task.detached(priority: .utility) {
             let (territory, storefrontId) = await storefront()
             let propsObj = (try? JSONSerialization.jsonObject(with: propsData)) ?? [:]
@@ -76,6 +88,23 @@ enum Analytics {
             req.httpBody = data
             req.timeoutInterval = 8
             _ = try? await URLSession.shared.data(for: req) // response ignored by design
+        }
+    }
+
+    /// Tie this device's anonymous PostHog history to the signed-in person.
+    /// Called at auth resolve (and safe to call repeatedly — PostHog dedupes).
+    /// CRITICAL for the deferred-signup funnel: without this merge, everything
+    /// pre-signup (hook video, quiz, wall views) detaches from the person who
+    /// eventually converts. Person properties are the dimensions every funnel
+    /// cuts by; tier updates ride through here as entitlement changes.
+    static func identify(userId: String, tier: String? = nil, preferredLanguage: String? = nil) {
+        Task.detached(priority: .utility) {
+            let (territory, _) = await storefront()
+            var personProps: [String: Any] = [:]
+            if let t = territory { personProps["territory"] = t }
+            if let l = preferredLanguage ?? Locale.preferredLanguages.first { personProps["preferred_language"] = l }
+            if let t = tier { personProps["tier"] = t }
+            PostHogSDK.shared.identify(userId, userProperties: personProps)
         }
     }
 }
