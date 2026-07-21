@@ -1,14 +1,17 @@
 import Foundation
 import SwiftUI
 
-/// State core for the 1.2.0 wall onboarding (hook → signup → quiz → reveal →
-/// social proof → trial wall). Owns:
+/// State core for the 1.2.0 wall onboarding (signup → social proof → trial
+/// wall). Owns:
 ///   - the EXPOSURE decision (the one knob): `/api/health.wall_enforcement`,
 ///     fetched pre-auth (no token needed). 'on' → wall onboarding; anything
 ///     else (or fetch failure) → today's legacy flow, byte-for-byte. The same
 ///     knob drives the server gates — flip once, both halves move together.
-///   - quiz answers (persisted; feed personalization + person properties),
 ///   - flow position, so a killed app resumes where it left off.
+///
+/// The opening hook clip and the quiz were removed (Zac, 2026-07-21) — the hook
+/// returns in a later build with a good clip; the quiz is gone entirely, so
+/// there is no personalized "building your studio" reveal anymore.
 ///
 /// Every step change emits `onboarding_step` through the dual-sink wrapper, so
 /// drop-off is measurable per step from day one.
@@ -40,18 +43,35 @@ final class OnboardingState: ObservableObject {
         }
     }
 
+    // ── Language (KEPT from the removed quiz — it is the only quiz step Zac
+    // preserved). Sets the APP UI language via the String Catalog: persisted to
+    // AppleLanguages (full effect next launch) and surfaced as `locale` for an
+    // immediate SwiftUI override at the app root. Also becomes the PostHog
+    // preferred_language person property. NOTE: this controls the app UI
+    // language, NOT the video/caption output language (captions follow the
+    // spoken audio) — see the report.
+    @Published var preferredLanguage: String? {
+        didSet {
+            guard let code = preferredLanguage else { return }
+            UserDefaults.standard.set(code, forKey: "preferred_language")
+            // Standard iOS in-app language override — the whole app (incl. UIKit
+            // + String(localized:)) renders in this language from the next launch.
+            UserDefaults.standard.set([code], forKey: "AppleLanguages")
+        }
+    }
+    /// The locale to apply at the app root for immediate effect this session.
+    var locale: Locale? { preferredLanguage.map { Locale(identifier: $0) } }
+
     // ── Flow position ────────────────────────────────────────────────────────
     enum Step: String, Codable {
-        case hook           // before/after demo, pre-signup
-        case signup         // Sign in with Apple first
-        case quiz           // language → creator questions → aspiration
-        case building       // "building your studio" reveal
-        case socialProof    // honest numbers
+        case language       // pick the app language (kept from the quiz)
+        case signup         // Sign in with Apple
+        case socialProof    // honest numbers (+ the native review prompt)
         case wall           // the trial-timeline paywall
         case done           // trial started or Pro purchased — into the app
     }
 
-    @Published var step: Step = .hook {
+    @Published var step: Step = .language {
         didSet {
             UserDefaults.standard.set(step.rawValue, forKey: "onboarding_step")
             Analytics.track("onboarding_step", props: ["step": step.rawValue])
@@ -80,49 +100,24 @@ final class OnboardingState: ObservableObject {
     func restore() {
         if let raw = UserDefaults.standard.string(forKey: "onboarding_step"),
            let s = Step(rawValue: raw) {
-            // Never restore into signup/hook once authenticated — the flow
-            // container re-derives the right entry from auth + completion.
+            // The flow container re-derives the right entry from auth +
+            // completion in onAppear; this just seeds the last-known beat.
             step = s
         }
     }
 
-    // ── Quiz answers ─────────────────────────────────────────────────────────
-    struct QuizAnswers: Codable {
-        var language: String?      // BCP-47 code the user picked (step one)
-        var creates: String?       // what do you create?
-        var platform: String?      // where do you post?
-        var frequency: String?     // how often?
-        var goal: String?          // your goal
-        var aspiration: String?    // where do you want to be in 90 days?
-    }
-
-    @Published var answers = QuizAnswers() {
-        didSet {
-            if let data = try? JSONEncoder().encode(answers) {
-                UserDefaults.standard.set(data, forKey: "onboarding_answers")
-            }
-        }
-    }
-
     private init() {
-        if let data = UserDefaults.standard.data(forKey: "onboarding_answers"),
-           let a = try? JSONDecoder().decode(QuizAnswers.self, from: data) {
-            answers = a
-        }
+        preferredLanguage = UserDefaults.standard.string(forKey: "preferred_language")
     }
 
     #if DEBUG
     /// Force the wall onboarding on for the presentation-proof harness
-    /// (`-reproOnboarding`), independent of the server knob: enable exposure,
-    /// clear completion, rewind to the hook. DEBUG only.
+    /// (`-reproOnboarding`), independent of the server knob. DEBUG only.
     func debugForceRepro() {
         wallOnboardingEnabled = true
         hasCompletedOnboarding = false
         UserDefaults.standard.set(false, forKey: "onboarding_started")
-        answers = QuizAnswers(language: "en", creates: "Talking-head videos",
-                              platform: "TikTok", frequency: "Daily",
-                              goal: "Grow my audience", aspiration: "First viral video")
-        step = .hook
+        step = .language
     }
     /// Directly set the beat (harness walk).
     func debugSet(_ s: Step) { step = s }

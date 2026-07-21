@@ -10,6 +10,7 @@ import SwiftUI
 /// When real App Store ratings accumulate, they slot in here — not before.
 struct SocialProofView: View {
     let onContinue: () -> Void
+    @Environment(\.requestReview) private var requestReview
 
     private let facts: [(icon: String, headline: String, line: String)] = [
         ("person.2.fill", "700+ creators", "have started editing with Promptly"),
@@ -71,6 +72,13 @@ struct SocialProofView: View {
         .background(Color.black.ignoresSafeArea())
         .onAppear {
             Analytics.track("onboarding_step", props: ["step": "social_proof_view"])
+            // Native review prompt, before the money ask (its former home, the
+            // quiz-fed "building" reveal, was removed). System-rate-limited
+            // (max 3/yr) and may silently no-op — never gate flow on it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                requestReview()
+                Analytics.track("onboarding_step", props: ["step": "review_prompt_requested"])
+            }
         }
     }
 }

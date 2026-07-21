@@ -281,6 +281,11 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
             .environmentObject(appState)
+            // Apply the onboarding language choice app-wide this session (the
+            // String Catalog resolves Text() against this locale). Persisted via
+            // AppleLanguages for full effect on the next launch. Defaults to the
+            // system locale when unset.
+            .environment(\.locale, onboarding.locale ?? .current)
             .preferredColorScheme(.dark)
             .task {
                 // Minimum LaunchView display time so the entrance
@@ -490,7 +495,7 @@ enum OnboardingProofHarness {
         s.debugForceRepro()
         // Walk the beats. Signup is skipped (needs real auth); every other beat
         // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
-        let beats: [OnboardingState.Step] = [.hook, .quiz, .building, .socialProof, .wall]
+        let beats: [OnboardingState.Step] = [.language, .socialProof, .wall]
         Task { @MainActor in
             for beat in beats {
                 s.debugSet(beat)
