@@ -2317,6 +2317,18 @@ const server = http.createServer((req, res) => {
           'app_open', 'signup_start', 'signup_complete',
           'first_render_start', 'render_complete', 'render_failed',
           'paywall_dismiss',
+          // FREEMIUM funnels (2026-07-21). Discrete per-step events so each stage
+          // is a PostHog funnel. render_started/completed + *_rejected fire
+          // SERVER-side (dispatch, authoritative) and never come through here.
+          // ONBOARDING:
+          'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
+          // ACTIVATION (client half — server fires render_* + *_rejected directly):
+          'upload_started', 'upload_completed', 'result_viewed',
+          // UPGRADE:
+          'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
+          'purchase_started', 'purchase_completed', 'purchase_failed',
+          // RETENTION:
+          'session_started',
         ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
