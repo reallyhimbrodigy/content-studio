@@ -16,7 +16,7 @@ const {
   revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
-const { shouldEnforceWall, effectiveTier, clientWallCapable, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
+const { resolveEnforce, effectiveTier, clientWallCapable, clientFreemium, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
 const { wallRequiredMessage } = require('./lib/failure-copy');
 const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
@@ -150,11 +150,19 @@ function _hasSubscriptionHistory(row) {
   return tier === 'pro' || tier === 'teams' || tier === 'premium';
 }
 
-// True when the wall could actually deny THIS request — knob on AND the caller
-// is a wall-capable (1.2.0+) client. Only then is the extra RC rescue in
-// assertProEntitled worth doing, so the knob-off free-tier hot path pays nothing.
+// True when enforcement could actually deny THIS request, so the extra RC rescue
+// in assertProEntitled is worth doing (a zero-DB-signal granted/comped Pro must
+// never be limited). Two cases:
+//   - a FREEMIUM (1.3.0+) client — freemium is ALWAYS enforced for it, so the RC
+//     rescue must ALWAYS run or a comped-pro on 1.3.0 would hit free-tier caps;
+//   - the legacy knob-gated wall for a wall-capable (1.2.0) client with the knob
+//     on (which stays off — so this term is inert today).
+// Grant-only + per-user throttled, so a genuinely-free user costs at most one
+// throttled RC read that 404s fast. A non-freemium client on the knob-off path
+// pays nothing (both terms false).
 function wallForceRcCheck(req) {
-  return wallEnabled() && clientWallCapable((req && req.headers) || {});
+  const headers = (req && req.headers) || {};
+  return clientFreemium(headers) || (wallEnabled() && clientWallCapable(headers));
 }
 
 async function assertProEntitled(userId, opts = {}) {
@@ -244,9 +252,9 @@ async function leanWallDecision(userId, req, { count = 1 } = {}) {
     row = data || null;
   }
   let tier = entitlementTier(row || {});
-  const enforce = shouldEnforceWall({
+  const enforce = resolveEnforce({
+    headers: req.headers,
     accountCreatedAt: (row || {}).created_at,
-    clientWallCapable: clientWallCapable(req.headers),
   });
   let dec = uploadDecision({ tier, count, enforce });
   if (!dec.allow) {
@@ -1421,7 +1429,7 @@ const server = http.createServer((req, res) => {
         // Uploads spend S3 storage + paid pre-analysis, so an enforced `.none`
         // is denied before any byte lands. Knob OFF (default) short-circuits —
         // byte-for-byte today's behavior, zero extra reads.
-        if (wallEnabled()) {
+        if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
           if (!dec.allow) {
             console.log('  [wall] %d %s (upload) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
@@ -1957,7 +1965,7 @@ const server = http.createServer((req, res) => {
       try {
         const authUser = await requireSupabaseUser(req);
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
-        if (wallEnabled()) {
+        if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
           if (!dec.allow) {
             console.log('  [wall] %d %s (upload-url) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
@@ -1994,7 +2002,7 @@ const server = http.createServer((req, res) => {
         const authUser = await requireSupabaseUser(req);
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
         // partCount is parts of ONE file, so the decision count stays 1.
-        if (wallEnabled()) {
+        if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
           if (!dec.allow) {
             console.log('  [wall] %d %s (multipart-init) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
@@ -2475,9 +2483,9 @@ const server = http.createServer((req, res) => {
         // then routes to the paywall (402).
         const chatEnt = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const chatTier = tierFromEntitlement(chatEnt);
-        const chatEnforce = shouldEnforceWall({
+        const chatEnforce = resolveEnforce({
+          headers: req.headers,
           accountCreatedAt: (chatEnt.row || {}).created_at,
-          clientWallCapable: clientWallCapable(req.headers),
         });
         const chatCaps = capabilities(effectiveTier(chatTier, chatEnforce));
         // Count only when the tier is actually capped — an unlimited tier skips
@@ -2630,9 +2638,9 @@ const server = http.createServer((req, res) => {
         // same decision core, so the two entrances can never disagree.
         const streamEnt = await assertProEntitled(streamUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const streamTier = tierFromEntitlement(streamEnt);
-        const streamEnforce = shouldEnforceWall({
+        const streamEnforce = resolveEnforce({
+          headers: req.headers,
           accountCreatedAt: (streamEnt.row || {}).created_at,
-          clientWallCapable: clientWallCapable(req.headers),
         });
         const streamCaps = capabilities(effectiveTier(streamTier, streamEnforce));
         const streamTodayChats = streamCaps.chatLimit === Infinity
@@ -2820,9 +2828,9 @@ const server = http.createServer((req, res) => {
         // EFFECTIVE tier — what the user ACTUALLY gets, computed the same way the
         // gates do (freemium when the knob is on, legacy when off). New clients
         // read `tier` ('free' 2/day vs 'paid'); is_pro still drives unlimited.
-        const usageEnforce = shouldEnforceWall({
+        const usageEnforce = resolveEnforce({
+          headers: req.headers,
           accountCreatedAt: createdAt,
-          clientWallCapable: clientWallCapable(req.headers),
         });
         const effTier = effectiveTier(rawTier, usageEnforce);
         // render_limit / chat_limit stay the NON-PRO free cap as a non-null Int
@@ -3316,7 +3324,7 @@ const server = http.createServer((req, res) => {
         if (!checkRateLimit(res, 'prewarm', prewarmUser.id, 20, 900)) return;
         // Prewarm door (wall N+1): each prewarm spends paid GPU, so an enforced
         // `.none` is denied. Knob OFF (default) short-circuits — today's behavior.
-        if (wallEnabled()) {
+        if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(prewarmUser.id, req);
           if (!dec.allow) {
             console.log('  [wall] 403 wall_required (prewarm) userId=%s tier=%s', prewarmUser.id, dec.tier);
@@ -3543,9 +3551,9 @@ const server = http.createServer((req, res) => {
         // may carry no row (RC self-heal), and isPro must win over a stale row —
         // otherwise a paying user reads as 'none' and knob-off caps them at 3/day.
         const wallTier = tierFromEntitlement(entitlement);
-        const wallEnforce = shouldEnforceWall({
+        const wallEnforce = resolveEnforce({
+          headers: req.headers,
           accountCreatedAt: (entitlement.row || {}).created_at,
-          clientWallCapable: clientWallCapable(req.headers),
         });
         const wallCaps = capabilities(effectiveTier(wallTier, wallEnforce));
         if (!wallCaps.appUsable) {
@@ -3919,9 +3927,9 @@ const server = http.createServer((req, res) => {
         // (403), and a limited TRIAL gets the 402 paywall (re-edit stays paid).
         const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         const reeditTier = tierFromEntitlement(entitlement);
-        const reeditEnforce = shouldEnforceWall({
+        const reeditEnforce = resolveEnforce({
+          headers: req.headers,
           accountCreatedAt: (entitlement.row || {}).created_at,
-          clientWallCapable: clientWallCapable(req.headers),
         });
         const reeditCaps = capabilities(effectiveTier(reeditTier, reeditEnforce));
         if (!reeditCaps.appUsable) {

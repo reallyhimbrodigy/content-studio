@@ -3,11 +3,16 @@
 //   node --test tests/wall-enforcement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { shouldEnforceWall, effectiveTier, gateDecision, uploadDecision } = require('../lib/wall-enforcement');
+const { shouldEnforceWall, resolveEnforce, clientFreemium, effectiveTier, gateDecision, uploadDecision } = require('../lib/wall-enforcement');
 
 const FLIP = Date.parse('2026-08-01T00:00:00Z');
 const beforeFlip = '2026-07-15T00:00:00Z';
 const afterFlip = '2026-08-05T00:00:00Z';
+
+// Header helpers — mimic what each client era sends.
+const FREEMIUM_HEADERS = { 'x-promptly-freemium': '1', 'x-promptly-wall-capable': '1' }; // 1.3.0
+const WALLCAPABLE_HEADERS = { 'x-promptly-wall-capable': '1' };                            // 1.2.0
+const OLD_HEADERS = {};                                                                    // pre-1.2.0
 
 // ── Rollout policy ─────────────────────────────────────────────────────────
 test('rollout: master switch OFF → never enforce (spine is a no-op pre-flip)', () => {
@@ -24,6 +29,46 @@ test('rollout: enabled + pre-flip account + old binary → grandfathered (no enf
 });
 test('rollout: no flip date configured + old client → not enforced (safe default)', () => {
   assert.strictEqual(shouldEnforceWall({ accountCreatedAt: afterFlip, clientWallCapable: false, enabled: true, flip: null }), false);
+});
+
+// ── resolveEnforce: the 1.3.0-vs-1.2.0 distinguisher (freemium unconditional) ─
+// This is the safety-critical seam: a 1.3.0 client (freemium header) is ALWAYS
+// enforced regardless of the knob; a 1.2.0 client (no freemium header) is only
+// ever the legacy knob-gated wall — which stays off — so it is never walled.
+test('clientFreemium: only the X-Promptly-Freemium:1 header trips it', () => {
+  assert.strictEqual(clientFreemium(FREEMIUM_HEADERS), true);
+  assert.strictEqual(clientFreemium(WALLCAPABLE_HEADERS), false); // 1.2.0 wall-capable is NOT freemium
+  assert.strictEqual(clientFreemium(OLD_HEADERS), false);
+  assert.strictEqual(clientFreemium(undefined), false);
+});
+test('resolveEnforce: 1.3.0 freemium client → ALWAYS enforce, knob OFF, any account age', () => {
+  // Knob explicitly off + a pre-flip account + no flip date: every legacy term
+  // is false, yet the freemium header forces enforcement. Knob is NOT consulted.
+  assert.strictEqual(resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: beforeFlip, enabled: false, flip: null }), true);
+  assert.strictEqual(resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: afterFlip, enabled: false, flip: FLIP }), true);
+});
+test('resolveEnforce: 1.2.0 client (wall-capable, NO freemium header) + knob OFF → NOT enforced', () => {
+  // The live 1.2.0 build: knob off → never enforced → no trial wall activates.
+  assert.strictEqual(resolveEnforce({ headers: WALLCAPABLE_HEADERS, accountCreatedAt: afterFlip, enabled: false, flip: FLIP }), false);
+  assert.strictEqual(resolveEnforce({ headers: WALLCAPABLE_HEADERS, accountCreatedAt: beforeFlip, enabled: false, flip: FLIP }), false);
+});
+test('resolveEnforce: 1.2.0 path still honors the legacy knob when ON (unchanged semantics)', () => {
+  // If the knob were ever flipped on, a 1.2.0 wall-capable client enforces —
+  // exactly as before. resolveEnforce delegates to shouldEnforceWall verbatim.
+  assert.strictEqual(resolveEnforce({ headers: WALLCAPABLE_HEADERS, accountCreatedAt: beforeFlip, enabled: true, flip: FLIP }), true);
+  assert.strictEqual(resolveEnforce({ headers: OLD_HEADERS, accountCreatedAt: beforeFlip, enabled: true, flip: FLIP }), false); // old binary grandfathered
+});
+test('resolveEnforce: freemium 1.3.0 → free 2/day render cap, 402 paywall, NEVER a 403 wall', () => {
+  const enforce = resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: beforeFlip, enabled: false, flip: null });
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce }).allow, true);   // 2nd allowed
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce }).status, 402);   // 3rd → paywall
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce }).route, 'paywall'); // never 'wall'
+});
+test('resolveEnforce: comped/active pro on 1.3.0 → paid, unlimited (exempt under unconditional freemium)', () => {
+  const enforce = resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: afterFlip, enabled: false, flip: null });
+  assert.strictEqual(effectiveTier('paid', enforce), 'paid');
+  assert.strictEqual(gateDecision({ tier: 'paid', kind: 'render', todayCount: 999, enforce }).allow, true);
+  assert.strictEqual(uploadDecision({ tier: 'paid', count: 10, enforce }).allow, true);
 });
 
 // ── effectiveTier: knob-off (legacy) vs knob-on (FREEMIUM) ──────────────────
