@@ -2785,37 +2785,42 @@ const server = http.createServer((req, res) => {
         // renewal date). Read straight from profiles so the client can
         // show a friendly "Trial ends Mar 5" line.
         let proUntil = null;
-        // Trial-wall tier (N+1): 'none' | 'trial' | 'paid'. Additive field — old
-        // clients ignore it; the trial-wall client gates features on it. Default
-        // mirrors is_pro until the profile row is read.
-        let tier = ent.isPro ? 'paid' : 'none';
+        let rawTier = ent.isPro ? 'paid' : 'none';
+        let createdAt = null;
         if (supabaseAdmin) {
           const { data } = await supabaseAdmin
             .from('profiles')
-            .select('tier, comp_pro, pro_until, rc_period_type, rc_app_user_id')
+            .select('tier, comp_pro, pro_until, rc_period_type, rc_app_user_id, created_at')
             .eq('id', u.id)
             .maybeSingle();
           proUntil = data?.pro_until || null;
-          tier = entitlementTier(data);
-          // assertProEntitled may have self-healed Pro after this row was read;
-          // keep tier consistent with is_pro so a just-granted user isn't walled.
-          if (ent.isPro && tier === 'none') tier = 'paid';
-          // Edge counter (ratified item 1): an RC-linked entitlement promoted to
-          // paid ONLY because it lacks a period type. Near-zero once the RC->DB
-          // reconcile cron runs; surfaced here so we see it in logs/[REPORT], not
-          // in a Modal bill. No behavior change — a countable signal, no PII.
+          createdAt = data?.created_at || null;
+          rawTier = tierFromEntitlement({ ...ent, row: data || ent.row });
           if (unknownPeriodPaid(data)) {
             console.warn('[entitlement.edge] active_paid_missing_period', { rc_linked: true });
           }
         }
+        // EFFECTIVE tier — what the user ACTUALLY gets, computed the same way the
+        // gates do (freemium when the knob is on, legacy when off). New clients
+        // read `tier` ('free' 2/day vs 'paid'); is_pro still drives unlimited.
+        const usageEnforce = shouldEnforceWall({
+          accountCreatedAt: createdAt,
+          clientWallCapable: clientWallCapable(req.headers),
+        });
+        const effTier = effectiveTier(rawTier, usageEnforce);
+        // render_limit / chat_limit stay the NON-PRO free cap as a non-null Int
+        // (freemium 2/day vs legacy 3/day). Kept non-null so live pre-1.2.0
+        // clients — whose Snapshot decodes these as required Int — never break;
+        // a pro user's UI ignores them via is_pro.
+        const freeCaps = capabilities(effectiveTier('none', usageEnforce));
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
-          tier,
+          tier: effTier,
           pro_until: proUntil,
           renders_today: renders,
           chats_today: chats,
-          render_limit: FREE_DAILY_RENDERS,
-          chat_limit: FREE_DAILY_CHATS,
+          render_limit: freeCaps.renderLimit,
+          chat_limit: freeCaps.chatLimit,
         });
       } catch (error) {
         const status = error?.statusCode || 500;

@@ -26,20 +26,20 @@ test('rollout: no flip date configured + old client → not enforced (safe defau
   assert.strictEqual(shouldEnforceWall({ accountCreatedAt: afterFlip, clientWallCapable: false, enabled: true, flip: null }), false);
 });
 
-// ── Grandfathering ─────────────────────────────────────────────────────────
-test('effectiveTier: none + not enforcing → trial (today\'s capped free tier)', () => {
+// ── effectiveTier: knob-off (legacy) vs knob-on (FREEMIUM) ──────────────────
+test('effectiveTier knob-off: none → trial (today\'s 3/day free); trial → paid', () => {
   assert.strictEqual(effectiveTier('none', false), 'trial');
+  assert.strictEqual(effectiveTier('trial', false), 'paid'); // active trial was isPro==unlimited today
 });
-test('effectiveTier: none + enforcing → none (the wall)', () => {
-  assert.strictEqual(effectiveTier('none', true), 'none');
+test('effectiveTier FREEMIUM (enforce): none → free (never the wall)', () => {
+  assert.strictEqual(effectiveTier('none', true), 'free');
 });
-test('effectiveTier: trial enforcing → trial (limited); paid always paid', () => {
-  assert.strictEqual(effectiveTier('trial', true), 'trial');
+test('effectiveTier FREEMIUM: active trial → paid (grandfathered for its duration)', () => {
+  assert.strictEqual(effectiveTier('trial', true), 'paid');
+});
+test('effectiveTier: paid always paid', () => {
   assert.strictEqual(effectiveTier('paid', false), 'paid');
   assert.strictEqual(effectiveTier('paid', true), 'paid');
-});
-test('effectiveTier: trial + NOT enforcing → paid (active trial was isPro==unlimited today)', () => {
-  assert.strictEqual(effectiveTier('trial', false), 'paid');
 });
 test('knob-off keeps a straggler trial UNLIMITED — byte-for-byte today', () => {
   assert.strictEqual(gateDecision({ tier: 'trial', kind: 'render', todayCount: 99999, enforce: false }).allow, true);
@@ -48,44 +48,46 @@ test('knob-off keeps a straggler trial UNLIMITED — byte-for-byte today', () =>
 });
 
 // ── The render gate ────────────────────────────────────────────────────────
-test('render: enforced none → DENY at 0 used, route wall, 403 (the wall holds)', () => {
-  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 0, enforce: true }),
-    { allow: false, route: 'wall', status: 403 });
+test('FREEMIUM render: non-pro → free 2/day, upgrade paywall (402) at cap — NEVER a wall', () => {
+  // effectiveTier('none', true) === 'free' → usable, 2/day.
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 0, enforce: true }).allow, true);
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce: true }).allow, true);
+  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce: true }),
+    { allow: false, route: 'paywall', status: 402 });
+  // The 403 wall is structurally unreachable for a non-pro user under freemium.
+  assert.notStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 99, enforce: true }).status, 403);
 });
-test('render: grandfathered none → capped free (3/day), route paywall at cap', () => {
+test('render knob-off (legacy): none → 3/day, paywall at cap', () => {
   assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce: false }).allow, true);
   assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 3, enforce: false }),
     { allow: false, route: 'paywall', status: 402 });
 });
-test('render: trial allows 3, blocks 4th → paywall 402', () => {
-  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'render', todayCount: 2, enforce: true }).allow, true);
-  assert.deepStrictEqual(gateDecision({ tier: 'trial', kind: 'render', todayCount: 3, enforce: true }),
-    { allow: false, route: 'paywall', status: 402 });
-});
-test('render: paid never blocked', () => {
+test('FREEMIUM render: grandfathered trial + paid never blocked', () => {
+  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'render', todayCount: 99999, enforce: true }).allow, true);
   assert.strictEqual(gateDecision({ tier: 'paid', kind: 'render', todayCount: 99999, enforce: true }).allow, true);
 });
 
 // ── The chat gate ──────────────────────────────────────────────────────────
-test('chat: enforced none → wall 403; trial to 50; paid unlimited', () => {
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 0, enforce: true }).status, 403);
-  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'chat', todayCount: 49, enforce: true }).allow, true);
-  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'chat', todayCount: 50, enforce: true }).allow, false);
+test('FREEMIUM chat: free to 50 → paywall; trial + paid unlimited', () => {
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 49, enforce: true }).allow, true);
+  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 50, enforce: true }),
+    { allow: false, route: 'paywall', status: 402 });
+  assert.strictEqual(gateDecision({ tier: 'trial', kind: 'chat', todayCount: 1e6, enforce: true }).allow, true);
   assert.strictEqual(gateDecision({ tier: 'paid', kind: 'chat', todayCount: 1e6, enforce: true }).allow, true);
 });
 
 // ── The upload gate ────────────────────────────────────────────────────────
-test('upload: enforced none → wall 403', () => {
-  assert.deepStrictEqual(uploadDecision({ tier: 'none', count: 1, enforce: true }),
-    { allow: false, route: 'wall', status: 403, max: 0 });
+test('FREEMIUM upload: free 1 → upgrade paywall (402) at 2, never a wall', () => {
+  assert.strictEqual(uploadDecision({ tier: 'none', count: 1, enforce: true }).allow, true);
+  assert.deepStrictEqual(uploadDecision({ tier: 'none', count: 2, enforce: true }),
+    { allow: false, route: 'paywall', status: 402, max: 1 });
 });
-test('upload: grandfathered none → trial cap (1)', () => {
+test('upload knob-off (legacy): none → 1', () => {
   assert.strictEqual(uploadDecision({ tier: 'none', count: 1, enforce: false }).allow, true);
   assert.strictEqual(uploadDecision({ tier: 'none', count: 2, enforce: false }).allow, false);
 });
-test('upload: trial 1, paid 10', () => {
-  assert.strictEqual(uploadDecision({ tier: 'trial', count: 1, enforce: true }).allow, true);
-  assert.strictEqual(uploadDecision({ tier: 'trial', count: 2, enforce: true }).allow, false);
+test('FREEMIUM upload: grandfathered trial + paid → 10', () => {
+  assert.strictEqual(uploadDecision({ tier: 'trial', count: 10, enforce: true }).allow, true);
   assert.strictEqual(uploadDecision({ tier: 'paid', count: 10, enforce: true }).allow, true);
   assert.strictEqual(uploadDecision({ tier: 'paid', count: 11, enforce: true }).allow, false);
 });

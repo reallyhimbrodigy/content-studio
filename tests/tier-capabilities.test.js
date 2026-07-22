@@ -88,3 +88,26 @@ test('limit-hit routing: none→wall, trial→paywall, paid→none', () => {
   assert.strictEqual(denialRouting('trial'), 'paywall');
   assert.strictEqual(denialRouting('paid'), null);
 });
+
+// ── FREEMIUM 'free' tier (2026-07-21 pivot) ─────────────────────────────────
+test("capabilities('free'): usable, 2 renders/day, 1 upload, 50 chats, no reedit/lumen, paywall route", () => {
+  const c = capabilities('free');
+  assert.strictEqual(c.appUsable, true);
+  assert.strictEqual(c.renderLimit, 2);
+  assert.strictEqual(c.uploadMax, 1);
+  assert.strictEqual(c.chatLimit, 50);
+  assert.strictEqual(c.reedit, false);
+  assert.strictEqual(c.lumen, false);
+  assert.strictEqual(c.limitHitRouting, 'paywall'); // upgrade, never a wall
+});
+test("canRender: free allows 2/day then blocks", () => {
+  assert.strictEqual(canRender('free', 1), true);
+  assert.strictEqual(canRender('free', 2), false);
+});
+test("free tier is USABLE — appUsable true (freemium is never a wall)", () => {
+  assert.strictEqual(appUsable('free'), true);
+  assert.strictEqual(canReedit('free'), false);
+  assert.strictEqual(canUseLumen('free'), false);
+  assert.strictEqual(canUpload('free', 1), true);
+  assert.strictEqual(canUpload('free', 2), false);
+});
