@@ -192,7 +192,9 @@ struct PaywallView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            Analytics.track("paywall_view", props: ["reason": reasonKey])
+            // UPGRADE-funnel entry — same canonical event the TrialWallView fires,
+            // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
+            Analytics.track("upgrade_wall_viewed", props: ["context": reasonKey])
             await subscription.refreshOfferings()
             // Default selection: pick the yearly package if present (better
             // value, hint at savings) — otherwise the first available.
@@ -279,8 +281,9 @@ struct PaywallView: View {
         return offering.availablePackages
     }
 
-    /// Short, stable key for the paywall's trigger reason — travels with the
-    /// `paywall_view` event so the funnel can attribute views to their source.
+    /// Short, stable key for the paywall's trigger reason — travels as the
+    /// `context` prop on `upgrade_wall_viewed` so the funnel can attribute views
+    /// to their source (daily cap, re-edit, Lumen, manual).
     private var reasonKey: String {
         switch reason {
         case .dailyRenders: return "daily_renders"
@@ -360,6 +363,8 @@ struct PaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
+            // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
         } label: {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {

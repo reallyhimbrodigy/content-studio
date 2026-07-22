@@ -71,7 +71,8 @@ struct SocialProofView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.ignoresSafeArea())
         .onAppear {
-            Analytics.track("onboarding_step", props: ["step": "social_proof_view"])
+            // ONBOARDING-funnel step 3 of 4.
+            Analytics.track("social_proof_viewed")
             // Native review prompt, before the money ask (its former home, the
             // quiz-fed "building" reveal, was removed). System-rate-limited
             // (max 3/yr) and may silently no-op — never gate flow on it.

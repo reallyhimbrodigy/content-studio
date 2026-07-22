@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED 2026-07-21 — FREEMIUM pivot.** The trial model and the $19.99/$199.99 prices below are OBSOLETE. Promptly is now permanent FREE (2 videos/day) + PRO with NO trials: **weekly $12.99, monthly $39.99, yearly $399.99**. Prices in the app are read live from StoreKit. This doc is kept for history only.
+
 # Promptly 1.2.0 — App Store Product-Page Pass
 
 Bundle: `app.usepromptly.ios` · Current name: "Promptly - AI Video Editor" · Model: Pro $19.99/mo / $199.99/yr, 3-day free trial (limited), no free tier.

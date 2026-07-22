@@ -105,6 +105,24 @@ enum Analytics {
             if let l = preferredLanguage ?? Locale.preferredLanguages.first { personProps["preferred_language"] = l }
             if let t = tier { personProps["tier"] = t }
             PostHogSDK.shared.identify(userId, userProperties: personProps)
+            // Super-properties ride EVERY subsequent event so funnels segment by
+            // tier + country without per-call props.
+            var superProps: [String: Any] = [:]
+            if let t = tier { superProps["tier"] = t }
+            if let c = territory { superProps["country"] = c }
+            if !superProps.isEmpty { PostHogSDK.shared.register(superProps) }
         }
+    }
+
+    /// Update the tier super-property when entitlement changes (free ↔ pro),
+    /// so the same person's later events segment correctly without a full identify.
+    static func setTier(_ tier: String) {
+        PostHogSDK.shared.register(["tier": tier])
+    }
+
+    /// Clear identity + super-properties on sign-out so the next user on this
+    /// device starts a clean, un-merged analytics session.
+    static func reset() {
+        PostHogSDK.shared.reset()
     }
 }

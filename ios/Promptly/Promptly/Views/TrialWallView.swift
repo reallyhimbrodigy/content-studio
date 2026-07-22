@@ -58,7 +58,8 @@ struct TrialWallView: View {
             if showAbandonRecovery { abandonRecovery }
         }
         .onAppear {
-            Analytics.track("wall_view", props: ["context": contextKey])
+            // UPGRADE-funnel entry (after free_limit_hit).
+            Analytics.track("upgrade_wall_viewed", props: ["context": contextKey])
             selectDefaultPackage()
             if packages.isEmpty { Task { await subscription.refreshOfferings() } }
         }
@@ -135,7 +136,8 @@ struct TrialWallView: View {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     selectedPackage = pkg
-                    Analytics.track("package_selected", props: ["type": packageTypeKey(pkg)])
+                    // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
+                    Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -218,13 +220,15 @@ struct TrialWallView: View {
         .background(.black.opacity(0.94))
     }
 
-    // ── Purchase + terminal events (always-fires purchase_result) ────────────
+    // ── Purchase + terminal handling ─────────────────────────────────────────
+    // The UPGRADE funnel terminals (purchase_started → purchase_completed /
+    // purchase_failed, with billing_error + cancelled props) fire canonically
+    // inside SubscriptionService.purchase, for BOTH paywalls and every cancel
+    // path. This handler only drives the UI off the boolean result.
     private func buy() async {
         guard let pkg = selectedPackage else { return }
-        Analytics.track("upgrade_start", props: ["context": contextKey, "plan": packageTypeKey(pkg)])
         let ok = await subscription.purchase(pkg)
         if ok {
-            Analytics.track("purchase_result", props: ["outcome": "success_paid", "context": contextKey])
             if let c = subscription.lastConfirmation {
                 withAnimation { confirmed = c }
             } else {
@@ -232,13 +236,7 @@ struct TrialWallView: View {
             }
         } else if subscription.lastError == nil {
             // User closed Apple's sheet. Honest recovery, same offer, no new flow.
-            Analytics.track("purchase_result", props: ["outcome": "cancelled", "context": contextKey])
-            Analytics.track("upgrade_bounce", props: ["context": contextKey])
             withAnimation { showAbandonRecovery = true }
-        } else {
-            Analytics.track("purchase_result", props: [
-                "outcome": "failed", "context": contextKey, "error": subscription.lastError ?? "unknown",
-            ])
         }
     }
 
@@ -329,14 +327,6 @@ struct TrialWallView: View {
         case .monthly: return "month"
         case .weekly: return "week"
         default: return "period"
-        }
-    }
-    private func packageTypeKey(_ pkg: Package) -> String {
-        switch pkg.packageType {
-        case .annual: return "annual"
-        case .monthly: return "monthly"
-        case .weekly: return "weekly"
-        default: return "other"
         }
     }
 }

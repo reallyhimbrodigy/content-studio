@@ -210,64 +210,70 @@ final class SubscriptionService: ObservableObject {
     /// Purchase a package. Called from PaywallView.
     /// Returns true on success (entitlement granted), false otherwise.
     /// Sets `lastError` for the UI to surface on cancellation / failure.
+    /// Funnel plan key: weekly / monthly / yearly (from the package type).
+    func planKey(_ pkg: Package) -> String {
+        switch pkg.packageType {
+        case .annual: return "yearly"
+        case .monthly: return "monthly"
+        case .weekly: return "weekly"
+        default: return "other"
+        }
+    }
+
     @discardableResult
     func purchase(_ package: Package) async -> Bool {
         guard initialized else { return false }
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }
-        let isFreeTrial = package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
-        Analytics.track("purchase_attempt", props: [
+        let plan = planKey(package)
+        // FREEMIUM upgrade funnel — the central purchase path (fires for BOTH
+        // paywalls). No trial anymore, so no trial_start / trial reminder.
+        Analytics.track("purchase_started", props: [
+            "plan": plan,
             "product": package.storeProduct.productIdentifier,
-            "package": package.identifier,
-            "free_trial": isFreeTrial,
         ])
         do {
             let result = try await Purchases.shared.purchase(package: package)
             applyCustomerInfo(result.customerInfo)
             if !result.userCancelled {
                 lastError = nil
-                // The exact charge and trial-end the user is committing to —
-                // sourced from the transaction, so the confirmation screen and
-                // the reminder state the real number/date, not an estimate.
                 let priceString = package.storeProduct.localizedPriceString
-                let trialEnd = result.customerInfo.entitlements[Self.proEntitlementId]?.expirationDate
-                var reminderScheduled = false
-                if isFreeTrial {
-                    // A completed free-trial purchase starts the trial (the
-                    // entitlement is active immediately for its duration).
-                    Analytics.track("trial_start", props: [
-                        "product": package.storeProduct.productIdentifier,
-                    ])
-                    // Trust-package Fix 2: schedule the local trial-end reminder
-                    // so the paywall's "we'll remind you" promise is real. The
-                    // returned flag gates the confirmation copy so we never claim
-                    // a reminder we couldn't set (notifications off / trial too
-                    // short to leave a 24h lead).
-                    reminderScheduled = await scheduleTrialReminder(trialEnd: trialEnd, price: priceString)
-                }
-                // Trust-package Fix 3: feed the confirmation screen (replaces the
-                // silent dismiss) with concrete facts.
+                Analytics.track("purchase_completed", props: [
+                    "plan": plan,
+                    "product": package.storeProduct.productIdentifier,
+                ])
+                if isPro { Analytics.setTier("pro") } // super-property flips free → pro
+                // Feed the confirmation screen with the concrete charge (no trial).
                 lastConfirmation = PurchaseConfirmation(
-                    isTrial: isFreeTrial,
+                    isTrial: false,
                     price: priceString,
-                    trialEnd: trialEnd,
-                    reminderScheduled: reminderScheduled
+                    trialEnd: nil,
+                    reminderScheduled: false
                 )
                 // Reconcile with the server immediately so the render gate
                 // (which trusts ONLY the server, not RevenueCat's client
                 // cache) unlocks without waiting for the webhook to land.
                 if isPro { await syncEntitlementWithServer() }
+            } else {
+                // Cancel that surfaces as a flag rather than a thrown error.
+                // Fire the terminal here so purchase_started ALWAYS pairs with
+                // exactly one purchase_completed/purchase_failed (clean funnel).
+                Analytics.track("purchase_failed", props: [
+                    "plan": plan,
+                    "billing_error": "user_cancelled",
+                    "cancelled": true,
+                    "product": package.storeProduct.productIdentifier,
+                ])
             }
             return isPro
         } catch {
             let nsErr = error as NSError
             let cancelled = nsErr.code == ErrorCode.purchaseCancelledError.rawValue
-            // Emit for BOTH real errors and user-cancels — a cancel is a funnel
-            // drop we need to see. `cancelled` in props keeps them separable
-            // without adding a seventh event.
-            Analytics.track("purchase_error", props: [
-                "code": nsErr.code,
-                "domain": nsErr.domain,
+            // purchase_failed makes billing declines VISIBLE as analytics, not a
+            // mystery. `cancelled` separates a user-cancel from a real decline.
+            Analytics.track("purchase_failed", props: [
+                "plan": plan,
+                "billing_error": "\(nsErr.domain)#\(nsErr.code)",
                 "cancelled": cancelled,
                 "product": package.storeProduct.productIdentifier,
             ])
@@ -289,7 +295,10 @@ final class SubscriptionService: ObservableObject {
         do {
             let info = try await Purchases.shared.restorePurchases()
             applyCustomerInfo(info)
-            if isPro { await syncEntitlementWithServer() }
+            if isPro {
+                Analytics.setTier("pro") // super-property flips free → pro
+                await syncEntitlementWithServer()
+            }
             return isPro
         } catch {
             lastError = error.localizedDescription

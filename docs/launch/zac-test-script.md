@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED 2026-07-21 — FREEMIUM pivot.** The trial model and the $19.99/$199.99 prices below are OBSOLETE. Promptly is now permanent FREE (2 videos/day) + PRO with NO trials: **weekly $12.99, monthly $39.99, yearly $399.99**. Prices in the app are read live from StoreKit. This doc is kept for history only.
+
 # Zac's single 1.2.0 test — one session, ~20 minutes
 
 This is the only human gate before launch. Everything else is machine-verified

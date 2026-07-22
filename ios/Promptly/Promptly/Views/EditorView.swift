@@ -1100,6 +1100,9 @@ struct EditorView: View {
                 return
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Free tier = 1 upload at a time; this is the second-upload cap
+            // (presentPaywall(.manual) doesn't self-classify, so fire it here).
+            Analytics.track("free_limit_hit", props: ["limit": "second_upload"])
             appState.presentPaywall(.manual)
             return
         }
@@ -1121,6 +1124,12 @@ struct EditorView: View {
                     let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
                     if !valid {
                         let userWantsToProceed = await askToProceedAfterPrecheck()
+                        // ACTIVATION content-rejection: on-device precheck flagged
+                        // the clip. `proceeded` tells apart "picked another" from
+                        // "Try Anyway" (which still uploads).
+                        Analytics.track("not_talking_head_rejected", props: [
+                            "stage": "precheck", "proceeded": userWantsToProceed,
+                        ])
                         if !userWantsToProceed { continue }
                     }
                 }
@@ -1177,6 +1186,10 @@ struct EditorView: View {
                      validation.reason ?? "n/a"))
 
         if !validation.isTalkingHead {
+            // ACTIVATION content-rejection: server sample-validate rejected it,
+            // BEFORE any render was dispatched (distinct from the server render
+            // rejections in dispatch-to-modal, which fire at render time).
+            Analytics.track("not_talking_head_rejected", props: ["stage": "validate"])
             let message = validation.userMessage
                 ?? "Promptly works best with videos of someone talking on camera. Pick another clip?"
             await MainActor.run {
@@ -1191,6 +1204,8 @@ struct EditorView: View {
     /// handlePickedVideos so the precheck can gate it without
     /// duplicating logic.
     private func addPendingVideoAndStartUpload(_ video: PickedVideo) {
+        // ACTIVATION-funnel: an upload begins (after any talking-head precheck).
+        Analytics.track("upload_started")
         // Warm the GPU render container the instant an upload begins — the
         // earliest possible point — so its ~15-30s cold start (heavy import +
         // CUDA init) overlaps the entire upload + preprocessing and the render
@@ -1479,6 +1494,8 @@ struct EditorView: View {
                             pending.proxyUploadFinished = true
                         }
                         firePrewarmOnce.fire(publicUrl)
+                        // ACTIVATION-funnel: source bytes confirmed in S3.
+                        Analytics.track("upload_completed")
                     }
 
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))

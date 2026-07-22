@@ -30,7 +30,7 @@ enum TrialCopy {
 
     /// Fallback anchor when RevenueCat's `localizedPricePerMonth` is nil: divide
     /// the yearly price by 12 and format with the PRODUCT'S OWN formatter — so the
-    /// currency and locale come from StoreKit ($199.99→"$16.67", ₹19,900→"₹1,658"),
+    /// currency and locale come from StoreKit ($399.99→"$33.33", ₹19,900→"₹1,658"),
     /// never an assumed `$`. A hardcoded currency here would re-commit the exact
     /// presentation sin the Trust Package exists to fix.
     static func monthlyEquivalent(fromYearlyPrice yearly: Decimal, using formatter: NumberFormatter) -> String? {

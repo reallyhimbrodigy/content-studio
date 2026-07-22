@@ -48,9 +48,9 @@ check(TrialCopy.monthlyEquivalent(perMonthPrice: "   ") == nil,
 // proves currency + locale come from StoreKit, never an assumed "$".
 let usd = NumberFormatter()
 usd.numberStyle = .currency; usd.currencyCode = "USD"; usd.locale = Locale(identifier: "en_US")
-check(TrialCopy.monthlyEquivalent(fromYearlyPrice: Decimal(string: "199.99")!, using: usd)
-      == "that's $16.67/mo, billed yearly",
-      "$199.99/yr divides to $16.67/mo (real Promptly yearly price)")
+check(TrialCopy.monthlyEquivalent(fromYearlyPrice: Decimal(string: "399.99")!, using: usd)
+      == "that's $33.33/mo, billed yearly",
+      "$399.99/yr divides to $33.33/mo (real Promptly yearly price)")
 
 let inr = NumberFormatter()
 inr.numberStyle = .currency; inr.currencyCode = "INR"; inr.locale = Locale(identifier: "en_IN")

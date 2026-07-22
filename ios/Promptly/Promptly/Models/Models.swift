@@ -472,14 +472,33 @@ final class AppState: ObservableObject {
     /// modal on screen; if a stale reason is stuck (a sheet that never actually
     /// presented), this re-drives so the request can't be silently muted.
     func presentPaywall(_ reason: PaywallReason) {
+        trackFreeLimitHit(reason)
         paywallRouting.request(reason)
         mirrorPaywallRouting()
+    }
+
+    /// UPGRADE-funnel head: a free user encountered a Pro-gated limit. Fired from
+    /// the SINGLE routing chokepoint (present + defer) so every gated door counts
+    /// once, with the specific cap in `limit`. `.manual` is intentionally excluded
+    /// — it covers both genuine upgrade taps (Account) and the second-upload cap,
+    /// so the real second_upload encounter is fired explicitly at its site.
+    private func trackFreeLimitHit(_ reason: PaywallReason) {
+        let limit: String?
+        switch reason {
+        case .dailyRenders: limit = "daily_cap"
+        case .dailyChats:   limit = "daily_chats"
+        case .reedit:       limit = "re_edit"
+        case .lumen:        limit = "lumen"
+        case .manual:       limit = nil
+        }
+        if let limit { Analytics.track("free_limit_hit", props: ["limit": limit]) }
     }
 
     /// Park a paywall behind a blocking modal (full-screen player, or a sheet
     /// that's mid-dismiss). Shows nothing yet — call `flushDeferredPaywall()`
     /// from the modal's dismissal hook to present it once the context is free.
     func deferPaywall(_ reason: PaywallReason) {
+        trackFreeLimitHit(reason) // the cap was encountered now, even if shown later
         paywallRouting.park(reason)
     }
 

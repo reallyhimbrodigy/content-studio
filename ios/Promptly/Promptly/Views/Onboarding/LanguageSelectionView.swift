@@ -44,9 +44,8 @@ struct LanguageSelectionView: View {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             state.preferredLanguage = lang.code
-                            Analytics.track("onboarding_step", props: [
-                                "step": "language_selected", "language": lang.code,
-                            ])
+                            // Discrete ONBOARDING-funnel event (step 1 of 4).
+                            Analytics.track("language_selected", props: ["language": lang.code])
                             // Push the choice onto the person profile immediately.
                             if let uid = AuthService.shared.currentUser?.id {
                                 Analytics.identify(userId: uid, preferredLanguage: lang.code)

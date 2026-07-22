@@ -16,23 +16,32 @@
       "name": "Free",
       "price": "0",
       "priceCurrency": "USD",
-      "description": "3 renders per day, 50 AI chat messages per day, all 20 caption styles, all effects."
+      "description": "2 videos per day, 1 upload at a time, all caption styles and effects with the Flare model."
+    },
+    {
+      "@type": "Offer",
+      "name": "Pro Weekly",
+      "price": "12.99",
+      "priceCurrency": "USD",
+      "description": "Unlimited videos, re-edit any finished video, the Lumen cinematic model, up to 10 uploads at once, priority queue.",
+      "priceValidUntil": "2030-12-31",
+      "availability": "https://schema.org/InStock"
     },
     {
       "@type": "Offer",
       "name": "Pro Monthly",
-      "price": "19.99",
+      "price": "39.99",
       "priceCurrency": "USD",
-      "description": "Unlimited renders, unlimited chats, re-edit any finished video, priority queue. 3-day free trial.",
+      "description": "Unlimited videos, re-edit any finished video, the Lumen cinematic model, up to 10 uploads at once, priority queue.",
       "priceValidUntil": "2030-12-31",
       "availability": "https://schema.org/InStock"
     },
     {
       "@type": "Offer",
       "name": "Pro Yearly",
-      "price": "199.99",
+      "price": "399.99",
       "priceCurrency": "USD",
-      "description": "Same as Pro Monthly, ~17% savings. 3-day free trial.",
+      "description": "Everything in Pro, billed yearly (~17% off monthly).",
       "priceValidUntil": "2030-12-31",
       "availability": "https://schema.org/InStock"
     }

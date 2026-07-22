@@ -225,6 +225,13 @@ struct PromptlyApp: App {
     @StateObject private var appState = AppState.shared
     @StateObject private var onboarding = OnboardingState.shared
 
+    /// RETENTION-funnel: app foreground lifecycle. Fires `session_started` on the
+    /// first `.active` (cold launch) and on every real background→active resume —
+    /// NOT on transient inactive↔active blips (Control Center, notification
+    /// banners), which would inflate the count.
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var didStartSession = false
+
     /// The 1.2.0 wall-onboarding branch, gated on the ONE knob (read pre-auth
     /// from /api/health — same knob as the server gates; flip once, both
     /// halves move). Knob off (default / fetch-failed) → today's branches,
@@ -280,6 +287,13 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
+            .onChange(of: scenePhase) { previous, phase in
+                guard phase == .active else { return }
+                if !didStartSession || previous == .background {
+                    didStartSession = true
+                    Analytics.track("session_started")
+                }
+            }
             .environmentObject(appState)
             // Apply the onboarding language choice app-wide this session (the
             // String Catalog resolves Text() against this locale). Persisted via
@@ -324,9 +338,11 @@ struct PromptlyApp: App {
                     // onto the signed-in person (same Supabase uid the server's
                     // RC-webhook mirror captures under — funnels join across
                     // the client/server seam).
+                    // FREEMIUM tier super-property is free/pro (the funnel's
+                    // segmentation dimension) — never the internal none/trial/paid.
                     Analytics.identify(
                         userId: uid,
-                        tier: SubscriptionService.shared.effectiveIsPro ? "paid" : "none"
+                        tier: SubscriptionService.shared.effectiveIsPro ? "pro" : "free"
                     )
                     await UsageService.shared.refresh()
                 }

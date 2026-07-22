@@ -289,6 +289,10 @@ class AuthService {
         Task { @MainActor in
             await SubscriptionService.shared.clearIdentity()
         }
+        // Detach the PostHog identity + clear super-properties (tier/country) so
+        // the next user on this device starts a clean, un-merged analytics
+        // session rather than inheriting the previous person's identity.
+        Analytics.reset()
         refreshTask?.cancel()
         refreshTask = nil
         UserDefaults.standard.removeObject(forKey: tokenKey)

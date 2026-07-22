@@ -1664,6 +1664,8 @@ enum VideoPlayerPresenter {
             print("[player] FAILED: no topmost view controller")
             return
         }
+        // ACTIVATION-funnel terminal: the finished render is being viewed.
+        Analytics.track("result_viewed")
         topVC.present(host, animated: true)
     }
 

@@ -48,7 +48,9 @@ struct OnboardingFlow: View {
 
             case .wall:
                 TrialWallView(context: .onboarding) {
-                    // Trial started or Pro purchased — the only doors out.
+                    // Pro purchased or dismissed to free — either way onboarding
+                    // is done (ONBOARDING-funnel step 4 of 4).
+                    Analytics.track("onboarding_completed")
                     state.hasCompletedOnboarding = true
                     state.step = .done
                 }
@@ -63,6 +65,8 @@ struct OnboardingFlow: View {
         .animation(.spring(response: 0.34, dampingFraction: 1.0), value: state.step)
         .onChange(of: auth.isAuthenticated) { _, isAuthed in
             if isAuthed && state.step == .signup {
+                // ONBOARDING-funnel step 2 of 4 — the real signup moment.
+                Analytics.track("signup_completed")
                 state.step = .socialProof
             }
         }
