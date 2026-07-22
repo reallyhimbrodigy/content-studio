@@ -2318,12 +2318,17 @@ const server = http.createServer((req, res) => {
           'first_render_start', 'render_complete', 'render_failed',
           'paywall_dismiss',
           // FREEMIUM funnels (2026-07-21). Discrete per-step events so each stage
-          // is a PostHog funnel. render_started/completed + *_rejected fire
-          // SERVER-side (dispatch, authoritative) and never come through here.
+          // is a PostHog funnel. render_started/completed and the RENDER-TIME
+          // *_rejected fire SERVER-side (dispatch, authoritative) and never come
+          // through here. The PRE-render content rejections DO come through here:
+          // the client fires them at its on-device precheck + server sample-
+          // validate, before any render is dispatched — allowlist them so the SQL
+          // mirror gets the same events the client already sends to PostHog.
           // ONBOARDING:
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
-          // ACTIVATION (client half — server fires render_* + *_rejected directly):
+          // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
