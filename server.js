@@ -233,14 +233,30 @@ async function assertProEntitled(userId, opts = {}) {
 
 /**
  * Lean wall decision for endpoints that had NO entitlement read before the wall
- * (upload presigns, GPU prewarm). Called ONLY when the knob is on — knob OFF
- * short-circuits at the call site, so today's paths gain zero reads.
+ * (upload presigns, GPU prewarm). Called when enforcement is live — the knob is
+ * on OR the caller is a freemium (1.3.0+) client; a legacy request that is
+ * neither short-circuits at the call site, so today's 1.2.0 paths gain zero reads.
  *
- * Reads the profile row directly (no RevenueCat round-trip on the hot path);
- * before DENYING, escalates once through assertProEntitled so a paying user
- * whose webhook was missed self-heals instead of hitting the wall (grant-only,
- * internally throttled — the same never-deny-a-payer rule as every other gate).
+ * Reads the profile row directly, escalates through assertProEntitled (grant-only,
+ * throttled) before denying so a paying/comped user is never wrongly capped, and
+ * then applies the ACCOUNT-GLOBAL concurrency cap (1 free / 10 pro in flight).
  */
+// ACCOUNT-GLOBAL in-flight video count: how many of THIS user's videos are
+// queued or processing right NOW, across every chat/session (keyed on user_id,
+// never on chat_id). This single definition is the one both the upload doors
+// (leanWallDecision) and the render door use, so "1 video at a time" means the
+// same thing whether the 2nd video is started in the same chat or a new one.
+async function inFlightJobCount(userId) {
+  if (!supabaseAdmin) return 0;
+  const { count, error } = await supabaseAdmin
+    .from('video_jobs')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .in('status', ['queued', 'processing']);
+  if (error) { const e = new Error(error.message); e.code = 'pending_check_failed'; throw e; }
+  return count || 0;
+}
+
 async function leanWallDecision(userId, req, { count = 1 } = {}) {
   let row = null;
   if (supabaseAdmin) {
@@ -256,15 +272,75 @@ async function leanWallDecision(userId, req, { count = 1 } = {}) {
     headers: req.headers,
     accountCreatedAt: (row || {}).created_at,
   });
+
+  // Per-request upload-size decision (files in THIS request vs the tier cap).
   let dec = uploadDecision({ tier, count, enforce });
-  if (!dec.allow) {
-    // Escalate through the pro gate before denying; force the RC rescue so a
-    // zero-history granted-pro is never walled at upload/prewarm.
+
+  // Resolve the AUTHORITATIVE entitlement before enforcing the concurrency cap —
+  // a zero-DB-signal comped/granted Pro must read as paid (cap 10), never be
+  // capped at 1. forceRcCheck fires for freemium clients, mirroring the render
+  // door's never-deny-a-payer rule. Pay for it only when actually enforcing (or
+  // the per-request decision already denied).
+  if (enforce || !dec.allow) {
     const healed = await assertProEntitled(userId, { forceRcCheck: wallForceRcCheck(req) });
     tier = tierFromEntitlement(healed);
     dec = uploadDecision({ tier, count, enforce });
   }
+  if (!dec.allow) return { ...dec, tier };
+
+  // ACCOUNT-GLOBAL concurrency — the loophole fix. A free user gets 1 video in
+  // flight at a time, a Pro/comped-pro 10, counted across ALL chats/sessions.
+  // The iOS pending-tile cap is per-chat, so a free user could open a new chat
+  // and start a 2nd upload; this denies that 2nd concurrent UPLOAD here (before
+  // any S3/pre-analysis spend) with the upgrade paywall (402). Only when
+  // enforcing (freemium clients); legacy/1.2.0 requests never reach this branch.
+  if (enforce) {
+    const cap = capabilities(effectiveTier(tier, enforce)).uploadMax; // 1 free / 10 pro
+    let inFlight;
+    try {
+      inFlight = await inFlightJobCount(userId);
+    } catch (e) {
+      console.error('  [concurrency] in-flight count failed, refusing action', { userId, error: e.message });
+      return { allow: false, route: null, status: 503, tier, error: 'pending_check_failed' };
+    }
+    if (inFlight >= cap) {
+      const proC = cap >= 10;
+      console.log('  [paywall] 402 concurrency_limit_reached (upload) userId=%s inFlight=%d cap=%d', userId, inFlight, cap);
+      return {
+        allow: false, route: 'paywall', status: 402, tier,
+        error: 'concurrency_limit_reached',
+        kind: proC ? 'concurrency_pro' : 'concurrency_free',
+        limit: cap, max: cap,
+        message: proC
+          ? `You can have up to ${cap} videos in flight at once.`
+          : 'Free accounts can process 1 video at a time. Upgrade to Pro for 10 in parallel.',
+      };
+    }
+  }
   return { ...dec, tier };
+}
+
+// Format an upload-door denial from leanWallDecision consistently across all four
+// doors (legacy-upload / upload-url / multipart-init / prewarm). A wall stays a
+// 403 wall_required; a concurrency/upload cap is a 402 the client routes to the
+// upgrade paywall (kind + message carried through so the copy is accurate); an
+// in-flight-count failure is a 503 (fail closed, never silently allow).
+function sendUploadDenial(res, dec, label, userId) {
+  console.log('  [wall] %d %s (%s) userId=%s tier=%s', dec.status, dec.route || dec.error || '-', label, userId, dec.tier);
+  if (dec.route === 'wall') {
+    return sendJson(res, dec.status, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
+  }
+  if (dec.status === 503) {
+    return sendJson(res, 503, { error: dec.error || 'pending_check_failed' });
+  }
+  return sendJson(res, dec.status, {
+    error: dec.error || 'upload_limit_reached',
+    route: 'paywall',
+    kind: dec.kind,
+    limit: dec.limit,
+    max: dec.max,
+    message: dec.message,
+  });
 }
 
 
@@ -1431,12 +1507,7 @@ const server = http.createServer((req, res) => {
         // byte-for-byte today's behavior, zero extra reads.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
-          if (!dec.allow) {
-            console.log('  [wall] %d %s (upload) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
-            return sendJson(res, dec.status, dec.route === 'wall'
-              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
-              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
-          }
+          if (!dec.allow) return sendUploadDenial(res, dec, 'upload', authUser.id);
         }
         const userId = authUser.id;
 
@@ -1967,12 +2038,7 @@ const server = http.createServer((req, res) => {
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
-          if (!dec.allow) {
-            console.log('  [wall] %d %s (upload-url) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
-            return sendJson(res, dec.status, dec.route === 'wall'
-              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
-              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
-          }
+          if (!dec.allow) return sendUploadDenial(res, dec, 'upload-url', authUser.id);
         }
         const body = await readJsonBody(req);
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -2004,12 +2070,7 @@ const server = http.createServer((req, res) => {
         // partCount is parts of ONE file, so the decision count stays 1.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
-          if (!dec.allow) {
-            console.log('  [wall] %d %s (multipart-init) userId=%s tier=%s', dec.status, dec.route, authUser.id, dec.tier);
-            return sendJson(res, dec.status, dec.route === 'wall'
-              ? { error: 'wall_required', route: 'wall', message: wallRequiredMessage() }
-              : { error: 'upload_limit_reached', route: 'paywall', max: dec.max });
-          }
+          if (!dec.allow) return sendUploadDenial(res, dec, 'multipart-init', authUser.id);
         }
         const body = await readJsonBody(req);
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -3326,10 +3387,7 @@ const server = http.createServer((req, res) => {
         // `.none` is denied. Knob OFF (default) short-circuits — today's behavior.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(prewarmUser.id, req);
-          if (!dec.allow) {
-            console.log('  [wall] 403 wall_required (prewarm) userId=%s tier=%s', prewarmUser.id, dec.tier);
-            return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
-          }
+          if (!dec.allow) return sendUploadDenial(res, dec, 'prewarm', prewarmUser.id);
         }
         const body = await readJsonBody(req);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
@@ -3619,12 +3677,11 @@ const server = http.createServer((req, res) => {
             }
           }
           if (supabaseAdmin) {
-            const { count: pendingCount, error: pendingErr } = await supabaseAdmin
-              .from('video_jobs')
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', authUser.id)
-              .in('status', ['queued', 'processing']);
-            if (pendingErr) {
+            let pendingCount;
+            try {
+              // Same account-global in-flight definition the upload doors use.
+              pendingCount = await inFlightJobCount(authUser.id);
+            } catch (pendingErr) {
               console.error('  [paywall] pending-count failed, refusing action',
                 { userId: authUser.id, error: pendingErr.message });
               return { status: 503, body: { error: 'pending_check_failed' } };
