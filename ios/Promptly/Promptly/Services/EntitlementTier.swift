@@ -1,20 +1,23 @@
 import Foundation
 
-/// The user's effective entitlement tier under the trial-wall model (Release N+1).
-/// The case order IS the privilege order: `none < trial < paid`.
-///   - `none`  — no active entitlement → the wall (pre-trial or lapsed).
-///   - `trial` — an active free trial → today's free limits (limited tier).
+/// The user's effective entitlement tier. FREEMIUM model (2026-07-21):
+/// permanent FREE + PRO, no trials. The case order IS the privilege order:
+/// `none < free < trial < paid`.
+///   - `none`  — legacy/fail-closed only; under freemium a non-pro user is
+///               `free`, never `none`, so there is no wall.
+///   - `free`  — the permanent free tier: 2 videos/day, 1 upload, no re-edit,
+///               no Lumen. Hitting a limit routes to the upgrade paywall.
+///   - `trial` — the one grandfathered mid-purchased-trial user (Apple honors
+///               it) — treated as full Pro for its duration, then lapses to free.
 ///   - `paid`  — full Pro.
 ///
-/// Pure and dependency-free (Foundation only, no RevenueCat/SwiftUI) so the
-/// composition rule below compiles and unit-tests standalone with `swiftc`
-/// (see `Tests/run.sh`). Tier disagreements are exactly where this app's billing
-/// history says reality pokes, so the rule is written here, not assumed at each
-/// call site.
+/// Pure and dependency-free (Foundation only) so the composition rule compiles
+/// and unit-tests standalone with `swiftc` (see `Tests/run.sh`).
 enum EntitlementTier: Int, Comparable {
     case none = 0
-    case trial = 1
-    case paid = 2
+    case free = 1
+    case trial = 2
+    case paid = 3
 
     static func < (lhs: EntitlementTier, rhs: EntitlementTier) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -45,6 +48,7 @@ enum EntitlementTier: Int, Comparable {
         switch (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "paid":  return .paid
         case "trial": return .trial
+        case "free":  return .free
         default:      return .none
         }
     }
@@ -73,6 +77,7 @@ extension EntitlementTier {
         switch self {
         case .paid:  return Capabilities(appUsable: true,  uploadMax: 10, renderLimit: .max, chatLimit: .max, reedit: true,  lumen: true,  limitHitRouting: .unused)
         case .trial: return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 3,    chatLimit: 50,   reedit: false, lumen: false, limitHitRouting: .paywall)
+        case .free:  return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 2,    chatLimit: 50,   reedit: false, lumen: false, limitHitRouting: .paywall)
         case .none:  return Capabilities(appUsable: false, uploadMax: 0,  renderLimit: 0,    chatLimit: 0,    reedit: false, lumen: false, limitHitRouting: .wall)
         }
     }

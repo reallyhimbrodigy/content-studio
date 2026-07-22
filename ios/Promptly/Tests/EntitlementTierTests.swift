@@ -78,6 +78,22 @@ check(EntitlementTier.none.limitHitRouting == .wall && EntitlementTier.trial.lim
       && EntitlementTier.paid.limitHitRouting == .unused,
       "limit-hit routing: none→wall, trial→paywall, paid→unused")
 
+// ── FREEMIUM 'free' tier (2026-07-21) ──────────────────────────────────────
+check(EntitlementTier.fromServer("free") == .free, "fromServer: 'free' → .free")
+check(EntitlementTier.none < .free && EntitlementTier.free < .trial && EntitlementTier.trial < .paid,
+      "privilege order: none < free < trial < paid")
+check(EntitlementTier.free.appUsable, "free is USABLE (freemium is never a wall)")
+check(EntitlementTier.free.capabilities.renderLimit == 2 && EntitlementTier.free.uploadMax == 1,
+      "free: 2 renders/day, 1 upload")
+check(!EntitlementTier.free.canReedit && !EntitlementTier.free.canUseLumen,
+      "free: no re-edit, no Lumen")
+check(EntitlementTier.free.canRender(todayRenders: 1) && !EntitlementTier.free.canRender(todayRenders: 2),
+      "free: allows the 2nd, blocks the 3rd")
+check(EntitlementTier.free.limitHitRouting == .paywall, "free: limit → upgrade paywall, never wall")
+// The client composes RC(non-pro = .none) with server 'free' → .free (most-privileged wins).
+check(EntitlementTier.resolve(rc: .none, server: .free) == .free, "resolve(.none, .free) → .free")
+check(EntitlementTier.resolve(rc: .paid, server: .free) == .paid, "resolve(.paid, .free) → .paid (pro wins)")
+
 print("\n\(checks) checks, \(failures) failures")
 if failures > 0 { exit(1) }
 }

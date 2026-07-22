@@ -1,22 +1,20 @@
 import SwiftUI
 import RevenueCat
 
-/// Beat 7 — THE WALL. The trial-timeline paywall: Cal AI's conversion science,
-/// none of their violations. The laws this screen embodies (what got them
-/// removed in April 2026, refused here):
-///   - The BILLED amount is always the most prominent price; the monthly-
-///     equivalent is an anchor line UNDER it, never above it.
-///   - Auto-renewal is never obscured: the timeline's Day-3 row names the
-///     charge and the fineprint says auto-renews, cancel anytime.
-///   - ONE wall. A decliner sees the SAME offer again — the abandon-recovery
-///     overlay confirms no charge was made and returns here. Never a second
-///     flow, never a different price.
-///   - Eligibility-truthful CTA: "Start free trial" ONLY when StoreKit says an
-///     intro trial applies; otherwise "Get Pro now" with the immediate charge
-///     named. A lapsed subscriber never sees a fake trial promise.
+/// THE UPGRADE WALL (freemium, 2026-07-21 pivot — supersedes the trial wall).
+/// Promptly is now permanent FREE + PRO, NO trials. This screen presents ONLY
+/// the paid upgrade — no trial timeline, no "start free trial", no intro-offer
+/// language anywhere. The honesty laws still hold:
+///   - The BILLED amount is the most prominent price; the per-month equivalent
+///     is a smaller anchor UNDER it, never above.
+///   - Auto-renewal is never obscured (the fineprint names the charge + renewal).
+///   - ONE wall. A decliner sees the SAME offer again — the abandon overlay
+///     confirms no charge and returns here. Never a second flow or price.
 ///
-/// Contexts: onboarding (the flow's final beat) · lapsed (beat 10 — their
-/// edits are waiting) · door (a `.none` user hit a feature door post-flip).
+/// Contexts: onboarding (the flow's final beat) · lapsed ("your videos are
+/// waiting") · door (a free user tapped a Pro feature / hit a free limit).
+/// The struct name is kept so existing call sites (OnboardingFlow, AppShell)
+/// don't change.
 struct TrialWallView: View {
     enum Context { case onboarding, lapsed, door }
 
@@ -28,27 +26,14 @@ struct TrialWallView: View {
     @State private var showAbandonRecovery = false
     @State private var confirmed: SubscriptionService.PurchaseConfirmation?
 
-    // ── Derived truth ────────────────────────────────────────────────────────
+    // ── Derived ──────────────────────────────────────────────────────────────
     private var packages: [Package] {
         subscription.offerings?.current?.availablePackages ?? []
-    }
-    private var trialEligible: Bool {
-        selectedPackage?.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
     }
     private var billedPrice: String {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"
     }
-    private var trialDays: Int {
-        // Length of the intro period in days (e.g. 3 for the 3-day trial).
-        guard let d = selectedPackage?.storeProduct.introductoryDiscount,
-              d.paymentMode == .freeTrial else { return 3 }
-        let p = d.subscriptionPeriod
-        switch p.unit {
-        case .day: return p.value
-        case .week: return p.value * 7
-        default: return 3
-        }
-    }
+    private var billedPeriod: String { periodLabel(selectedPackage) }
     private var monthlyEquivalent: String? {
         guard let pkg = selectedPackage, pkg.packageType == .annual,
               let price = pkg.storeProduct.pricePerMonth else { return nil }
@@ -58,34 +43,34 @@ struct TrialWallView: View {
         return f.string(from: price)
     }
 
+    private let proBenefits: [(icon: String, text: String)] = [
+        ("infinity", "Unlimited videos a day"),
+        ("arrow.uturn.left", "Re-edit any finished video"),
+        ("wand.and.stars", "Lumen — the cinematic AI model"),
+        ("square.stack.3d.up.fill", "Upload up to 10 at once"),
+        ("bolt.fill", "Priority render queue"),
+    ]
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-
-            if let c = confirmed {
-                confirmation(c)
-            } else {
-                wall
-            }
-
-            if showAbandonRecovery {
-                abandonRecovery
-            }
+            if let c = confirmed { confirmation(c) } else { wall }
+            if showAbandonRecovery { abandonRecovery }
         }
         .onAppear {
             Analytics.track("wall_view", props: ["context": contextKey])
-            if selectedPackage == nil {
-                selectedPackage = packages.first(where: { $0.packageType == .annual }) ?? packages.first
-            }
-            if packages.isEmpty {
-                Task { await subscription.refreshOfferings() }
-            }
+            selectDefaultPackage()
+            if packages.isEmpty { Task { await subscription.refreshOfferings() } }
         }
         .onChange(of: subscription.offerings?.current?.availablePackages.count ?? 0) { _, _ in
-            if selectedPackage == nil {
-                selectedPackage = packages.first(where: { $0.packageType == .annual }) ?? packages.first
-            }
+            selectDefaultPackage()
         }
+    }
+
+    private func selectDefaultPackage() {
+        guard selectedPackage == nil else { return }
+        // Default to annual (best value) when present, else the first package.
+        selectedPackage = packages.first(where: { $0.packageType == .annual }) ?? packages.first
     }
 
     private var contextKey: String {
@@ -96,88 +81,51 @@ struct TrialWallView: View {
         }
     }
 
-    // ── The wall proper ──────────────────────────────────────────────────────
+    // ── The wall ─────────────────────────────────────────────────────────────
     private var wall: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 22) {
-                VStack(spacing: 8) {
-                    Text(context == .lapsed ? "Your videos are waiting" : "Start creating today")
+            VStack(spacing: 20) {
+                VStack(spacing: 10) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 30))
+                        .foregroundColor(.yellow)
+                    Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                     Text(context == .lapsed
-                         ? "Everything you made is still here. Pick up where you left off."
-                         : trialEligible
-                            ? "Start creating free for \(trialDays) days."
-                            : "Full access to your AI studio.")
+                         ? "Everything you made is still here. Go Pro to keep creating without limits."
+                         : "Go beyond the free 2 videos a day — everything, unlimited.")
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))
                         .multilineTextAlignment(.center)
                 }
-                .padding(.top, 26)
+                .padding(.top, 24)
 
-                // The timeline — only when a trial genuinely applies. Its whole
-                // job is transparency: what happens on which day, including the
-                // charge. A no-trial context gets no fake timeline.
-                if trialEligible && context != .lapsed {
-                    timeline
+                // What Pro unlocks.
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(proBenefits, id: \.text) { b in
+                        HStack(spacing: 14) {
+                            Image(systemName: b.icon)
+                                .font(.system(size: 16))
+                                .foregroundColor(.yellow)
+                                .frame(width: 26)
+                            Text(b.text)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                    }
                 }
+                .padding(18)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
 
                 planPicker
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 210) // room for the pinned footer
+            .padding(.bottom, 200)
         }
         .safeAreaInset(edge: .bottom) { footer }
-    }
-
-    private var timeline: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Honest to the LIMITED trial tier (3 renders/day, captions, cuts,
-            // B-roll; re-edit + Lumen stay Pro). Never claim "unlimited" or
-            // "re-edit" here — those are paid-only. Matches EntitlementTier.trial.
-            timelineRow(icon: "lock.open.fill", tint: .green,
-                        title: "Today — start creating",
-                        line: "3 edits a day with captions, cuts & B-roll. Cancel anytime.",
-                        last: false)
-            timelineRow(icon: "bell.fill", tint: .yellow,
-                        title: "Day \(max(trialDays - 1, 1)) — we remind you",
-                        line: "A notification before your trial ends. We actually send it.",
-                        last: false)
-            timelineRow(icon: "creditcard.fill", tint: .white,
-                        title: "Day \(trialDays) — \(billedPrice) is billed",
-                        line: "Only if you haven't cancelled. Auto-renews until cancelled.",
-                        last: true)
-        }
-        .padding(20)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    // LocalizedStringKey params so interpolated literals (e.g. "Day \(n) — we
-    // remind you") generate format keys ("Day %lld — we remind you") that the
-    // String Catalog localizes; static literals localize by their own text.
-    private func timelineRow(icon: String, tint: Color, title: LocalizedStringKey, line: LocalizedStringKey, last: Bool) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(spacing: 0) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(width: 32, height: 32)
-                    .background(tint, in: Circle())
-                if !last {
-                    Rectangle().fill(Color.white.opacity(0.18)).frame(width: 2, height: 34)
-                }
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-                Text(line)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.6))
-                    .padding(.bottom, last ? 0 : 12)
-            }
-        }
     }
 
     private var planPicker: some View {
@@ -187,15 +135,24 @@ struct TrialWallView: View {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     selectedPackage = pkg
-                    Analytics.track("package_selected", props: ["type": pkg.packageType == .annual ? "annual" : "monthly"])
+                    Analytics.track("package_selected", props: ["type": packageTypeKey(pkg)])
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(pkg.packageType == .annual ? "Yearly" : "Monthly")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
+                            HStack(spacing: 8) {
+                                Text(planTitle(pkg))
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                if pkg.packageType == .annual {
+                                    Text("BEST VALUE")
+                                        .font(.system(size: 10, weight: .heavy))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 7).padding(.vertical, 3)
+                                        .background(Color.yellow, in: Capsule())
+                                }
+                            }
                             // LAW: the billed amount is the big number.
-                            Text("\(pkg.storeProduct.localizedPriceString) / \(pkg.packageType == .annual ? "year" : "month")")
+                            Text("\(pkg.storeProduct.localizedPriceString) / \(periodLabel(pkg))")
                                 .font(.system(size: 19, weight: .heavy))
                                 .foregroundColor(.white)
                             if pkg.packageType == .annual, let m = monthlyEquivalent {
@@ -228,7 +185,7 @@ struct TrialWallView: View {
                     if subscription.isLoadingPurchase {
                         ProgressView().tint(.black)
                     } else {
-                        Text(trialEligible ? "Start free trial" : "Get Pro now")
+                        Text("Upgrade to Pro")
                             .font(.system(size: 17, weight: .bold))
                     }
                 }
@@ -239,10 +196,8 @@ struct TrialWallView: View {
             }
             .disabled(selectedPackage == nil || subscription.isLoadingPurchase)
 
-            // Eligibility truth under the CTA: exactly what the tap does.
-            Text(trialEligible
-                 ? "\(trialDays) days free, then \(billedPrice). Auto-renews until cancelled — cancel anytime in your Apple Account settings."
-                 : "You'll be charged \(billedPrice) today. Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
+            // No trial anywhere — the charge is immediate and named.
+            Text("You'll be charged \(billedPrice) \(billedPeriod). Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
                 .font(.system(size: 12))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
@@ -266,33 +221,28 @@ struct TrialWallView: View {
     // ── Purchase + terminal events (always-fires purchase_result) ────────────
     private func buy() async {
         guard let pkg = selectedPackage else { return }
-        Analytics.track("trial_wall_start", props: ["context": contextKey, "trial": trialEligible])
+        Analytics.track("upgrade_start", props: ["context": contextKey, "plan": packageTypeKey(pkg)])
         let ok = await subscription.purchase(pkg)
         if ok {
-            Analytics.track("purchase_result", props: [
-                "outcome": trialEligible ? "success_trial" : "success_paid",
-                "context": contextKey,
-            ])
+            Analytics.track("purchase_result", props: ["outcome": "success_paid", "context": contextKey])
             if let c = subscription.lastConfirmation {
                 withAnimation { confirmed = c }
             } else {
                 onPassed()
             }
         } else if subscription.lastError == nil {
-            // No error + no purchase = the user closed Apple's sheet. The
-            // honest recovery: confirm no charge, same wall, same offer.
+            // User closed Apple's sheet. Honest recovery, same offer, no new flow.
             Analytics.track("purchase_result", props: ["outcome": "cancelled", "context": contextKey])
-            Analytics.track("trial_wall_bounce", props: ["context": contextKey])
+            Analytics.track("upgrade_bounce", props: ["context": contextKey])
             withAnimation { showAbandonRecovery = true }
         } else {
             Analytics.track("purchase_result", props: [
-                "outcome": "failed", "context": contextKey,
-                "error": subscription.lastError ?? "unknown",
+                "outcome": "failed", "context": contextKey, "error": subscription.lastError ?? "unknown",
             ])
         }
     }
 
-    // ── Beat 8: honest transaction-abandon recovery ──────────────────────────
+    // ── Honest transaction-abandon recovery ──────────────────────────────────
     private var abandonRecovery: some View {
         ZStack {
             Color.black.opacity(0.72).ignoresSafeArea()
@@ -303,18 +253,17 @@ struct TrialWallView: View {
                 Text("No charge was made")
                     .font(.system(size: 21, weight: .bold))
                     .foregroundColor(.white)
-                Text("Your free trial is still here whenever you're ready.")
+                Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
                     .font(.system(size: 15))
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                 Button {
                     withAnimation { showAbandonRecovery = false }
                 } label: {
-                    Text("Back to the offer")
+                    Text("Back to Pro")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(maxWidth: .infinity).frame(height: 50)
                         .background(Color.white, in: Capsule())
                 }
             }
@@ -324,26 +273,19 @@ struct TrialWallView: View {
         }
     }
 
-    // ── Post-start: the Trust-Package confirmation (dates + amounts) ─────────
+    // ── Post-purchase confirmation (dates + amounts) ─────────────────────────
     private func confirmation(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
         VStack(spacing: 18) {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 54))
                 .foregroundColor(.green)
-            Text(c.isTrial ? "Your free trial has started" : "You're Pro")
+            Text("You're Pro")
                 .font(.system(size: 26, weight: .heavy))
                 .foregroundColor(.white)
             VStack(spacing: 8) {
-                if c.isTrial, let end = c.trialEnd {
-                    // Runtime values (date, price) wrapped as keys localize by
-                    // lookup then fall back to verbatim — correct for dynamic text.
-                    confirmationRow("Trial ends", LocalizedStringKey(end.formatted(date: .abbreviated, time: .shortened)))
-                    confirmationRow("Then", "\(c.price) — only if you don't cancel")
-                    confirmationRow("Reminder", c.reminderScheduled ? "scheduled before the charge" : "enable notifications to get one")
-                } else {
-                    confirmationRow("Billed today", LocalizedStringKey(c.price))
-                }
+                confirmationRow("Billed today", LocalizedStringKey(c.price))
+                confirmationRow("Renews", "automatically, cancel anytime")
             }
             .padding(18)
             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
@@ -356,8 +298,7 @@ struct TrialWallView: View {
                 Text("Start creating")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
+                    .frame(maxWidth: .infinity).frame(height: 56)
                     .background(Color.white, in: Capsule())
             }
             .padding(.horizontal, 24)
@@ -370,6 +311,32 @@ struct TrialWallView: View {
             Text(k).font(.system(size: 14)).foregroundColor(.white.opacity(0.55))
             Spacer()
             Text(v).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+        }
+    }
+
+    // ── Package helpers (weekly / monthly / annual) ──────────────────────────
+    private func planTitle(_ pkg: Package) -> String {
+        switch pkg.packageType {
+        case .annual: return "Yearly"
+        case .monthly: return "Monthly"
+        case .weekly: return "Weekly"
+        default: return pkg.storeProduct.localizedTitle
+        }
+    }
+    private func periodLabel(_ pkg: Package?) -> String {
+        switch pkg?.packageType {
+        case .annual: return "year"
+        case .monthly: return "month"
+        case .weekly: return "week"
+        default: return "period"
+        }
+    }
+    private func packageTypeKey(_ pkg: Package) -> String {
+        switch pkg.packageType {
+        case .annual: return "annual"
+        case .monthly: return "monthly"
+        case .weekly: return "weekly"
+        default: return "other"
         }
     }
 }
