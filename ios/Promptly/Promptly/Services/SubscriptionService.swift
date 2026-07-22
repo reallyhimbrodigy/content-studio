@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import RevenueCat
-import UserNotifications
 
 /// Single source of truth for Pro entitlement on the client.
 ///
@@ -83,21 +82,14 @@ final class SubscriptionService: ObservableObject {
     @Published var isLoadingOfferings: Bool = false
     @Published var offeringsError: String?
 
-    /// Post-purchase confirmation payload (trust-package Fix 3). Set on a
-    /// successful purchase/trial so PaywallView can show a real confirmation
-    /// screen — the trial-end date, the exact charge, and (only when true) the
-    /// reminder promise — instead of the old silent dismiss.
+    /// Post-purchase confirmation payload. Set on a successful purchase so the
+    /// paywall shows a real confirmation screen (the exact recurring charge)
+    /// instead of the old silent dismiss. FREEMIUM — no trial, just the price.
     @Published var lastConfirmation: PurchaseConfirmation?
 
     struct PurchaseConfirmation: Equatable {
-        let isTrial: Bool
         let price: String
-        let trialEnd: Date?
-        let reminderScheduled: Bool
     }
-
-    /// Stable id so a re-purchase/renewal replaces rather than stacks reminders.
-    static let trialReminderId = "promptly.trial.reminder"
 
     private var initialized = false
 
@@ -244,12 +236,7 @@ final class SubscriptionService: ObservableObject {
                 ])
                 if isPro { Analytics.setTier("pro") } // super-property flips free → pro
                 // Feed the confirmation screen with the concrete charge (no trial).
-                lastConfirmation = PurchaseConfirmation(
-                    isTrial: false,
-                    price: priceString,
-                    trialEnd: nil,
-                    reminderScheduled: false
-                )
+                lastConfirmation = PurchaseConfirmation(price: priceString)
                 // Reconcile with the server immediately so the render gate
                 // (which trusts ONLY the server, not RevenueCat's client
                 // cache) unlocks without waiting for the webhook to land.
@@ -336,57 +323,6 @@ final class SubscriptionService: ObservableObject {
         // Reflect the server's (now-updated) entitlement regardless of the
         // sync call's outcome.
         await UsageService.shared.refresh()
-    }
-
-    /// Schedule the local trial-end reminder ~24h before expiry so the paywall's
-    /// "we'll remind you before your trial ends" promise is backed by a real
-    /// mechanism — the single best-documented reducer of instant renewal opt-outs.
-    ///
-    /// Best-effort and permission-aware. Returns false (and the confirmation copy
-    /// softens to a "turn on notifications" nudge) when we can't deliver: the
-    /// trial is too short to leave a 24h lead, or notifications are denied. If
-    /// permission is undetermined we ask now — trial start is the honest,
-    /// high-intent moment to request it.
-    ///
-    /// NOTE ON THE PROMISE: a local notification only fires if the app remains
-    /// installed and notifications stay enabled. The durable fallback — a
-    /// server-side email off the existing RevenueCat trial-start webhook — is
-    /// proposed separately; it is not built here.
-    func scheduleTrialReminder(trialEnd: Date?, price: String) async -> Bool {
-        guard let trialEnd,
-              let fireDate = TrialCopy.reminderFireDate(trialEnd: trialEnd, now: Date()) else {
-            return false
-        }
-        let center = UNUserNotificationCenter.current()
-        switch await center.notificationSettings().authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            break
-        case .notDetermined:
-            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-            if !granted { return false }
-        case .denied:
-            return false
-        @unknown default:
-            return false
-        }
-
-        let content = UNMutableNotificationContent()
-        content.title = TrialCopy.reminderTitle
-        content.body = TrialCopy.reminderBody(price: price)
-        content.sound = .default
-
-        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        let request = UNNotificationRequest(identifier: Self.trialReminderId, content: content, trigger: trigger)
-        // Clear any prior reminder first so a renewal/re-purchase replaces it.
-        center.removePendingNotificationRequests(withIdentifiers: [Self.trialReminderId])
-        do {
-            try await center.add(request)
-            return true
-        } catch {
-            print("[Subscription] trial reminder scheduling failed: \(error.localizedDescription)")
-            return false
-        }
     }
 
     // MARK: - Internal

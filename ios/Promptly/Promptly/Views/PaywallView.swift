@@ -58,6 +58,7 @@ struct PaywallView: View {
         case .reedit:       return "Re-edit is a Pro feature"
         case .manual:       return "Unlock Promptly Pro"
         case .lumen:        return "Lumen is a Pro model"
+        case .concurrency:  return "One video at a time on Free"
         }
     }
     private var subtitle: String {
@@ -72,6 +73,8 @@ struct PaywallView: View {
             return "Unlimited renders, unlimited chats, and the re-edit feature."
         case .lumen:
             return "Lumen renders premium cinematic edits with generated graphics. Pro unlocks it — plus unlimited renders, chats, and re-edit."
+        case .concurrency:
+            return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
         }
     }
 
@@ -138,18 +141,6 @@ struct PaywallView: View {
 
                     ctaButton
                         .padding(.horizontal, 24)
-
-                    // Fix 2 (copy): the reassurance the shipped paywall lacks —
-                    // shown for a trial so the last thing read before committing
-                    // isn't only the auto-renew warning.
-                    if selectedIsTrial {
-                        Text(TrialCopy.ctaReassurance)
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.6))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                            .padding(.top, 10)
-                    }
 
                     fineprint
                         .padding(.horizontal, 32)
@@ -291,6 +282,7 @@ struct PaywallView: View {
         case .reedit:       return "reedit"
         case .manual:       return "manual"
         case .lumen:        return "lumen"
+        case .concurrency:  return "concurrency"
         }
     }
 
@@ -463,34 +455,19 @@ struct PaywallView: View {
         .opacity(selectedPackage == nil ? 0.4 : 1)
     }
 
-    /// Surface the trial CTA when the selected package's offer is a free
-    /// trial (configured at the App Store Connect level on the subscription).
-    private var ctaText: String {
-        if let pkg = selectedPackage,
-           pkg.storeProduct.introductoryDiscount?.paymentMode == .freeTrial {
-            return "Start free trial"
-        }
-        return "Continue"
-    }
-
-    /// Whether the selected package carries a free-trial intro offer — drives
-    /// the trial-specific reassurance copy, CTA text, fineprint, and confirmation.
-    private var selectedIsTrial: Bool {
-        selectedPackage?.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
-    }
+    /// FREEMIUM: a direct purchase, no trial — the CTA commits to the charge.
+    private var ctaText: String { "Upgrade to Pro" }
 
     private var fineprint: some View {
-        // Fix 4: keep the required auto-renew disclosure, but for a trial pair it
-        // with the reminder reassurance so the last line isn't only a warning.
-        Text(TrialCopy.fineprint(isTrial: selectedIsTrial))
+        // The required auto-renew disclosure (no trial, so no reminder line).
+        Text(TrialCopy.fineprint)
             .font(.system(size: 11))
             .foregroundColor(.white.opacity(0.4))
             .multilineTextAlignment(.center)
     }
 
-    /// Fix 3: post-purchase confirmation — certainty over a silent dismiss. Names
-    /// the trial-end date, the exact charge, and (only when a reminder was
-    /// actually scheduled) the reminder promise. Fully covers the paywall.
+    /// Post-purchase confirmation — certainty over a silent dismiss. Names the
+    /// exact recurring charge and the honest renewal note (no trial).
     private func confirmationView(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
         ZStack(alignment: .topTrailing) {
             backdrop.ignoresSafeArea()
@@ -514,24 +491,12 @@ struct PaywallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text(TrialCopy.confirmationBody(
-                        isTrial: c.isTrial, price: c.price,
-                        trialEnd: c.trialEnd, reminderScheduled: c.reminderScheduled))
+                    Text(TrialCopy.confirmationBody(price: c.price))
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.75))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 34)
                         .padding(.top, 12)
-
-                    if let nudge = TrialCopy.confirmationReminderFallback(
-                        reminderScheduled: c.reminderScheduled, isTrial: c.isTrial) {
-                        Text(nudge)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(PromptlyGold.solid)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 34)
-                            .padding(.top, 12)
-                    }
 
                     Spacer().frame(height: 36)
 

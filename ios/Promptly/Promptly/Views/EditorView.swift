@@ -1499,6 +1499,22 @@ struct EditorView: View {
                     }
 
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
+                } catch let APIError.paymentRequired(kind, limit, _) {
+                    // Account-GLOBAL concurrency cap hit at the upload door — a
+                    // free user started a 2nd video (e.g. in a new chat) while one
+                    // is already in flight. Remove the pending tile and present the
+                    // upgrade paywall — never a silent upload failure or bare error.
+                    print("[upload] payment required (kind=\(kind)) — presenting upgrade paywall")
+                    await MainActor.run {
+                        pendingVideos.removeAll { $0 === pending }
+                        if kind.hasPrefix("concurrency") {
+                            appState.presentPaywall(.concurrency)
+                        } else {
+                            let lim = limit ?? 1
+                            appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
+                        }
+                    }
+                    await UsageService.shared.refresh()
                 } catch {
                     print("[perf] upload task failed: \(error.localizedDescription)")
                     // Clear any eagerly-set URLs so a second Send tap

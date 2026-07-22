@@ -489,6 +489,7 @@ final class AppState: ObservableObject {
         case .dailyChats:   limit = "daily_chats"
         case .reedit:       limit = "re_edit"
         case .lumen:        limit = "lumen"
+        case .concurrency:  limit = "second_upload"
         case .manual:       limit = nil
         }
         if let limit { Analytics.track("free_limit_hit", props: ["limit": limit]) }
@@ -578,6 +579,10 @@ enum PaywallReason: Equatable, Hashable {
     case manual
     /// User tapped the locked premium model (Lumen) in the composer picker.
     case lumen
+    /// Free user tried to start a 2nd video while one is already in flight —
+    /// the account-global concurrency cap (1 free / 10 pro). Server-enforced at
+    /// the upload door; this drives the honest "one at a time" upgrade copy.
+    case concurrency
 }
 
 // MARK: - Pipeline stages (render progress narrative)

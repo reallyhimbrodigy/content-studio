@@ -91,7 +91,24 @@ class APIService {
         struct WallBody: Decodable { let error: String?; let route: String?; let message: String? }
         guard let body = try? JSONDecoder().decode(WallBody.self, from: data),
               body.error == "wall_required" || body.route == "wall" else { return }
-        throw APIError.wallRequired(message: body.message ?? "Update to start your free trial.")
+        throw APIError.wallRequired(message: body.message ?? "Upgrade to keep creating.")
+    }
+
+    /// Central 402 detector for the UPLOAD doors (upload-url / multipart-init).
+    /// A free user's 2nd concurrent upload is denied ACCOUNT-GLOBALLY by the
+    /// server with a 402 — parse it into `paymentRequired` so the caller routes
+    /// to the upgrade paywall instead of a generic "upload failed". Without this
+    /// the 402 body would fail to decode as the success type and surface as a
+    /// bare uploadFailed — a silent block, which is exactly what we must avoid.
+    static func throwIfPaymentRequired(_ response: URLResponse, _ data: Data) throws {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 402 else { return }
+        struct LimitBody: Decodable { let kind: String?; let limit: Int?; let message: String?; let error: String? }
+        let body = try? JSONDecoder().decode(LimitBody.self, from: data)
+        throw APIError.paymentRequired(
+            kind: body?.kind ?? "concurrency_free",
+            limit: body?.limit,
+            message: body?.message ?? "Free accounts can process 1 video at a time. Upgrade to Pro for 10 in parallel."
+        )
     }
 
     private func authorizedRequest(_ path: String, method: String = "GET") async -> URLRequest {
@@ -461,7 +478,9 @@ class APIService {
         var request = await authorizedRequest("/api/upload-url", method: "POST")
         request.httpBody = try JSONEncoder().encode(["fileName": fileName])
 
-        let (data, _) = try await requestData(request)
+        let (data, response) = try await requestData(request)
+        try Self.throwIfWall(response, data)
+        try Self.throwIfPaymentRequired(response, data) // 2nd concurrent upload → paywall
         return try JSONDecoder().decode(UploadUrlResponse.self, from: data)
     }
 
@@ -645,6 +664,8 @@ class APIService {
             "partCount": partCount,
         ])
         let (initData, initResp) = try await requestData(initRequest)
+        try Self.throwIfWall(initResp, initData)
+        try Self.throwIfPaymentRequired(initResp, initData) // 2nd concurrent upload → paywall
         guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
             throw APIError.uploadFailed
         }
