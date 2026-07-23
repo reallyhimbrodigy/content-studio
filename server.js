@@ -22,7 +22,7 @@ const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal, registerPrewarm } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendRenderCompleteNotification, sendOwnerAlert } = require('./services/pushNotifier');
 const {
@@ -163,6 +163,40 @@ function _hasSubscriptionHistory(row) {
 function wallForceRcCheck(req) {
   const headers = (req && req.headers) || {};
   return clientFreemium(headers) || (wallEnabled() && clientWallCapable(headers));
+}
+
+// NO_SPEECH pre-dispatch gate (2026-07-23). The prewarm transcribes the source
+// once at upload and caches it; the worker loads that cache and never re-
+// transcribes (no double Deepgram cost). Its word_count lets us reject a 0-word
+// (speechless) clip BEFORE spending 20-40s of GPU — the biggest single content
+// rejection, previously only caught after the full render.
+//
+// FAIL OPEN by contract: only a CONFIRMED `word_count === 0` gates. A missing or
+// unknown word_count (worker hasn't emitted it yet, prewarm didn't fire, hint
+// timed out, or the resolve threw) returns { gated:false } and the caller
+// dispatches exactly as today — zero regression until the worker side ships.
+// Returns the resolved hint so the caller passes it to dispatchJobToModal and
+// never awaits it twice. On markJobFailed failure it ALSO fails open (dispatch,
+// let the worker's own gate catch it) rather than silently dropping the render.
+async function preDispatchNoSpeechGate({ jobId, videoUrl, userId, pushProgressToSSE }) {
+  let hint = null;
+  try {
+    hint = await awaitPrewarmHint(videoUrl);
+  } catch (e) {
+    console.warn('[no-speech-gate] hint resolve failed — fail open:', e && e.message);
+    return { gated: false, hint: null };
+  }
+  if (hint && hint.word_count === 0) {
+    try {
+      await markJobFailed(jobId, { errorCode: 'NO_SPEECH', userMessage: NO_SPEECH_COPY, userId, pushProgressToSSE });
+      console.log('  [no-speech-gate] 0-word clip rejected PRE-dispatch job=%s user=%s', jobId, userId);
+      return { gated: true, hint };
+    } catch (e) {
+      console.error('[no-speech-gate] markJobFailed failed — fail open to dispatch:', e && e.message);
+      return { gated: false, hint };
+    }
+  }
+  return { gated: false, hint };
 }
 
 async function assertProEntitled(userId, opts = {}) {
@@ -3776,6 +3810,20 @@ const server = http.createServer((req, res) => {
         console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s) job=%s',
           premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true, job.id);
 
+        // NO_SPEECH pre-dispatch gate — reject a 0-word (speechless) clip here,
+        // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
+        // unknown word_count dispatches exactly as today. Fresh full-render path
+        // only (re-edit/resume reuse cached transcripts — no fresh prewarm).
+        const speechGate = await preDispatchNoSpeechGate({
+          jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
+        });
+        if (speechGate.gated) {
+          return sendJson(res, 200, {
+            success: true, job_id: job.id, status: 'failed',
+            error_code: 'NO_SPEECH', user_message: NO_SPEECH_COPY,
+          });
+        }
+
         await dispatchJobToModal({
           pushProgressToSSE,
           jobId: job.id,
@@ -3784,6 +3832,7 @@ const server = http.createServer((req, res) => {
           vibe: vibeInput,
           userId: authUser.id,
           premiumPipeline,
+          prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
         });
         console.log('  ✅ Modal dispatch started for job:', job.id);
 
