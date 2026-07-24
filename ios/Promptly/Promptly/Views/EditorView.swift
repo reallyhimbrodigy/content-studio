@@ -593,7 +593,16 @@ struct EditorView: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 22)
 
-            Text("AI editor for short-form talking head videos.\nUpload a clip, describe the vibe, and Promptly does the rest.")
+            // Expectation-setting: what to upload, what Promptly does, and the
+            // honest wait note (renders take a few minutes; we notify you).
+            Text("Upload a video of you talking to camera")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+                .padding(.bottom, 8)
+
+            Text("Promptly cuts it, captions it, and matches your vibe.")
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -612,6 +621,13 @@ struct EditorView: View {
             .tint(.white)
             .foregroundStyle(.black)
             .controlSize(.large)
+
+            Text("Edits take a few minutes — we'll notify you when yours is ready.")
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 44)
+                .padding(.top, 16)
 
             Spacer()
             Spacer()
@@ -1157,6 +1173,29 @@ struct EditorView: View {
                 // "try a different video" prompt with a "Try Anyway"
                 // escape hatch for borderline cases.
                 if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
+                    // Deterministic AV prechecks (no audio / too short / too long) —
+                    // HARD blocks with specific guidance, before any upload. These
+                    // cannot succeed downstream, so there's no "Try Anyway".
+                    switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
+                    case .noAudio:
+                        Analytics.track("no_audio_rejected", props: ["stage": "precheck"])
+                        layer2RejectionMessage = "Promptly edits talking-to-camera videos — we need to hear you. This clip has no audio; pick one with sound of you speaking."
+                        showLayer2Rejection = true
+                        continue
+                    case .tooShort(let m):
+                        Analytics.track("too_short_rejected", props: ["stage": "precheck"])
+                        layer2RejectionMessage = "This clip is too short to edit. Upload at least \(m) seconds of you talking to camera."
+                        showLayer2Rejection = true
+                        continue
+                    case .tooLong(let mx):
+                        Analytics.track("too_long_rejected", props: ["stage": "precheck"])
+                        layer2RejectionMessage = "This clip is longer than \(mx / 60) minutes. Trim it to a shorter highlight and upload again."
+                        showLayer2Rejection = true
+                        continue
+                    case .ok:
+                        break
+                    }
+
                     let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
                     if !valid {
                         let userWantsToProceed = await askToProceedAfterPrecheck()

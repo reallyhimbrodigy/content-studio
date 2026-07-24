@@ -22,6 +22,40 @@ import CoreMedia
 /// signal at a slightly higher latency.
 enum TalkingHeadPrecheck {
 
+    /// Minimum / maximum source length Promptly can edit. The max mirrors the
+    /// server's CLIP_TOO_LONG (3 min, the 2026-07 lockstep); the min filters
+    /// clips too short to yield a watchable edit.
+    static let minDurationSec = 3
+    static let maxDurationSec = 180
+
+    /// Deterministic, near-instant AV prechecks that run BEFORE the face check
+    /// and before any upload. Each is a HARD block (no "try anyway") because the
+    /// pipeline cannot succeed: no audio → nothing to caption/cut to; too short →
+    /// no watchable edit; too long → over the render ceiling. Fail-open on any
+    /// load error (let the backend make the call). `.ok` proceeds to the face check.
+    enum Preflight: Equatable {
+        case ok
+        case noAudio
+        case tooShort(minSeconds: Int)
+        case tooLong(maxSeconds: Int)
+    }
+
+    static func preflight(videoURL: URL) async -> Preflight {
+        let asset = AVURLAsset(url: videoURL)
+        // Duration bounds (only when we can actually read the duration).
+        if let duration = try? await asset.load(.duration), duration.seconds > 0 {
+            let secs = duration.seconds
+            if secs < Double(minDurationSec) { return .tooShort(minSeconds: minDurationSec) }
+            if secs > Double(maxDurationSec) { return .tooLong(maxSeconds: maxDurationSec) }
+        }
+        // Audio track present? Empty (successfully-loaded) audio-track list = no
+        // sound. A load error falls through to .ok (fail-open, backend catches).
+        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio), audioTracks.isEmpty {
+            return .noAudio
+        }
+        return .ok
+    }
+
     /// Sample 8 evenly-spaced frames; return true if ≥30% contain a
     /// face wider than 10% of the frame. Returns true (not false) when
     /// the asset can't be sampled at all — we'd rather upload a
