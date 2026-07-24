@@ -3104,8 +3104,10 @@ const server = http.createServer((req, res) => {
         const email = require('./lib/email');
         const configured = email.resendConfigured();
         const domain = await email.verifyDomain('usepromptly.app');
-        // Deterministic stamp per call so re-runs aren't idempotency-skipped.
-        const stamp = `${Date.now()}`;
+        // A caller-supplied stamp keys the idempotency ledger — pass the SAME
+        // stamp twice to prove a retry does NOT double-send; omit it for a fresh
+        // (always-delivering) run.
+        const stamp = String((body && body.stamp) || Date.now());
         const results = configured ? await email.sendTestSuite(supabaseAdmin, to, stamp) : null;
         return sendJson(res, 200, { configured, env_var_needed: configured ? null : 'RESEND_API_KEY', domain, results });
       } catch (e) {
