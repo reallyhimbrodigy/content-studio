@@ -2548,15 +2548,20 @@ struct EditorView: View {
                                     messages[i].jobProgress = mapped
                                 }
                             case .dispatching:
-                                // Light up "analyze" in the stage list
-                                // (so the active-stage row updates) but
-                                // do NOT bump the percent — the bar's
-                                // position is owned by upload progress
-                                // until the first modal-progress event
-                                // arrives.
-                                messages[i].stageTimeline?.receive(stepToken: "analyze")
-                            case .waitingForNetwork, .retrying:
-                                break
+                                // STATUS FIDELITY: do NOT light "analyze"
+                                // ("Preparing your footage") here — the job
+                                // isn't on the server yet, and firing a RENDER
+                                // stage during dispatch is the "frozen at
+                                // Preparing your footage" lie. Keep the headline
+                                // on "Uploading your video" and say honestly what
+                                // we're doing in the subtitle. Only a real server
+                                // SSE/reconcile `analyze` token advances the stage
+                                // to "Preparing your footage".
+                                messages[i].stepMessage = "Sending to the editor…"
+                            case .waitingForNetwork:
+                                messages[i].stepMessage = "Waiting for a connection…"
+                            case .retrying:
+                                messages[i].stepMessage = "Reconnecting…"
                             }
                         }
 
