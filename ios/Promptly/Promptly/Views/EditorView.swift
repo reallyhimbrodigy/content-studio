@@ -12,6 +12,9 @@ struct EditorView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
+    /// Pre-permission explainer for push notifications, shown once on the first
+    /// upload (see handlePickedVideos) — never cold at app open.
+    @State private var showPushExplainer = false
     @State private var showVoiceInput = false
     @State private var pendingVideos: [PendingVideo] = []
     @State private var isSending = false
@@ -189,6 +192,13 @@ struct EditorView: View {
             } message: {
                 Text(layer2RejectionMessage)
             }
+            // Push opt-in — a PRE-PERMISSION explainer shown once on the first
+            // upload (never cold at app open). "Notify me" is the ONLY path to the
+            // iOS system dialog; "Not now" leaves the system one-shot intact. This
+            // recovers the completions currently lost to never-granted permission.
+            // Extracted into a ViewModifier so its closures type-check in isolation
+            // (the body's modifier chain is already at the compiler's complexity limit).
+            .modifier(PushExplainerAlert(isPresented: $showPushExplainer))
             .fullScreenCover(isPresented: $showVoiceInput) {
                 VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
                     // Append (not replace) so a user dictating a second
@@ -1147,6 +1157,15 @@ struct EditorView: View {
                 }
 
                 addPendingVideoAndStartUpload(video)
+            }
+
+            // First upload is the ideal moment to offer notifications — the value
+            // ("we'll tell you the second it's ready") is concrete right now. Show
+            // the pre-permission explainer ONCE; shouldOfferSoftPrompt guarantees
+            // we never ask cold and never re-nag. The user is authenticated here
+            // (EditorView only mounts inside the signed-in shell).
+            if !videos.isEmpty, PushService.shared.shouldOfferSoftPrompt {
+                showPushExplainer = true
             }
         }
     }
@@ -2226,15 +2245,9 @@ struct EditorView: View {
             return
         }
 
-        // First-edit moment is the ideal time to ask for notification
-        // permission — the user is about to wait 30–90s for a render and
-        // the value of the prompt ("Get notified when your edit is ready")
-        // is felt right now, not in the abstract.
-        if !PushService.shared.hasAskedForPermission {
-            Task { @MainActor in
-                await PushService.shared.requestPermissionIfNeeded()
-            }
-        }
+        // (Push permission is now offered earlier, at the FIRST UPLOAD, behind a
+        // pre-permission explainer — see handlePickedVideos. We no longer ask a
+        // cold system dialog here at send.)
 
         // ── Re-edit path — no upload; server loads source from DB
         if reeditActive, let session = reeditSession {
@@ -3282,6 +3295,32 @@ struct CircularProgressRing: View {
 /// facing alert; throwing this is just the signal to bail out of
 /// the upload Task cleanly without flagging an upload error.
 private struct Layer2RejectionSentinel: Error {}
+
+
+// MARK: - Push pre-permission explainer
+
+/// The soft ask shown once on the first upload, BEFORE the iOS system dialog.
+/// Extracted into a ViewModifier so its two-button + message closures type-check
+/// on their own instead of inside EditorView.body's already-maximal modifier chain.
+private struct PushExplainerAlert: ViewModifier {
+    @Binding var isPresented: Bool
+    func body(content: Content) -> some View {
+        content.alert("Get notified when it's ready?", isPresented: $isPresented) {
+            Button("Notify me") {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                PushService.shared.markSoftPromptOffered()
+                Analytics.track("push_softprompt", props: ["choice": "accept"])
+                Task { await PushService.shared.requestPermissionIfNeeded() }
+            }
+            Button("Not now", role: .cancel) {
+                PushService.shared.markSoftPromptOffered()
+                Analytics.track("push_softprompt", props: ["choice": "decline"])
+            }
+        } message: {
+            Text("Renders take a few minutes — want us to tell you the second yours is ready?")
+        }
+    }
+}
 
 
 // MARK: - Freemium usage meter + upgrade pill (staged for 1.3.1)

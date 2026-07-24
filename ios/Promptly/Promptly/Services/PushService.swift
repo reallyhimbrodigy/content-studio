@@ -23,12 +23,35 @@ final class PushService {
 
     private let lastTokenKey = "promptly.pushService.lastDeviceToken"
     private let askedKey = "promptly.pushService.didAskForPermission"
+    private let softOfferedKey = "promptly.pushService.didOfferSoftPrompt"
 
     /// True if we've shown the system permission dialog at least once. Used
     /// to avoid asking twice (after a denial we shouldn't keep prompting —
     /// iOS would suppress it anyway, but skipping the call keeps logs clean).
     var hasAskedForPermission: Bool {
         UserDefaults.standard.bool(forKey: askedKey)
+    }
+
+    /// True once we've shown the in-app pre-permission explainer (either outcome).
+    /// Keeps the soft ask to a single, well-timed moment (the first upload) — we
+    /// never re-nag it on every upload.
+    var didOfferSoftPrompt: Bool {
+        UserDefaults.standard.bool(forKey: softOfferedKey)
+    }
+
+    /// Whether to show the pre-permission explainer now. Only if the explainer
+    /// hasn't been shown AND the system dialog is still unseen (notDetermined,
+    /// tracked via `hasAskedForPermission`). This is the guarantee we NEVER ask
+    /// cold: the caller shows the explainer, and ONLY a "Notify me" tap reaches
+    /// requestPermissionIfNeeded() and the iOS dialog. A "Not now" leaves the
+    /// system one-shot intact for a future re-offer.
+    var shouldOfferSoftPrompt: Bool {
+        !hasAskedForPermission && !didOfferSoftPrompt
+    }
+
+    /// Mark the pre-permission explainer as shown (called on either button).
+    func markSoftPromptOffered() {
+        UserDefaults.standard.set(true, forKey: softOfferedKey)
     }
 
     /// The token we last successfully registered with the server. Used to
