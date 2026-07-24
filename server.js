@@ -2432,6 +2432,10 @@ const server = http.createServer((req, res) => {
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
           'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
+          // 1.3.1 on-device pre-checks (audio/duration) + push soft-prompt. Without
+          // these on the allowlist the SQL mirror silently drops them (the same
+          // class that bit not_talking_head_rejected); PostHog gets them regardless.
+          'too_short_rejected', 'too_long_rejected', 'push_softprompt',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
