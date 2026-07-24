@@ -135,6 +135,22 @@ struct AccountView: View {
                 }
             }
             .background(Color(.systemBackground))
+            // Account is a sheet now (opened from the drawer) — give it a close.
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    AppState.shared.showAccount = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 14)
+                .accessibilityLabel("Close")
+            }
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
             .dismissKeyboardOnTap()

@@ -16,56 +16,56 @@ struct ChatListView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                    .padding(.bottom, 12)
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
 
-                // Search is collapsible — ChatGPT-style. Hidden by default
-                // to keep the chrome quiet; the magnifying glass in the
-                // header reveals it inline.
-                if searchActive {
-                    searchField
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                // Body
-                ZStack {
-                    if store.isLoading && store.chats.isEmpty {
-                        loadingView
-                    } else if let err = store.loadError, store.chats.isEmpty {
-                        errorState(err)
-                    } else if filtered.isEmpty {
-                        if search.isEmpty {
-                            emptyView
-                        } else {
-                            noMatchesView
-                        }
-                    } else {
-                        chatScroll
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        searchFocused = false
-                        Keyboard.dismiss()
-                    }
-                )
+            // Search is collapsible — ChatGPT-style. Hidden by default
+            // to keep the chrome quiet; the magnifying glass in the
+            // header reveals it inline.
+            if searchActive {
+                searchField
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(.systemBackground))
 
-            // Floating new-chat pill — bottom-right, ChatGPT iOS pattern.
-            // Replaces the old top-right pencil + the bottom profile chip.
-            newChatPill
-                .padding(.trailing, 18)
-                .padding(.bottom, 22)
+            // Top nav — New chat + Library, ChatGPT-style entries above history.
+            navSection
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
+
+            // Body — recent chats (the drawer's core).
+            ZStack {
+                if store.isLoading && store.chats.isEmpty {
+                    loadingView
+                } else if let err = store.loadError, store.chats.isEmpty {
+                    errorState(err)
+                } else if filtered.isEmpty {
+                    if search.isEmpty {
+                        emptyView
+                    } else {
+                        noMatchesView
+                    }
+                } else {
+                    chatScroll
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    searchFocused = false
+                    Keyboard.dismiss()
+                }
+            )
+
+            // Account entry pinned to the bottom (avatar + name → Account sheet).
+            accountBar
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
         .alert(
             "Delete chat?",
             isPresented: Binding(
@@ -123,15 +123,6 @@ struct ChatListView: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Search chats")
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    AppState.shared.selectedTab = 2
-                    onSelect()
-                } label: {
-                    ProfileAvatar(size: 36)
-                }
-                .accessibilityLabel("Account")
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
@@ -142,35 +133,93 @@ struct ChatListView: View {
         }
     }
 
-    // MARK: - New-chat pill
+    // MARK: - Top nav (New chat + Library)
 
-    private var newChatPill: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task {
-                if let chat = await store.createChat() {
-                    store.activeChatId = chat.id
-                    onSelect()
+    private var navSection: some View {
+        VStack(spacing: 2) {
+            drawerNavRow(icon: "square.and.pencil", label: "New chat") {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                Task {
+                    if let chat = await store.createChat() {
+                        store.activeChatId = chat.id
+                        onSelect()
+                    }
                 }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Chat")
-                    .font(.system(size: 15, weight: .semibold))
+            drawerNavRow(icon: "square.grid.2x2", label: "Library") {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                AppState.shared.showLibrary = true
+                onSelect()
             }
-            .foregroundColor(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
-            )
+        }
+    }
+
+    private func drawerNavRow(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(.primary)
+                    .frame(width: 26)
+                Text(label)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 46)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("New chat")
+        .accessibilityLabel(label)
+    }
+
+    // MARK: - Bottom account bar
+
+    private var accountBar: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            AppState.shared.showAccount = true
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                ProfileAvatar(size: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(accountName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text(accountSubtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 0.5)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Account, \(accountName), \(accountSubtitle)")
+    }
+
+    private var accountName: String {
+        let n = AuthService.shared.currentUser?.user_metadata?.full_name ?? ""
+        if !n.isEmpty { return n }
+        return AuthService.shared.currentUser?.email ?? "Account"
+    }
+
+    private var accountSubtitle: String {
+        SubscriptionService.shared.effectiveIsPro ? "Promptly Pro" : "Free plan"
     }
 
     // MARK: - Search field
@@ -418,11 +467,10 @@ struct ChatListView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: store.chats.map(\.id))
-        // Bottom safe-area inset so the floating "Chat" pill (44pt tall,
-        // 22pt bottom padding) doesn't cover the last chat row. Anything
-        // less than ~90pt leaves the last title peeking out under the pill.
+        // Small bottom gap so the last chat row isn't flush against the pinned
+        // account bar (which is now a flow sibling below the list, not a float).
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 84)
+            Color.clear.frame(height: 8)
         }
     }
 

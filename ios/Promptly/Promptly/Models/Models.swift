@@ -451,6 +451,13 @@ final class AppState: ObservableObject {
     /// transition. Lives on AppState so any view can dismiss it without
     /// having to plumb a binding through the hierarchy.
     @Published var sidebarOpen: Bool = false
+    /// Sidebar-restructure (2026-07-24): Library + Account are now sheets opened
+    /// from the drawer instead of bottom-tab surfaces. AppShell binds a `.sheet`
+    /// to each; the drawer / deep-links set them true, the sheet's own close (or a
+    /// swipe-down) sets them false. `selectedTab` is retired to a constant 0 (Edit
+    /// is the sole full-screen surface) — kept only so legacy guards still read 0.
+    @Published var showLibrary: Bool = false
+    @Published var showAccount: Bool = false
     /// The paywall the root sheet (AppShell) is bound to — non-nil ⇒ presented.
     /// READ-ONLY to the rest of the app: trigger sites must go through
     /// `presentPaywall` / `deferPaywall` / `flushDeferredPaywall`, never set this

@@ -134,7 +134,9 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let type = userInfo["type"] as? String
         Task { @MainActor in
             if type == "render-complete" || type == "render-failed" {
-                AppState.shared.selectedTab = 1  // Library
+                // Sidebar-restructure: Library is a sheet now. Open it — the just-
+                // finished video is the newest entry at the top of the grid.
+                AppState.shared.showLibrary = true
             }
             completionHandler()
         }

@@ -101,6 +101,20 @@ struct AppShell: View {
                 appState.dismissWall()
             }
         }
+        // Sidebar-restructure: Library + Account are sheets opened from the drawer,
+        // replacing the removed bottom tab bar. Edit stays the full-screen surface.
+        .sheet(isPresented: Binding(
+            get: { appState.showLibrary },
+            set: { appState.showLibrary = $0 }
+        )) {
+            LibraryView()
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.showAccount },
+            set: { appState.showAccount = $0 }
+        )) {
+            AccountView()
+        }
         .onChange(of: appState.sidebarOpen) { _, isOpen in
             // Keyboard always dismisses on drawer open. We dismiss on
             // close too so a stale focus from the sidebar's search
