@@ -134,27 +134,13 @@ struct EditorView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show chats")
                 }
-                // Compact upgrade chip right beside the sidebar button (ChatGPT
-                // placement) — visible immediately for free users, hidden for Pro.
+                // Top-of-home upgrade pill beside the sidebar button (ChatGPT
+                // placement) — the animated-gradient UpgradePill (build 214),
+                // replacing the flat gold chip. Visible immediately for free
+                // users, hidden for Pro.
                 ToolbarItem(placement: .topBarLeading) {
                     if !subscriptionService.effectiveIsPro {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            appState.presentPaywall(.manual)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 10, weight: .bold))
-                                Text("Upgrade")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 5)
-                            .background(PromptlyGold.gradient, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Upgrade to Promptly Pro")
+                        UpgradePill { appState.presentPaywall(.manual) }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -3468,6 +3454,83 @@ private struct UsageMeterStrip: View {
             .padding(.bottom, 6)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: left)
+        }
+    }
+}
+
+// MARK: - UpgradePill
+//
+// Top-of-home upgrade affordance (build 214) — replaces the flat gold chip.
+// ChatGPT-style colorful pill, but on PROMPTLY's own spectrum (anchored by the
+// brand gold, NOT OpenAI's blue→purple): a rotating conic-gradient border with
+// a soft colored glow, a tiny Promptly mark, and the "Upgrade" label. Respects
+// Reduce Motion (static gradient, zero rotation) and is only mounted by the
+// caller when !effectiveIsPro, so Pro/comped users never see it.
+struct UpgradePill: View {
+    var action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Promptly's own spectrum. First == last (brand gold) so the rotating conic
+    // loops seamlessly with no visible seam at the 360°→0° wrap.
+    private static let spectrum: [Color] = [
+        Color(hex: "F4E4BC"), // cream-gold (brand anchor)
+        Color(hex: "FF7A5C"), // coral
+        Color(hex: "C86DD7"), // magenta-violet
+        Color(hex: "5B8CFF"), // azure
+        Color(hex: "36D6C3"), // teal
+        Color(hex: "F4E4BC"), // back to gold — seamless loop
+    ]
+    private static let rotationPeriod: Double = 4.0 // seconds per full turn
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image("PromptlyLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                Text("Upgrade")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color(hex: "16161C")))
+            .overlay(borderOverlay)
+            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.35 : 0.5), radius: reduceMotion ? 3 : 6)
+            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.0 : 0.3), radius: reduceMotion ? 0 : 9)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Upgrade to Promptly Pro")
+    }
+
+    // The glowing RGB border. Confined to an overlay so the frame-driven
+    // re-render doesn't touch the label/logo.
+    @ViewBuilder private var borderOverlay: some View {
+        if reduceMotion {
+            // Static spectrum border — same palette, no motion.
+            Capsule().strokeBorder(
+                AngularGradient(gradient: Gradient(colors: Self.spectrum), center: .center),
+                lineWidth: 1.6
+            )
+        } else {
+            // Frame-driven rotation — guaranteed smooth (angle derived from the
+            // clock each frame), seamless because the spectrum wraps gold→gold.
+            TimelineView(.animation) { tl in
+                let t = tl.date.timeIntervalSinceReferenceDate
+                let angle = (t.truncatingRemainder(dividingBy: Self.rotationPeriod) / Self.rotationPeriod) * 360.0
+                Capsule().strokeBorder(
+                    AngularGradient(
+                        gradient: Gradient(colors: Self.spectrum),
+                        center: .center,
+                        angle: .degrees(angle)
+                    ),
+                    lineWidth: 1.6
+                )
+            }
         }
     }
 }
