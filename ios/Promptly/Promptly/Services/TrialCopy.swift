@@ -40,6 +40,12 @@ enum TrialCopy {
 
     static let confirmationTitle = "You're Pro 🎉"
 
+    /// The unified post-purchase celebration title. One line, one voice — shared
+    /// by every purchase surface (paywall sheet + upgrade wall) via
+    /// ProCelebrationView so the "moment" reads identically no matter which
+    /// surface triggered the buy.
+    static let proMomentTitle = "You're on Promptly Pro"
+
     /// A direct purchase (no trial): name the exact recurring charge and the
     /// honest renewal note. `price` is the full localized price from StoreKit.
     static func confirmationBody(price: String) -> String {

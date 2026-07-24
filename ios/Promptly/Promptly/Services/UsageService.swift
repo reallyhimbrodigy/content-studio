@@ -24,6 +24,15 @@ final class UsageService: ObservableObject {
         /// pre-1.2.0 server response (no tier field) still decodes. The client
         /// composes this with RevenueCat's view via EntitlementTier.resolve.
         let tier: String?
+        // Freemium usage-meter contract (server /api/usage, 2026-07-23+). All
+        // optional so a pre-1.3.0 server (which omits them) still decodes — the
+        // struct has no CodingKeys and the decoder does no snake_case conversion,
+        // so these names must match the JSON keys 1:1. `used`/`limit` mirror
+        // renders_today/render_limit (limit is null for Pro → Int?); `resets_at`
+        // is the ISO8601 instant the daily quota resets (next UTC midnight).
+        let used: Int?
+        let limit: Int?
+        let resets_at: String?
     }
 
     @Published var snapshot: Snapshot?
@@ -44,6 +53,21 @@ final class UsageService: ObservableObject {
     // split that read as "my Pro account isn't recognized."
     var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && rendersLeft <= 0 }
     var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && chatsLeft <= 0 }
+
+    /// The absolute instant the daily render quota resets (server = next UTC
+    /// midnight), for the usage-meter countdown. The server serializes with
+    /// `toISOString()`, which ALWAYS includes fractional seconds (".000Z"), so
+    /// the formatter MUST enable `.withFractionalSeconds` or the parse returns
+    /// nil; we fall back to the non-fractional form for safety. The parsed Date
+    /// is absolute (Z offset), so no local-timezone math is needed downstream.
+    var resetsAt: Date? {
+        guard let s = snapshot?.resets_at else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
 
     private init() {}
 

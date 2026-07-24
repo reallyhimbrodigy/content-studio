@@ -281,45 +281,13 @@ struct TrialWallView: View {
         }
     }
 
-    // ── Post-purchase confirmation (dates + amounts) ─────────────────────────
+    // ── Post-purchase confirmation ───────────────────────────────────────────
+    // The shared ProCelebrationView (defined in PaywallView.swift), so buying
+    // from the wall lands the SAME "You're on Promptly Pro" moment as buying
+    // from the paywall sheet. onPassed() advances the flow (onboarding) or
+    // dismisses the wall (door/lapsed).
     private func confirmation(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
-        VStack(spacing: 18) {
-            Spacer()
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 54))
-                .foregroundColor(.green)
-            Text("You're Pro")
-                .font(.system(size: 26, weight: .heavy))
-                .foregroundColor(.white)
-            VStack(spacing: 8) {
-                confirmationRow("Billed today", LocalizedStringKey(c.price))
-                confirmationRow("Renews", "automatically, cancel anytime")
-            }
-            .padding(18)
-            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
-            .padding(.horizontal, 24)
-            Spacer()
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onPassed()
-            } label: {
-                Text("Start creating")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity).frame(height: 56)
-                    .background(Color.white, in: Capsule())
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-        }
-    }
-
-    private func confirmationRow(_ k: LocalizedStringKey, _ v: LocalizedStringKey) -> some View {
-        HStack {
-            Text(k).font(.system(size: 14)).foregroundColor(.white.opacity(0.55))
-            Spacer()
-            Text(v).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
-        }
+        ProCelebrationView(price: c.price) { onPassed() }
     }
 
     // ── Package helpers (weekly / monthly / annual) ──────────────────────────

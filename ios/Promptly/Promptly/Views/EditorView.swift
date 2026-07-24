@@ -95,6 +95,11 @@ struct EditorView: View {
                 // favor of in-bubble ghost-text rotation (see inputBar).
                 VStack(spacing: 0) {
                     reeditChip
+                    // Usage meter (freemium, staged for 1.3.1): renders left today
+                    // + reset countdown, escalating to "Get more usage" at the cap.
+                    // Hides itself for Pro. Sits directly above the composer bubble
+                    // and inherits the shared gradient below.
+                    UsageMeterStrip { appState.presentPaywall(.manual) }
                     inputBar
                 }
                 .background(
@@ -103,6 +108,15 @@ struct EditorView: View {
                         startPoint: .top, endPoint: .bottom
                     )
                 )
+            }
+            // Top-of-home upgrade pill (freemium): a slim upgrade affordance
+            // pinned under the nav bar, on the HOME (empty) state only — never
+            // over an active conversation, so it reads as a home nudge, not a
+            // permanent ad rail. UpgradePill further gates on free + has-quota.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if messages.isEmpty {
+                    UpgradePill { appState.presentPaywall(.manual) }
+                }
             }
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
@@ -539,25 +553,23 @@ struct EditorView: View {
     // MARK: - Empty State
 
     /// Empty state. Apple HIG-shaped: thin SF Symbol in secondary color
-    /// (no decorative tinted background), a brand-name title, a single
-    /// concise subtitle, and a borderless prominent button. Avoids the
-    /// "AI startup hero" feel — no accent-color circles, no marketing
-    /// copy, no white capsule. Reads like a native iOS app.
+    /// (no decorative tinted background), a single concise subtitle, and a
+    /// borderless prominent button — upload-first, no brand-name title (the
+    /// nav title already carries it). Avoids the "AI startup hero" feel — no
+    /// accent-color circles, no marketing copy, no white capsule. Native feel.
     private var emptyState: some View {
         VStack(spacing: 0) {
             Spacer()
 
+            // Upload-first hero. The redundant "Promptly" wordmark was removed
+            // (2026-07-23 cleanup): the nav title already reads "Edit"/the chat
+            // title, so the empty state leads with the action, not the brand.
             Image(systemName: "video.badge.plus")
                 .font(.system(size: 56, weight: .thin))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 22)
 
-            Text("Promptly")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(.primary)
-                .padding(.bottom, 6)
-
-            Text("AI editor for short-form talking head videos.\nUpload a clip, describe the vibe, and let Promptly do the rest.")
+            Text("AI editor for short-form talking head videos.\nUpload a clip, describe the vibe, and Promptly does the rest.")
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -3270,3 +3282,126 @@ struct CircularProgressRing: View {
 /// facing alert; throwing this is just the signal to bail out of
 /// the upload Task cleanly without flagging an upload error.
 private struct Layer2RejectionSentinel: Error {}
+
+
+// MARK: - Freemium usage meter + upgrade pill (staged for 1.3.1)
+
+/// Thin usage strip that sits directly above the composer. Free users only —
+/// it removes itself for Pro (unlimited) and before the first snapshot loads.
+/// With quota it's a quiet "N free videos left today"; at the cap it escalates
+/// to a reset countdown + a gold "Get more usage" link into the paywall. This
+/// is DISPLAY ONLY — the server is the real gate (see UsageService).
+private struct UsageMeterStrip: View {
+    var onUpgrade: () -> Void
+    @ObservedObject private var usage = UsageService.shared
+    @ObservedObject private var subscription = SubscriptionService.shared
+
+    var body: some View {
+        if !subscription.effectiveIsPro, usage.snapshot != nil {
+            let left = usage.rendersLeft
+            HStack(spacing: 7) {
+                Image(systemName: left > 0 ? "bolt.fill" : "bolt.slash.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(left > 0 ? PromptlyGold.solid : Color.white.opacity(0.45))
+
+                Group {
+                    if left > 0 {
+                        // Automatic grammar agreement pluralizes "video" off the count.
+                        Text("^[\(left) free video](inflect: true) left today")
+                    } else if let reset = usage.resetsAt, reset > Date() {
+                        // A controlled, directional "resets in 2h 23m" that ticks
+                        // each minute — `Text(_, style: .relative)` renders a bare,
+                        // non-directional "2 hr, 23 min", which reads awkwardly here.
+                        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                            let secs = max(0, Int(reset.timeIntervalSince(ctx.date)))
+                            let h = secs / 3600, m = (secs % 3600) / 60
+                            Text(h > 0
+                                 ? "No free videos left · resets in \(h)h \(m)m"
+                                 : "No free videos left · resets in \(max(1, m))m")
+                        }
+                    } else {
+                        Text("No free videos left today")
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+                Spacer(minLength: 8)
+
+                if left <= 0 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onUpgrade()
+                    } label: {
+                        Text("Get more usage")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(PromptlyGold.solid)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Space.sm)
+            .padding(.top, 2)
+            .padding(.bottom, 6)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.2), value: left)
+        }
+    }
+}
+
+/// Slim upgrade affordance pinned under the nav bar on the Edit tab's home
+/// (empty) state. Deliberately quiet (a hairline gold card, not a loud banner).
+/// Shows only when we KNOW the user is a free user with quota left:
+///   - free (not effectiveIsPro) and the snapshot has loaded (no Pro flash),
+///   - AND they still have a free video today (rendersLeft > 0). At the cap the
+///     usage meter's "Get more usage" becomes the single, well-timed CTA, so the
+///     pill steps aside — one screen never carries two controls to one paywall.
+/// The call site further gates it to the empty state, so it never becomes a
+/// permanent ad-rail glued over an active conversation. Observes BOTH services
+/// because effectiveIsPro is a computed OR of RevenueCat + server state.
+private struct UpgradePill: View {
+    var onTap: () -> Void
+    @ObservedObject private var subscription = SubscriptionService.shared
+    @ObservedObject private var usage = UsageService.shared
+
+    var body: some View {
+        if !subscription.effectiveIsPro, usage.snapshot != nil, usage.rendersLeft > 0 {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PromptlyGold.gradient)
+                    Text("Unlock unlimited videos")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 8)
+                    Text("Upgrade")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(PromptlyGold.gradient))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(PromptlyGold.solid.opacity(0.25), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
