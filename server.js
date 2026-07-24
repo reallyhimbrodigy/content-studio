@@ -3094,7 +3094,7 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/admin/email-test' && req.method === 'POST') {
     (async () => {
       try {
-        const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
         if (!svc || String(req.headers.authorization || '') !== `Bearer ${svc}`) {
           return sendJson(res, 401, { error: 'unauthorized' });
         }
