@@ -112,15 +112,6 @@ struct EditorView: View {
                     )
                 )
             }
-            // Top-of-home upgrade pill (freemium): a slim upgrade affordance
-            // pinned under the nav bar, on the HOME (empty) state only — never
-            // over an active conversation, so it reads as a home nudge, not a
-            // permanent ad rail. UpgradePill further gates on free + has-quota.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if messages.isEmpty {
-                    UpgradePill { appState.presentPaywall(.manual) }
-                }
-            }
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(.systemBackground), for: .navigationBar)
@@ -142,6 +133,29 @@ struct EditorView: View {
                     .tint(.white)
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show chats")
+                }
+                // Compact upgrade chip right beside the sidebar button (ChatGPT
+                // placement) — visible immediately for free users, hidden for Pro.
+                ToolbarItem(placement: .topBarLeading) {
+                    if !subscriptionService.effectiveIsPro {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            appState.presentPaywall(.manual)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("Upgrade")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 5)
+                            .background(PromptlyGold.gradient, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Upgrade to Promptly Pro")
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -3386,61 +3400,6 @@ private struct UsageMeterStrip: View {
             .padding(.bottom, 6)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: left)
-        }
-    }
-}
-
-/// Slim upgrade affordance pinned under the nav bar on the Edit tab's home
-/// (empty) state. Deliberately quiet (a hairline gold card, not a loud banner).
-/// Shows only when we KNOW the user is a free user with quota left:
-///   - free (not effectiveIsPro) and the snapshot has loaded (no Pro flash),
-///   - AND they still have a free video today (rendersLeft > 0). At the cap the
-///     usage meter's "Get more usage" becomes the single, well-timed CTA, so the
-///     pill steps aside — one screen never carries two controls to one paywall.
-/// The call site further gates it to the empty state, so it never becomes a
-/// permanent ad-rail glued over an active conversation. Observes BOTH services
-/// because effectiveIsPro is a computed OR of RevenueCat + server state.
-private struct UpgradePill: View {
-    var onTap: () -> Void
-    @ObservedObject private var subscription = SubscriptionService.shared
-    @ObservedObject private var usage = UsageService.shared
-
-    var body: some View {
-        if !subscription.effectiveIsPro, usage.snapshot != nil, usage.rendersLeft > 0 {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onTap()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(PromptlyGold.gradient)
-                    Text("Unlock unlimited videos")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer(minLength: 8)
-                    Text("Upgrade")
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(PromptlyGold.gradient))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(PromptlyGold.solid.opacity(0.25), lineWidth: 0.5)
-                        )
-                )
-                .padding(.horizontal, Theme.Space.md)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
-            }
-            .buttonStyle(.plain)
         }
     }
 }

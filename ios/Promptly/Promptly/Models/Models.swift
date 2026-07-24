@@ -408,6 +408,7 @@ struct AuthResponse: Codable {
 struct AuthUser: Codable {
     let id: String
     let email: String?
+    let phone: String?
     let user_metadata: UserMetadata?
 }
 
