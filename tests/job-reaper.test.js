@@ -42,16 +42,16 @@ const vj = (o) => ({ refunded_at: null, parent_job_id: null, reedit_mode: null, 
 test('lease selector: queued 10min, processing 20min; terminal/needs_input never', () => {
   assert.equal(isPastLease({ status: 'queued', updated_at: iso(-11 * 60000) }, NOW), true);
   assert.equal(isPastLease({ status: 'queued', updated_at: iso(-9 * 60000) }, NOW), false);
-  assert.equal(isPastLease({ status: 'processing', updated_at: iso(-21 * 60000) }, NOW), true);
-  assert.equal(isPastLease({ status: 'processing', updated_at: iso(-19 * 60000) }, NOW), false);
+  assert.equal(isPastLease({ status: 'processing', updated_at: iso(-31 * 60000) }, NOW), true);
+  assert.equal(isPastLease({ status: 'processing', updated_at: iso(-29 * 60000) }, NOW), false);
   assert.equal(isPastLease({ status: 'completed', updated_at: iso(-99 * 60000) }, NOW), false);
   assert.equal(isPastLease({ status: 'needs_input', updated_at: iso(-99 * 60000) }, NOW), false);
 });
 
 test('zombie test: stalled processing job → terminalized failed + friendly copy + refunded + SSE final', async () => {
   const fake = makeFake({
-    video_jobs: [vj({ id: 'z1', user_id: 'u1', status: 'processing', created_at: iso(-30 * 60000), updated_at: iso(-25 * 60000) })],
-    usage_events: [{ id: 1, user_id: 'u1', kind: 'render', created_at: iso(-30 * 60000 - 90) }],
+    video_jobs: [vj({ id: 'z1', user_id: 'u1', status: 'processing', created_at: iso(-36 * 60000), updated_at: iso(-31 * 60000) })],
+    usage_events: [{ id: 1, user_id: 'u1', kind: 'render', created_at: iso(-36 * 60000 - 90) }],
   });
   const sse = [];
   const out = await sweepJobReaper(fake, { pushProgressToSSE: (id, ev) => sse.push({ id, ev }) });
@@ -91,7 +91,7 @@ test('REVIEW regression: late-resumed ask-back job (created_at 9h old) is still 
   // A needs_input row answered hours later flips back to processing with its
   // ORIGINAL created_at. The old created_at scan horizon hid it forever.
   const fake = makeFake({
-    video_jobs: [vj({ id: 'ask1', user_id: 'u9h', status: 'processing', created_at: iso(-9 * 3600000), updated_at: iso(-25 * 60000) })],
+    video_jobs: [vj({ id: 'ask1', user_id: 'u9h', status: 'processing', created_at: iso(-9 * 3600000), updated_at: iso(-31 * 60000) })],
     usage_events: [],
   });
   const out = await sweepJobReaper(fake, {});
@@ -143,31 +143,31 @@ test('first-terminal-wins: a worker terminal landing between read and write beat
 // ─── W4 #1: the 900s SIGKILL execution wall ──────────────────────────────────
 
 test('execution-wall selector: processing past started_at wall; needs started_at; not for queued', () => {
-  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-21 * 60000) }, NOW), true);
-  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-19 * 60000) }, NOW), false);
+  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-36 * 60000) }, NOW), true);
+  assert.equal(isPastExecutionWall({ status: 'processing', started_at: iso(-34 * 60000) }, NOW), false);
   assert.equal(isPastExecutionWall({ status: 'processing', started_at: null }, NOW), false, 'no anchor -> stall lease only');
   assert.equal(isPastExecutionWall({ status: 'processing' }, NOW), false, 'legacy null started_at');
   assert.equal(isPastExecutionWall({ status: 'queued', started_at: iso(-99 * 60000) }, NOW), false, 'queued never executes');
-  assert.equal(EXEC_WALL_MS, 20 * 60 * 1000);
+  assert.equal(EXEC_WALL_MS, 35 * 60 * 1000);
 });
 
 test('reapReason: timeout (execution wall) takes priority over stall (heartbeat lease)', () => {
-  // SIGKILL shape: started 21min ago, last heartbeat only 5min ago (under the 20min lease)
-  assert.equal(reapReason({ status: 'processing', started_at: iso(-21 * 60000), updated_at: iso(-5 * 60000) }, NOW), 'timeout');
-  // pure stall: no started_at, heartbeat 21min silent
-  assert.equal(reapReason({ status: 'processing', started_at: null, updated_at: iso(-21 * 60000) }, NOW), 'stall');
+  // SIGKILL shape: started 36min ago, last heartbeat only 5min ago (under the 30min lease)
+  assert.equal(reapReason({ status: 'processing', started_at: iso(-36 * 60000), updated_at: iso(-5 * 60000) }, NOW), 'timeout');
+  // pure stall: no started_at, heartbeat 31min silent
+  assert.equal(reapReason({ status: 'processing', started_at: null, updated_at: iso(-31 * 60000) }, NOW), 'stall');
   // healthy long render: started 15min ago, heartbeating -> neither
   assert.equal(reapReason({ status: 'processing', started_at: iso(-15 * 60000), updated_at: iso(-10000) }, NOW), null);
 });
 
 test('W4 #1 REGRESSION: a 900s SIGKILL the heartbeat lease MISSES is caught by the execution wall', async () => {
-  // The exact silent death: worker heartbeated updated_at right up to the 900s
-  // kill (so it's only ~5min stale — UNDER the 20min lease, isPastLease=false),
-  // but started_at is 21min old. Old reaper: waits ~15 more min. New: reaps now.
+  // The exact silent death: worker heartbeated updated_at right up to the kill
+  // (so it's only ~5min stale — UNDER the 30min lease, isPastLease=false),
+  // but started_at is 36min old (past the 35min wall). Reaps now, not ~30min later.
   const fake = makeFake({
     video_jobs: [vj({ id: 'kill1', user_id: 'uk', status: 'processing',
-      created_at: iso(-22 * 60000), started_at: iso(-21 * 60000), updated_at: iso(-5 * 60000) })],
-    usage_events: [{ id: 1, user_id: 'uk', kind: 'render', created_at: iso(-22 * 60000 - 90) }],
+      created_at: iso(-37 * 60000), started_at: iso(-36 * 60000), updated_at: iso(-5 * 60000) })],
+    usage_events: [{ id: 1, user_id: 'uk', kind: 'render', created_at: iso(-37 * 60000 - 90) }],
   });
   assert.equal(isPastLease(fake._state.video_jobs[0], NOW), false, 'heartbeat lease would NOT catch it yet');
   const sse = [];
