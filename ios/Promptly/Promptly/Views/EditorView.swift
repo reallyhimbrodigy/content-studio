@@ -662,6 +662,7 @@ struct EditorView: View {
                             onRegenerate: regenerateClosure(for: message),
                             onEdit: editClosure(for: message),
                             onRetry: retryClosure(for: message),
+                            onMakeAnother: { tapAddVideo() },
                             onCancel: cancelClosure(for: message),
                             onAskResolved: askResolvedClosure(for: message)
                         )

@@ -19,6 +19,9 @@ struct MessageBubble: View {
     /// createVideoJob with the cached values — no re-upload, no
     /// re-type, single tap.
     var onRetry: (() -> Void)? = nil
+    /// Start a fresh upload — post-render "make another" and the guided recovery
+    /// after a non-retryable rejection. Wired to the composer's picker.
+    var onMakeAnother: (() -> Void)? = nil
 
     /// Tap the red Cancel button on a processing render bubble (shown only
     /// before the edit recipe). Runs the full cancel: server cancel + daily-slot
@@ -264,7 +267,8 @@ struct MessageBubble: View {
                     hlsManifestUrl: message.hlsManifestUrl,
                     jobId: message.jobId,
                     title: message.originalVibe,
-                    onReedit: buildReeditHandler(for: message)
+                    onReedit: buildReeditHandler(for: message),
+                    onMakeAnother: onMakeAnother
                 )
             }
 
@@ -304,6 +308,30 @@ struct MessageBubble: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Try again — re-runs the render with the same video and vibe")
+                    } else if let onMakeAnother = onMakeAnother {
+                        // Rejected-user recovery: for a content rejection (no speech,
+                        // no audio, too short/long, not-talking-head), the SAME clip
+                        // can't succeed — the honest copy above already names the fix,
+                        // and this is the one-tap way to act on it. 140/198 rejected
+                        // users quit after one rejection; this is the path back in.
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onMakeAnother()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "video.badge.plus")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Upload a new video")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Upload a new video")
                     }
                 }
                 .padding(.horizontal, 14)
@@ -1068,6 +1096,7 @@ struct VideoActionRow: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     let onReedit: (() -> Void)?
+    let onMakeAnother: (() -> Void)?
     @StateObject private var exporter: VideoExporter
     // Observe both signals so the Re-edit pill re-renders (gold ↔ lock)
     // the moment Pro state flips — a fresh purchase or an SQL comp on
@@ -1075,10 +1104,11 @@ struct VideoActionRow: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
         self.onReedit = onReedit
+        self.onMakeAnother = onMakeAnother
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
     }
 
@@ -1099,9 +1129,42 @@ struct VideoActionRow: View {
 
             shareLinkPill
 
+            // Post-render next action: keep the momentum instead of dead-ending
+            // the win. One tap starts a fresh video.
+            if let onMakeAnother {
+                makeAnotherPill(action: onMakeAnother)
+            }
+
             Spacer(minLength: 0)
         }
         .padding(.top, 8)
+    }
+
+    /// "New" pill — a plain circle+label action matching the row rhythm (the
+    /// stateful `pill(...)` is for export progress; this one has no state).
+    private func makeAnotherPill(action: @escaping () -> Void) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(Color(.tertiarySystemBackground))
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color(.secondaryLabel))
+                }
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                Text("New")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Make another video")
     }
 
     // MARK: - Pill subviews
@@ -1316,6 +1379,7 @@ struct CompletedVideoView: View {
     let jobId: String?
     let title: String?
     let onReedit: (() -> Void)?
+    let onMakeAnother: (() -> Void)?
 
     /// When AsyncImage hits a 403 (signed URL expired past 7 days),
     /// we ask the server for fresh URLs and stash them here. Future
@@ -1443,7 +1507,8 @@ struct CompletedVideoView: View {
             VideoActionRow(
                 videoUrlStr: videoUrlStr,
                 thumbnailUrlStr: thumbnailUrlStr,
-                onReedit: onReedit
+                onReedit: onReedit,
+                onMakeAnother: onMakeAnother
             )
             .opacity(isPlayable ? 1 : 0.4)
             .disabled(!isPlayable)
