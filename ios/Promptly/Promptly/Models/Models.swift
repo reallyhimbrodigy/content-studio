@@ -87,6 +87,11 @@ struct ChatMessage: Identifiable {
     /// and cancelling a row that doesn't exist yet is a 404 no-op that would
     /// leave the dispatch running and the user charged after "cancelling".
     var serverRowExists: Bool = false
+    /// TRANSIENT (never persisted): set once when we silently auto-retry a
+    /// worker-coded UPLOAD_STALLED failure (a stalled source upload). Guarantees
+    /// the auto-retry fires at most once — a second UPLOAD_STALLED surfaces the
+    /// honest error + the "Upload a new video" recovery instead of looping.
+    var didAutoRetryUploadStall: Bool = false
 }
 
 enum MessageRole {

@@ -3063,13 +3063,14 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message,result") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
 
+        struct JobResult: Codable { let error_code: String? }
         struct JobStatusRow: Codable {
             let status: String?
             let progress: Double?       // durable 0–100; the authoritative bar position
@@ -3080,6 +3081,7 @@ struct EditorView: View {
             let hls_manifest_url: String?
             let thumbnail_url: String?
             let error_message: String?
+            let result: JobResult?      // carries error_code (e.g. UPLOAD_STALLED)
         }
 
         do {
@@ -3199,6 +3201,27 @@ struct EditorView: View {
                 print("[reconcile] \(jobId) → finishing → completed")
                 return
             case "failed":
+                // UPLOAD_STALLED auto-recovery: the worker couldn't fetch the
+                // source in time (a stalled PUT) and coded it retryable. Silently
+                // re-run the render ONCE — a slow-but-alive upload has usually
+                // finished landing in S3 by the time this lands — BEFORE showing
+                // anything. A SECOND UPLOAD_STALLED (flag set) falls through to the
+                // honest error card, whose "Upload a new video" button (onMakeAnother)
+                // is the one-tap recovery.
+                if row.result?.error_code == "UPLOAD_STALLED",
+                   !messages[idx].didAutoRetryUploadStall,
+                   let src = messages[idx].cachedSourceUrl,
+                   let vibe = messages[idx].cachedVibe {
+                    messages[idx].didAutoRetryUploadStall = true
+                    let mid = messages[idx].id
+                    let proxy = messages[idx].cachedProxyUrl
+                    persistMessages()
+                    print("[reconcile] \(jobId) → UPLOAD_STALLED — silent auto-retry (once)")
+                    Task { @MainActor in
+                        retryFailedRender(messageId: mid, sourceUrl: src, proxyUrl: proxy, vibe: vibe)
+                    }
+                    return
+                }
                 messages[idx].jobStatus = "failed"
                 messages[idx].error = row.error_message ?? "Something went wrong."
                 messages[idx].stageTimeline?.finish()
