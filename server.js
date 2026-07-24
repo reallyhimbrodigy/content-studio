@@ -2933,6 +2933,13 @@ const server = http.createServer((req, res) => {
         // clients — whose Snapshot decodes these as required Int — never break;
         // a pro user's UI ignores them via is_pro.
         const freeCaps = capabilities(effectiveTier('none', usageEnforce));
+        // Quota resets at the next UTC midnight — the exact day boundary the
+        // claim_usage_slot RPC (and countTodayUsage) count renders from
+        // (date_trunc('day', now() at utc)). The client renders a live countdown
+        // to this instant. Infinity (pro) can't survive JSON, so send null and
+        // let is_pro drive the "unlimited" UI.
+        const resetsAt = new Date(new Date(utcDayStart()).getTime() + 86_400_000).toISOString();
+        const renderLimit = Number.isFinite(freeCaps.renderLimit) ? freeCaps.renderLimit : null;
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
           tier: effTier,
@@ -2941,6 +2948,10 @@ const server = http.createServer((req, res) => {
           chats_today: chats,
           render_limit: freeCaps.renderLimit,
           chat_limit: freeCaps.chatLimit,
+          // Freemium usage-meter contract (1.3.0+ client): used / limit / reset.
+          used: renders,
+          limit: renderLimit,
+          resets_at: resetsAt,
         });
       } catch (error) {
         const status = error?.statusCode || 500;
@@ -3818,6 +3829,17 @@ const server = http.createServer((req, res) => {
           jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
         });
         if (speechGate.gated) {
+          // A speechless clip was rejected BEFORE any GPU work — it must NOT cost
+          // the user their daily render. The slot was claimed upfront at dispatch
+          // (claimDailyUsage above), so refund it INLINE here; the interval sweep
+          // (lib/refund-leg.js) is only an idempotent backstop. Best-effort: a
+          // refund error must never turn a clean reject into a 500.
+          try {
+            const { refundJobCharge } = require('./lib/refund-leg');
+            await refundJobCharge(supabaseAdmin, job);
+          } catch (e) {
+            console.warn('  [no-speech-gate] inline quota refund failed (sweep backstop):', e?.message || e);
+          }
           return sendJson(res, 200, {
             success: true, job_id: job.id, status: 'failed',
             error_code: 'NO_SPEECH', user_message: NO_SPEECH_COPY,

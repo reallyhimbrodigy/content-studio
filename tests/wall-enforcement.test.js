@@ -58,11 +58,11 @@ test('resolveEnforce: 1.2.0 path still honors the legacy knob when ON (unchanged
   assert.strictEqual(resolveEnforce({ headers: WALLCAPABLE_HEADERS, accountCreatedAt: beforeFlip, enabled: true, flip: FLIP }), true);
   assert.strictEqual(resolveEnforce({ headers: OLD_HEADERS, accountCreatedAt: beforeFlip, enabled: true, flip: FLIP }), false); // old binary grandfathered
 });
-test('resolveEnforce: freemium 1.3.0 → free 2/day render cap, 402 paywall, NEVER a 403 wall', () => {
+test('resolveEnforce: freemium 1.3.0 → free 1/day render cap, 402 paywall, NEVER a 403 wall', () => {
   const enforce = resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: beforeFlip, enabled: false, flip: null });
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce }).allow, true);   // 2nd allowed
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce }).status, 402);   // 3rd → paywall
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce }).route, 'paywall'); // never 'wall'
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 0, enforce }).allow, true);   // 1st allowed
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce }).status, 402);   // 2nd → paywall
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce }).route, 'paywall'); // never 'wall'
 });
 test('resolveEnforce: comped/active pro on 1.3.0 → paid, unlimited (exempt under unconditional freemium)', () => {
   const enforce = resolveEnforce({ headers: FREEMIUM_HEADERS, accountCreatedAt: afterFlip, enabled: false, flip: null });
@@ -93,11 +93,10 @@ test('knob-off keeps a straggler trial UNLIMITED — byte-for-byte today', () =>
 });
 
 // ── The render gate ────────────────────────────────────────────────────────
-test('FREEMIUM render: non-pro → free 2/day, upgrade paywall (402) at cap — NEVER a wall', () => {
-  // effectiveTier('none', true) === 'free' → usable, 2/day.
+test('FREEMIUM render: non-pro → free 1/day, upgrade paywall (402) at cap — NEVER a wall', () => {
+  // effectiveTier('none', true) === 'free' → usable, 1/day.
   assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 0, enforce: true }).allow, true);
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce: true }).allow, true);
-  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 2, enforce: true }),
+  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 1, enforce: true }),
     { allow: false, route: 'paywall', status: 402 });
   // The 403 wall is structurally unreachable for a non-pro user under freemium.
   assert.notStrictEqual(gateDecision({ tier: 'none', kind: 'render', todayCount: 99, enforce: true }).status, 403);
