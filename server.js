@@ -2461,6 +2461,14 @@ const server = http.createServer((req, res) => {
         };
         const { error } = await supabaseAdmin.from('analytics_events').insert(row);
         if (error) console.warn(`[events] insert failed event=${row.event}: ${error.message}`);
+        // Lifecycle email — WELCOME on signup completion (after OTP verify). The
+        // client's distinct_id == the Supabase user.id for a signed-in user, so
+        // anon_user_id resolves the auth email. Fail-soft + idempotent per user;
+        // never blocks the (already-202'd) analytics path.
+        if (row.event === 'signup_completed' && row.anon_user_id) {
+          require('./lib/email').sendWelcomeEmail(supabaseAdmin, row.anon_user_id)
+            .catch((e) => console.warn('[email] welcome trigger failed:', e && e.message));
+        }
       } catch (e) {
         console.warn(`[events] handler error: ${e && e.message ? e.message : e}`);
       }
@@ -3078,6 +3086,35 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Email test + domain check (service-role guarded) ──
+  // Confirms Resend is configured in THIS environment (the key lives only in
+  // server env), verifies the sending domain, and delivers the 3 lifecycle
+  // templates to a given address. Guarded by the service-role key, which is a
+  // server-only secret — no new attack surface beyond what that key already grants.
+  if (parsed.pathname === '/api/admin/email-test' && req.method === 'POST') {
+    (async () => {
+      try {
+        const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        if (!svc || String(req.headers.authorization || '') !== `Bearer ${svc}`) {
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
+        const body = await readJsonBody(req).catch(() => ({}));
+        const to = String((body && body.to) || '').trim();
+        if (!to) return sendJson(res, 400, { error: 'to_required' });
+        const email = require('./lib/email');
+        const configured = email.resendConfigured();
+        const domain = await email.verifyDomain('usepromptly.app');
+        // Deterministic stamp per call so re-runs aren't idempotency-skipped.
+        const stamp = `${Date.now()}`;
+        const results = configured ? await email.sendTestSuite(supabaseAdmin, to, stamp) : null;
+        return sendJson(res, 200, { configured, env_var_needed: configured ? null : 'RESEND_API_KEY', domain, results });
+      } catch (e) {
+        return sendJson(res, 500, { error: e && e.message });
+      }
+    })();
+    return;
+  }
+
   // ── RevenueCat webhook ──
   // RevenueCat → here on every subscription lifecycle event (INITIAL_PURCHASE,
   // RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE, TRIAL_STARTED, etc.).
@@ -3334,6 +3371,23 @@ const server = http.createServer((req, res) => {
         }
 
         console.log('[RevenueCat] applied', { type, appUserId: matchedId, ...update });
+
+        // ── Lifecycle emails ───────────────────────────────────────────────
+        // Fire ONLY on an APPLIED event: the rc_last_event_ms ordering guard
+        // above makes each event apply at most once, so a RevenueCat retry
+        // reaches here only the first time — and the email ledger keys on
+        // event.id for a second layer of idempotency. Fail-soft: an email error
+        // never delays or fails the RC ack.
+        try {
+          const rcEventId = event.id ? String(event.id) : null;
+          if (type === 'INITIAL_PURCHASE' && periodType !== 'trial') {
+            require('./lib/email').sendPurchaseEmail(supabaseAdmin, { userId: matchedId, eventId: rcEventId, productId })
+              .catch((e) => console.warn('[email] purchase trigger failed:', e && e.message));
+          } else if (type === 'BILLING_ISSUE') {
+            require('./lib/email').sendBillingEmail(supabaseAdmin, { userId: matchedId, eventId: rcEventId })
+              .catch((e) => console.warn('[email] billing trigger failed:', e && e.message));
+          }
+        } catch (e) { console.warn('[email] RC lifecycle trigger threw (fail-soft):', e && e.message); }
 
         // ── Transaction-truth mirror (analytics backbone) ──────────────────
         // The webhook is the ONLY place trial/paid/renewal/expiration truth
