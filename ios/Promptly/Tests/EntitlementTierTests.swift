@@ -83,12 +83,12 @@ check(EntitlementTier.fromServer("free") == .free, "fromServer: 'free' → .free
 check(EntitlementTier.none < .free && EntitlementTier.free < .trial && EntitlementTier.trial < .paid,
       "privilege order: none < free < trial < paid")
 check(EntitlementTier.free.appUsable, "free is USABLE (freemium is never a wall)")
-check(EntitlementTier.free.capabilities.renderLimit == 2 && EntitlementTier.free.uploadMax == 1,
-      "free: 2 renders/day, 1 upload")
+check(EntitlementTier.free.capabilities.renderLimit == 1 && EntitlementTier.free.uploadMax == 1,
+      "free: 1 render/day, 1 upload")
 check(!EntitlementTier.free.canReedit && !EntitlementTier.free.canUseLumen,
       "free: no re-edit, no Lumen")
-check(EntitlementTier.free.canRender(todayRenders: 1) && !EntitlementTier.free.canRender(todayRenders: 2),
-      "free: allows the 2nd, blocks the 3rd")
+check(EntitlementTier.free.canRender(todayRenders: 0) && !EntitlementTier.free.canRender(todayRenders: 1),
+      "free: allows the 1st, blocks the 2nd")
 check(EntitlementTier.free.limitHitRouting == .paywall, "free: limit → upgrade paywall, never wall")
 // The client composes RC(non-pro = .none) with server 'free' → .free (most-privileged wins).
 check(EntitlementTier.resolve(rc: .none, server: .free) == .free, "resolve(.none, .free) → .free")

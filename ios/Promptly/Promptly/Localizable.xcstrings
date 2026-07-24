@@ -3187,65 +3187,6 @@
         }
       }
     },
-    "A notification before your trial ends. We actually send it.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A notification before your trial ends. We actually send it."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Una notificación antes de que acabe tu prueba. La enviamos de verdad."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uma notificação antes do seu teste acabar. A gente realmente envia."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "आपका ट्रायल खत्म होने से पहले एक नोटिफिकेशन। हम इसे सच में भेजते हैं।"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "إشعار قبل انتهاء تجربتك المجانية. نرسله فعلاً."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notifikasi sebelum masa trial-mu berakhir. Kami benar-benar mengirimnya."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Une notification avant la fin de votre essai. On l'envoie vraiment."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Benachrichtigung, bevor deine Testphase endet. Und wir schicken sie wirklich."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "トライアル終了前に通知します。ちゃんとお送りします。"
-          }
-        }
-      }
-    },
     "Day %lld — %@ is billed": {
       "extractionState": "manual",
       "localizations": {
@@ -3541,65 +3482,6 @@
         }
       }
     },
-    "Start free trial": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start free trial"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Empezar prueba gratis"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Iniciar teste grátis"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "मुफ़्त ट्रायल शुरू करें"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ابدأ التجربة المجانية"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mulai trial gratis"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Démarrer l'essai gratuit"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kostenlos testen"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無料トライアルを始める"
-          }
-        }
-      }
-    },
     "Get Pro now": {
       "extractionState": "manual",
       "localizations": {
@@ -3655,65 +3537,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "今すぐProを入手"
-          }
-        }
-      }
-    },
-    "%lld days free, then %@. Auto-renews until cancelled — cancel anytime in your Apple Account settings.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld days free, then %@. Auto-renews until cancelled — cancel anytime in your Apple Account settings."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld días gratis, luego %2$@. Se renueva automáticamente hasta que canceles — cancela cuando quieras en los ajustes de tu Apple Account."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld dias grátis, depois %2$@. Renova automaticamente até o cancelamento — cancele quando quiser nas configurações da sua Apple Account."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld दिन मुफ़्त, फिर %2$@। रद्द करने तक अपने-आप रिन्यू होता है — अपनी Apple Account सेटिंग्स में कभी भी रद्द करें।"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld أيام مجاناً، ثم %2$@. يتجدد تلقائياً حتى الإلغاء — ألغِ في أي وقت من إعدادات Apple Account."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld hari gratis, lalu %2$@. Diperpanjang otomatis sampai dibatalkan — batalkan kapan saja di pengaturan Apple Account-mu."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld jours gratuits, puis %2$@. Renouvellement automatique jusqu'à annulation — annulez à tout moment dans les réglages de votre Apple Account."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld Tage kostenlos, danach %2$@. Verlängert sich automatisch bis zur Kündigung — jederzeit in deinen Apple-Account-Einstellungen kündbar."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld日間無料、その後%2$@。キャンセルするまで自動更新されます。Apple Accountの設定でいつでもキャンセルできます。"
           }
         }
       }
@@ -3895,65 +3718,6 @@
         }
       }
     },
-    "Your free trial is still here whenever you're ready.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your free trial is still here whenever you're ready."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu prueba gratis sigue aquí para cuando estés listo."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seu teste grátis continua aqui quando você estiver pronto."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "आप जब तैयार हों, आपका मुफ़्त ट्रायल अब भी यहाँ है।"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "تجربتك المجانية لا تزال هنا متى كنت مستعداً."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trial gratismu tetap ada kapan pun kamu siap."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre essai gratuit vous attend dès que vous êtes prêt."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine kostenlose Testphase ist noch da, wann immer du bereit bist."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無料トライアルは、あなたの準備ができたらいつでも利用できます。"
-          }
-        }
-      }
-    },
     "Back to the offer": {
       "extractionState": "manual",
       "localizations": {
@@ -4009,65 +3773,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "オファーに戻る"
-          }
-        }
-      }
-    },
-    "Your free trial has started": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your free trial has started"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu prueba gratis ha comenzado"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seu teste grátis começou"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "आपका मुफ़्त ट्रायल शुरू हो गया"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "بدأت تجربتك المجانية"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trial gratismu sudah dimulai"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre essai gratuit a commencé"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine kostenlose Testphase hat begonnen"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無料トライアルが始まりました"
           }
         }
       }

@@ -64,7 +64,7 @@ struct PaywallView: View {
     private var subtitle: String {
         switch reason {
         case .dailyRenders(_, let lim):
-            return "Free includes \(lim) renders per day. Upgrade for unlimited."
+            return "Free includes \(lim) video render\(lim == 1 ? "" : "s") per day. Upgrade to Pro for unlimited."
         case .dailyChats(_, let lim):
             return "Free includes \(lim) AI chat messages per day. Upgrade for unlimited."
         case .reedit:
@@ -146,7 +146,7 @@ struct PaywallView: View {
                         .padding(.horizontal, 32)
                         .padding(.top, 14)
 
-                    HStack(spacing: 18) {
+                    VStack(spacing: 14) {
                         Button("Restore Purchases") {
                             Task {
                                 let ok = await subscription.restorePurchases()
@@ -155,6 +155,16 @@ struct PaywallView: View {
                         }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
+
+                        // Apple 3.1.2: a subscription paywall MUST carry functional
+                        // links to the Terms of Use (EULA) and the Privacy Policy.
+                        HStack(spacing: 6) {
+                            Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
+                            Text("·").foregroundColor(.white.opacity(0.3))
+                            Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
                     }
                     .padding(.top, 20)
                     .padding(.bottom, 36)
@@ -457,6 +467,10 @@ struct PaywallView: View {
 
     /// FREEMIUM: a direct purchase, no trial — the CTA commits to the charge.
     private var ctaText: String { "Upgrade to Pro" }
+
+    private func openLegal(_ urlString: String) {
+        if let url = URL(string: urlString) { UIApplication.shared.open(url) }
+    }
 
     private var fineprint: some View {
         // The required auto-renew disclosure (no trial, so no reminder line).

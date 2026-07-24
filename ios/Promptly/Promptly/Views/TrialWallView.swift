@@ -96,7 +96,7 @@ struct TrialWallView: View {
                         .multilineTextAlignment(.center)
                     Text(context == .lapsed
                          ? "Everything you made is still here. Go Pro to keep creating without limits."
-                         : "Go beyond the free 2 videos a day — everything, unlimited.")
+                         : "Go beyond your one free video a day — everything, unlimited.")
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))
                         .multilineTextAlignment(.center)
@@ -213,6 +213,16 @@ struct TrialWallView: View {
             }
             .font(.system(size: 13, weight: .medium))
             .foregroundColor(.white.opacity(0.6))
+
+            // Apple 3.1.2: a screen selling an auto-renewable subscription MUST
+            // carry functional links to the Terms of Use (EULA) and Privacy Policy.
+            HStack(spacing: 6) {
+                Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
+                Text("·").foregroundColor(.white.opacity(0.3))
+                Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(.white.opacity(0.5))
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
@@ -328,5 +338,9 @@ struct TrialWallView: View {
         case .weekly: return "week"
         default: return "period"
         }
+    }
+
+    private func openLegal(_ urlString: String) {
+        if let url = URL(string: urlString) { UIApplication.shared.open(url) }
     }
 }
