@@ -1136,12 +1136,12 @@ struct EditorView: View {
                     switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
                     case .noAudio:
                         Analytics.track("no_audio_rejected", props: ["stage": "precheck"])
-                        layer2RejectionMessage = "Promptly edits talking-to-camera videos — we need to hear you. This clip has no audio; pick one with sound of you speaking."
+                        layer2RejectionMessage = "This clip has no sound. Promptly cuts and captions to your voice, so it needs audio we can hear you in — pick one where you're speaking."
                         showLayer2Rejection = true
                         continue
                     case .tooShort(let m):
                         Analytics.track("too_short_rejected", props: ["stage": "precheck"])
-                        layer2RejectionMessage = "This clip is too short to edit. Upload at least \(m) seconds of you talking to camera."
+                        layer2RejectionMessage = "This clip is too short to edit — try one at least \(m) seconds long."
                         showLayer2Rejection = true
                         continue
                     case .tooLong(let mx):
