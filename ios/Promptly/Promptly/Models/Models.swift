@@ -463,6 +463,33 @@ final class AppState: ObservableObject {
     /// is the sole full-screen surface) — kept only so legacy guards still read 0.
     @Published var showLibrary: Bool = false
     @Published var showAccount: Bool = false
+    /// Bumped by `landOnChat()` on every authenticated landing. EditorView
+    /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
+    /// keyboard up, ready to type a vibe (build 217).
+    @Published var composerFocusToken: Int = 0
+
+    /// The explicit post-auth navigation reset (build 217, the "ALWAYS" rule):
+    /// every successful sign-in lands on the chat surface with the composer
+    /// focused — never on a stale Account/Library sheet the previous session left
+    /// open. Dismiss all sheets, close the drawer, select the chat surface, and
+    /// signal the composer to focus. No auth path may skip this.
+    func landOnChat() {
+        showAccount = false
+        showLibrary = false
+        sidebarOpen = false
+        selectedTab = 0
+        paywallReason = nil
+        composerFocusToken &+= 1
+    }
+
+    /// Clears the drawer/sheet nav state on SIGN-OUT so it can't persist into the
+    /// next session (the bug: sign-out left showAccount=true → re-auth re-opened
+    /// the Account sheet). Paired with `landOnChat()` on sign-in.
+    func clearNavForSignOut() {
+        showAccount = false
+        showLibrary = false
+        sidebarOpen = false
+    }
     /// The paywall the root sheet (AppShell) is bound to — non-nil ⇒ presented.
     /// READ-ONLY to the rest of the app: trigger sites must go through
     /// `presentPaywall` / `deferPaywall` / `flushDeferredPaywall`, never set this

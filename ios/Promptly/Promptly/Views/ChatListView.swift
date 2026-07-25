@@ -155,23 +155,29 @@ struct ChatListView: View {
     }
 
     private func drawerNavRow(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.primary)
-                    .frame(width: 26)
-                Text(label)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.primary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 46)
-            .contentShape(Rectangle())
+        // Tap-only (build 217): a Button fires on touch-up-inside even after a
+        // horizontal drag that stays within its wide bounds, so swiping the
+        // drawer across "New chat" / "Library" was ACTIVATING them. .onTapGesture
+        // is a TapGesture — it cancels the moment the finger moves beyond slop,
+        // so a swipe never fires it; only a clean tap does. Standard button
+        // semantics, restored.
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(.primary)
+                .frame(width: 26)
+            Text(label)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.primary)
+            Spacer()
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .frame(height: 46)
+        .contentShape(Rectangle())
+        .onTapGesture { action() }
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Bottom account bar
@@ -426,16 +432,14 @@ struct ChatListView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                        // swipeActions only fires inside a List — that's
-                        // why we converted away from LazyVStack. Outside
-                        // List it compiles but is a no-op.
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDelete = chat
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        // Delete is LONG-PRESS only (.contextMenu below), NOT a
+                        // trailing swipe (build 217). A swipe-to-delete is the
+                        // SAME leftward gesture as swipe-to-CLOSE the drawer, so
+                        // the two can't be disambiguated — a close-swipe kept
+                        // revealing a row's Delete button. Removing swipeActions
+                        // gives the drawer sole ownership of the horizontal swipe
+                        // (close only, zero delete reveals); long-press still
+                        // deletes at rest. ChatGPT parity.
                         .contextMenu {
                             Button(role: .destructive) {
                                 pendingDelete = chat
@@ -519,26 +523,27 @@ private struct ChatRow: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            Text(chat.title)
-                .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isSelected
-                              ? Color.primary.opacity(0.10)
-                              : Color.clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(chat.title)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        // Tap-only (build 217): so a close-swipe dragged across a row moves ONLY
+        // the drawer and never SELECTS the chat under the finger. A TapGesture
+        // cancels on any drag beyond slop; a clean tap still opens the chat.
+        Text(chat.title)
+            .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+            .foregroundColor(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected
+                          ? Color.primary.opacity(0.10)
+                          : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(chat.title)
+            .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }

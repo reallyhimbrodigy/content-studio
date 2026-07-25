@@ -210,6 +210,15 @@ struct EditorView: View {
                     isInputFocused = true
                 }
             }
+            // Post-auth landing (build 217): landOnChat() bumps this token on
+            // every sign-in, so the composer is ALWAYS focused after auth (a
+            // short delay lets the sheet dismissals settle before the keyboard
+            // rises).
+            .onChange(of: appState.composerFocusToken) { _, _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    isInputFocused = true
+                }
+            }
             .onChange(of: chatStore.activeChatId) { oldId, newId in
                 handleActiveChatChange(oldId: oldId, newId: newId)
             }

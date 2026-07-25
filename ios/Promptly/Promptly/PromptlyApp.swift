@@ -289,6 +289,13 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
+            // Post-auth landing reset (build 217): every sign-in lands on chat
+            // with the composer focused; sign-out clears the nav so it can't
+            // persist a stale Account/Library sheet into the next session.
+            .onChange(of: auth.isAuthenticated) { _, authed in
+                if authed { AppState.shared.landOnChat() }
+                else { AppState.shared.clearNavForSignOut() }
+            }
             .onChange(of: scenePhase) { previous, phase in
                 guard phase == .active else { return }
                 if !didStartSession || previous == .background {
