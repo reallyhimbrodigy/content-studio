@@ -1972,12 +1972,11 @@ const server = http.createServer((req, res) => {
   // Both counters use the usage_events table and a UTC midnight cutoff.
   // Cheap: composite index on (user_id, kind, created_at DESC).
   //
-  // Free tier:
-  //   - 3 renders / day  (kind='render')
-  //   - 50 AI chat msgs / day (kind='chat')
-  //   - Re-edit is fully gated to Pro (no daily allowance)
-  const FREE_DAILY_RENDERS = 3;
-  const FREE_DAILY_CHATS = 50;
+  // The authoritative daily caps live in lib/tier-capabilities.js
+  // (capabilities()): freemium FREE = 1 render/day + 50 chats; legacy 'trial' =
+  // 3/day. There is NO local render-cap constant here — a stale FREE_DAILY_RENDERS
+  // = 3 used to sit in this spot, unreferenced, and it read as a second source of
+  // truth. Removed so capabilities() is the ONLY place the numbers live.
 
   function utcDayStart() {
     const now = new Date();
@@ -2934,14 +2933,14 @@ const server = http.createServer((req, res) => {
         }
         // EFFECTIVE tier — what the user ACTUALLY gets, computed the same way the
         // gates do (freemium when the knob is on, legacy when off). New clients
-        // read `tier` ('free' 2/day vs 'paid'); is_pro still drives unlimited.
+        // read `tier` ('free' 1/day vs 'paid'); is_pro still drives unlimited.
         const usageEnforce = resolveEnforce({
           headers: req.headers,
           accountCreatedAt: createdAt,
         });
         const effTier = effectiveTier(rawTier, usageEnforce);
         // render_limit / chat_limit stay the NON-PRO free cap as a non-null Int
-        // (freemium 2/day vs legacy 3/day). Kept non-null so live pre-1.2.0
+        // (freemium 1/day vs legacy 3/day). Kept non-null so live pre-1.2.0
         // clients — whose Snapshot decodes these as required Int — never break;
         // a pro user's UI ignores them via is_pro.
         const freeCaps = capabilities(effectiveTier('none', usageEnforce));
