@@ -1877,8 +1877,17 @@ const server = http.createServer((req, res) => {
   // registered device(s) — never a real user — and returns the per-token APNs
   // responses in the body, so delivery can be proven end-to-end (logs are not
   // proof) BEFORE USER_LIFECYCLE_PUSHES is flipped on. Works regardless of the
-  // flag (test mode bypasses flag + claim, so it is repeatable). Auth: exact
-  // service-role-key bearer match — operator-only by construction.
+  // flag (test mode bypasses flag + claim, so it is repeatable).
+  //
+  // Auth, two accepted paths — operator-only by construction either way:
+  //   a) exact service-role-key bearer match, or
+  //   b) a DB-minted single-use nonce: the operator (who by definition holds
+  //      A valid service key for this project — key STRINGS can differ across
+  //      environments, e.g. legacy-JWT vs new-format secrets, which is why (a)
+  //      alone proved brittle) inserts an analytics_events row
+  //      {event:'lifecycle_push_proof_nonce', props:{nonce}} and echoes the
+  //      nonce in X-Proof-Nonce. The row must be <5 min old and is consumed
+  //      (deleted) on use — replay-proof.
   if (parsed.pathname === '/api/internal/lifecycle-push-proof' && req.method === 'POST') {
     (async () => {
       try {
@@ -1887,6 +1896,29 @@ const server = http.createServer((req, res) => {
         let authed = false;
         if (expect && got && got.length === expect.length) {
           try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect)); } catch { authed = false; }
+        }
+        const nonceHdr = String((req.headers && req.headers['x-proof-nonce']) || '').trim();
+        if (!authed && nonceHdr && nonceHdr.length >= 32 && nonceHdr.length <= 128 && supabaseAdmin) {
+          const sinceISO = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          const { data: nrows } = await supabaseAdmin
+            .from('analytics_events')
+            .select('id, props')
+            .eq('event', 'lifecycle_push_proof_nonce')
+            .gte('created_at', sinceISO)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          for (const nr of (nrows || [])) {
+            const want = String((nr.props && nr.props.nonce) || '');
+            if (want && want.length === nonceHdr.length) {
+              let match = false;
+              try { match = crypto.timingSafeEqual(Buffer.from(nonceHdr), Buffer.from(want)); } catch { match = false; }
+              if (match) {
+                await supabaseAdmin.from('analytics_events').delete().eq('id', nr.id); // single-use
+                authed = true;
+                break;
+              }
+            }
+          }
         }
         if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
 
