@@ -4973,6 +4973,26 @@ if (require.main === module) {
     setTimeout(runRefundLeg, 15 * 1000); // boot pass
     setInterval(runRefundLeg, 60 * 1000);
 
+    // Missed-push backstop (W1-FIX, job ba1a9f58): worker-direct terminals
+    // (SPAWN_MODE writes failed rows straight to the DB) never hit the server
+    // push chokepoints — deliver their pushes here. Claim-gated exactly-once;
+    // 15-min recency window = structurally zero backlog.
+    const { sweepMissedLifecyclePushes } = require('./lib/lifecycle-push');
+    let missedPushBusy = false;
+    const runMissedPushSweep = async () => {
+      if (missedPushBusy) return;
+      missedPushBusy = true;
+      try {
+        await sweepMissedLifecyclePushes(supabaseAdmin);
+      } catch (err) {
+        console.error('[lifecycle-push] missed-sweep crashed:', err?.message || err);
+      } finally {
+        missedPushBusy = false;
+      }
+    };
+    setTimeout(runMissedPushSweep, 30 * 1000);
+    setInterval(runMissedPushSweep, 60 * 1000);
+
     // Job reaper (stuck-jobs directive): no job rests non-terminal past its
     // lease — terminalize + refund (claim-gated) + SSE the failure so live
     // spinners die. Census 2026-07-10 found zero server zombies; this keeps
