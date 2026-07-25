@@ -536,58 +536,22 @@ struct EditorView: View {
     /// nav title already carries it). Avoids the "AI startup hero" feel — no
     /// accent-color circles, no marketing copy, no white capsule. Native feel.
     private var emptyState: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            // Upload-first hero. The redundant "Promptly" wordmark was removed
-            // (2026-07-23 cleanup): the nav title already reads "Edit"/the chat
-            // title, so the empty state leads with the action, not the brand.
-            Image(systemName: "video.badge.plus")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 22)
-
-            // Expectation-setting: what to upload, what Promptly does, and the
-            // honest wait note (renders take a few minutes; we notify you).
-            Text("Upload a talking head video")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 36)
-                .padding(.bottom, 8)
-
-            Text("Promptly cuts it, captions it, and matches your vibe.")
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 28)
-
-            Button {
+        // §4: on first run, lead with the sample-clip demo when the server has one
+        // hosted — a felt success on a real clip before the user risks their own
+        // footage. Otherwise (demo off, or a return visit to an empty chat) fall
+        // back to the upload-first hero. Both live in FirstRunHero so the shipped
+        // surface and the review screenshots are one source of truth.
+        FirstRunHero(
+            mode: usageService.sampleDemoAvailable ? .demo : .uploadOnly,
+            onWatchDemo: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                startSampleDemo()
+            },
+            onUpload: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 tapAddVideo()
-            } label: {
-                Text("Upload Video")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 220, height: 48)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.white)
-            .foregroundStyle(.black)
-            .controlSize(.large)
-
-            Text("Edits take a few minutes — we'll notify you when yours is ready.")
-                .font(.system(size: 13))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 44)
-                .padding(.top, 16)
-
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
+        )
         .onTapGesture { Self.dismissKeyboard() }
     }
 
@@ -1891,6 +1855,74 @@ struct EditorView: View {
                 messages[i].jobStatus = "failed"
                 messages[i].error = friendlyError(error)
                 persistMessages()
+            }
+        }
+    }
+
+    /// §4 sample-clip demo. Dispatches a pre-hosted clip through the REAL render
+    /// pipeline with NO upload (the source already lives in S3, so this is the
+    /// retry fast path: straight to createVideoJob), so a first-run user watches a
+    /// finished Promptly edit before risking their own footage. Sends `demo: true`
+    /// so the server exempts it from the daily free-render quota — the demo must
+    /// never cost the user their one render. Gated behind `usageService
+    /// .sampleDemoAvailable`, which is only true once the server hosts a clip AND
+    /// honors the exemption; until then the hero never offers this.
+    @MainActor
+    private func startSampleDemo() {
+        guard usageService.sampleDemoAvailable,
+              let sourceUrl = usageService.sampleDemoSourceUrl else { return }
+        // Idempotency: never run two demos at once. If a demo bubble is already
+        // in flight, a second tap is a no-op.
+        if messages.contains(where: { $0.isSampleDemo && ($0.jobStatus == "processing" || $0.jobStatus == "queued") }) { return }
+
+        let proxyUrl = usageService.sampleDemoProxyUrl
+        let vibe = usageService.sampleDemoVibe
+
+        // A natural user turn ("edit this sample") + the processing bubble, so the
+        // demo reads exactly like a real render the user asked for.
+        let userMsg = ChatMessage(role: .user, content: "Edit this sample clip")
+        messages.append(userMsg)
+
+        var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Preparing your footage…")
+        // No upload stage — the clip is already hosted, so the timeline starts at
+        // analyze (mirrors retryFailedRender / re-edit, which also skip upload).
+        processingMsg.stageTimeline = StageTimeline(mode: "full", startWith: "analyze")
+        processingMsg.originalVibe = vibe
+        processingMsg.isSampleDemo = true
+        processingMsg.jobProgress = 40
+        let msgId = processingMsg.id
+        let mintedJobId = UUID().uuidString.lowercased()
+        processingMsg.jobId = mintedJobId
+        messages.append(processingMsg)
+
+        Task { @MainActor in
+            _ = await ensureActiveChat()
+            persistMessages()
+            do {
+                let jobId = try await APIService.shared.createVideoJob(
+                    videoUrl: sourceUrl,
+                    proxyVideoUrl: proxyUrl,
+                    vibe: vibe,
+                    premiumPipeline: false,   // demo always runs the free fast path
+                    clientJobId: mintedJobId,
+                    demo: true                // server exempts from the daily quota
+                )
+                guard let i = messages.firstIndex(where: { $0.id == msgId }) else { return }
+                messages[i].jobId = jobId
+                messages[i].serverRowExists = true
+                startSSE(jobId: jobId, messageId: msgId)
+                scheduleStuckDetector(messageId: msgId, jobId: jobId)
+                persistMessages()
+                print("[demo] dispatched sample render job=\(jobId)")
+            } catch {
+                // A failed demo never blocks the user — show a soft line; their own
+                // upload is the real path. (No Retry wiring: the demo is a nicety.)
+                guard let i = messages.firstIndex(where: { $0.id == msgId }) else { return }
+                messages[i].jobStatus = "failed"
+                messages[i].error = "Couldn't load the sample just now — upload your own clip to see Promptly work."
+                messages[i].isRetryable = false
+                persistMessages()
+                print("[demo] sample dispatch failed: \(error)")
             }
         }
     }

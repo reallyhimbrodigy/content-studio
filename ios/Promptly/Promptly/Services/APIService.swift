@@ -161,7 +161,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, demo: Bool = false) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
@@ -179,6 +179,13 @@ class APIService {
             // inserts under this id; a double-submit replays the existing
             // job (one job, one charge) instead of minting a duplicate.
             let client_job_id: String?
+            // §4 sample-clip demo: a first-run demo render on a pre-hosted clip.
+            // The server MUST treat a `demo` job as free — NOT decrementing the
+            // daily render quota — so watching the demo never costs the user their
+            // one free render. Omitted (nil) for every real render; only the demo
+            // path sends true. Harmless on a server that doesn't read it yet, which
+            // is why the demo hero stays gated OFF until the server honors it.
+            let demo: Bool?
         }
         let body = Body(
             video_url: videoUrl,
@@ -186,7 +193,8 @@ class APIService {
             proxy_video_url: (proxyVideoUrl?.isEmpty == false) ? proxyVideoUrl : nil,
             model: premiumPipeline ? "lumen" : "flare",
             premium_pipeline_enabled: premiumPipeline ? true : nil,
-            client_job_id: clientJobId
+            client_job_id: clientJobId,
+            demo: demo ? true : nil
         )
         request.httpBody = try JSONEncoder().encode(body)
 

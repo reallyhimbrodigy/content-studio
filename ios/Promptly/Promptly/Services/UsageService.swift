@@ -33,6 +33,18 @@ final class UsageService: ObservableObject {
         let used: Int?
         let limit: Int?
         let resets_at: String?
+        // Sample-clip demo (1.3.3 §4, server-gated, all optional → OFF on any
+        // server that omits them). When enabled AND a source URL is present, the
+        // empty-state hero leads with "Watch Promptly edit this": a pre-hosted
+        // clip dispatched through the REAL pipeline with no upload, so a first-run
+        // user feels a finished render before risking their own footage. The
+        // server must ALSO exempt the demo job from the daily free-render quota
+        // (a `demo` flag on createVideoJob) — until it does, this stays off so the
+        // demo never burns the user's one free render.
+        let sample_demo_enabled: Bool?
+        let sample_demo_source_url: String?
+        let sample_demo_proxy_url: String?
+        let sample_demo_vibe: String?
     }
 
     @Published var snapshot: Snapshot?
@@ -61,6 +73,17 @@ final class UsageService: ObservableObject {
     // server is the real gate, so pre-snapshot we never preemptively paywall.
     var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (rendersLeft.map { $0 <= 0 } ?? false) }
     var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (chatsLeft.map { $0 <= 0 } ?? false) }
+
+    // Sample-clip demo gate (§4). Available only when the server flips it ON *and*
+    // ships a hosted source URL — the hero can't offer a demo it has no clip for.
+    // Defaults false/nil so build 219 ships the demo dark until the backend hosts
+    // the clip and exempts it from the daily quota.
+    var sampleDemoAvailable: Bool {
+        (snapshot?.sample_demo_enabled ?? false) && (sampleDemoSourceUrl != nil)
+    }
+    var sampleDemoSourceUrl: String? { snapshot?.sample_demo_source_url }
+    var sampleDemoProxyUrl: String? { snapshot?.sample_demo_proxy_url }
+    var sampleDemoVibe: String { snapshot?.sample_demo_vibe ?? "clean" }
 
     /// The absolute instant the daily render quota resets (server = next UTC
     /// midnight), for the usage-meter countdown. The server serializes with
