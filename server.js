@@ -287,6 +287,7 @@ async function inFlightJobCount(userId) {
     .from('video_jobs')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
+    .eq('demo', false)   // §4: an in-flight demo never counts against concurrency
     .in('status', ['queued', 'processing']);
   if (error) { const e = new Error(error.message); e.code = 'pending_check_failed'; throw e; }
   return count || 0;
@@ -2017,7 +2018,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2030,6 +2031,9 @@ const server = http.createServer((req, res) => {
       progress: 0,
       current_step: 'Queued',
     };
+    // §4: mark the first-run sample-clip demo so it's quota-exempt AND excluded
+    // from activation metrics. Only set when true (column defaults false).
+    if (demo) insertRow.demo = true;
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -3064,6 +3068,23 @@ const server = http.createServer((req, res) => {
           // Older clients ignore both fields.
           max_upload_seconds: Number(process.env.MAX_UPLOAD_SECONDS) || 180,
           content_routing_enabled: String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1',
+          // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
+          // The first-run hero offers "Watch Promptly edit this" only when this is
+          // on AND a clip is configured. Two flag-selectable modes:
+          //   'live'   → client dispatches SAMPLE_DEMO_SOURCE_URL through the real
+          //              pipeline with demo:true (quota-exempt). A real render each
+          //              tap — honest "watch it work", but one GPU render per view.
+          //   'cached' → client plays the PRE-RENDERED SAMPLE_DEMO_RESULT_URL (the
+          //              same clip rendered once, hosted). Instant, ~zero marginal
+          //              cost, never fails. Honest framing (an example Promptly
+          //              made), NEVER a faked live-progress ramp.
+          sample_demo_enabled: String(process.env.SAMPLE_DEMO_ENABLED || '').trim() === '1',
+          sample_demo_mode: (process.env.SAMPLE_DEMO_MODE || 'cached').trim().toLowerCase() === 'live' ? 'live' : 'cached',
+          sample_demo_source_url: process.env.SAMPLE_DEMO_SOURCE_URL || null,
+          sample_demo_proxy_url: process.env.SAMPLE_DEMO_PROXY_URL || null,
+          sample_demo_vibe: process.env.SAMPLE_DEMO_VIBE || null,
+          sample_demo_result_url: process.env.SAMPLE_DEMO_RESULT_URL || null,
+          sample_demo_thumbnail_url: process.env.SAMPLE_DEMO_THUMBNAIL_URL || null,
         });
       } catch (error) {
         const status = error?.statusCode || 500;
@@ -3803,6 +3824,20 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'invalid_proxy_url' });
         }
 
+        // §4 sample-clip demo. The exemption (no daily-quota decrement, no
+        // concurrency block) is honored ONLY when the source is the server's
+        // configured official sample clip — the anti-abuse keystone: a user
+        // cannot pass their OWN footage as a "demo" to dodge the free-render cap.
+        // Any demo:true on a non-sample source falls through as a normal, charged
+        // render. Gated on SAMPLE_DEMO_ENABLED so it's inert until the clip is live.
+        const demoConfiguredSource = String(process.env.SAMPLE_DEMO_SOURCE_URL || '').trim();
+        const demoEnabled = String(process.env.SAMPLE_DEMO_ENABLED || '').trim() === '1';
+        const isDemo = body?.demo === true && demoEnabled && !!demoConfiguredSource && videoUrl === demoConfiguredSource;
+        if (body?.demo === true && !isDemo) {
+          console.log('  [demo] demo:true NOT honored (enabled=%s sourceMatch=%s) — treating as a normal charged render',
+            demoEnabled, videoUrl === demoConfiguredSource);
+        }
+
         const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
@@ -3881,7 +3916,7 @@ const server = http.createServer((req, res) => {
               return { job: existing, replayed: true };
             }
           }
-          if (supabaseAdmin) {
+          if (supabaseAdmin && !isDemo) {
             let pendingCount;
             try {
               // Same account-global in-flight definition the upload doors use.
@@ -3909,7 +3944,31 @@ const server = http.createServer((req, res) => {
             }
           }
 
-          if (wallCaps.renderLimit === Infinity) {
+          if (isDemo) {
+            // §4 demo: quota-exempt (source-matched above) — NO usage_events write,
+            // so it never touches the render meter or the free-render cap. Capped
+            // per user per day so live-render mode can't be hammered into GPU spend;
+            // counts this user's demo rows created since UTC midnight. Cached mode
+            // (recommended) has no GPU cost, but the cap is cheap defense either way.
+            const demoCap = Number(process.env.SAMPLE_DEMO_DAILY_CAP) || 5;
+            const { count: demoToday, error: demoCountErr } = await supabaseAdmin
+              .from('video_jobs')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', authUser.id)
+              .eq('demo', true)
+              .gte('created_at', utcDayStart());
+            if (demoCountErr) {
+              // On a count outage, refuse the demo (never free-render on failure).
+              return { status: 503, body: { error: 'demo_check_failed' } };
+            }
+            if ((demoToday || 0) >= demoCap) {
+              console.log('  [demo] 402 demo_limit_reached userId=%s used=%d cap=%d', authUser.id, demoToday, demoCap);
+              return { status: 402, body: {
+                error: 'demo_limit_reached', kind: 'demo',
+                message: 'Come back tomorrow to watch the demo again.',
+              } };
+            }
+          } else if (wallCaps.renderLimit === Infinity) {
             // Unlimited (paid — and, pre-flip, any active-trial that was isPro):
             // no daily cap, but still record the render for tracking.
             await logUsageEvent(authUser.id, 'render');
@@ -3935,23 +3994,28 @@ const server = http.createServer((req, res) => {
             videoUrl,
             vibeInput,
             clientJobId,
+            demo: isDemo,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
             // our fast-path check and the insert. Unwind the charge we just
             // claimed (one job, one charge) — delete the render event we
-            // logged milliseconds ago — and treat as a replay.
-            try {
-              const { data: ev } = await supabaseAdmin
-                .from('usage_events').select('id')
-                .eq('user_id', authUser.id).eq('kind', 'render')
-                .gte('created_at', new Date(Date.now() - 10_000).toISOString())
-                .order('created_at', { ascending: false }).limit(1);
-              if (Array.isArray(ev) && ev[0]) {
-                await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+            // logged milliseconds ago — and treat as a replay. A DEMO logs no
+            // render charge, so it has nothing to unwind — skipping the delete is
+            // load-bearing: otherwise it would wrongly erase a REAL render event.
+            if (!isDemo) {
+              try {
+                const { data: ev } = await supabaseAdmin
+                  .from('usage_events').select('id')
+                  .eq('user_id', authUser.id).eq('kind', 'render')
+                  .gte('created_at', new Date(Date.now() - 10_000).toISOString())
+                  .order('created_at', { ascending: false }).limit(1);
+                if (Array.isArray(ev) && ev[0]) {
+                  await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+                }
+              } catch (e) {
+                console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
               }
-            } catch (e) {
-              console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
             }
             return { job: created, replayed: true };
           }

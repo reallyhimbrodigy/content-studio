@@ -41,6 +41,16 @@ async function count(table, filter = '') {
   const r = await fetch(`${url}/rest/v1/${table}?select=id${filter}&limit=1`, { headers: { ...H, Prefer: 'count=exact' } });
   return Number((r.headers.get('content-range') || '/0').split('/')[1]);
 }
+// Fetch video_jobs demo-aware. Selecting a column that doesn't exist yet (the
+// add-demo migration not yet applied) 400s the whole query, so on an empty return
+// we retry WITHOUT `demo` and treat every row as real — the funnel never breaks
+// during the deploy→migration window.
+async function pageJobs() {
+  const withDemo = await page('video_jobs?select=user_id,status,created_at,demo');
+  if (withDemo.length) return withDemo;
+  const plain = await page('video_jobs?select=user_id,status,created_at');
+  return plain.map((j) => ({ ...j, demo: false }));
+}
 
 (async () => {
   const nowIso = new Date().toISOString().slice(0, 10);
@@ -48,7 +58,14 @@ async function count(table, filter = '') {
 
   // ── ACTIVATION (authoritative) ──
   const totalUsers = await count('profiles');
-  const jobs = await page('video_jobs?select=user_id,status,created_at');
+  // §4: the sample-clip DEMO renders on the pre-hosted official clip, not real
+  // footage — they must NOT inflate activation or the error budget. Split them
+  // out: `jobs` below is REAL renders only (every activation/failure line uses it);
+  // demo jobs get their own counter. `demo` column is backfilled false, so a
+  // pre-migration DB (column absent) safely falls back to all-real.
+  const allJobs = await pageJobs();
+  const demoJobs = allJobs.filter((j) => j.demo === true);
+  const jobs = allJobs.filter((j) => j.demo !== true);   // REAL renders only, everywhere below
   const dispatchedU = new Set(jobs.map((j) => j.user_id)).size;
   const completedU = new Set(jobs.filter((j) => j.status === 'completed').map((j) => j.user_id)).size;
   const jobsDone = jobs.filter((j) => j.status === 'completed').length;
@@ -60,9 +77,15 @@ async function count(table, filter = '') {
   const nUsers = newUserIds.size;
   const nDispatchedU = new Set(jobs.filter((j) => newUserIds.has(j.user_id)).map((j) => j.user_id)).size;
   const nCompletedU = new Set(jobs.filter((j) => newUserIds.has(j.user_id) && j.status === 'completed').map((j) => j.user_id)).size;
-  const flipJobs = jobs.filter((j) => j.created_at >= FLIP);          // jobs dispatched after the flip
+  const flipJobs = jobs.filter((j) => j.created_at >= FLIP);          // REAL jobs dispatched after the flip
   const flipDone = flipJobs.filter((j) => j.status === 'completed').length;
   const flipFail = flipJobs.filter((j) => j.status === 'failed').length;
+
+  // ── DEMO (separate — never blended into activation or the error budget) ──
+  const demoUsers = new Set(demoJobs.map((j) => j.user_id)).size;
+  const demoDone = demoJobs.filter((j) => j.status === 'completed').length;
+  const demoFail = demoJobs.filter((j) => j.status === 'failed').length;
+  const demoFlip = demoJobs.filter((j) => j.created_at >= FLIP).length;
 
   // ── REVENUE (server truth) ──
   const paid = await page('profiles?select=comp_pro,pro_until,rc_app_user_id,rc_period_type&or=(tier.eq.paid,comp_pro.eq.true,pro_until.not.is.null,rc_app_user_id.not.is.null)');
@@ -86,6 +109,8 @@ async function count(table, filter = '') {
   console.log(`  new dispatched          ${nDispatchedU}  (${pct(nDispatchedU, nUsers)} of new signups)`);
   console.log(`  new COMPLETED  ★        ${nCompletedU}  (${pct(nCompletedU, nUsers)} of new signups, ${pct(nCompletedU, nDispatchedU)} of new dispatchers)`);
   console.log(`  post-flip jobs: ${flipJobs.length} · ${flipDone} done · ${flipFail} failed  (${pct(flipFail, flipJobs.length)} job failure rate — vs ${pct(jobsFail, jobs.length)} all-time)`);
+  console.log('DEMO (sample-clip, excluded from activation above):');
+  console.log(`  demo renders            ${demoJobs.length}  (${demoUsers} users · ${demoDone} done · ${demoFail} failed · ${demoFlip} post-flip)`);
   console.log('REVENUE (server truth):');
   console.log(`  active paid subs        ${activePaid}   ·   lapsed RC trials ${rcTrials}`);
   console.log(`PAYWALL LEG (last ${windowDays}d events):`);
@@ -95,4 +120,5 @@ async function count(table, filter = '') {
   // cohort (new product alone). The campaign's success is the POST-FLIP line moving.
   console.log(`\n[REPORT] funnel ${nowIso} ALL-TIME: signup ${totalUsers} → dispatch ${dispatchedU} (${pct(dispatchedU, totalUsers)}) → complete ${completedU} (${pct(completedU, totalUsers)}) | jobfail ${pct(jobsFail, jobs.length)} | paid ${activePaid} | paywall ${g('paywall_view')}→buy ${g('purchase_completed')}`);
   console.log(`[REPORT] funnel ${nowIso} POST-FLIP: signup ${nUsers} → dispatch ${nDispatchedU} (${pct(nDispatchedU, nUsers)}) → complete ${nCompletedU} (${pct(nCompletedU, nUsers)}) | jobfail ${pct(flipFail, flipJobs.length)} | (new product, since ${FLIP.slice(0, 10)})`);
+  console.log(`[REPORT] funnel ${nowIso} DEMO: renders ${demoJobs.length} · users ${demoUsers} · done ${demoDone} · failed ${demoFail} (real-footage metrics above exclude these)`);
 })().catch((e) => { console.error('funnel-report failed:', e.message); process.exit(1); });
