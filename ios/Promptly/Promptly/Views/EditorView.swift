@@ -117,7 +117,18 @@ struct EditorView: View {
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
             .sheet(isPresented: $showVideoPicker) {
-                NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
+                // The picker enforces the duration ceiling structurally — a
+                // >maxUploadSeconds clip is dropped at selection and never
+                // reaches handlePickedVideos, so no upload can start it (218).
+                NativeVideoPicker(
+                    maxSelection: pickerMaxSelection,
+                    maxDurationSeconds: usageService.maxUploadSeconds,
+                    onTooLong: {
+                        let mins = usageService.maxUploadSeconds / 60
+                        layer2RejectionMessage = "This clip is over \(mins) minutes. Trim it to a highlight and upload again."
+                        showLayer2Rejection = true
+                    }
+                ) { videos in
                     handlePickedVideos(videos)
                 }
                 .ignoresSafeArea()
@@ -1166,6 +1177,13 @@ struct EditorView: View {
                 // "try a different video" prompt with a "Try Anyway"
                 // escape hatch for borderline cases.
                 if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
+                    // CONTENT pre-checks (no-audio / too-short / talking-head
+                    // face detection) run ONLY in the pre-routing world. Once the
+                    // server routing cert is live (contentRoutingEnabled), the
+                    // picker's duration gate is the ONLY on-device judge and ALL
+                    // content classification moves server-side to the definitive,
+                    // fail-open speech gate (218). Duration-only at the picker.
+                    if !usageService.contentRoutingEnabled {
                     // Deterministic AV prechecks (no audio / too short / too long) —
                     // HARD blocks with specific guidance, before any upload. These
                     // cannot succeed downstream, so there's no "Try Anyway".
@@ -1200,6 +1218,7 @@ struct EditorView: View {
                         ])
                         if !userWantsToProceed { continue }
                     }
+                    } // end: if !usageService.contentRoutingEnabled (content pre-checks)
                 }
 
                 addPendingVideoAndStartUpload(video)

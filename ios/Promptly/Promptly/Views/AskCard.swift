@@ -81,7 +81,17 @@ struct AskCard: View {
         .opacity(isSubmitting ? 0.6 : 1)
         .onChange(of: pickedImageItem) { _, item in loadImage(item) }
         .sheet(isPresented: $showClipPicker) {
-            NativeVideoPicker(maxSelection: 1) { picked in
+            // Same structural duration gate as the composer (218): a >max clip is
+            // dropped in the picker and never becomes clipAsset — no upload path,
+            // including this ask-back one, can skip it.
+            NativeVideoPicker(
+                maxSelection: 1,
+                maxDurationSeconds: UsageService.shared.maxUploadSeconds,
+                onTooLong: {
+                    let mins = UsageService.shared.maxUploadSeconds / 60
+                    errorText = "That clip is over \(mins) minutes. Trim it to a highlight and try again."
+                }
+            ) { picked in
                 if let first = picked.first { clipAsset = first }
             }
             .ignoresSafeArea()

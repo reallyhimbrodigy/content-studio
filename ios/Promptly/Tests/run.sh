@@ -55,3 +55,7 @@ swiftc "$DIR/../Promptly/Services/EntitlementTier.swift" \
 # UsageMeter — free-tier quota display never invents a limit (build-215 revenue fix).
 swiftc "$DIR/UsageMeterRegressionTests.swift" -o "${TMPDIR:-/tmp}/usagetest"
 "${TMPDIR:-/tmp}/usagetest"
+
+# UploadDurationGate — the 218 camera-roll >Ns block; proves no upload path skips it.
+swiftc "$DIR/UploadDurationGateTests.swift" -o "${TMPDIR:-/tmp}/gatetest"
+"${TMPDIR:-/tmp}/gatetest"

@@ -33,6 +33,14 @@ final class UsageService: ObservableObject {
         let used: Int?
         let limit: Int?
         let resets_at: String?
+        // ── Server routing cert (staged, 218). Both optional so every current
+        // client still decodes. The SERVER owns the flip: it emits
+        // content_routing_enabled=true + max_upload_seconds=300 ONLY once the
+        // routing pipeline can actually process 5-min videos. Until then they're
+        // absent → the client stays in the conservative world (180s, on-device
+        // content pre-checks). "Server leads safely" — no client rebuild flips it.
+        let max_upload_seconds: Int?
+        let content_routing_enabled: Bool?
     }
 
     @Published var snapshot: Snapshot?
@@ -49,6 +57,11 @@ final class UsageService: ObservableObject {
     // guessed limit, so the answer to "unknown" is nil, not a number.
     var renderLimit: Int? { snapshot?.render_limit }
     var chatLimit: Int? { snapshot?.chat_limit }
+    // Routing cert (218): the max upload length the picker enforces, and whether
+    // content classification has moved server-side. Conservative defaults until
+    // the server flips them — 180s ceiling, on-device content pre-checks ON.
+    var maxUploadSeconds: Int { snapshot?.max_upload_seconds ?? 180 }
+    var contentRoutingEnabled: Bool { snapshot?.content_routing_enabled ?? false }
     var rendersLeft: Int? { snapshot.map { max(0, $0.render_limit - $0.renders_today) } }
     var chatsLeft: Int? { snapshot.map { max(0, $0.chat_limit - $0.chats_today) } }
     // Gate on the COMPOSITE Pro signal (RevenueCat OR server), matching the

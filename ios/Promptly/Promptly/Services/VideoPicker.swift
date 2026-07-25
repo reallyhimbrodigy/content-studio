@@ -5,6 +5,18 @@ import AVFoundation
 
 struct NativeVideoPicker: UIViewControllerRepresentable {
     let maxSelection: Int
+    /// STRUCTURAL duration gate (218): any picked clip longer than this is
+    /// DROPPED here and never reaches `onPick`, so no upload path can ever start
+    /// a >max clip — the block lives in the ONE place every picker flows through
+    /// (composer + ask-back card), so no entry point can skip it. Callers pass
+    /// UsageService.maxUploadSeconds (180 today; 300 once the server routing cert
+    /// is live). Default `.max` = no gate, for any caller that opts out.
+    /// The duration is the PHAsset's own metadata (instant, no iCloud download);
+    /// the pre-upload path re-verifies from the resolved temp file.
+    var maxDurationSeconds: Int = .max
+    /// Fired when ≥1 pick was dropped for exceeding the gate — the caller shows
+    /// the "over N minutes" message.
+    var onTooLong: () -> Void = {}
     let onPick: ([PickedVideo]) -> Void
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
@@ -21,14 +33,27 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick)
+        Coordinator(maxDurationSeconds: maxDurationSeconds, onTooLong: onTooLong, onPick: onPick)
     }
 
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let maxDurationSeconds: Int
+        let onTooLong: () -> Void
         let onPick: ([PickedVideo]) -> Void
 
-        init(onPick: @escaping ([PickedVideo]) -> Void) {
+        init(maxDurationSeconds: Int, onTooLong: @escaping () -> Void, onPick: @escaping ([PickedVideo]) -> Void) {
+            self.maxDurationSeconds = maxDurationSeconds
+            self.onTooLong = onTooLong
             self.onPick = onPick
+        }
+
+        /// Pure duration gate — unit-tested (VideoPickerGateTests). Returns the
+        /// clips at or under the ceiling plus whether anything was dropped.
+        static func applyDurationGate(_ videos: [PickedVideo], maxSeconds: Int)
+            -> (kept: [PickedVideo], droppedTooLong: Bool) {
+            guard maxSeconds != .max else { return (videos, false) }
+            let kept = videos.filter { $0.duration <= Double(maxSeconds) }
+            return (kept, kept.count != videos.count)
         }
 
         // Return PickedVideos immediately from PHAsset identifiers — no
@@ -50,7 +75,11 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
                 guard let asset = assets.firstObject else { continue }
                 pickedVideos.append(PickedVideo(asset: asset, duration: asset.duration))
             }
-            onPick(pickedVideos)
+            // Structural duration gate: over-length clips are dropped HERE and
+            // never returned, so no caller can start their upload (218).
+            let (kept, droppedTooLong) = Self.applyDurationGate(pickedVideos, maxSeconds: maxDurationSeconds)
+            if droppedTooLong { onTooLong() }
+            onPick(kept)
         }
     }
 }
