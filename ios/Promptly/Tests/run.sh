@@ -51,3 +51,7 @@ swiftc "$DIR/../Promptly/Services/EntitlementTier.swift" \
        "$DIR/EntitlementTierTests.swift" \
        -o "${TMPDIR:-/tmp}/tiertest"
 "${TMPDIR:-/tmp}/tiertest"
+
+# UsageMeter — free-tier quota display never invents a limit (build-215 revenue fix).
+swiftc "$DIR/UsageMeterRegressionTests.swift" -o "${TMPDIR:-/tmp}/usagetest"
+"${TMPDIR:-/tmp}/usagetest"

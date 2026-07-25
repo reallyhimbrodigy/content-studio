@@ -41,18 +41,26 @@ final class UsageService: ObservableObject {
     var isPro: Bool { snapshot?.is_pro ?? false }
     var rendersToday: Int { snapshot?.renders_today ?? 0 }
     var chatsToday: Int { snapshot?.chats_today ?? 0 }
-    var renderLimit: Int { snapshot?.render_limit ?? 3 }
-    var chatLimit: Int { snapshot?.chat_limit ?? 50 }
-    var rendersLeft: Int { max(0, renderLimit - rendersToday) }
-    var chatsLeft: Int { max(0, chatLimit - chatsToday) }
+    // STRICT: the daily caps come ONLY from the server snapshot — never a
+    // client-side fallback that could invent a wrong number. nil until the first
+    // snapshot lands (every quota surface renders nothing until then, by design).
+    // The old `?? 3` fallback is exactly the class of bug that showed a free user
+    // "2 left" (a legacy trial cap of 3 minus one render); there is no safe
+    // guessed limit, so the answer to "unknown" is nil, not a number.
+    var renderLimit: Int? { snapshot?.render_limit }
+    var chatLimit: Int? { snapshot?.chat_limit }
+    var rendersLeft: Int? { snapshot.map { max(0, $0.render_limit - $0.renders_today) } }
+    var chatsLeft: Int? { snapshot.map { max(0, $0.chat_limit - $0.chats_today) } }
     // Gate on the COMPOSITE Pro signal (RevenueCat OR server), matching the
     // contract in SubscriptionService.effectiveIsPro and the picker/re-edit
     // gates. Using the server-only `isPro` here meant a user who is Pro on
     // RevenueCat but not-yet-synced server-side would still hit these
     // paywalls while re-edit + 10-video select already worked — the exact
     // split that read as "my Pro account isn't recognized."
-    var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && rendersLeft <= 0 }
-    var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && chatsLeft <= 0 }
+    // nil-safe: an unknown (not-yet-loaded) count is NEVER "at limit" — the
+    // server is the real gate, so pre-snapshot we never preemptively paywall.
+    var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (rendersLeft.map { $0 <= 0 } ?? false) }
+    var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (chatsLeft.map { $0 <= 0 } ?? false) }
 
     /// The absolute instant the daily render quota resets (server = next UTC
     /// midnight), for the usage-meter countdown. The server serializes with
@@ -84,6 +92,13 @@ final class UsageService: ObservableObject {
         guard let url = URL(string: "https://usepromptly.app/api/usage") else { return }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Stamp the freemium header (X-Promptly-Freemium: 1) so /api/usage computes
+        // the limit on the SAME tier every other freemium door uses. Without it the
+        // server falls to effectiveTier('none', enforce=false) → the legacy 'trial'
+        // cap of 3, and a free user's meter reads "3" (→ "2 left" after one render).
+        // The render gate (createVideoJob) already stamps this; the display call
+        // must match it or the number lies while the server correctly enforces 1.
+        WallCapability.stamp(&request)
         request.timeoutInterval = 10
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

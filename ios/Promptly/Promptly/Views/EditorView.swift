@@ -105,16 +105,14 @@ struct EditorView: View {
                     UsageMeterStrip { appState.presentPaywall(.manual) }
                     inputBar
                 }
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0), Color.black.opacity(0.5)],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
+                // Same solid black as the content + nav — no fade scrim (it read
+                // as a band above the composer on-device).
+                .background(Color.black)
             }
-            .navigationTitle(chatStore.activeChat?.title ?? "Edit")
+            // No title text — clean ChatGPT-style top: hamburger · pill · new-chat.
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -1064,26 +1062,12 @@ struct EditorView: View {
 
     // MARK: - Luxurious backdrop
     //
-    // Replaces flat `.systemBackground` with a subtle vertical gradient —
-    // soft warm-tinted white-fade-to-black at the top so the title /
-    // navigation bar reads with depth, plus a faint vignette at the
-    // bottom for the composer. Tiny but it's the difference between
-    // "default app" and "designed app."
-
+    // ONE SOLID BLACK (build 215): the nav bar, the content, and the composer
+    // all share this exact background. The previous white-tint-at-top + vignette
+    // gradient (and the composer's own fade scrim) read as visible two-tone
+    // bands on-device, so they're gone — a single uniform black, no seams.
     private var luxuryBackdrop: some View {
-        ZStack {
-            Color.black
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.05),
-                    Color.white.opacity(0.0),
-                    Color.white.opacity(0.0),
-                    Color.black.opacity(0.4)
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-        }
-        .ignoresSafeArea()
+        Color.black.ignoresSafeArea()
     }
 
     private var canSend: Bool {
@@ -2190,7 +2174,7 @@ struct EditorView: View {
         // so the user doesn't watch a thinking indicator spin only to
         // get bounced.
         if UsageService.shared.atChatLimit {
-            let lim = UsageService.shared.chatLimit
+            let lim = UsageService.shared.chatLimit ?? 50
             appState.presentPaywall(.dailyChats(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -2364,7 +2348,7 @@ struct EditorView: View {
         // renders from earlier today). Catches the obvious case with
         // zero latency.
         if hasVideos && UsageService.shared.atRenderLimit {
-            let lim = UsageService.shared.renderLimit
+            let lim = UsageService.shared.renderLimit ?? 1
             appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -2387,7 +2371,7 @@ struct EditorView: View {
             if hasVideos {
                 await UsageService.shared.refresh()
                 if UsageService.shared.atRenderLimit {
-                    let lim = UsageService.shared.renderLimit
+                    let lim = UsageService.shared.renderLimit ?? 1
                     appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     return
@@ -2822,7 +2806,7 @@ struct EditorView: View {
             if let code = event.errorCode,
                code == "tier_concurrency_limit" {
                 Task { @MainActor in
-                    let lim = UsageService.shared.renderLimit
+                    let lim = UsageService.shared.renderLimit ?? 1
                     appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
@@ -3404,8 +3388,10 @@ private struct UsageMeterStrip: View {
     @ObservedObject private var subscription = SubscriptionService.shared
 
     var body: some View {
-        if !subscription.effectiveIsPro, usage.snapshot != nil {
-            let left = usage.rendersLeft
+        // `rendersLeft` is non-nil ONLY once the server snapshot has loaded, so
+        // this both hides the strip for Pro and shows nothing until we have a
+        // real server number — never a guessed limit.
+        if !subscription.effectiveIsPro, let left = usage.rendersLeft {
             HStack(spacing: 7) {
                 Image(systemName: left > 0 ? "bolt.fill" : "bolt.slash.fill")
                     .font(.system(size: 11, weight: .semibold))
@@ -3469,9 +3455,16 @@ private struct UsageMeterStrip: View {
 struct UpgradePill: View {
     var action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Animatable hue offset for the border/glow. Driven by a plain implicit
+    // animation (NOT TimelineView) — build 214 used TimelineView(.animation) in
+    // the border overlay, which a UIKit-hosted nav-bar ToolbarItem drops on the
+    // floor, leaving just the capsule outline: the "box with no Upgrade label"
+    // Zac saw on-device. hueRotation is a first-class animatable effect, so it
+    // survives the toolbar AND delivers the "slow hue-shifting glow" from spec.
+    @State private var hue: Double = 0
 
-    // Promptly's own spectrum. First == last (brand gold) so the rotating conic
-    // loops seamlessly with no visible seam at the 360°→0° wrap.
+    // Promptly's own spectrum — anchored by the brand gold, NOT OpenAI's
+    // blue→purple. First == last so the hue cycle wraps with no visible seam.
     private static let spectrum: [Color] = [
         Color(hex: "F4E4BC"), // cream-gold (brand anchor)
         Color(hex: "FF7A5C"), // coral
@@ -3480,7 +3473,6 @@ struct UpgradePill: View {
         Color(hex: "36D6C3"), // teal
         Color(hex: "F4E4BC"), // back to gold — seamless loop
     ]
-    private static let rotationPeriod: Double = 4.0 // seconds per full turn
 
     var body: some View {
         Button {
@@ -3489,47 +3481,43 @@ struct UpgradePill: View {
         } label: {
             HStack(spacing: 5) {
                 Image("PromptlyLogo")
+                    .renderingMode(.original)   // the nav bar must not tint the mark away
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 13, height: 13)
                 Text("Upgrade")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundColor(.white)
             }
+            .fixedSize()                        // toolbar can't collapse it to a box
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .background(Capsule().fill(Color(hex: "16161C")))
-            .overlay(borderOverlay)
-            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.35 : 0.5), radius: reduceMotion ? 3 : 6)
-            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.0 : 0.3), radius: reduceMotion ? 0 : 9)
+            .background(
+                // Subtle top-lit dark capsule — depth, not a flat black chip.
+                Capsule().fill(
+                    LinearGradient(colors: [Color(hex: "1C1C24"), Color(hex: "101014")],
+                                   startPoint: .top, endPoint: .bottom)
+                )
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        AngularGradient(gradient: Gradient(colors: Self.spectrum), center: .center),
+                        lineWidth: 1.4
+                    )
+                    .hueRotation(.degrees(hue)) // 0 when reduceMotion → static premium border
+            )
+            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.28 : 0.45), radius: 5)
+            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.16 : 0.28), radius: 9)
         }
         .buttonStyle(.plain)
+        .tint(.white)
+        .fixedSize()
         .accessibilityLabel("Upgrade to Promptly Pro")
-    }
-
-    // The glowing RGB border. Confined to an overlay so the frame-driven
-    // re-render doesn't touch the label/logo.
-    @ViewBuilder private var borderOverlay: some View {
-        if reduceMotion {
-            // Static spectrum border — same palette, no motion.
-            Capsule().strokeBorder(
-                AngularGradient(gradient: Gradient(colors: Self.spectrum), center: .center),
-                lineWidth: 1.6
-            )
-        } else {
-            // Frame-driven rotation — guaranteed smooth (angle derived from the
-            // clock each frame), seamless because the spectrum wraps gold→gold.
-            TimelineView(.animation) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                let angle = (t.truncatingRemainder(dividingBy: Self.rotationPeriod) / Self.rotationPeriod) * 360.0
-                Capsule().strokeBorder(
-                    AngularGradient(
-                        gradient: Gradient(colors: Self.spectrum),
-                        center: .center,
-                        angle: .degrees(angle)
-                    ),
-                    lineWidth: 1.6
-                )
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
+                hue = 360
             }
         }
     }
