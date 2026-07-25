@@ -28,17 +28,23 @@ let cachedTokenIssuedAt = 0;
 
 function loadAuthKey() {
   const b64 = process.env.APNS_AUTH_KEY_BASE64;
-  if (!b64) return null;
-  try {
-    return Buffer.from(b64, 'base64').toString('utf8');
-  } catch {
-    return null;
+  if (b64) {
+    try {
+      return Buffer.from(b64, 'base64').toString('utf8');
+    } catch {
+      /* fall through to the PEM form */
+    }
   }
+  // Belt: accept the raw-PEM env form (APNS_KEY) the legacy pushNotifier.js
+  // convention used, so whichever variable the Render dashboard carries works.
+  const pem = process.env.APNS_KEY;
+  if (pem && pem.includes('PRIVATE KEY')) return pem;
+  return null;
 }
 
 function configured() {
   return Boolean(
-    process.env.APNS_AUTH_KEY_BASE64 &&
+    (process.env.APNS_AUTH_KEY_BASE64 || process.env.APNS_KEY) &&
     process.env.APNS_KEY_ID &&
     process.env.APNS_TEAM_ID &&
     process.env.APNS_BUNDLE_ID
@@ -119,6 +125,9 @@ function derToJose(der) {
  *   opts.silent: true → background prefetch push (no banner, no sound).
  *     iOS wakes the app for ~30s in didReceiveRemoteNotification so it
  *     can pre-warm caches before the user sees the alert variant.
+ *   opts.apsExtra: extra keys merged into the aps dictionary (e.g.
+ *     { 'thread-id': 'render-alert' } so operator alerts collapse into
+ *     one notification thread).
  * Returns { ok, status, reason }. ok=true on 200, false otherwise.
  */
 async function sendOne(token, alert, data = {}, opts = {}) {
@@ -130,7 +139,7 @@ async function sendOne(token, alert, data = {}, opts = {}) {
   const silent = Boolean(opts.silent);
   const aps = silent
     ? { 'content-available': 1 }
-    : { alert, sound: 'default', 'mutable-content': 1 };
+    : { alert, sound: 'default', 'mutable-content': 1, ...(opts.apsExtra || {}) };
 
   const body = JSON.stringify({ aps, ...data });
 
@@ -205,7 +214,11 @@ async function sendToUser(userId, alert, data = {}, opts = {}) {
 
   let sent = 0;
   const deadIds = [];
+  const perToken = [];
   for (const r of results) {
+    // Per-token APNs response record — the definitive delivery diagnostic
+    // (returned to callers so proof endpoints can report it without log access).
+    perToken.push({ token: String(r.row.token || '').slice(0, 8), status: r.status, reason: r.reason || null });
     if (r.ok) {
       sent++;
     } else if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered' || r.status === 410) {
@@ -223,11 +236,58 @@ async function sendToUser(userId, alert, data = {}, opts = {}) {
     console.log(`[push] Pruned ${deadIds.length} dead device tokens`);
   }
 
-  return { sent, total: tokens.length };
+  return { sent, total: tokens.length, results: perToken };
+}
+
+// Owner-alert title law: every operator push must carry "[Promptly]" in the
+// title — the bare word "Render"/"render" collides with Render-the-host in the
+// owner's notification stack (real confusion, reaper comment 2026-07). Callers
+// should write compliant titles; this is the mechanical guarantee for the ones
+// that don't.
+function normalizeOwnerTitle(title) {
+  const t = String(title || '').trim() || '[Promptly] alert';
+  if (t.includes('[Promptly]')) return t;
+  // Keep a leading emoji (e.g. "⚠️ ") in front of the tag so alert severity
+  // stays visually scannable: "⚠️ [Promptly] …".
+  const m = t.match(/^(\p{Extended_Pictographic}️?\s+)(.*)$/u);
+  if (m) return `${m[1]}[Promptly] ${m[2]}`;
+  return `[Promptly] ${t}`;
+}
+
+/**
+ * Operator [ALERT] channel — a visible push to the founder's own device(s).
+ * Rides the SAME transport as user pushes (the one proven live by prod
+ * push_sent events), instead of the legacy pushNotifier transport whose
+ * APNS_KEY/APNS_PRODUCTION env convention never matched the deployed
+ * environment (the "worked in logs, never landed" mailman bug).
+ * Best-effort: never throws to the caller.
+ */
+async function sendOwnerAlert({ ownerUserId, title, body, threadId }) {
+  try {
+    if (!ownerUserId) {
+      console.warn('[alert] skipping owner alert: no ownerUserId');
+      return { sent: 0, skipped: 'no_owner' };
+    }
+    const finalTitle = normalizeOwnerTitle(title);
+    const r = await sendToUser(ownerUserId, { title: finalTitle, body: body || '' }, { type: 'ops-alert' }, {
+      apsExtra: { 'thread-id': threadId || 'ops-alert' },
+    });
+    const detail = (r.results || [])
+      .map((t) => `${t.token}…:${t.status}${t.reason ? `/${t.reason}` : ''}`)
+      .join(' ');
+    console.log(`[alert] owner=${ownerUserId} sent=${r.sent ?? 0}/${r.total ?? 0}`
+      + `${r.skipped ? ` skipped=${r.skipped}` : ''} title="${finalTitle.slice(0, 60)}"${detail ? ` apns=[${detail}]` : ''}`);
+    return r;
+  } catch (err) {
+    console.error('[alert] owner alert unexpected error:', err && err.message);
+    return { sent: 0, skipped: 'error' };
+  }
 }
 
 module.exports = {
   configured,
   sendOne,
   sendToUser,
+  sendOwnerAlert,
+  normalizeOwnerTitle,
 };

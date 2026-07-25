@@ -24,7 +24,8 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
-const { sendRenderCompleteNotification, sendOwnerAlert } = require('./services/pushNotifier');
+const { sendOwnerAlert } = require('./services/pushNotifier');
+const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
 const {
   validateUploadRequest,
   validateSubmission,
@@ -1751,11 +1752,17 @@ const server = http.createServer((req, res) => {
         // a terminal row — it would respell the worker's status (dropping its
         // write-once result/phase) or resurrect a cancelled render. The SSE
         // push below still fires regardless, so the client stays live.
-        await supabaseAdmin
+        // .select('id') so we KNOW whether this request won the transition —
+        // when status flips to 'completed' here, the winner (and only the
+        // winner) owns the lifecycle push below.
+        const { data: transitionRows } = await supabaseAdmin
           .from('video_jobs')
           .update(updateData)
           .eq('id', job_id)
-          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL);
+          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL)
+          .select('id');
+        const wonCompletedTransition = status === 'completed'
+          && Array.isArray(transitionRows) && transitionRows.length > 0;
 
         if (step === 'complete') {
           // Fast-path: tell the UI the video is ready as soon as the worker
@@ -1781,28 +1788,25 @@ const server = http.createServer((req, res) => {
             final: false,
             error: null,
           });
-          // Fire the APNs push so users who navigated away during the
+          // Fire the lifecycle push so users who navigated away during the
           // render get pulled back in. Fire-and-forget: notification
           // failure must never affect the render success path — the
           // SSE event already told any foreground client the video is
           // ready. iOS taps on the notification deep-link into the
           // Library tab via the "render-complete" type handler.
           //
-          // Deduplication: only push when the job was NOT already in
-          // the 'completed' state before this request. If the worker
-          // retries /api/modal-progress with step === 'complete' for a
-          // job it already finished (network blip, idempotency safety
-          // net, etc), we skip the duplicate push. Without this guard
-          // the user would see two "Your video is ready ✨" alerts
-          // back-to-back, which reads as buggy.
-          if (!wasAlreadyCompleted && prevState?.user_id && finalVideoUrl) {
-            sendRenderCompleteNotification({
-              userId: prevState.user_id,
+          // Settle-once: only the request that WON the non-terminal →
+          // 'completed' transition above sends (a worker retry of the
+          // complete event hits the terminal guard, wins 0 rows, and is
+          // structurally silent here). The chokepoint's per-job claim in
+          // result jsonb is the belt under that. wasAlreadyCompleted stays
+          // as a cheap pre-filter + the log line for duplicate events.
+          if (!wasAlreadyCompleted && wonCompletedTransition && prevState?.user_id) {
+            sendLifecyclePush(supabaseAdmin, {
               jobId: job_id,
-              videoUrl: finalVideoUrl,
-              hlsManifestUrl: prevState.hls_manifest_url || null,
+              userId: prevState.user_id,
+              kind: 'completed',
               vibe: prevState.vibe_input || null,
-              supabaseAdmin,
             }).catch((err) => {
               console.error('[push] render-complete dispatch failed:', err.message);
             });
@@ -1863,6 +1867,65 @@ const server = http.createServer((req, res) => {
         });
       } catch (e) {
         console.error('[ALERT] handler error:', e && e.message ? e.message : e);
+      }
+    })();
+    return;
+  }
+
+  // ── Internal: lifecycle-push proof (owner-device delivery proof) ──
+  // Fires a real completed-class or failed-class lifecycle push at the OWNER's
+  // registered device(s) — never a real user — and returns the per-token APNs
+  // responses in the body, so delivery can be proven end-to-end (logs are not
+  // proof) BEFORE USER_LIFECYCLE_PUSHES is flipped on. Works regardless of the
+  // flag (test mode bypasses flag + claim, so it is repeatable). Auth: exact
+  // service-role-key bearer match — operator-only by construction.
+  if (parsed.pathname === '/api/internal/lifecycle-push-proof' && req.method === 'POST') {
+    (async () => {
+      try {
+        const expect = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const got = String((req.headers && req.headers['authorization']) || '').replace(/^Bearer\s+/i, '').trim();
+        let authed = false;
+        if (expect && got && got.length === expect.length) {
+          try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect)); } catch { authed = false; }
+        }
+        if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
+
+        const body = await readJsonBody(req).catch(() => null);
+        const kind = body && body.kind;
+        if (kind !== 'completed' && kind !== 'failed') {
+          return sendJson(res, 400, { error: "kind must be 'completed' or 'failed'" });
+        }
+        let vibe = (body && body.vibe) || null;
+        let errorMessage = (body && body.error_message) || null;
+        let jobId = (body && body.job_id) || `proof-${kind}`;
+        if (body && body.job_id && supabaseAdmin) {
+          // Copy realism: pull the actual row's copy — but ONLY an owner-owned
+          // row may seed a proof (never touch a real user's job).
+          const { data: row } = await supabaseAdmin
+            .from('video_jobs')
+            .select('user_id, vibe_input, error_message')
+            .eq('id', body.job_id)
+            .maybeSingle();
+          if (!row) return sendJson(res, 404, { error: 'job not found' });
+          if (row.user_id !== LIFECYCLE_OWNER_USER_ID) {
+            return sendJson(res, 403, { error: 'proof jobs must be owner-owned' });
+          }
+          vibe = vibe || row.vibe_input || null;
+          errorMessage = errorMessage || row.error_message || null;
+        }
+        const r = await sendLifecyclePush(supabaseAdmin, {
+          jobId, kind, vibe, errorMessage,
+          refunded: body && body.refunded !== undefined ? !!body.refunded : true,
+          test: true,
+        });
+        const alert = kind === 'completed'
+          ? buildCompletedAlert({ vibe })
+          : buildFailedAlert({ errorMessage, refunded: body && body.refunded !== undefined ? !!body.refunded : true });
+        console.log(`[lifecycle-push] PROOF kind=${kind} job=${jobId} sent=${r.sent ?? 0}/${r.total ?? 0}`);
+        return sendJson(res, 200, { ok: true, kind, alert, sent: r.sent ?? 0, total: r.total ?? 0, skipped: r.skipped || null, apns: r.results || [] });
+      } catch (e) {
+        console.error('[lifecycle-push] proof error:', e && e.message ? e.message : e);
+        return sendJson(res, 500, { error: 'proof failed' });
       }
     })();
     return;
