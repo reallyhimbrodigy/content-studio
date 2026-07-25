@@ -77,7 +77,7 @@ extension EntitlementTier {
         switch self {
         case .paid:  return Capabilities(appUsable: true,  uploadMax: 10, renderLimit: .max, chatLimit: .max, reedit: true,  lumen: true,  limitHitRouting: .unused)
         case .trial: return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 3,    chatLimit: 50,   reedit: false, lumen: false, limitHitRouting: .paywall)
-        case .free:  return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 1,    chatLimit: 50,   reedit: false, lumen: false, limitHitRouting: .paywall)
+        case .free:  return Capabilities(appUsable: true,  uploadMax: 1,  renderLimit: 1,    chatLimit: 5,    reedit: false, lumen: false, limitHitRouting: .paywall)
         case .none:  return Capabilities(appUsable: false, uploadMax: 0,  renderLimit: 0,    chatLimit: 0,    reedit: false, lumen: false, limitHitRouting: .wall)
         }
     }

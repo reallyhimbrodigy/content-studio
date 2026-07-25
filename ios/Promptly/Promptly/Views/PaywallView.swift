@@ -381,9 +381,15 @@ struct PaywallView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(pkg.storeProduct.localizedTitle.isEmpty
-                             ? pkg.packageType == .annual ? "Yearly" : "Monthly"
-                             : pkg.storeProduct.localizedTitle)
+                        // Our OWN plan label — NEVER StoreKit's localizedTitle
+                        // (which can carry "(Promptly Pro)" suffixes / ASC naming
+                        // quirks). One canonical product, "Promptly Pro"; the row
+                        // just names the interval. ASC display-name edits are now
+                        // cosmetic. (build 216)
+                        Text(pkg.packageType == .annual ? "Yearly"
+                             : pkg.packageType == .monthly ? "Monthly"
+                             : pkg.packageType == .weekly ? "Weekly"
+                             : "Promptly Pro")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         if let savingsLabel {

@@ -109,52 +109,13 @@ struct EditorView: View {
                 // as a band above the composer on-device).
                 .background(Color.black)
             }
-            // No title text — clean ChatGPT-style top: hamburger · pill · new-chat.
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Self.dismissKeyboard()
-                        isInputFocused = false
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                            appState.sidebarOpen.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .tint(.white)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Show chats")
-                }
-                // Top-of-home upgrade pill beside the sidebar button (ChatGPT
-                // placement) — the animated-gradient UpgradePill (build 214),
-                // replacing the flat gold chip. Visible immediately for free
-                // users, hidden for Pro.
-                ToolbarItem(placement: .topBarLeading) {
-                    if !subscriptionService.effectiveIsPro {
-                        UpgradePill { appState.presentPaywall(.manual) }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Self.dismissKeyboard()
-                        Task { await startNewChat() }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .tint(.white)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("New chat")
-                }
-            }
+            // Custom SwiftUI top bar (build 216) — the pill lives HERE, not the
+            // NavigationStack toolbar, whose UIKit host froze two animation
+            // drivers and mangled the logo across builds 214 & 215. The system
+            // toolbar bought nothing once the title was gone. Plain HStack on the
+            // unified black: hamburger · pill · new-chat.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
@@ -579,7 +540,7 @@ struct EditorView: View {
 
             // Expectation-setting: what to upload, what Promptly does, and the
             // honest wait note (renders take a few minutes; we notify you).
-            Text("Upload a video of you talking to camera")
+            Text("Upload a talking head video")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
@@ -1068,6 +1029,58 @@ struct EditorView: View {
     // bands on-device, so they're gone — a single uniform black, no seams.
     private var luxuryBackdrop: some View {
         Color.black.ignoresSafeArea()
+    }
+
+    // MARK: - Custom top bar (build 216)
+    //
+    // Replaces the NavigationStack toolbar (which froze the pill's animation and
+    // mangled its logo across two builds). A plain SwiftUI HStack on the unified
+    // black: hamburger left, the animated UpgradePill beside it, new-chat right.
+    // Attached via .safeAreaInset(.top); the nav bar is hidden. Buttons carry a
+    // 40×40 tap target so nothing here is hard to hit.
+    private var customTopBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Self.dismissKeyboard()
+                isInputFocused = false
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    appState.sidebarOpen.toggle()
+                }
+            } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show chats")
+
+            if !subscriptionService.effectiveIsPro {
+                UpgradePill { appState.presentPaywall(.manual) }
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Self.dismissKeyboard()
+                Task { await startNewChat() }
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New chat")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
     }
 
     private var canSend: Bool {
@@ -2174,7 +2187,7 @@ struct EditorView: View {
         // so the user doesn't watch a thinking indicator spin only to
         // get bounced.
         if UsageService.shared.atChatLimit {
-            let lim = UsageService.shared.chatLimit ?? 50
+            let lim = UsageService.shared.chatLimit ?? 5
             appState.presentPaywall(.dailyChats(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -3444,34 +3457,35 @@ private struct UsageMeterStrip: View {
     }
 }
 
-// MARK: - UpgradePill
+// MARK: - UpgradePill (build 216)
 //
-// Top-of-home upgrade affordance (build 214) — replaces the flat gold chip.
-// ChatGPT-style colorful pill, but on PROMPTLY's own spectrum (anchored by the
-// brand gold, NOT OpenAI's blue→purple): a rotating conic-gradient border with
-// a soft colored glow, a tiny Promptly mark, and the "Upgrade" label. Respects
-// Reduce Motion (static gradient, zero rotation) and is only mounted by the
-// caller when !effectiveIsPro, so Pro/comped users never see it.
+// Rebuilt after builds 214 & 215 both failed on-device: the NavigationStack
+// toolbar's UIKit host froze TWO SwiftUI animation drivers (a TimelineView
+// subtree was dropped; a hueRotation was frozen) and mangled the logo into an
+// opaque rectangle. Two changes fix it for good:
+//   1. The pill now lives in a CUSTOM SwiftUI top bar (EditorView.customTopBar),
+//      not the toolbar — see that view. Nothing here is UIKit-hosted.
+//   2. The rotating border is driven by CORE ANIMATION (CAGradientLayer +
+//      CABasicAnimation, via RotatingConicBorder). CA runs on the render server,
+//      outside SwiftUI's transaction/display-link, so NO parent hosting can
+//      freeze it — belt-and-suspenders against a repeat.
+// The transparent Promptly mark (Assets.xcassets/PromptlyLogo.imageset/
+// promptly-logo.png, hasAlpha) renders with .original — its transparency intact
+// on black, no plate, no box. Reduce Motion → a static (non-rotating) border.
 struct UpgradePill: View {
     var action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // Animatable hue offset for the border/glow. Driven by a plain implicit
-    // animation (NOT TimelineView) — build 214 used TimelineView(.animation) in
-    // the border overlay, which a UIKit-hosted nav-bar ToolbarItem drops on the
-    // floor, leaving just the capsule outline: the "box with no Upgrade label"
-    // Zac saw on-device. hueRotation is a first-class animatable effect, so it
-    // survives the toolbar AND delivers the "slow hue-shifting glow" from spec.
-    @State private var hue: Double = 0
 
-    // Promptly's own spectrum — anchored by the brand gold, NOT OpenAI's
-    // blue→purple. First == last so the hue cycle wraps with no visible seam.
-    private static let spectrum: [Color] = [
-        Color(hex: "F4E4BC"), // cream-gold (brand anchor)
-        Color(hex: "FF7A5C"), // coral
-        Color(hex: "C86DD7"), // magenta-violet
-        Color(hex: "5B8CFF"), // azure
-        Color(hex: "36D6C3"), // teal
-        Color(hex: "F4E4BC"), // back to gold — seamless loop
+    // Promptly's own RGB spectrum, anchored by the brand gold. First == last so
+    // the conic sweep loops seamlessly with no seam at the wrap.
+    private static let uiSpectrum: [UIColor] = [
+        UIColor(Color(hex: "F4E4BC")), // cream-gold (brand anchor)
+        UIColor(Color(hex: "FF7A5C")), // coral
+        UIColor(Color(hex: "C86DD7")), // magenta
+        UIColor(Color(hex: "7A5CFF")), // violet
+        UIColor(Color(hex: "5B8CFF")), // azure
+        UIColor(Color(hex: "36D6C3")), // teal
+        UIColor(Color(hex: "F4E4BC")), // back to gold — seamless
     ]
 
     var body: some View {
@@ -3479,46 +3493,132 @@ struct UpgradePill: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Image("PromptlyLogo")
-                    .renderingMode(.original)   // the nav bar must not tint the mark away
+                    .renderingMode(.original)   // keep the mark's transparency + white
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 13, height: 13)
+                    .frame(width: 14, height: 14)
                 Text("Upgrade")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
             }
-            .fixedSize()                        // toolbar can't collapse it to a box
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
+            .fixedSize()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
-                // Subtle top-lit dark capsule — depth, not a flat black chip.
+                // Subtle top-lit dark capsule — depth, not a flat chip.
                 Capsule().fill(
-                    LinearGradient(colors: [Color(hex: "1C1C24"), Color(hex: "101014")],
+                    LinearGradient(colors: [Color(hex: "20202A"), Color(hex: "0E0E12")],
                                    startPoint: .top, endPoint: .bottom)
                 )
             )
             .overlay(
-                Capsule()
-                    .strokeBorder(
-                        AngularGradient(gradient: Gradient(colors: Self.spectrum), center: .center),
-                        lineWidth: 1.4
-                    )
-                    .hueRotation(.degrees(hue)) // 0 when reduceMotion → static premium border
+                // CA-driven rotating conic border — cannot be frozen by hosting.
+                // ~8s / revolution: slow, subtle, luxurious.
+                RotatingConicBorder(colors: Self.uiSpectrum,
+                                    lineWidth: 1.5,
+                                    period: 8,
+                                    animated: !reduceMotion)
+                    .clipShape(Capsule())
+                    .allowsHitTesting(false)
             )
-            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.28 : 0.45), radius: 5)
-            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.16 : 0.28), radius: 9)
+            // Soft matching glow.
+            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.30 : 0.45), radius: 6)
+            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.18 : 0.30), radius: 10)
         }
         .buttonStyle(.plain)
-        .tint(.white)
-        .fixedSize()
         .accessibilityLabel("Upgrade to Promptly Pro")
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
-                hue = 360
-            }
-        }
+    }
+}
+
+// MARK: - RotatingConicBorder (Core Animation)
+//
+// A capsule-shaped stroke filled with a conic RGB gradient that rotates forever
+// via CABasicAnimation. CA animations run on the render server, independent of
+// SwiftUI's transaction/display-link — a UIKit-hosted parent (toolbar, sheet,
+// anything) CANNOT freeze it. This is the animation path builds 214 & 215 needed.
+struct RotatingConicBorder: UIViewRepresentable {
+    var colors: [UIColor]
+    var lineWidth: CGFloat = 1.5
+    var period: Double = 8
+    var animated: Bool = true
+
+    func makeUIView(context: Context) -> ConicBorderView {
+        let v = ConicBorderView()
+        v.apply(colors: colors, lineWidth: lineWidth, period: period, animated: animated)
+        return v
+    }
+    func updateUIView(_ v: ConicBorderView, context: Context) {
+        v.apply(colors: colors, lineWidth: lineWidth, period: period, animated: animated)
+    }
+}
+
+final class ConicBorderView: UIView {
+    private let gradient = CAGradientLayer()
+    private let ringMask = CAShapeLayer()
+    private var lineWidth: CGFloat = 1.5
+    private var period: Double = 8
+    private var animated = true
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        gradient.type = .conic
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)   // center
+        gradient.endPoint = CGPoint(x: 1.0, y: 0.5)     // 0° reference for the sweep
+        layer.addSublayer(gradient)
+        // Stationary capsule-STROKE mask: only the ring shows the gradient. The
+        // ring stays put while the gradient spins underneath it.
+        ringMask.fillColor = UIColor.clear.cgColor
+        ringMask.strokeColor = UIColor.white.cgColor
+        ringMask.lineWidth = lineWidth
+        layer.mask = ringMask
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    func apply(colors: [UIColor], lineWidth: CGFloat, period: Double, animated: Bool) {
+        gradient.colors = colors.map { $0.cgColor }
+        self.lineWidth = lineWidth
+        self.period = period
+        self.animated = animated
+        ringMask.lineWidth = lineWidth
+        setNeedsLayout()
+        restartAnimation()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // Oversize the gradient so rotation never reveals empty corners.
+        let diag = hypot(bounds.width, bounds.height) * 1.4
+        gradient.bounds = CGRect(x: 0, y: 0, width: diag, height: diag)
+        gradient.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let inset = lineWidth / 2
+        let radius = max(0, (bounds.height - lineWidth) / 2)
+        ringMask.frame = bounds
+        ringMask.path = UIBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset),
+                                     cornerRadius: radius).cgPath
+        CATransaction.commit()
+    }
+
+    private func restartAnimation() {
+        gradient.removeAnimation(forKey: "spin")
+        guard animated else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0.0
+        spin.toValue = 2.0 * Double.pi
+        spin.duration = period
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        gradient.add(spin, forKey: "spin")
+    }
+
+    // CA strips animations when a layer leaves the render tree; re-arm on return.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, animated { restartAnimation() }
     }
 }

@@ -65,5 +65,17 @@ if let src = try? String(contentsOf: usagePath, encoding: .utf8) {
     check(false, "could not read UsageService.swift at \(usagePath.path)")
 }
 
+// ── 3. Free-tier CHAT cap = 5, never the old 50 (build 216) ──
+// Copy ("Free includes N AI chat messages") and enforcement both read the free
+// tier's chatLimit, so pinning it here keeps them from ever disagreeing again.
+let entPath = projectRoot.appendingPathComponent("Promptly/Services/EntitlementTier.swift")
+if let ent = try? String(contentsOf: entPath, encoding: .utf8) {
+    let freeLine = ent.split(separator: "\n").first { $0.contains("case .free:") }.map(String.init) ?? ""
+    check(freeLine.contains("chatLimit: 5"), "free-tier chat cap is 5")
+    check(!freeLine.contains("chatLimit: 50"), "free-tier chat cap is NOT the old 50")
+} else {
+    check(false, "could not read EntitlementTier.swift")
+}
+
 print("\n\(checks - failures)/\(checks) passed")
 exit(failures == 0 ? 0 : 1)

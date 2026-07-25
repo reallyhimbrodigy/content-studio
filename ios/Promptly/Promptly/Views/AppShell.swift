@@ -86,6 +86,8 @@ struct AppShell: View {
                     // .simultaneousGesture) so the edge drag captures the touch
                     // and the chat never pans with it. Present only on the Edit
                     // tab while closed; the drawer's own List owns the close drag.
+                    // Inset from the top (build 216) so it clears the custom top
+                    // bar — the hamburger's tap target is never eaten by the strip.
                     .overlay(alignment: .leading) {
                         if appState.selectedTab == 0 && !appState.sidebarOpen {
                             Color.clear
@@ -93,6 +95,7 @@ struct AppShell: View {
                                 .frame(maxHeight: .infinity)
                                 .contentShape(Rectangle())
                                 .gesture(openSwipeGesture)
+                                .padding(.top, 104)
                         }
                     }
             }
