@@ -20,6 +20,11 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVIC
 const H = { apikey: key, Authorization: `Bearer ${key}` };
 const windowDays = Number(process.argv[2]) || 30;
 const pct = (n, d) => (d ? (100 * n / d).toFixed(1) : '0.0') + '%';
+// POST-FLIP cohort cut: measure the NEW product on its own, not blended into the
+// old product's lifetime average. Signups after 2026-07-25 00:00 UTC + jobs
+// dispatched after the v356 zero-reject flip. Override the flip instant with
+// COHORT_FLIP_ISO once the backend confirms the exact v356 deploy time.
+const FLIP = process.env.COHORT_FLIP_ISO || '2026-07-25T00:00:00Z';
 
 async function page(path) {
   let all = [], from = 0;
@@ -49,6 +54,16 @@ async function count(table, filter = '') {
   const jobsDone = jobs.filter((j) => j.status === 'completed').length;
   const jobsFail = jobs.filter((j) => j.status === 'failed').length;
 
+  // ── POST-FLIP COHORT (new product, measured alone) ──
+  const newUsers = await page(`profiles?created_at=gte.${FLIP}&select=id`);
+  const newUserIds = new Set(newUsers.map((u) => u.id));
+  const nUsers = newUserIds.size;
+  const nDispatchedU = new Set(jobs.filter((j) => newUserIds.has(j.user_id)).map((j) => j.user_id)).size;
+  const nCompletedU = new Set(jobs.filter((j) => newUserIds.has(j.user_id) && j.status === 'completed').map((j) => j.user_id)).size;
+  const flipJobs = jobs.filter((j) => j.created_at >= FLIP);          // jobs dispatched after the flip
+  const flipDone = flipJobs.filter((j) => j.status === 'completed').length;
+  const flipFail = flipJobs.filter((j) => j.status === 'failed').length;
+
   // ── REVENUE (server truth) ──
   const paid = await page('profiles?select=comp_pro,pro_until,rc_app_user_id,rc_period_type&or=(tier.eq.paid,comp_pro.eq.true,pro_until.not.is.null,rc_app_user_id.not.is.null)');
   const activePaid = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_period_type && p.rc_period_type !== 'trial').length;
@@ -66,11 +81,18 @@ async function count(table, filter = '') {
   console.log(`  ever dispatched         ${dispatchedU}  (${pct(dispatchedU, totalUsers)} of signups)`);
   console.log(`  ever COMPLETED  ★       ${completedU}  (${pct(completedU, totalUsers)} of signups, ${pct(completedU, dispatchedU)} of dispatchers)`);
   console.log(`  render jobs: ${jobs.length} total · ${jobsDone} done · ${jobsFail} failed  (${pct(jobsFail, jobs.length)} job failure rate)`);
+  console.log(`POST-FLIP COHORT (since ${FLIP.slice(0, 10)} — the NEW product, alone):`);
+  console.log(`  new signups             ${nUsers}`);
+  console.log(`  new dispatched          ${nDispatchedU}  (${pct(nDispatchedU, nUsers)} of new signups)`);
+  console.log(`  new COMPLETED  ★        ${nCompletedU}  (${pct(nCompletedU, nUsers)} of new signups, ${pct(nCompletedU, nDispatchedU)} of new dispatchers)`);
+  console.log(`  post-flip jobs: ${flipJobs.length} · ${flipDone} done · ${flipFail} failed  (${pct(flipFail, flipJobs.length)} job failure rate — vs ${pct(jobsFail, jobs.length)} all-time)`);
   console.log('REVENUE (server truth):');
   console.log(`  active paid subs        ${activePaid}   ·   lapsed RC trials ${rcTrials}`);
   console.log(`PAYWALL LEG (last ${windowDays}d events):`);
   console.log(`  paywall_view ${g('paywall_view')} → plan_selected ${g('plan_selected')} → purchase_started ${g('purchase_started')} → purchase_completed ${g('purchase_completed')}  (failed ${g('purchase_failed')})`);
   console.log(`  RC webhook: purchase_result ${g('purchase_result')} · trial_start ${g('trial_start')}`);
-  // One-line [REPORT] token for the daily thread.
-  console.log(`\n[REPORT] funnel ${nowIso}: signup ${totalUsers} → dispatch ${dispatchedU} (${pct(dispatchedU, totalUsers)}) → complete ${completedU} (${pct(completedU, totalUsers)}) | jobfail ${pct(jobsFail, jobs.length)} | paid ${activePaid} | paywall ${g('paywall_view')}→buy ${g('purchase_completed')}`);
+  // Two [REPORT] lines side by side: lifetime (old+new blended) and the post-flip
+  // cohort (new product alone). The campaign's success is the POST-FLIP line moving.
+  console.log(`\n[REPORT] funnel ${nowIso} ALL-TIME: signup ${totalUsers} → dispatch ${dispatchedU} (${pct(dispatchedU, totalUsers)}) → complete ${completedU} (${pct(completedU, totalUsers)}) | jobfail ${pct(jobsFail, jobs.length)} | paid ${activePaid} | paywall ${g('paywall_view')}→buy ${g('purchase_completed')}`);
+  console.log(`[REPORT] funnel ${nowIso} POST-FLIP: signup ${nUsers} → dispatch ${nDispatchedU} (${pct(nDispatchedU, nUsers)}) → complete ${nCompletedU} (${pct(nCompletedU, nUsers)}) | jobfail ${pct(flipFail, flipJobs.length)} | (new product, since ${FLIP.slice(0, 10)})`);
 })().catch((e) => { console.error('funnel-report failed:', e.message); process.exit(1); });
