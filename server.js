@@ -1788,29 +1788,7 @@ const server = http.createServer((req, res) => {
             final: false,
             error: null,
           });
-          // Fire the lifecycle push so users who navigated away during the
-          // render get pulled back in. Fire-and-forget: notification
-          // failure must never affect the render success path — the
-          // SSE event already told any foreground client the video is
-          // ready. iOS taps on the notification deep-link into the
-          // Library tab via the "render-complete" type handler.
-          //
-          // Settle-once: only the request that WON the non-terminal →
-          // 'completed' transition above sends (a worker retry of the
-          // complete event hits the terminal guard, wins 0 rows, and is
-          // structurally silent here). The chokepoint's per-job claim in
-          // result jsonb is the belt under that. wasAlreadyCompleted stays
-          // as a cheap pre-filter + the log line for duplicate events.
-          if (!wasAlreadyCompleted && wonCompletedTransition && prevState?.user_id) {
-            sendLifecyclePush(supabaseAdmin, {
-              jobId: job_id,
-              userId: prevState.user_id,
-              kind: 'completed',
-              vibe: prevState.vibe_input || null,
-            }).catch((err) => {
-              console.error('[push] render-complete dispatch failed:', err.message);
-            });
-          } else if (wasAlreadyCompleted) {
+          if (wasAlreadyCompleted) {
             console.log(`[push] skipping duplicate render-complete for job=${job_id} (already completed)`);
           }
         } else {
@@ -1821,6 +1799,27 @@ const server = http.createServer((req, res) => {
             message: message || '',
             videoUrl: completionVideoUrl,
             error: null,
+          });
+        }
+
+        // Lifecycle push — fires for WHOEVER won the non-terminal → 'completed'
+        // transition above, INDEPENDENT of the step label: the transition is
+        // consumed exactly once, so if a pct>=100 event ever arrived with a
+        // step other than 'complete', gating the push on the step would burn
+        // the one transition without a push and every later writer would lose
+        // the race — the user would never be told. Fire-and-forget: a
+        // notification failure must never affect the render success path (the
+        // SSE above already told any foreground client). iOS deep-links into
+        // the Library tab via the "render-complete" type handler. The
+        // chokepoint's flag + per-job claim gate inside.
+        if (wonCompletedTransition && prevState?.user_id) {
+          sendLifecyclePush(supabaseAdmin, {
+            jobId: job_id,
+            userId: prevState.user_id,
+            kind: 'completed',
+            vibe: prevState.vibe_input || null,
+          }).catch((err) => {
+            console.error('[push] render-complete dispatch failed:', err.message);
           });
         }
 
