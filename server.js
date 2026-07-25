@@ -2963,6 +2963,13 @@ const server = http.createServer((req, res) => {
           used: renders,
           limit: renderLimit,
           resets_at: resetsAt,
+          // Routing cert (staged, 1.3.2/218 client). INERT env-driven flags — the
+          // backend flips these the moment the routing pipeline can process 5-min
+          // videos; the client then raises the picker ceiling 180→300 and moves
+          // content classification server-side. Defaults keep today's world.
+          // Older clients ignore both fields.
+          max_upload_seconds: Number(process.env.MAX_UPLOAD_SECONDS) || 180,
+          content_routing_enabled: String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1',
         });
       } catch (error) {
         const status = error?.statusCode || 500;
