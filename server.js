@@ -3985,9 +3985,20 @@ const server = http.createServer((req, res) => {
         // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
         // unknown word_count dispatches exactly as today. Fresh full-render path
         // only (re-edit/resume reuse cached transcripts — no fresh prewarm).
-        const speechGate = await preDispatchNoSpeechGate({
-          jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
-        });
+        //
+        // W1-FIX #1 (census 2026-07-25, job 8cdfef9b — a brand-new user's
+        // only-ever job killed here in 121ms): when CONTENT_ROUTING_ENABLED=1
+        // a 0-word clip is a ROUTE, not a rejection — the worker's zero-reject
+        // routing delivers these as minimal/hype edits (organic proof: 26-46s
+        // completions). Gating would pre-empt the routing that serves them, so
+        // the gate runs ONLY while routing is off. This one conditional was the
+        // entire post-flip error-budget miss (6/7 → the worker side was 6/6).
+        const routingLive = String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1';
+        const speechGate = routingLive
+          ? { gated: false }
+          : await preDispatchNoSpeechGate({
+              jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
+            });
         if (speechGate.gated) {
           // A speechless clip was rejected BEFORE any GPU work — it must NOT cost
           // the user their daily render. The slot was claimed upfront at dispatch
