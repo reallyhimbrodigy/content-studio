@@ -36,6 +36,20 @@ whole feature — the next cross-repo field starts here, not from a two-sided gu
   it. (The 2026-07-26 outage was this column created as BOOLEAN → worker write threw →
   `hls_manifest_url` never set → no preview.)
 
+## Observability (worker v369)
+Every job logs the gate decision — `[progressive] GATE job=<id> supports_progressive=<v>
+-> enabled=<b>` — and records a queryable `progressive` / `progressive_gate` divergence.
+Use it to pin the seam on a real job without a client trace: `enabled=false` with
+`supports_progressive=true` means a worker kill switch is off; `supports_progressive`
+absent means it never reached `input_data` (seam b). NB: `video_jobs.preview` defaulting
+`false`/null is NOT evidence of a non-publish — it was a boolean-default artifact before
+the JSONB correction.
+
+## Consolidation (2026-07-26)
+This is the **single canonical** contract, agreed by both sides. The worker repo's old
+`PROGRESSIVE_CLIENT_CONTRACT.md` is now a pointer here — edit only this file, so the two
+can't drift (the drift this doc exists to prevent).
+
 ## How to verify end-to-end (one job)
 1. `video_jobs.preview` populates with the JSONB payload → seams a–d OK.
 2. `hls_manifest_url` briefly holds a `*-preview-hls` URL mid-render → seam d OK.
