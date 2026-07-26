@@ -283,12 +283,25 @@ async function assertProEntitled(userId, opts = {}) {
 // same thing whether the 2nd video is started in the same chat or a new one.
 async function inFlightJobCount(userId) {
   if (!supabaseAdmin) return 0;
-  const { count, error } = await supabaseAdmin
+  // §4: exclude demo rows so an in-flight demo never blocks the user's own render.
+  // The `demo` column ships via a MANUAL migration (applied out-of-band, like
+  // edit_rationale), so until it lands the filter errors — and this is the HOT
+  // dispatch path: an error here 503s every render. Fall back to the unfiltered
+  // count (pre-migration there are zero demo rows to exclude anyway); it self-heals
+  // the instant the column exists. NEVER let the demo filter break dispatch.
+  let { count, error } = await supabaseAdmin
     .from('video_jobs')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('demo', false)   // §4: an in-flight demo never counts against concurrency
+    .eq('demo', false)
     .in('status', ['queued', 'processing']);
+  if (error) {
+    ({ count, error } = await supabaseAdmin
+      .from('video_jobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('status', ['queued', 'processing']));
+  }
   if (error) { const e = new Error(error.message); e.code = 'pending_check_failed'; throw e; }
   return count || 0;
 }
