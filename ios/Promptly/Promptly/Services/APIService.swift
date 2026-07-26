@@ -186,6 +186,14 @@ class APIService {
             // path sends true. Harmless on a server that doesn't read it yet, which
             // is why the demo hero stays gated OFF until the server honors it.
             let demo: Bool?
+            // §5 progressive playback CAPABILITY. This 1.3.3 build can consume a
+            // partial HLS preview (start playing mid-render, swap to the final MP4),
+            // so it advertises the capability PER DISPATCH. The worker publishes a
+            // preview ONLY for jobs that carry this flag — so the 1.3.2 majority (no
+            // flag) never pays a preview encode. The global progressive_playback_enabled
+            // stays as the kill switch ON TOP (worker + client both gate on it).
+            // Omitted for demos (they don't need a live preview).
+            let supports_progressive: Bool?
         }
         let body = Body(
             video_url: videoUrl,
@@ -194,7 +202,8 @@ class APIService {
             model: premiumPipeline ? "lumen" : "flare",
             premium_pipeline_enabled: premiumPipeline ? true : nil,
             client_job_id: clientJobId,
-            demo: demo ? true : nil
+            demo: demo ? true : nil,
+            supports_progressive: demo ? nil : true
         )
         request.httpBody = try JSONEncoder().encode(body)
 
