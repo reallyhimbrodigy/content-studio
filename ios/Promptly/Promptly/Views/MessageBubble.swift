@@ -182,10 +182,40 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
-            // Show the progress UI ONLY while the job is not terminal. Any
-            // terminal status — completed/complete, failed/error, canceled/
-            // cancelled, needs_input/needs_clarification — stops the spinner.
-            if let status = message.jobStatus, !JobLifecycle.isTerminal(status) {
+            // §5 progressive playback: once the backend emits the HLS manifest
+            // mid-render (flag-gated capture in EditorView), play it inline as a muted
+            // PREVIEW that SWAPS in place to the final MP4 when it lands. Rendered here
+            // in ONE stable position so the AVPlayer persists from manifest-arrival
+            // through completion (seamless swap, not a teardown). The progress UI and
+            // the completed thumbnail both step aside for it. Gated by the server flag
+            // + a manifest + no error/pause. Inert until both halves flip on.
+            let showProgressive = UsageService.shared.progressivePlaybackEnabled
+                && message.hlsManifestUrl != nil
+                && message.error == nil
+                && message.jobStatus != "needs_input"
+            if showProgressive {
+                ProgressivePlayerView(
+                    manifestUrl: message.hlsManifestUrl,
+                    finalUrl: message.renderedVideoUrl,
+                    posterUrl: message.thumbnailUrl,
+                    onTapFullscreen: {
+                        VideoPlayerPresenter.present(
+                            urlString: message.renderedVideoUrl ?? message.hlsManifestUrl ?? "",
+                            hlsManifestUrl: message.hlsManifestUrl,
+                            thumbnailUrl: message.thumbnailUrl,
+                            jobId: message.jobId,
+                            title: message.originalVibe
+                        )
+                    }
+                )
+                .padding(.bottom, 6)
+            }
+
+            // Show the progress UI ONLY while the job is not terminal (and the
+            // progressive preview isn't already owning the surface). Any terminal
+            // status — completed/complete, failed/error, canceled/cancelled,
+            // needs_input/needs_clarification — stops the spinner.
+            if let status = message.jobStatus, !JobLifecycle.isTerminal(status), !showProgressive {
                 if let timeline = message.stageTimeline {
                     // §5 plan preview: reflect the user's vibe + what Promptly is
                     // making, so the multi-minute wait reads as a craft in progress
@@ -276,7 +306,10 @@ struct MessageBubble: View {
                     jobId: message.jobId,
                     title: message.originalVibe,
                     onReedit: buildReeditHandler(for: message),
-                    onMakeAnother: onMakeAnother
+                    onMakeAnother: onMakeAnother,
+                    // The inline progressive player already shows the (swapped) video;
+                    // hide the redundant thumbnail but keep the re-edit/make-another row.
+                    videoSurfaceHidden: showProgressive
                 )
             }
 
@@ -1437,6 +1470,11 @@ struct CompletedVideoView: View {
     let title: String?
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
+    /// §5 progressive: when the inline ProgressivePlayerView owns the video surface
+    /// (the preview→final swap plays inline above), hide this view's static thumbnail
+    /// tile but KEEP the action row (re-edit / make another). Default false — zero
+    /// change to the normal completed UX.
+    var videoSurfaceHidden: Bool = false
 
     /// When AsyncImage hits a 403 (signed URL expired past 7 days),
     /// we ask the server for fresh URLs and stash them here. Future
@@ -1475,6 +1513,7 @@ struct CompletedVideoView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if !videoSurfaceHidden {
             Button {
                 guard isPlayable else { return }
                 // The user is watching a finished render — the natural, earned
@@ -1560,6 +1599,7 @@ struct CompletedVideoView: View {
                     }
                 }
             }
+            } // end if !videoSurfaceHidden
 
             VideoActionRow(
                 videoUrlStr: videoUrlStr,

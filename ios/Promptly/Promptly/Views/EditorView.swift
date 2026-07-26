@@ -2927,6 +2927,22 @@ struct EditorView: View {
                 messages[messageIndex].stageTimeline?.receive(stepToken: step)
             }
 
+            // §5 progressive playback: capture the HLS manifest the MOMENT the backend
+            // emits it (mid-render, on ANY event) — not only at completion — so the
+            // inline preview can start on the first segments and later swap to the
+            // final MP4. Gated by the server flag (both halves flip on the same word);
+            // inert until then. Prewarm validates the master playlist. Only sets it
+            // once and only before completion (the completed branch below still owns
+            // the terminal capture).
+            if UsageService.shared.progressivePlaybackEnabled,
+               !isCompletedEvent,
+               messages[messageIndex].hlsManifestUrl == nil,
+               let hls = event.hlsManifestUrl, !hls.isEmpty {
+                messages[messageIndex].hlsManifestUrl = hls
+                PlayerAssetPrewarm.shared.warm(hls)
+                print("[sse] progressive manifest ready mid-render: \(hls)")
+            }
+
             if isCompletedEvent {
                 // Stash URLs immediately so the player + push handler can
                 // reach them — but DON'T flip jobStatus to "completed" yet.
