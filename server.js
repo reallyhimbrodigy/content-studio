@@ -1662,7 +1662,7 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, thumbnail_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
@@ -1674,6 +1674,9 @@ const server = http.createServer((req, res) => {
                 step: data.current_step || '',
                 message: data.step_message || '',
                 videoUrl: data.rendered_video_url || null,
+                // §5 progressive: a client reconnecting mid-render gets the manifest
+                // in the connect snapshot and can resume the preview.
+                hlsManifestUrl: data.hls_manifest_url || null,
                 thumbnailUrl: data.thumbnail_url || null,
                 error: data.error_message || null,
               })}\n\n`);
@@ -1732,6 +1735,15 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
         const wasAlreadyCompleted = prevState?.status === 'completed';
 
+        // §5 progressive playback: forward the HLS manifest the moment it exists so a
+        // live client can start the inline preview MID-render (not only at completion).
+        // The backend's (publishing) contract may deliver it either by writing
+        // hls_manifest_url early — already read into prevState above — or by including
+        // it in this progress POST; take whichever is present. Additive + null-safe:
+        // inert until the worker emits it early. Client gates on progressive_playback_enabled.
+        const progressiveManifestUrl = body?.hlsManifestUrl || body?.hls_manifest_url || prevState?.hls_manifest_url || null;
+        const manifestFromBody = body?.hlsManifestUrl || body?.hls_manifest_url || null;
+
         // MONOTONIC PROGRESS CLAMP (Phase 3): a preempted job retries from
         // scratch → the fresh attempt restarts progress at ~0. Clamp so the bar
         // NEVER rewinds — a retry reads as a pause at the high-water mark until
@@ -1749,6 +1761,9 @@ const server = http.createServer((req, res) => {
           updated_at: new Date().toISOString(),
         };
         if (completionVideoUrl) updateData.rendered_video_url = completionVideoUrl;
+        // Persist a manifest that arrived via the progress POST so reconnect/poll/push
+        // paths see it too (a worker that writes the column itself needs no help here).
+        if (manifestFromBody && !prevState?.hls_manifest_url) updateData.hls_manifest_url = manifestFromBody;
 
         // First-terminal-wins: this fast-path progress write must never land on
         // a terminal row — it would respell the worker's status (dropping its
@@ -1786,6 +1801,7 @@ const server = http.createServer((req, res) => {
             step: 'complete',
             message: message || 'Your video is ready!',
             videoUrl: finalVideoUrl,
+            hlsManifestUrl: progressiveManifestUrl,
             thumbnailUrl: null,
             final: false,
             error: null,
@@ -1800,6 +1816,7 @@ const server = http.createServer((req, res) => {
             step: step || '',
             message: message || '',
             videoUrl: completionVideoUrl,
+            hlsManifestUrl: progressiveManifestUrl,
             error: null,
           });
         }
@@ -4375,7 +4392,7 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -4403,6 +4420,7 @@ const server = http.createServer((req, res) => {
           step_message: data.step_message || '',
           ask: data.ask || null,
           rendered_video_url: data.rendered_video_url || data.result_url || null,
+          hls_manifest_url: data.hls_manifest_url || null,
           thumbnail_url: data.thumbnail_url || null,
           result_url: data.result_url || null,
           error: data.error_message || null,
