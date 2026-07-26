@@ -3537,6 +3537,15 @@ private struct UsageMeterStrip: View {
     @ObservedObject private var usage = UsageService.shared
     @ObservedObject private var subscription = SubscriptionService.shared
 
+    /// The daily reset shown as a LOCAL wall-clock time (e.g. "5:00 PM") — the user's
+    /// timezone + locale, so it reads as a real clock time, not a rolling duration.
+    private static let resetTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+
     var body: some View {
         // `rendersLeft` is non-nil ONLY once the server snapshot has loaded, so
         // this both hides the strip for Pro and shows nothing until we have a
@@ -3552,16 +3561,17 @@ private struct UsageMeterStrip: View {
                         // Automatic grammar agreement pluralizes "video" off the count.
                         Text("^[\(left) free video](inflect: true) left today")
                     } else if let reset = usage.resetsAt, reset > Date() {
-                        // A controlled, directional "resets in 2h 23m" that ticks
-                        // each minute — `Text(_, style: .relative)` renders a bare,
-                        // non-directional "2 hr, 23 min", which reads awkwardly here.
-                        TimelineView(.periodic(from: .now, by: 60)) { ctx in
-                            let secs = max(0, Int(reset.timeIntervalSince(ctx.date)))
-                            let h = secs / 3600, m = (secs % 3600) / 60
-                            Text(h > 0
-                                 ? "No free videos left · resets in \(h)h \(m)m"
-                                 : "No free videos left · resets in \(max(1, m))m")
-                        }
+                        // (c) Show the reset as a LOCAL wall-clock TIME, not a bare
+                        // duration. The quota resets at a fixed instant (UTC midnight),
+                        // so "resets in 2h 25m" reads as an arbitrary rolling timer —
+                        // the honest, calm form is the actual local time it comes back
+                        // ("resets at 5:00 PM"), with a "tomorrow" hint when that lands
+                        // on the next local day. (Rolling 24h-from-use is the queued
+                        // follow-up — see the quota note.)
+                        let cal = Calendar.current
+                        let dayHint = cal.isDateInToday(reset) ? ""
+                            : (cal.isDateInTomorrow(reset) ? " tomorrow" : "")
+                        Text("No free videos left · resets at \(Self.resetTimeFormatter.string(from: reset))\(dayHint)")
                     } else {
                         Text("No free videos left today")
                     }
