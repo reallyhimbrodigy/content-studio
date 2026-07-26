@@ -1204,14 +1204,11 @@ struct EditorView: View {
                 addPendingVideoAndStartUpload(video)
             }
 
-            // First upload is the ideal moment to offer notifications — the value
-            // ("we'll tell you the second it's ready") is concrete right now. Show
-            // the pre-permission explainer ONCE; shouldOfferSoftPrompt guarantees
-            // we never ask cold and never re-nag. The user is authenticated here
-            // (EditorView only mounts inside the signed-in shell).
-            if !videos.isEmpty, PushService.shared.shouldOfferSoftPrompt {
-                showPushExplainer = true
-            }
+            // (Notifications are offered AFTER the first successful DISPATCH, not
+            // here at upload — see the .success case in the dispatch handler. The
+            // render is actually running then, so "we'll tell you the second it's
+            // ready" is maximally concrete and never fires on a clip that fails to
+            // dispatch.)
         }
     }
 
@@ -2644,6 +2641,14 @@ struct EditorView: View {
                                 messages[i].serverRowExists = true
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
+                                // §5: the render is now running on the server — the
+                                // most concrete moment to offer notifications ("we'll
+                                // tell you the second it's ready"). ONE ask, gated by
+                                // shouldOfferSoftPrompt so a denial is respected and we
+                                // never re-nag. Only when the bubble is on screen.
+                                if PushService.shared.shouldOfferSoftPrompt {
+                                    showPushExplainer = true
+                                }
                             } else if let cid = dispatchChatId {
                                 // User switched chats while this was uploading.
                                 // Land the jobId on the off-screen bubble's

@@ -48,6 +48,10 @@ final class UsageService: ObservableObject {
         let sample_demo_vibe: String?
         let sample_demo_result_url: String?    // cached: the pre-rendered edit to play
         let sample_demo_thumbnail_url: String?
+        // §5 progressive playback: start playing the render as segments land (HLS)
+        // instead of waiting for the final mux. Server-gated, OFF by default; the
+        // client player plumbing is wired behind this flag before it flips.
+        let progressive_playback_enabled: Bool?
     }
 
     @Published var snapshot: Snapshot?
@@ -96,6 +100,8 @@ final class UsageService: ObservableObject {
     var sampleDemoVibe: String { snapshot?.sample_demo_vibe ?? "clean" }
     var sampleDemoResultUrl: String? { snapshot?.sample_demo_result_url }
     var sampleDemoThumbnailUrl: String? { snapshot?.sample_demo_thumbnail_url }
+    // §5 progressive playback gate (default off until the HLS player path ships).
+    var progressivePlaybackEnabled: Bool { snapshot?.progressive_playback_enabled ?? false }
 
     /// The absolute instant the daily render quota resets (server = next UTC
     /// midnight), for the usage-meter countdown. The server serializes with

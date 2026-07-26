@@ -187,6 +187,14 @@ struct MessageBubble: View {
             // cancelled, needs_input/needs_clarification — stops the spinner.
             if let status = message.jobStatus, !JobLifecycle.isTerminal(status) {
                 if let timeline = message.stageTimeline {
+                    // §5 plan preview: reflect the user's vibe + what Promptly is
+                    // making, so the multi-minute wait reads as a craft in progress
+                    // (not a dead spinner). Honest — these are what every edit gets.
+                    // Hidden on the ask-back pause (the AskCard owns that moment).
+                    if let vibe = message.originalVibe, status != "needs_input" {
+                        PlanPreviewCard(vibe: vibe)
+                            .padding(.bottom, 10)
+                    }
                     PipelineProgressView(
                         timeline: timeline,
                         progress: message.jobProgress ?? 0,
@@ -607,6 +615,55 @@ struct ProcessingIndicator: View {
 // The display is driven by the observable StageTimeline on the message. All
 // skip inference happens inside the timeline; this view is purely
 // presentational.
+
+/// §5 plan preview — a compact "here's what we're making" card shown atop the
+/// progress bar during a render. Reflects the user's own vibe back to them and
+/// lists what every Promptly edit delivers, so the wait feels like a craft in
+/// progress. Purely honest reassurance — no fabricated per-clip specifics.
+struct PlanPreviewCard: View {
+    let vibe: String
+    private static let gold = Color(red: 1, green: 0.82, blue: 0.5)
+    private static let deliverables: [(icon: String, label: String)] = [
+        ("captions.bubble", "Captions"),
+        ("scissors", "Cuts"),
+        ("paintpalette", "Color"),
+        ("waveform", "Pacing"),
+    ]
+    private var trimmedVibe: String { vibe.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Self.gold)
+                Text("Making your edit")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            if !trimmedVibe.isEmpty {
+                Text("“\(trimmedVibe)”")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 12) {
+                ForEach(Self.deliverables, id: \.label) { d in
+                    HStack(spacing: 4) {
+                        Image(systemName: d.icon).font(.system(size: 10, weight: .semibold))
+                        Text(d.label).font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+    }
+}
 
 struct PipelineProgressView: View {
     @ObservedObject var timeline: StageTimeline
