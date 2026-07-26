@@ -40,6 +40,13 @@ whole feature — the next cross-repo field starts here, not from a two-sided gu
 1. `video_jobs.preview` populates with the JSONB payload → seams a–d OK.
 2. `hls_manifest_url` briefly holds a `*-preview-hls` URL mid-render → seam d OK.
 3. Client shows the "LIVE PREVIEW" inline player, then swaps → seams e–f OK.
+**Worker gate observability (promptly-gpu-worker v369+):** every job logs
+`[progressive] GATE job=<id> supports_progressive=<value> -> enabled=<bool>` and records a
+`progressive`/`progressive_gate` divergence (queryable in the S3 divergence ledger). This proves
+seams (b)→(c) on a SINGLE job id: `supports_progressive=false/None` → the break is upstream
+(client send or the server kill switch), not the worker; `supports_progressive=true, enabled=true`
+with `preview` still empty → single-chunk render (publisher inert) or a `progressive_publish_fallback`.
+
 If (1) is empty: the worker never published — check `supports_progressive` reached
 `input_data` (seam b) and both worker kill switches. If (1) is populated but (3) never
 shows: check `progressive_playback_enabled` in the device's `/api/usage` snapshot.
