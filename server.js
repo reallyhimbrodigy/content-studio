@@ -4107,6 +4107,12 @@ const server = http.createServer((req, res) => {
           vibe: vibeInput,
           userId: authUser.id,
           premiumPipeline,
+          // §5 progressive: forward the client's per-dispatch capability. The worker
+          // publishes a partial HLS preview ONLY for jobs that carry this — so the
+          // 1.3.2 majority (no flag) never pays a preview encode. Flows via the Modal
+          // payload, exactly like premium_pipeline_enabled. The global kill switch
+          // gates on top (worker-side).
+          supportsProgressive: body?.supports_progressive === true,
           prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
         });
         console.log('  ✅ Modal dispatch started for job:', job.id);
