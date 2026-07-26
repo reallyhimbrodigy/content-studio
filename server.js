@@ -421,6 +421,17 @@ function pushProgressToSSE(jobId, data) {
   }
 }
 
+// §5 progressive-playback KILL SWITCH (single source of truth). Reads the Render env
+// PROGRESSIVE_PLAYBACK_ENABLED and accepts "1" OR "true"/"yes"/"on" (case-insensitive)
+// — deliberately more forgiving than the siblings' strict "=1" so a plain "true" in
+// Render works and it can never be silently off on a casing/value mismatch. Controls
+// BOTH sides: the client's CONSUMPTION (emitted in /api/usage) AND the server's
+// forwarding of supports_progressive to the worker, so a preview is never PUBLISHED
+// (never billed) while the switch is off.
+function progressivePlaybackEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.PROGRESSIVE_PLAYBACK_ENABLED || '').trim());
+}
+
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const OPENAI_API_KEY = CLAUDE_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -3086,6 +3097,10 @@ const server = http.createServer((req, res) => {
           // Older clients ignore both fields.
           max_upload_seconds: Number(process.env.MAX_UPLOAD_SECONDS) || 180,
           content_routing_enabled: String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1',
+          // §5 progressive-playback kill switch (client CONSUMPTION gate). Reads
+          // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
+          // the live preview even if a manifest arrives.
+          progressive_playback_enabled: progressivePlaybackEnabled(),
           // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
           // The first-run hero offers "Watch Promptly edit this" only when this is
           // on AND a clip is configured. Two flag-selectable modes:
@@ -4107,12 +4122,12 @@ const server = http.createServer((req, res) => {
           vibe: vibeInput,
           userId: authUser.id,
           premiumPipeline,
-          // §5 progressive: forward the client's per-dispatch capability. The worker
-          // publishes a partial HLS preview ONLY for jobs that carry this — so the
-          // 1.3.2 majority (no flag) never pays a preview encode. Flows via the Modal
-          // payload, exactly like premium_pipeline_enabled. The global kill switch
-          // gates on top (worker-side).
-          supportsProgressive: body?.supports_progressive === true,
+          // §5 progressive: forward the client's per-dispatch capability, AND-gated by
+          // the kill switch so a preview is never PUBLISHED (never billed) while the
+          // switch is off — even for a 1.3.3 client that advertised it. The 1.3.2
+          // majority (no flag) never pays a preview encode regardless. Flows via the
+          // Modal payload, exactly like premium_pipeline_enabled.
+          supportsProgressive: body?.supports_progressive === true && progressivePlaybackEnabled(),
           prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
         });
         console.log('  ✅ Modal dispatch started for job:', job.id);
