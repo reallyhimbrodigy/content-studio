@@ -289,6 +289,7 @@ async function inFlightJobCount(userId) {
   // dispatch path: an error here 503s every render. Fall back to the unfiltered
   // count (pre-migration there are zero demo rows to exclude anyway); it self-heals
   // the instant the column exists. NEVER let the demo filter break dispatch.
+  // migration-guarded[demo].
   let { count, error } = await supabaseAdmin
     .from('video_jobs')
     .select('*', { count: 'exact', head: true })
@@ -3963,6 +3964,9 @@ const server = http.createServer((req, res) => {
             // per user per day so live-render mode can't be hammered into GPU spend;
             // counts this user's demo rows created since UTC midnight. Cached mode
             // (recommended) has no GPU cost, but the cap is cheap defense either way.
+            // migration-guarded[demo]: flag-gated (only reachable when
+            // SAMPLE_DEMO_ENABLED, which implies the migration is applied) AND a
+            // count error returns 503 here rather than crashing the dispatch.
             const demoCap = Number(process.env.SAMPLE_DEMO_DAILY_CAP) || 5;
             const { count: demoToday, error: demoCountErr } = await supabaseAdmin
               .from('video_jobs')
@@ -4167,11 +4171,21 @@ const server = http.createServer((req, res) => {
           }
 
           // Load the parked job WITH its ask so the guard can match ask_id.
-          const { data: parked, error: parkedErr } = await supabaseAdmin
+          // migration-guarded[ask]: on a pre-migration error, retry without `ask`
+          // (the ask_id guard then treats it as a stale/safe no-op). Self-heals
+          // once the column lands.
+          let { data: parked, error: parkedErr } = await supabaseAdmin
             .from('video_jobs')
             .select('id, user_id, status, ask, video_url, vibe_input')
             .eq('id', originalJobId)
             .single();
+          if (parkedErr && parkedErr.code !== 'PGRST116') {
+            ({ data: parked, error: parkedErr } = await supabaseAdmin
+              .from('video_jobs')
+              .select('id, user_id, status, video_url, vibe_input')
+              .eq('id', originalJobId)
+              .single());
+          }
           if (parkedErr && parkedErr.code !== 'PGRST116') {
             console.error('[ask-answer] load failed:', parkedErr);
             return sendJson(res, 500, { error: 'Failed to load job' });
@@ -4227,13 +4241,26 @@ const server = http.createServer((req, res) => {
           // without re-stamping, this flip would leave started_at at the ORIGINAL
           // dispatch instant and the wall would false-reap (and refund) a healthy
           // resume mid-flight. Stamping it here makes the wall track THIS execution.
-          const { data: locked, error: updErr } = await supabaseAdmin
+          // migration-guarded[ask]: `ask` is JSONB from a manual migration. Build the
+          // payload without it, spread ask in, and on error retry sans ask so a
+          // pre-migration resume still flips to processing (self-heals when applied).
+          const resumeBase = { status: 'processing', started_at: new Date().toISOString(), current_step: 'resuming', step_message: 'Folding in your answer…' };
+          let { data: locked, error: updErr } = await supabaseAdmin
             .from('video_jobs')
-            .update({ status: 'processing', ask: null, started_at: new Date().toISOString(), current_step: 'resuming', step_message: 'Folding in your answer…' })
+            .update({ ...resumeBase, ask: null })
             .eq('id', originalJobId)
             .eq('user_id', authUser.id)
             .eq('status', 'needs_input')
             .select('id');
+          if (updErr) {
+            ({ data: locked, error: updErr } = await supabaseAdmin
+              .from('video_jobs')
+              .update(resumeBase)
+              .eq('id', originalJobId)
+              .eq('user_id', authUser.id)
+              .eq('status', 'needs_input')
+              .select('id'));
+          }
           if (updErr) {
             console.error('[ask-answer] update failed:', updErr);
             return sendJson(res, 500, { error: 'Failed to resume job' });
@@ -4263,12 +4290,23 @@ const server = http.createServer((req, res) => {
             // retry (which didn't get a 200, so it stayed on the ask) is accepted
             // again and nothing is stranded on an infinite spinner.
             console.error('[ask-answer] resume dispatch failed, rolling back:', dispatchErr);
-            await supabaseAdmin
+            // migration-guarded[ask]: roll back to needs_input; re-store the ask when
+            // the column exists, else fall back sans ask (the client kept the ask).
+            const rbBase = { status: 'needs_input', current_step: null, step_message: null };
+            const { error: rbErr } = await supabaseAdmin
               .from('video_jobs')
-              .update({ status: 'needs_input', ask: parkedAsk, current_step: null, step_message: null })
+              .update({ ...rbBase, ask: parkedAsk })
               .eq('id', originalJobId)
               .eq('user_id', authUser.id)
               .eq('status', 'processing');
+            if (rbErr) {
+              await supabaseAdmin
+                .from('video_jobs')
+                .update(rbBase)
+                .eq('id', originalJobId)
+                .eq('user_id', authUser.id)
+                .eq('status', 'processing');
+            }
             return sendJson(res, 503, { error: 'resume_dispatch_failed', retryable: true });
           }
 
@@ -4385,13 +4423,28 @@ const server = http.createServer((req, res) => {
         console.log('  User ID:', authUser.id);
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
-        const { data, error } = await supabaseAdmin
+        // `ask` is a JSONB column added by a MANUAL migration (add-ask-to-video-jobs).
+        // Until it's applied, selecting it 400s and this whole endpoint 500s for
+        // EVERY job (the incident that masked itself behind SSE). Select it, and on
+        // error retry WITHOUT it — the endpoint works pre-migration (ask=null) and
+        // self-heals the moment the column lands. migration-guarded[ask].
+        const askCols = 'id, user_id, status, progress, current_step, step_message, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at';
+        let { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select(`${askCols}, ask`)
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
           .maybeSingle();
+        if (error) {
+          ({ data, error } = await supabaseAdmin
+            .from('video_jobs')
+            .select(askCols)
+            .eq('id', jobId)
+            .eq('user_id', authUser.id)
+            .order('updated_at', { ascending: false })
+            .maybeSingle());
+        }
 
         if (error) {
           console.error('  ❌ Database error:', error);
