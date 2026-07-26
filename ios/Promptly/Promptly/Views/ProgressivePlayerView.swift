@@ -95,17 +95,30 @@ private struct LivePlayerSurface: UIViewRepresentable {
                 player.replaceCurrentItem(with: item)
                 player.play()
             }
-            // 2) Swap to the final MP4 once, the instant it lands — seek to the current
-            //    playhead so the cut is seamless. If the preview never started (manifest
-            //    absent), this simply becomes the first (and only) item.
-            if swappedFinal == nil, let f = final, !f.isEmpty, f != swappedFinal, let url = URL(string: f) {
+            // 2) Swap to the final MP4 once, the instant it lands — carry the playhead
+            //    so the cut is seamless. If the preview never started (manifest absent),
+            //    this simply becomes the first (and only) item.
+            if swappedFinal == nil, let f = final, !f.isEmpty, let url = URL(string: f) {
                 swappedFinal = f
+                // Capture the preview's playhead AND its end BEFORE replacing the item.
                 let at = player.currentTime()
+                let outEnd: Double? = {
+                    guard let out = player.currentItem else { return nil }
+                    let d = out.duration
+                    if d.isNumeric, d.seconds > 0 { return d.seconds }        // definite (VOD)
+                    return out.seekableTimeRanges.last?.timeRangeValue.end.seconds // growing HLS
+                }()
                 let item = PlayerAssetPrewarm.shared.takePlayerItem(for: f) ?? AVPlayerItem(url: url)
                 player.replaceCurrentItem(with: item)
-                // Preserve position only if the preview had actually advanced.
-                if at.isValid, at.seconds > 0.3 {
-                    player.seek(to: at, toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
+                // Carry the playhead ONLY when the preview genuinely advanced AND hasn't
+                // reached the end. Seeking a same-length final to ~its own duration would
+                // park it on the last frame (actionAtItemEnd = .pause) — a frozen swap.
+                // When the preview has caught up (or we can't tell its end), play the
+                // final from 0. PRECISE seek (both tolerances .zero) so the cut lands
+                // exactly, never a keyframe forward that would drop up to a GOP.
+                let t = at.seconds
+                if at.isValid, t > 0.3, let end = outEnd, t < end - 0.5 {
+                    player.seek(to: at, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
                 player.play()
             }
