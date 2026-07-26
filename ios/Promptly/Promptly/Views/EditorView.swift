@@ -469,7 +469,7 @@ struct EditorView: View {
     /// otherwise a fast app-kill mid-reveal would persist a partial.
     private func injectWelcomeIfEmpty() {
         guard messages.isEmpty else { return }
-        let fullText = "Hey 👋 I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
+        let fullText = "Hey, I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
         var welcome = ChatMessage(role: .assistant, content: "")
         welcome.isOnboarding = true
         let welcomeId = welcome.id
@@ -830,17 +830,11 @@ struct EditorView: View {
                 .padding(.trailing, 5)
                 .padding(.bottom, 5)
             }
-
-            // Model picker pill — bottom-left of the composer (the
-            // "Opus 4.8 High" slot in the Claude reference). Sets which
-            // pipeline the next render runs; tap to switch Flare/Lumen.
-            HStack(spacing: 0) {
-                ModelPickerPill()
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 10)
-            .padding(.top, 2)
-            .padding(.bottom, 8)
+            // §7 (looks-like-a-product): the Flare/Lumen model picker was removed from
+            // the composer — users never pick a model. The render tier now follows
+            // their PLAN silently (Pro → premium pipeline, free → standard); see
+            // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
+            .padding(.bottom, 6)
         }
         .background(
             ZStack {

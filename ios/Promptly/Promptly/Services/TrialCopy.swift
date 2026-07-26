@@ -38,7 +38,7 @@ enum TrialCopy {
 
     // MARK: - Post-purchase confirmation (replaces the silent dismiss)
 
-    static let confirmationTitle = "You're Pro 🎉"
+    static let confirmationTitle = "You're Pro"
 
     /// The unified post-purchase celebration title. One line, one voice — shared
     /// by every purchase surface (paywall sheet + upgrade wall) via

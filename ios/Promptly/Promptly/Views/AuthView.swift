@@ -140,7 +140,7 @@ struct AuthView: View {
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.white)
 
-            Text("AI editor for short-form talking-head videos.")
+            Text("The editor for short-form talking-head videos.")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

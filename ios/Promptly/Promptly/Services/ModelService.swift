@@ -48,7 +48,10 @@ final class ModelService: ObservableObject {
     /// only for (premium model AND Pro). The server re-derives this
     /// authoritatively; this just keeps a free client from ever asking.
     func premiumPipelineFlag(isPro: Bool) -> Bool {
-        ModelSelection.premiumFlag(selected: selected, isPro: isPro)
+        // §7 (looks-like-a-product): the model is no longer user-selectable. The render
+        // tier follows the PLAN silently — Pro → premium pipeline (Lumen), free →
+        // standard (Flare). No `selected` input; the picker was removed from the UI.
+        isPro
     }
 
     private func persist() {
