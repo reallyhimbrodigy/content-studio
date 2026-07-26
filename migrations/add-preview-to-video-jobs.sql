@@ -1,15 +1,16 @@
--- §5 progressive playback marker. A job gets a partial HLS preview only when its
--- dispatch carried supports_progressive (a 1.3.3+ client capability) AND the global
--- kill switch is on. This column records that a preview was published for the job —
--- the analytics/state parallel to `demo`, so we can measure preview coverage without
--- inferring it.
+-- §5 progressive playback: the worker's Phase-B preview payload.
 --
--- The capability itself flows to the worker via the Modal dispatch payload
--- (dispatch-to-modal.js: supports_progressive), NOT this column — so server.js does
--- not reference `preview`. This is the WORKER's column to write.
+-- CORRECTED TYPE (2026-07-26): the worker's _persist_preview writes a JSONB payload
+-- here — {preview_hls_url, segments_published, plan_summary, first_frame_url} — in the
+-- SAME update that sets hls_manifest_url to the preview manifest. The first version of
+-- this migration created `preview BOOLEAN` (a wrong inference); writing the JSONB
+-- object to a boolean column throws, the whole update fails (the worker is fail-open),
+-- and hls_manifest_url never receives the preview → NO preview for any job. Type MUST
+-- be JSONB. If the boolean version was already applied, the DROP below fixes it (the
+-- column is unused — all-null/false — so no data is lost).
 --
--- BACKEND: confirm this name + type match your intent before Zac runs it. Boolean by
--- analogy to `demo`; change to TEXT/JSONB if the worker instead stores preview
--- metadata here.
+-- Worker-owned column (frontend owns the migration; the client reads the resulting
+-- hls_manifest_url, not this column). Nullable; nothing on the server writes it.
 
-ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS preview BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE video_jobs DROP COLUMN IF EXISTS preview;          -- drop the wrong (boolean) type if present
+ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS preview JSONB; -- correct type
