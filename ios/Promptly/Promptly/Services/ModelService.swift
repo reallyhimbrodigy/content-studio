@@ -48,10 +48,18 @@ final class ModelService: ObservableObject {
     /// only for (premium model AND Pro). The server re-derives this
     /// authoritatively; this just keeps a free client from ever asking.
     func premiumPipelineFlag(isPro: Bool) -> Bool {
-        // §7 (looks-like-a-product): the model is no longer user-selectable. The render
-        // tier follows the PLAN silently — Pro → premium pipeline (Lumen), free →
-        // standard (Flare). No `selected` input; the picker was removed from the UI.
-        isPro
+        // §7: the model is no longer user-selectable (picker removed) — the tier
+        // follows the plan silently. BUT Pro does NOT silently get the premium (Lumen)
+        // pipeline yet: premium KEEPS designed Lumen scenes (the worker strips them on
+        // the standard path via _premium_gate_scene_strip), and those designed scenes
+        // have never been reviewed or emitted in production — at higher per-render cost
+        // + latency. So Pro gets the PROVEN standard pipeline until Lumen quality clears
+        // Zac's eye. FLIP POINT when it does: return `isPro` here (one line), OR the
+        // backend flips its master env PREMIUM_PIPELINE_ENABLED (no client build needed,
+        // since the worker OR-gates the per-job flag with that env). `isPro` retained
+        // for the flip.
+        _ = isPro
+        return false
     }
 
     private func persist() {
