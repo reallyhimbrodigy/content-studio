@@ -42,9 +42,12 @@ final class UsageService: ObservableObject {
         // (a `demo` flag on createVideoJob) — until it does, this stays off so the
         // demo never burns the user's one free render.
         let sample_demo_enabled: Bool?
-        let sample_demo_source_url: String?
+        let sample_demo_mode: String?          // "cached" (default) | "live"
+        let sample_demo_source_url: String?    // live: the clip to render
         let sample_demo_proxy_url: String?
         let sample_demo_vibe: String?
+        let sample_demo_result_url: String?    // cached: the pre-rendered edit to play
+        let sample_demo_thumbnail_url: String?
     }
 
     @Published var snapshot: Snapshot?
@@ -78,12 +81,21 @@ final class UsageService: ObservableObject {
     // ships a hosted source URL — the hero can't offer a demo it has no clip for.
     // Defaults false/nil so build 219 ships the demo dark until the backend hosts
     // the clip and exempts it from the daily quota.
+    // Available when enabled AND the mode's required asset is present: cached needs
+    // a pre-rendered result to play; live needs a source to dispatch.
     var sampleDemoAvailable: Bool {
-        (snapshot?.sample_demo_enabled ?? false) && (sampleDemoSourceUrl != nil)
+        guard snapshot?.sample_demo_enabled == true else { return false }
+        return sampleDemoMode == "live" ? (sampleDemoSourceUrl != nil) : (sampleDemoResultUrl != nil)
     }
+    /// "cached" (default — play a pre-rendered before→after reveal) or "live"
+    /// (dispatch the source through the real pipeline). Cost/reliability favors
+    /// cached; see the demo-economics memo.
+    var sampleDemoMode: String { (snapshot?.sample_demo_mode ?? "cached") == "live" ? "live" : "cached" }
     var sampleDemoSourceUrl: String? { snapshot?.sample_demo_source_url }
     var sampleDemoProxyUrl: String? { snapshot?.sample_demo_proxy_url }
     var sampleDemoVibe: String { snapshot?.sample_demo_vibe ?? "clean" }
+    var sampleDemoResultUrl: String? { snapshot?.sample_demo_result_url }
+    var sampleDemoThumbnailUrl: String? { snapshot?.sample_demo_thumbnail_url }
 
     /// The absolute instant the daily render quota resets (server = next UTC
     /// midnight), for the usage-meter countdown. The server serializes with

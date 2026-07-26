@@ -57,6 +57,8 @@ struct EditorView: View {
     /// here — Layer 2 is the backend's final call).
     @State private var showLayer2Rejection: Bool = false
     @State private var layer2RejectionMessage: String = ""
+    // §4 cached sample-clip demo: non-nil presents the before→after reveal.
+    @State private var demoReveal: DemoRevealData?
 
     /// Set when the backend rejects a render with requires_vibe_change=
     /// true. Holds the failed message's id so send() knows to route
@@ -170,6 +172,14 @@ struct EditorView: View {
                     }
                     isInputFocused = true
                 }
+            }
+            .fullScreenCover(item: $demoReveal) { data in
+                SampleDemoReveal(
+                    rawUrl: data.raw,
+                    editedUrl: data.edited,
+                    onUpload: { demoReveal = nil; tapAddVideo() },
+                    onClose: { demoReveal = nil }
+                )
             }
             .onAppear {
                 // Downgrade safety: if entitlement lapsed while a premium
@@ -956,6 +966,31 @@ struct EditorView: View {
         if let suggestions {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    // §5 reduce-steps: once a clip is picked with no vibe typed, the
+                    // FIRST chip is a one-tap default — pick → tap → dispatch, zero
+                    // composing (the right floor for a first render). Styled as a
+                    // primary (filled) chip so it reads as "go", not "suggestion".
+                    // The other chips still fill the composer as editable suggestions.
+                    if !pendingVideos.isEmpty && reeditSession == nil {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            inputText = "Clean and engaging edit"
+                            send()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("Clean & engaging")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Color.white))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit now with a clean, engaging default")
+                    }
                     ForEach(suggestions, id: \.self) { vibe in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1869,8 +1904,21 @@ struct EditorView: View {
     /// honors the exemption; until then the hero never offers this.
     @MainActor
     private func startSampleDemo() {
-        guard usageService.sampleDemoAvailable,
-              let sourceUrl = usageService.sampleDemoSourceUrl else { return }
+        guard usageService.sampleDemoAvailable else { return }
+
+        // CACHED (default): present the honest before→after reveal — a pre-rendered
+        // edit, no dispatch, no fabricated progress. The "before" (raw source) is
+        // optional; when absent the reveal is After-only.
+        if usageService.sampleDemoMode == "cached",
+           let edited = usageService.sampleDemoResultUrl.flatMap({ URL(string: $0) }) {
+            demoReveal = DemoRevealData(
+                raw: usageService.sampleDemoSourceUrl.flatMap({ URL(string: $0) }),
+                edited: edited)
+            return
+        }
+
+        // LIVE: dispatch the source through the real pipeline (quota-exempt).
+        guard let sourceUrl = usageService.sampleDemoSourceUrl else { return }
         // Idempotency: never run two demos at once. If a demo bubble is already
         // in flight, a second tap is a no-op.
         if messages.contains(where: { $0.isSampleDemo && ($0.jobStatus == "processing" || $0.jobStatus == "queued") }) { return }
