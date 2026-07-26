@@ -432,6 +432,17 @@ function progressivePlaybackEnabled() {
   return /^(1|true|yes|on)$/i.test(String(process.env.PROGRESSIVE_PLAYBACK_ENABLED || '').trim());
 }
 
+// PREMIUM_PIPELINE_ENABLED — the LUMEN_READY master gate (Zac 2026-07-26). Pro
+// defaults to STANDARD: even an entitled Pro user whose (picker-less) client asks
+// for premium gets the standard (Flare) pipeline UNLESS this backend env is set.
+// Flip ON only after Lumen clears Zac's eye — Pass-2 reel approved AND one real
+// emitted designed scene passes in a finished video AND the C01-C24 blind scores
+// exist. No client build / App Store round trip — one env in Render. Same
+// forgiving matcher as progressivePlaybackEnabled so a plain "true" works.
+function premiumPipelineEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.PREMIUM_PIPELINE_ENABLED || '').trim());
+}
+
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const OPENAI_API_KEY = CLAUDE_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -4074,9 +4085,18 @@ const server = http.createServer((req, res) => {
         // the server is the real lock: a free/unverified user can NEVER route
         // premium here no matter what the client (or a hand-rolled curl) sends.
         // The worker double-gates again (route_premium = is_premium AND flag).
-        const premiumPipeline = entitlement.isPro === true && body?.premium_pipeline_enabled === true;
-        console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s) job=%s',
-          premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true, job.id);
+        // LUMEN_READY master gate (Zac 2026-07-26): Pro defaults to STANDARD.
+        // Even isPro + client-asked-premium routes standard UNLESS the backend
+        // PREMIUM_PIPELINE_ENABLED env is set — flipped only once Lumen clears
+        // Zac's eye. Designed scenes have never emitted (0/473 in 30d), so this
+        // costs Pro nothing today (premium output ≡ standard) and removes the
+        // risk of shipping an unreviewed Lumen scene to a paying user.
+        const premiumPipeline = entitlement.isPro === true
+          && body?.premium_pipeline_enabled === true
+          && premiumPipelineEnabled();
+        console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s masterFlag=%s) job=%s',
+          premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true,
+          premiumPipelineEnabled(), job.id);
 
         // NO_SPEECH pre-dispatch gate — reject a 0-word (speechless) clip here,
         // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
