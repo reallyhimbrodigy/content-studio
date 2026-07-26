@@ -674,6 +674,13 @@ struct EditorView: View {
                 }
             }
             .onChange(of: isInputFocused) { _, focused in
+                // Vibe entry = send intent: focusing the composer with a clip pending
+                // means a render is imminent. Re-fire the GPU warmup here (the earliest
+                // reliable signal) so the container is hot by dispatch — the cold-start
+                // race the backend traced. Idempotent; a second fire lands at send().
+                if focused, !pendingVideos.isEmpty {
+                    fireRenderWarmup()
+                }
                 guard focused, let lastId = messages.last?.id else { return }
                 // Defer past the keyboard-rise animation so the scroll
                 // position lands on the new visible bounds, not the
@@ -2312,11 +2319,31 @@ struct EditorView: View {
 
     // MARK: - Send
 
+    /// Re-fire the GPU render-container warmup on SEND INTENT. Backend root-caused
+    /// dispatch stalls to a cold-start race: the pick-time / editor-open warmup
+    /// (~15-30s cold start) expires before a real user finishes entering a vibe and
+    /// hits send, so the container is cold again at dispatch and the render stalls on
+    /// boot. Re-firing at vibe entry and again just before dispatch keeps it hot.
+    /// Fire-and-forget, detached, idempotent — Modal dedupes container warmup, and all
+    /// errors are swallowed inside the call, so it can never block or fail a send.
+    private func fireRenderWarmup() {
+        Task.detached(priority: .utility) {
+            await APIService.shared.warmupRenderContainer()
+        }
+    }
+
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
+
+        // Send intent → re-fire the GPU warmup for any path that hits the render
+        // container (a fresh video send, a re-edit, or a vibe-change re-dispatch),
+        // closing the cold-start race the backend traced.
+        if hasVideos || reeditActive || pendingVibeEditMessageId != nil {
+            fireRenderWarmup()
+        }
 
         // ── requires_vibe_change re-dispatch path ─────────────────────
         // Backend told us the source was fine but the vibe was the
