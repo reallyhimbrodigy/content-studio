@@ -24,7 +24,8 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
-const { sendRenderCompleteNotification, sendOwnerAlert } = require('./services/pushNotifier');
+const { sendOwnerAlert } = require('./services/pushNotifier');
+const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
 const {
   validateUploadRequest,
   validateSubmission,
@@ -282,10 +283,12 @@ async function assertProEntitled(userId, opts = {}) {
 // same thing whether the 2nd video is started in the same chat or a new one.
 async function inFlightJobCount(userId) {
   if (!supabaseAdmin) return 0;
+  // §4: exclude demo rows so an in-flight demo never blocks the user's own render.
   const { count, error } = await supabaseAdmin
     .from('video_jobs')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
+    .eq('demo', false)
     .in('status', ['queued', 'processing']);
   if (error) { const e = new Error(error.message); e.code = 'pending_check_failed'; throw e; }
   return count || 0;
@@ -416,6 +419,17 @@ function pushProgressToSSE(jobId, data) {
       clients.delete(res);
     }
   }
+}
+
+// §5 progressive-playback KILL SWITCH (single source of truth). Reads the Render env
+// PROGRESSIVE_PLAYBACK_ENABLED and accepts "1" OR "true"/"yes"/"on" (case-insensitive)
+// — deliberately more forgiving than the siblings' strict "=1" so a plain "true" in
+// Render works and it can never be silently off on a casing/value mismatch. Controls
+// BOTH sides: the client's CONSUMPTION (emitted in /api/usage) AND the server's
+// forwarding of supports_progressive to the worker, so a preview is never PUBLISHED
+// (never billed) while the switch is off.
+function progressivePlaybackEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.PROGRESSIVE_PLAYBACK_ENABLED || '').trim());
 }
 
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
@@ -1659,7 +1673,7 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, thumbnail_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
@@ -1671,6 +1685,9 @@ const server = http.createServer((req, res) => {
                 step: data.current_step || '',
                 message: data.step_message || '',
                 videoUrl: data.rendered_video_url || null,
+                // §5 progressive: a client reconnecting mid-render gets the manifest
+                // in the connect snapshot and can resume the preview.
+                hlsManifestUrl: data.hls_manifest_url || null,
                 thumbnailUrl: data.thumbnail_url || null,
                 error: data.error_message || null,
               })}\n\n`);
@@ -1729,6 +1746,15 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
         const wasAlreadyCompleted = prevState?.status === 'completed';
 
+        // §5 progressive playback: forward the HLS manifest the moment it exists so a
+        // live client can start the inline preview MID-render (not only at completion).
+        // The backend's (publishing) contract may deliver it either by writing
+        // hls_manifest_url early — already read into prevState above — or by including
+        // it in this progress POST; take whichever is present. Additive + null-safe:
+        // inert until the worker emits it early. Client gates on progressive_playback_enabled.
+        const progressiveManifestUrl = body?.hlsManifestUrl || body?.hls_manifest_url || prevState?.hls_manifest_url || null;
+        const manifestFromBody = body?.hlsManifestUrl || body?.hls_manifest_url || null;
+
         // MONOTONIC PROGRESS CLAMP (Phase 3): a preempted job retries from
         // scratch → the fresh attempt restarts progress at ~0. Clamp so the bar
         // NEVER rewinds — a retry reads as a pause at the high-water mark until
@@ -1746,16 +1772,25 @@ const server = http.createServer((req, res) => {
           updated_at: new Date().toISOString(),
         };
         if (completionVideoUrl) updateData.rendered_video_url = completionVideoUrl;
+        // Persist a manifest that arrived via the progress POST so reconnect/poll/push
+        // paths see it too (a worker that writes the column itself needs no help here).
+        if (manifestFromBody && !prevState?.hls_manifest_url) updateData.hls_manifest_url = manifestFromBody;
 
         // First-terminal-wins: this fast-path progress write must never land on
         // a terminal row — it would respell the worker's status (dropping its
         // write-once result/phase) or resurrect a cancelled render. The SSE
         // push below still fires regardless, so the client stays live.
-        await supabaseAdmin
+        // .select('id') so we KNOW whether this request won the transition —
+        // when status flips to 'completed' here, the winner (and only the
+        // winner) owns the lifecycle push below.
+        const { data: transitionRows } = await supabaseAdmin
           .from('video_jobs')
           .update(updateData)
           .eq('id', job_id)
-          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL);
+          .not('status', 'in', TERMINAL_JOB_STATUSES_SQL)
+          .select('id');
+        const wonCompletedTransition = status === 'completed'
+          && Array.isArray(transitionRows) && transitionRows.length > 0;
 
         if (step === 'complete') {
           // Fast-path: tell the UI the video is ready as soon as the worker
@@ -1777,36 +1812,12 @@ const server = http.createServer((req, res) => {
             step: 'complete',
             message: message || 'Your video is ready!',
             videoUrl: finalVideoUrl,
+            hlsManifestUrl: progressiveManifestUrl,
             thumbnailUrl: null,
             final: false,
             error: null,
           });
-          // Fire the APNs push so users who navigated away during the
-          // render get pulled back in. Fire-and-forget: notification
-          // failure must never affect the render success path — the
-          // SSE event already told any foreground client the video is
-          // ready. iOS taps on the notification deep-link into the
-          // Library tab via the "render-complete" type handler.
-          //
-          // Deduplication: only push when the job was NOT already in
-          // the 'completed' state before this request. If the worker
-          // retries /api/modal-progress with step === 'complete' for a
-          // job it already finished (network blip, idempotency safety
-          // net, etc), we skip the duplicate push. Without this guard
-          // the user would see two "Your video is ready ✨" alerts
-          // back-to-back, which reads as buggy.
-          if (!wasAlreadyCompleted && prevState?.user_id && finalVideoUrl) {
-            sendRenderCompleteNotification({
-              userId: prevState.user_id,
-              jobId: job_id,
-              videoUrl: finalVideoUrl,
-              hlsManifestUrl: prevState.hls_manifest_url || null,
-              vibe: prevState.vibe_input || null,
-              supabaseAdmin,
-            }).catch((err) => {
-              console.error('[push] render-complete dispatch failed:', err.message);
-            });
-          } else if (wasAlreadyCompleted) {
+          if (wasAlreadyCompleted) {
             console.log(`[push] skipping duplicate render-complete for job=${job_id} (already completed)`);
           }
         } else {
@@ -1816,7 +1827,29 @@ const server = http.createServer((req, res) => {
             step: step || '',
             message: message || '',
             videoUrl: completionVideoUrl,
+            hlsManifestUrl: progressiveManifestUrl,
             error: null,
+          });
+        }
+
+        // Lifecycle push — fires for WHOEVER won the non-terminal → 'completed'
+        // transition above, INDEPENDENT of the step label: the transition is
+        // consumed exactly once, so if a pct>=100 event ever arrived with a
+        // step other than 'complete', gating the push on the step would burn
+        // the one transition without a push and every later writer would lose
+        // the race — the user would never be told. Fire-and-forget: a
+        // notification failure must never affect the render success path (the
+        // SSE above already told any foreground client). iOS deep-links into
+        // the Library tab via the "render-complete" type handler. The
+        // chokepoint's flag + per-job claim gate inside.
+        if (wonCompletedTransition && prevState?.user_id) {
+          sendLifecyclePush(supabaseAdmin, {
+            jobId: job_id,
+            userId: prevState.user_id,
+            kind: 'completed',
+            vibe: prevState.vibe_input || null,
+          }).catch((err) => {
+            console.error('[push] render-complete dispatch failed:', err.message);
           });
         }
 
@@ -1863,6 +1896,97 @@ const server = http.createServer((req, res) => {
         });
       } catch (e) {
         console.error('[ALERT] handler error:', e && e.message ? e.message : e);
+      }
+    })();
+    return;
+  }
+
+  // ── Internal: lifecycle-push proof (owner-device delivery proof) ──
+  // Fires a real completed-class or failed-class lifecycle push at the OWNER's
+  // registered device(s) — never a real user — and returns the per-token APNs
+  // responses in the body, so delivery can be proven end-to-end (logs are not
+  // proof) BEFORE USER_LIFECYCLE_PUSHES is flipped on. Works regardless of the
+  // flag (test mode bypasses flag + claim, so it is repeatable).
+  //
+  // Auth, two accepted paths — operator-only by construction either way:
+  //   a) exact service-role-key bearer match, or
+  //   b) a DB-minted single-use nonce: the operator (who by definition holds
+  //      A valid service key for this project — key STRINGS can differ across
+  //      environments, e.g. legacy-JWT vs new-format secrets, which is why (a)
+  //      alone proved brittle) inserts an analytics_events row
+  //      {event:'lifecycle_push_proof_nonce', props:{nonce}} and echoes the
+  //      nonce in X-Proof-Nonce. The row must be <5 min old and is consumed
+  //      (deleted) on use — replay-proof.
+  if (parsed.pathname === '/api/internal/lifecycle-push-proof' && req.method === 'POST') {
+    (async () => {
+      try {
+        const expect = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const got = String((req.headers && req.headers['authorization']) || '').replace(/^Bearer\s+/i, '').trim();
+        let authed = false;
+        if (expect && got && got.length === expect.length) {
+          try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expect)); } catch { authed = false; }
+        }
+        const nonceHdr = String((req.headers && req.headers['x-proof-nonce']) || '').trim();
+        if (!authed && nonceHdr && nonceHdr.length >= 32 && nonceHdr.length <= 128 && supabaseAdmin) {
+          const sinceISO = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          const { data: nrows } = await supabaseAdmin
+            .from('analytics_events')
+            .select('id, props')
+            .eq('event', 'lifecycle_push_proof_nonce')
+            .gte('created_at', sinceISO)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          for (const nr of (nrows || [])) {
+            const want = String((nr.props && nr.props.nonce) || '');
+            if (want && want.length === nonceHdr.length) {
+              let match = false;
+              try { match = crypto.timingSafeEqual(Buffer.from(nonceHdr), Buffer.from(want)); } catch { match = false; }
+              if (match) {
+                await supabaseAdmin.from('analytics_events').delete().eq('id', nr.id); // single-use
+                authed = true;
+                break;
+              }
+            }
+          }
+        }
+        if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
+
+        const body = await readJsonBody(req).catch(() => null);
+        const kind = body && body.kind;
+        if (kind !== 'completed' && kind !== 'failed') {
+          return sendJson(res, 400, { error: "kind must be 'completed' or 'failed'" });
+        }
+        let vibe = (body && body.vibe) || null;
+        let errorMessage = (body && body.error_message) || null;
+        let jobId = (body && body.job_id) || `proof-${kind}`;
+        if (body && body.job_id && supabaseAdmin) {
+          // Copy realism: pull the actual row's copy — but ONLY an owner-owned
+          // row may seed a proof (never touch a real user's job).
+          const { data: row } = await supabaseAdmin
+            .from('video_jobs')
+            .select('user_id, vibe_input, error_message')
+            .eq('id', body.job_id)
+            .maybeSingle();
+          if (!row) return sendJson(res, 404, { error: 'job not found' });
+          if (row.user_id !== LIFECYCLE_OWNER_USER_ID) {
+            return sendJson(res, 403, { error: 'proof jobs must be owner-owned' });
+          }
+          vibe = vibe || row.vibe_input || null;
+          errorMessage = errorMessage || row.error_message || null;
+        }
+        const r = await sendLifecyclePush(supabaseAdmin, {
+          jobId, kind, vibe, errorMessage,
+          refunded: body && body.refunded !== undefined ? !!body.refunded : true,
+          test: true,
+        });
+        const alert = kind === 'completed'
+          ? buildCompletedAlert({ vibe })
+          : buildFailedAlert({ errorMessage, refunded: body && body.refunded !== undefined ? !!body.refunded : true });
+        console.log(`[lifecycle-push] PROOF kind=${kind} job=${jobId} sent=${r.sent ?? 0}/${r.total ?? 0}`);
+        return sendJson(res, 200, { ok: true, kind, alert, sent: r.sent ?? 0, total: r.total ?? 0, skipped: r.skipped || null, apns: r.results || [] });
+      } catch (e) {
+        console.error('[lifecycle-push] proof error:', e && e.message ? e.message : e);
+        return sendJson(res, 500, { error: 'proof failed' });
       }
     })();
     return;
@@ -1923,7 +2047,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -1936,6 +2060,9 @@ const server = http.createServer((req, res) => {
       progress: 0,
       current_step: 'Queued',
     };
+    // §4: mark the first-run sample-clip demo so it's quota-exempt AND excluded
+    // from activation metrics. Only set when true (column defaults false).
+    if (demo) insertRow.demo = true;
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -1972,12 +2099,11 @@ const server = http.createServer((req, res) => {
   // Both counters use the usage_events table and a UTC midnight cutoff.
   // Cheap: composite index on (user_id, kind, created_at DESC).
   //
-  // Free tier:
-  //   - 3 renders / day  (kind='render')
-  //   - 50 AI chat msgs / day (kind='chat')
-  //   - Re-edit is fully gated to Pro (no daily allowance)
-  const FREE_DAILY_RENDERS = 3;
-  const FREE_DAILY_CHATS = 50;
+  // The authoritative daily caps live in lib/tier-capabilities.js
+  // (capabilities()): freemium FREE = 1 render/day + 50 chats; legacy 'trial' =
+  // 3/day. There is NO local render-cap constant here — a stale FREE_DAILY_RENDERS
+  // = 3 used to sit in this spot, unreferenced, and it read as a second source of
+  // truth. Removed so capabilities() is the ONLY place the numbers live.
 
   function utcDayStart() {
     const now = new Date();
@@ -2432,6 +2558,10 @@ const server = http.createServer((req, res) => {
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
           'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
+          // 1.3.1 on-device pre-checks (audio/duration) + push soft-prompt. Without
+          // these on the allowlist the SQL mirror silently drops them (the same
+          // class that bit not_talking_head_rejected); PostHog gets them regardless.
+          'too_short_rejected', 'too_long_rejected', 'push_softprompt',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
@@ -2461,6 +2591,14 @@ const server = http.createServer((req, res) => {
         };
         const { error } = await supabaseAdmin.from('analytics_events').insert(row);
         if (error) console.warn(`[events] insert failed event=${row.event}: ${error.message}`);
+        // Lifecycle email — WELCOME on signup completion (after OTP verify). The
+        // client's distinct_id == the Supabase user.id for a signed-in user, so
+        // anon_user_id resolves the auth email. Fail-soft + idempotent per user;
+        // never blocks the (already-202'd) analytics path.
+        if (row.event === 'signup_completed' && row.anon_user_id) {
+          require('./lib/email').sendWelcomeEmail(supabaseAdmin, row.anon_user_id)
+            .catch((e) => console.warn('[email] welcome trigger failed:', e && e.message));
+        }
       } catch (e) {
         console.warn(`[events] handler error: ${e && e.message ? e.message : e}`);
       }
@@ -2922,14 +3060,14 @@ const server = http.createServer((req, res) => {
         }
         // EFFECTIVE tier — what the user ACTUALLY gets, computed the same way the
         // gates do (freemium when the knob is on, legacy when off). New clients
-        // read `tier` ('free' 2/day vs 'paid'); is_pro still drives unlimited.
+        // read `tier` ('free' 1/day vs 'paid'); is_pro still drives unlimited.
         const usageEnforce = resolveEnforce({
           headers: req.headers,
           accountCreatedAt: createdAt,
         });
         const effTier = effectiveTier(rawTier, usageEnforce);
         // render_limit / chat_limit stay the NON-PRO free cap as a non-null Int
-        // (freemium 2/day vs legacy 3/day). Kept non-null so live pre-1.2.0
+        // (freemium 1/day vs legacy 3/day). Kept non-null so live pre-1.2.0
         // clients — whose Snapshot decodes these as required Int — never break;
         // a pro user's UI ignores them via is_pro.
         const freeCaps = capabilities(effectiveTier('none', usageEnforce));
@@ -2952,6 +3090,34 @@ const server = http.createServer((req, res) => {
           used: renders,
           limit: renderLimit,
           resets_at: resetsAt,
+          // Routing cert (staged, 1.3.2/218 client). INERT env-driven flags — the
+          // backend flips these the moment the routing pipeline can process 5-min
+          // videos; the client then raises the picker ceiling 180→300 and moves
+          // content classification server-side. Defaults keep today's world.
+          // Older clients ignore both fields.
+          max_upload_seconds: Number(process.env.MAX_UPLOAD_SECONDS) || 180,
+          content_routing_enabled: String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1',
+          // §5 progressive-playback kill switch (client CONSUMPTION gate). Reads
+          // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
+          // the live preview even if a manifest arrives.
+          progressive_playback_enabled: progressivePlaybackEnabled(),
+          // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
+          // The first-run hero offers "Watch Promptly edit this" only when this is
+          // on AND a clip is configured. Two flag-selectable modes:
+          //   'live'   → client dispatches SAMPLE_DEMO_SOURCE_URL through the real
+          //              pipeline with demo:true (quota-exempt). A real render each
+          //              tap — honest "watch it work", but one GPU render per view.
+          //   'cached' → client plays the PRE-RENDERED SAMPLE_DEMO_RESULT_URL (the
+          //              same clip rendered once, hosted). Instant, ~zero marginal
+          //              cost, never fails. Honest framing (an example Promptly
+          //              made), NEVER a faked live-progress ramp.
+          sample_demo_enabled: String(process.env.SAMPLE_DEMO_ENABLED || '').trim() === '1',
+          sample_demo_mode: (process.env.SAMPLE_DEMO_MODE || 'cached').trim().toLowerCase() === 'live' ? 'live' : 'cached',
+          sample_demo_source_url: process.env.SAMPLE_DEMO_SOURCE_URL || null,
+          sample_demo_proxy_url: process.env.SAMPLE_DEMO_PROXY_URL || null,
+          sample_demo_vibe: process.env.SAMPLE_DEMO_VIBE || null,
+          sample_demo_result_url: process.env.SAMPLE_DEMO_RESULT_URL || null,
+          sample_demo_thumbnail_url: process.env.SAMPLE_DEMO_THUMBNAIL_URL || null,
         });
       } catch (error) {
         const status = error?.statusCode || 500;
@@ -3073,6 +3239,37 @@ const server = http.createServer((req, res) => {
         const status = err?.statusCode || 500;
         console.error('[account] delete error', err);
         return sendJson(res, status, { error: err?.message || 'delete_failed' });
+      }
+    })();
+    return;
+  }
+
+  // ── Email test + domain check (service-role guarded) ──
+  // Confirms Resend is configured in THIS environment (the key lives only in
+  // server env), verifies the sending domain, and delivers the 3 lifecycle
+  // templates to a given address. Guarded by the service-role key, which is a
+  // server-only secret — no new attack surface beyond what that key already grants.
+  if (parsed.pathname === '/api/admin/email-test' && req.method === 'POST') {
+    (async () => {
+      try {
+        const svc = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+        if (!svc || String(req.headers.authorization || '') !== `Bearer ${svc}`) {
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
+        const body = await readJsonBody(req).catch(() => ({}));
+        const to = String((body && body.to) || '').trim();
+        if (!to) return sendJson(res, 400, { error: 'to_required' });
+        const email = require('./lib/email');
+        const configured = email.resendConfigured();
+        const domain = await email.verifyDomain('usepromptly.app');
+        // A caller-supplied stamp keys the idempotency ledger — pass the SAME
+        // stamp twice to prove a retry does NOT double-send; omit it for a fresh
+        // (always-delivering) run.
+        const stamp = String((body && body.stamp) || Date.now());
+        const results = configured ? await email.sendTestSuite(supabaseAdmin, to, stamp) : null;
+        return sendJson(res, 200, { configured, env_var_needed: configured ? null : 'RESEND_API_KEY', domain, results });
+      } catch (e) {
+        return sendJson(res, 500, { error: e && e.message });
       }
     })();
     return;
@@ -3334,6 +3531,23 @@ const server = http.createServer((req, res) => {
         }
 
         console.log('[RevenueCat] applied', { type, appUserId: matchedId, ...update });
+
+        // ── Lifecycle emails ───────────────────────────────────────────────
+        // Fire ONLY on an APPLIED event: the rc_last_event_ms ordering guard
+        // above makes each event apply at most once, so a RevenueCat retry
+        // reaches here only the first time — and the email ledger keys on
+        // event.id for a second layer of idempotency. Fail-soft: an email error
+        // never delays or fails the RC ack.
+        try {
+          const rcEventId = event.id ? String(event.id) : null;
+          if (type === 'INITIAL_PURCHASE' && periodType !== 'trial') {
+            require('./lib/email').sendPurchaseEmail(supabaseAdmin, { userId: matchedId, eventId: rcEventId, productId })
+              .catch((e) => console.warn('[email] purchase trigger failed:', e && e.message));
+          } else if (type === 'BILLING_ISSUE') {
+            require('./lib/email').sendBillingEmail(supabaseAdmin, { userId: matchedId, eventId: rcEventId })
+              .catch((e) => console.warn('[email] billing trigger failed:', e && e.message));
+          }
+        } catch (e) { console.warn('[email] RC lifecycle trigger threw (fail-soft):', e && e.message); }
 
         // ── Transaction-truth mirror (analytics backbone) ──────────────────
         // The webhook is the ONLY place trial/paid/renewal/expiration truth
@@ -3643,6 +3857,20 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'invalid_proxy_url' });
         }
 
+        // §4 sample-clip demo. The exemption (no daily-quota decrement, no
+        // concurrency block) is honored ONLY when the source is the server's
+        // configured official sample clip — the anti-abuse keystone: a user
+        // cannot pass their OWN footage as a "demo" to dodge the free-render cap.
+        // Any demo:true on a non-sample source falls through as a normal, charged
+        // render. Gated on SAMPLE_DEMO_ENABLED so it's inert until the clip is live.
+        const demoConfiguredSource = String(process.env.SAMPLE_DEMO_SOURCE_URL || '').trim();
+        const demoEnabled = String(process.env.SAMPLE_DEMO_ENABLED || '').trim() === '1';
+        const isDemo = body?.demo === true && demoEnabled && !!demoConfiguredSource && videoUrl === demoConfiguredSource;
+        if (body?.demo === true && !isDemo) {
+          console.log('  [demo] demo:true NOT honored (enabled=%s sourceMatch=%s) — treating as a normal charged render',
+            demoEnabled, videoUrl === demoConfiguredSource);
+        }
+
         const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
@@ -3721,7 +3949,7 @@ const server = http.createServer((req, res) => {
               return { job: existing, replayed: true };
             }
           }
-          if (supabaseAdmin) {
+          if (supabaseAdmin && !isDemo) {
             let pendingCount;
             try {
               // Same account-global in-flight definition the upload doors use.
@@ -3749,7 +3977,31 @@ const server = http.createServer((req, res) => {
             }
           }
 
-          if (wallCaps.renderLimit === Infinity) {
+          if (isDemo) {
+            // §4 demo: quota-exempt (source-matched above) — NO usage_events write,
+            // so it never touches the render meter or the free-render cap. Capped
+            // per user per day so live-render mode can't be hammered into GPU spend;
+            // counts this user's demo rows created since UTC midnight. Cached mode
+            // (recommended) has no GPU cost, but the cap is cheap defense either way.
+            const demoCap = Number(process.env.SAMPLE_DEMO_DAILY_CAP) || 5;
+            const { count: demoToday, error: demoCountErr } = await supabaseAdmin
+              .from('video_jobs')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', authUser.id)
+              .eq('demo', true)
+              .gte('created_at', utcDayStart());
+            if (demoCountErr) {
+              // On a count outage, refuse the demo (never free-render on failure).
+              return { status: 503, body: { error: 'demo_check_failed' } };
+            }
+            if ((demoToday || 0) >= demoCap) {
+              console.log('  [demo] 402 demo_limit_reached userId=%s used=%d cap=%d', authUser.id, demoToday, demoCap);
+              return { status: 402, body: {
+                error: 'demo_limit_reached', kind: 'demo',
+                message: 'Come back tomorrow to watch the demo again.',
+              } };
+            }
+          } else if (wallCaps.renderLimit === Infinity) {
             // Unlimited (paid — and, pre-flip, any active-trial that was isPro):
             // no daily cap, but still record the render for tracking.
             await logUsageEvent(authUser.id, 'render');
@@ -3775,23 +4027,28 @@ const server = http.createServer((req, res) => {
             videoUrl,
             vibeInput,
             clientJobId,
+            demo: isDemo,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
             // our fast-path check and the insert. Unwind the charge we just
             // claimed (one job, one charge) — delete the render event we
-            // logged milliseconds ago — and treat as a replay.
-            try {
-              const { data: ev } = await supabaseAdmin
-                .from('usage_events').select('id')
-                .eq('user_id', authUser.id).eq('kind', 'render')
-                .gte('created_at', new Date(Date.now() - 10_000).toISOString())
-                .order('created_at', { ascending: false }).limit(1);
-              if (Array.isArray(ev) && ev[0]) {
-                await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+            // logged milliseconds ago — and treat as a replay. A DEMO logs no
+            // render charge, so it has nothing to unwind — skipping the delete is
+            // load-bearing: otherwise it would wrongly erase a REAL render event.
+            if (!isDemo) {
+              try {
+                const { data: ev } = await supabaseAdmin
+                  .from('usage_events').select('id')
+                  .eq('user_id', authUser.id).eq('kind', 'render')
+                  .gte('created_at', new Date(Date.now() - 10_000).toISOString())
+                  .order('created_at', { ascending: false }).limit(1);
+                if (Array.isArray(ev) && ev[0]) {
+                  await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
+                }
+              } catch (e) {
+                console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
               }
-            } catch (e) {
-              console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
             }
             return { job: created, replayed: true };
           }
@@ -3825,9 +4082,20 @@ const server = http.createServer((req, res) => {
         // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
         // unknown word_count dispatches exactly as today. Fresh full-render path
         // only (re-edit/resume reuse cached transcripts — no fresh prewarm).
-        const speechGate = await preDispatchNoSpeechGate({
-          jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
-        });
+        //
+        // W1-FIX #1 (census 2026-07-25, job 8cdfef9b — a brand-new user's
+        // only-ever job killed here in 121ms): when CONTENT_ROUTING_ENABLED=1
+        // a 0-word clip is a ROUTE, not a rejection — the worker's zero-reject
+        // routing delivers these as minimal/hype edits (organic proof: 26-46s
+        // completions). Gating would pre-empt the routing that serves them, so
+        // the gate runs ONLY while routing is off. This one conditional was the
+        // entire post-flip error-budget miss (6/7 → the worker side was 6/6).
+        const routingLive = String(process.env.CONTENT_ROUTING_ENABLED || '').trim() === '1';
+        const speechGate = routingLive
+          ? { gated: false }
+          : await preDispatchNoSpeechGate({
+              jobId: job.id, videoUrl, userId: authUser.id, pushProgressToSSE,
+            });
         if (speechGate.gated) {
           // A speechless clip was rejected BEFORE any GPU work — it must NOT cost
           // the user their daily render. The slot was claimed upfront at dispatch
@@ -3854,6 +4122,12 @@ const server = http.createServer((req, res) => {
           vibe: vibeInput,
           userId: authUser.id,
           premiumPipeline,
+          // §5 progressive: forward the client's per-dispatch capability, AND-gated by
+          // the kill switch so a preview is never PUBLISHED (never billed) while the
+          // switch is off — even for a 1.3.3 client that advertised it. The 1.3.2
+          // majority (no flag) never pays a preview encode regardless. Flows via the
+          // Modal payload, exactly like premium_pipeline_enabled.
+          supportsProgressive: body?.supports_progressive === true && progressivePlaybackEnabled(),
           prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
         });
         console.log('  ✅ Modal dispatch started for job:', job.id);
@@ -4139,7 +4413,7 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -4167,6 +4441,7 @@ const server = http.createServer((req, res) => {
           step_message: data.step_message || '',
           ask: data.ask || null,
           rendered_video_url: data.rendered_video_url || data.result_url || null,
+          hls_manifest_url: data.hls_manifest_url || null,
           thumbnail_url: data.thumbnail_url || null,
           result_url: data.result_url || null,
           error: data.error_message || null,
@@ -4801,6 +5076,26 @@ if (require.main === module) {
     };
     setTimeout(runRefundLeg, 15 * 1000); // boot pass
     setInterval(runRefundLeg, 60 * 1000);
+
+    // Missed-push backstop (W1-FIX, job ba1a9f58): worker-direct terminals
+    // (SPAWN_MODE writes failed rows straight to the DB) never hit the server
+    // push chokepoints — deliver their pushes here. Claim-gated exactly-once;
+    // 15-min recency window = structurally zero backlog.
+    const { sweepMissedLifecyclePushes } = require('./lib/lifecycle-push');
+    let missedPushBusy = false;
+    const runMissedPushSweep = async () => {
+      if (missedPushBusy) return;
+      missedPushBusy = true;
+      try {
+        await sweepMissedLifecyclePushes(supabaseAdmin);
+      } catch (err) {
+        console.error('[lifecycle-push] missed-sweep crashed:', err?.message || err);
+      } finally {
+        missedPushBusy = false;
+      }
+    };
+    setTimeout(runMissedPushSweep, 30 * 1000);
+    setInterval(runMissedPushSweep, 60 * 1000);
 
     // Job reaper (stuck-jobs directive): no job rests non-terminal past its
     // lease — terminalize + refund (claim-gated) + SSE the failure so live
