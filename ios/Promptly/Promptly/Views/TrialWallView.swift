@@ -88,7 +88,7 @@ struct TrialWallView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "crown.fill")
                         .font(.system(size: 30))
-                        .foregroundColor(.yellow)
+                        .foregroundStyle(PromptlyGold.gradient)
                     Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
@@ -108,7 +108,7 @@ struct TrialWallView: View {
                         HStack(spacing: 14) {
                             Image(systemName: b.icon)
                                 .font(.system(size: 16))
-                                .foregroundColor(.yellow)
+                                .foregroundColor(PromptlyGold.solid)
                                 .frame(width: 26)
                             Text(b.text)
                                 .font(.system(size: 16, weight: .medium))
@@ -149,7 +149,7 @@ struct TrialWallView: View {
                                         .font(.system(size: 10, weight: .heavy))
                                         .foregroundColor(.black)
                                         .padding(.horizontal, 7).padding(.vertical, 3)
-                                        .background(Color.yellow, in: Capsule())
+                                        .background(PromptlyGold.gradient, in: Capsule())
                                 }
                             }
                             // LAW: the billed amount is the big number.
@@ -165,12 +165,12 @@ struct TrialWallView: View {
                         Spacer()
                         Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                             .font(.system(size: 22))
-                            .foregroundColor(isSelected ? .yellow : .white.opacity(0.3))
+                            .foregroundColor(isSelected ? PromptlyGold.solid : .white.opacity(0.3))
                     }
                     .padding(16)
                     .background(Color.white.opacity(isSelected ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16)
-                        .stroke(isSelected ? Color.yellow.opacity(0.8) : Color.white.opacity(0.08), lineWidth: 1.5))
+                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08), lineWidth: 1.5))
                 }
             }
         }

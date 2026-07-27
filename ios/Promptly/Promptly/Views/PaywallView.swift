@@ -70,9 +70,9 @@ struct PaywallView: View {
         case .reedit:
             return "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats."
         case .manual:
-            return "Unlimited renders, unlimited chats, and the re-edit feature."
+            return "Go beyond your one free video a day — everything, unlimited."
         case .lumen:
-            return "Unlimited renders, unlimited chats, and the re-edit feature."
+            return "Go beyond your one free video a day — everything, unlimited."
         case .concurrency:
             return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
         }
