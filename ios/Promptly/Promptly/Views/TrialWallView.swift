@@ -46,9 +46,8 @@ struct TrialWallView: View {
     private let proBenefits: [(icon: String, text: String)] = [
         ("infinity", "Unlimited videos a day"),
         ("arrow.uturn.left", "Re-edit any finished video"),
-        ("wand.and.stars", "Lumen — the cinematic AI model"),
+        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
         ("square.stack.3d.up.fill", "Upload up to 10 at once"),
-        ("bolt.fill", "Priority render queue"),
     ]
 
     var body: some View {

@@ -57,7 +57,7 @@ struct PaywallView: View {
         case .dailyChats:   return "You're out of free chats for today"
         case .reedit:       return "Re-edit is a Pro feature"
         case .manual:       return "Unlock Promptly Pro"
-        case .lumen:        return "Lumen is a Pro model"
+        case .lumen:        return "Unlock Promptly Pro"
         case .concurrency:  return "One video at a time on Free"
         }
     }
@@ -72,7 +72,7 @@ struct PaywallView: View {
         case .manual:
             return "Unlimited renders, unlimited chats, and the re-edit feature."
         case .lumen:
-            return "Lumen renders premium cinematic edits with generated graphics. Pro unlocks it — plus unlimited renders, chats, and re-edit."
+            return "Unlimited renders, unlimited chats, and the re-edit feature."
         case .concurrency:
             return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
         }
@@ -252,7 +252,6 @@ struct PaywallView: View {
             featureRow(icon: "square.stack.3d.up.fill", text: "Upload up to 10 videos at a time")
             featureRow(icon: "bubble.left.and.bubble.right.fill", text: "Unlimited AI chats")
             featureRow(icon: "arrow.uturn.left", text: "Re-edit any finished video")
-            featureRow(icon: "bolt.fill", text: "Priority render queue")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -526,7 +525,7 @@ struct ProCelebrationView: View {
     private let unlocked: [(icon: String, text: String)] = [
         ("infinity", "Unlimited videos, every day"),
         ("arrow.uturn.left", "Re-edit any finished video"),
-        ("wand.and.stars", "Lumen — the cinematic model"),
+        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
         ("square.stack.3d.up.fill", "Upload up to 10 at once"),
     ]
 

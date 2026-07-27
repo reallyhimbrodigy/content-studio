@@ -305,6 +305,7 @@ struct MessageBubble: View {
                     hlsManifestUrl: message.hlsManifestUrl,
                     jobId: message.jobId,
                     title: message.originalVibe,
+                    postPackage: message.postPackage,
                     onReedit: buildReeditHandler(for: message),
                     onMakeAnother: onMakeAnother,
                     // The inline progressive player already shows the (swapped) video;
@@ -318,6 +319,22 @@ struct MessageBubble: View {
                     Text(Self.displaySafeError(message.error))
                         .font(.system(size: 14))
                         .foregroundColor(.red)
+
+                    // Credit reassurance (free tier): a failed render refunds the
+                    // daily slot server-side (inline + backstop sweep), so the
+                    // user's one-a-day is never burned by our failure. Say so —
+                    // Pro has no daily limit, so it's free-tier only.
+                    if !SubscriptionService.shared.effectiveIsPro {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.green.opacity(0.85))
+                            Text("You weren't charged — this didn't use your daily render.")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(.secondaryLabel))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
 
                     // Try Again button — shown only when the backend
                     // marked this failure as retryable AND we have the
@@ -1205,27 +1222,30 @@ struct VideoActionRow: View {
     private var isPro: Bool { subscription.isPro || usage.isPro }
 
     var body: some View {
-        HStack(spacing: 14) {
-            if let onReedit {
-                reeditPill(action: onReedit)
+        VStack(alignment: .leading, spacing: 12) {
+            // HERO: Share — the growth action. A finished edit does nothing
+            // sitting in the app; sharing it is the point, so it leads as the
+            // one primary button instead of being one of four equal pills.
+            shareHeroButton
+
+            // Secondary actions — save, re-edit, start another.
+            HStack(spacing: 14) {
+                pill(
+                    icon: "square.and.arrow.down",
+                    label: "Save",
+                    state: exporter.saveState,
+                    action: exporter.save
+                )
+                if let onReedit {
+                    reeditPill(action: onReedit)
+                }
+                // Post-render next action: keep the momentum instead of
+                // dead-ending the win. One tap starts a fresh video.
+                if let onMakeAnother {
+                    makeAnotherPill(action: onMakeAnother)
+                }
+                Spacer(minLength: 0)
             }
-
-            pill(
-                icon: "square.and.arrow.down",
-                label: "Save",
-                state: exporter.saveState,
-                action: exporter.save
-            )
-
-            shareLinkPill
-
-            // Post-render next action: keep the momentum instead of dead-ending
-            // the win. One tap starts a fresh video.
-            if let onMakeAnother {
-                makeAnotherPill(action: onMakeAnother)
-            }
-
-            Spacer(minLength: 0)
         }
         .padding(.top, 8)
     }
@@ -1423,32 +1443,103 @@ struct VideoActionRow: View {
         }
     }
 
+    /// Share promoted to the primary CTA — a full-width filled button, not one
+    /// of four equal circle pills. This is the §6 "Share as hero" change.
     @ViewBuilder
-    private var shareLinkPill: some View {
+    private var shareHeroButton: some View {
         if let url = URL(string: videoUrlStr) {
             ShareLink(item: url) {
-                VStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 48, height: 48)
-                        .overlay {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(.white)
-                                .symbolRenderingMode(.hierarchical)
-                                .accessibilityHidden(true)
-                        }
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .semibold))
                     Text("Share")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(.secondaryLabel))
+                        .font(.system(size: 16, weight: .semibold))
                 }
+                .foregroundColor(.black)
+                .frame(maxWidth: 300)
+                .padding(.vertical, 13)
+                .background(Capsule().fill(Color.white))
             }
-            .accessibilityLabel("Share video")
+            .accessibilityLabel("Share your video")
             .accessibilityAddTraits(.isButton)
             .simultaneousGesture(TapGesture().onEnded {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             })
         }
+    }
+}
+
+// MARK: - §6 Post package (posting-ready copy under a finished video)
+
+/// The payoff block shown under a completed video: the hook as a headline, the
+/// paste-ready caption in a card with a Copy button, and the edit rationale as a
+/// quiet "why this edit" note. Each field is optional — only what's present is
+/// shown; `hasContent` gates the whole block at the call site.
+struct PostPackageView: View {
+    let package: PostPackage
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let hook = package.postHook {
+                Text(hook)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+
+            if let caption = package.postCaption {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(caption)
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(.label))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = caption
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) { copied = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                            withAnimation(.easeInOut(duration: 0.2)) { copied = false }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(copied ? "Copied" : "Copy caption")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.white.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(copied ? "Caption copied" : "Copy caption")
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                )
+            }
+
+            if let why = package.editRationale {
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(.tertiaryLabel))
+                        .padding(.top, 1)
+                    Text(why)
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(.secondaryLabel))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: 300, alignment: .leading)
     }
 }
 
@@ -1468,6 +1559,9 @@ struct CompletedVideoView: View {
     let hlsManifestUrl: String?
     let jobId: String?
     let title: String?
+    /// §6 post package — posting-ready copy (hook / caption / rationale) shown
+    /// between the video surface and the action row. nil → nothing rendered.
+    let postPackage: PostPackage?
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
     /// §5 progressive: when the inline ProgressivePlayerView owns the video surface
@@ -1600,6 +1694,14 @@ struct CompletedVideoView: View {
                 }
             }
             } // end if !videoSurfaceHidden
+
+            // §6 payoff: posting-ready copy under the video — the hook, the
+            // paste-ready caption, and the "why this edit" note. Renders only
+            // the fields that survived; absent package → nothing (no empty box).
+            if let pkg = postPackage, pkg.hasContent {
+                PostPackageView(package: pkg)
+                    .padding(.top, 10)
+            }
 
             VideoActionRow(
                 videoUrlStr: videoUrlStr,

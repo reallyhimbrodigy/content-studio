@@ -42,6 +42,9 @@ struct ChatMessage: Identifiable {
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
+    /// §6 post package — posting-ready copy (hook / caption / rationale) shown
+    /// under the finished video. Fetched once on completion; nil until then.
+    var postPackage: PostPackage?
     var error: String?
     var isThinking: Bool = false
     /// Transient (not persisted): set true the moment a job truly completes,
@@ -200,6 +203,7 @@ struct SerializedMessage: Codable, Hashable {
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
     var thumbnailUrl: String?
+    var postPackage: PostPackage?        // §6 post package — persisted so it survives chat reload
     var attachmentThumbnailUrl: String?  // for re-edit / "you sent a video" rows
     var attachmentFileName: String?
     var error: String?
@@ -272,6 +276,7 @@ struct SerializedMessage: Codable, Hashable {
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
+        self.postPackage = message.postPackage
         self.attachmentThumbnailUrl = message.videoAttachment?.remoteThumbnailUrl
         self.attachmentFileName = message.videoAttachment?.fileName
         self.error = message.error
@@ -310,6 +315,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
+        msg.postPackage = postPackage
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false

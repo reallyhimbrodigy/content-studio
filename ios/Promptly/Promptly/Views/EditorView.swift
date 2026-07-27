@@ -2660,6 +2660,14 @@ struct EditorView: View {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true
+                                // §6 retry-gap fix: stash the retry cache on SUCCESS
+                                // too. Previously only the dispatch-FAILURE path cached
+                                // source+proxy+vibe, so a render that dispatched fine but
+                                // then failed mid-way via SSE had no cache → one-tap
+                                // Try Again stayed hidden. Caching here closes that gap.
+                                messages[i].cachedSourceUrl = video.uploadedUrl
+                                messages[i].cachedProxyUrl = video.proxyUploadedUrl
+                                messages[i].cachedVibe = vibe
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
                                 // §5: the render is now running on the server — the
@@ -2983,6 +2991,11 @@ struct EditorView: View {
                 } else {
                     print("[sse] WARNING: completion event missing thumbnailUrl")
                 }
+                // §6: SSE doesn't carry the post package — fetch it once now that
+                // the render landed (idempotent; no-op if we already have it).
+                if let jid = messages[messageIndex].jobId {
+                    Task { await hydratePostPackage(jobId: jid) }
+                }
                 let videoUrl = event.videoUrl
                 let hlsUrl = event.hlsManifestUrl
                 let messageId = messages[messageIndex].id
@@ -3168,6 +3181,35 @@ struct EditorView: View {
     /// (transport error, app backgrounded long enough that the server
     /// finished without us listening, etc.) and on app foreground for any
     /// message still in `processing` state.
+    /// §6 one-shot fetch of the post package for a completed job. SSE doesn't
+    /// carry it, and a completed message is never re-reconciled, so we fetch it
+    /// once on completion from whichever path got there first (`result.post_package`
+    /// preferred, flat `post_package` column as fallback). Idempotent +
+    /// best-effort: any failure just leaves the description block hidden.
+    private func hydratePostPackage(jobId: String) async {
+        guard let idx0 = messages.firstIndex(where: { $0.jobId == jobId }),
+              messages[idx0].postPackage == nil else { return }
+        guard let token = await AuthService.shared.getValidToken() else { return }
+        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
+        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=result,post_package") else { return }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        struct PkgResult: Codable { let post_package: PostPackage? }
+        struct Row: Codable { let result: PkgResult?; let post_package: PostPackage? }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let row = (try? JSONDecoder().decode([Row].self, from: data))?.first else { return }
+        // Read order per the contract: result.post_package (durable/authoritative)
+        // then the flat video_jobs.post_package column.
+        guard let pkg = row.result?.post_package ?? row.post_package, pkg.hasContent else { return }
+        guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
+        messages[idx].postPackage = pkg
+        persistMessages()
+    }
+
     private func reconcileJobStatus(jobId: String) async {
         guard let token = await AuthService.shared.getValidToken() else {
             print("[reconcile] \(jobId) skipped — no valid token")
@@ -3184,7 +3226,10 @@ struct EditorView: View {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
 
-        struct JobResult: Codable { let error_code: String? }
+        struct JobResult: Codable {
+            let error_code: String?
+            let post_package: PostPackage?   // §6 post package (result.post_package) — tolerant decode
+        }
         struct JobStatusRow: Codable {
             let status: String?
             let progress: Double?       // durable 0–100; the authoritative bar position
@@ -3278,6 +3323,11 @@ struct EditorView: View {
                 if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
                 if let h = row.hls_manifest_url { messages[idx].hlsManifestUrl = h }
                 if let t = row.thumbnail_url { messages[idx].thumbnailUrl = t }
+                // §6: the reconcile already fetched `result` — take the post
+                // package straight from it (no extra request on this path).
+                if let pkg = row.result?.post_package, pkg.hasContent {
+                    messages[idx].postPackage = pkg
+                }
                 // Don't finalize a videoless "ready": if the DB says completed
                 // but no playable URL is populated yet, stay in-flight so the
                 // next reconcile/SSE tick fills it in. A completed message is
