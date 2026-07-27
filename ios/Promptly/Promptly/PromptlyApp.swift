@@ -272,6 +272,15 @@ struct PromptlyApp: App {
                     AuthView()
                         .transition(.opacity)
                 }
+
+                #if DEBUG
+                // Snapshot harness (presentations-proven-by-presentations): when
+                // launched with -snapshotPayoff, cover the app with the real §6 /
+                // paywall views on mock data for an external screenshot capture.
+                if ProcessInfo.processInfo.arguments.contains("-snapshotPayoff") {
+                    PayoffSnapshotHarnessView()
+                }
+                #endif
             }
             #if DEBUG
             .onAppear {
