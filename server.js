@@ -652,15 +652,18 @@ async function resolveProEntitlementInternalId(projectId, secret) {
  * a `.statusCode` on misconfiguration / RC outage so callers can surface a
  * 5xx WITHOUT writing the DB.
  */
-// True when a Supabase error is "column rc_last_event_ms doesn't exist" — i.e.
-// migration 20260701_rc_event_ordering hasn't been applied yet. Lets the webhook
-// + reconcile fall back to a plain write so they never 500 on the missing
-// column; the ordering guard activates automatically once the column exists.
+// True when a Supabase error is a missing-column error for an OPTIONAL RC
+// profile column — rc_last_event_ms (migration 20260701_rc_event_ordering) or
+// rc_environment (add-rc-environment-to-profiles). Lets the webhook + reconcile
+// fall back to a plain core write so they never 500 on a not-yet-applied column;
+// the ordering guard + sandbox tag each activate automatically once their column
+// exists. The PGRST204/42703 codes are column-agnostic (they cover both); the
+// message regex is the belt-and-braces fallback for error shapes with no code.
 function rcOrderingColumnMissing(error) {
   if (!error) return false;
   if (error.code === 'PGRST204' || error.code === '42703') return true;
   const blob = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
-  return /rc_last_event_ms/i.test(blob);
+  return /rc_last_event_ms|rc_environment/i.test(blob);
 }
 
 async function reconcileEntitlementFromRevenueCat(appUserId) {
@@ -3332,6 +3335,13 @@ const server = http.createServer((req, res) => {
         }
         const productId = event.product_id ? String(event.product_id) : null;
         const periodType = event.period_type ? String(event.period_type).toLowerCase() : null;
+        // RevenueCat tags every subscriber event with its store environment
+        // ('SANDBOX' | 'PRODUCTION'). We grant Pro IDENTICALLY either way — a
+        // sandbox/TestFlight tester MUST get Pro to test — this is used ONLY to
+        // keep sandbox out of revenue reporting, never to deny access. Written
+        // as DERIVED profile state (below): every applied event rewrites it, so
+        // a later PRODUCTION event supersedes an earlier SANDBOX one.
+        const environment = event.environment ? String(event.environment).toUpperCase() : null;
         // When this event actually occurred (RevenueCat clock). Used as an
         // ordering/idempotency guard so a late or duplicate stale event can't
         // overwrite a fresher one — see applyTo below.
@@ -3463,13 +3473,27 @@ const server = http.createServer((req, res) => {
         // Returns 'applied' | 'stale' | 'nomatch'.
         const applyTo = async (id) => {
           const useOrdering = eventMs > 0;
-          const payload = useOrdering ? { ...update, rc_last_event_ms: eventMs } : update;
+          // Two OPTIONAL columns ride alongside the core `update`:
+          //   rc_last_event_ms — the ordering/idempotency stamp (20260701)
+          //   rc_environment   — the sandbox tag, DERIVED state written on EVERY
+          //     applied event (grant OR revoke) so a later PRODUCTION event
+          //     supersedes an earlier SANDBOX one, and a tester's own account
+          //     counts again after they test. Only written when present, so a
+          //     malformed event never nulls a known value.
+          // migration-guarded[rc_environment]: kept out of the core `update` so
+          // the missing-column fallback below drops back to a write that only
+          // touches guaranteed-existing columns.
+          const extras = {};
+          if (environment) extras.rc_environment = environment;
+          if (useOrdering) extras.rc_last_event_ms = eventMs;
+          const payload = { ...update, ...extras };
           let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
           if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
           let { data, error } = await q.select('id');
-          // Tolerate the ordering column not existing yet (migration 20260701 not
-          // applied): fall back to a plain, unguarded update so the webhook never
-          // 500s on a missing column. Ordering activates once the column exists.
+          // Tolerate an optional column not existing yet (rc_last_event_ms from
+          // 20260701, or rc_environment): fall back to a plain core update so the
+          // webhook never 500s on a missing column. Each activates automatically
+          // once its migration is applied.
           if (error && rcOrderingColumnMissing(error)) {
             ({ data, error } = await supabaseAdmin.from('profiles').update(update).eq('id', id).select('id'));
             if (error) throw error;
@@ -3582,6 +3606,11 @@ const server = http.createServer((req, res) => {
               rc_type: type,
               product_id: productId,
               period_type: periodType,
+              // Per-event, IMMUTABLE sandbox tag — the durable record ('SANDBOX'
+              // | 'PRODUCTION' | null). Event-based reporting (funnel PAYWALL
+              // LEG, bleed-meter commerce, PostHog) drops props.environment ===
+              // 'SANDBOX' so a sandbox purchase never counts as a real conversion.
+              environment,
               ...(mirrorName === 'purchase_result' ? { outcome: 'success_paid' } : {}),
             };
             supabaseAdmin.from('analytics_events').insert({

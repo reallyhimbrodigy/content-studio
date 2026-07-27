@@ -88,15 +88,35 @@ async function pageJobs() {
   const demoFlip = demoJobs.filter((j) => j.created_at >= FLIP).length;
 
   // ── REVENUE (server truth) ──
-  const paid = await page('profiles?select=comp_pro,pro_until,rc_app_user_id,rc_period_type&or=(tier.eq.paid,comp_pro.eq.true,pro_until.not.is.null,rc_app_user_id.not.is.null)');
-  const activePaid = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_period_type && p.rc_period_type !== 'trial').length;
-  const rcTrials = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_period_type === 'trial').length;
+  // rc_environment ('SANDBOX'|'PRODUCTION'|null) tags each RC-linked profile with
+  // the environment of the entitlement CURRENTLY granting Pro. Sandbox/TestFlight
+  // testers still get Pro in-app — they must NOT count as real paid conversions.
+  // Selecting a not-yet-applied column 400s the query (page() returns []), so
+  // retry without it (every row then treated as production — the pre-migration
+  // window degrades safely, exactly like pageJobs above).
+  let paid = await page('profiles?select=comp_pro,pro_until,rc_app_user_id,rc_period_type,rc_environment&or=(tier.eq.paid,comp_pro.eq.true,pro_until.not.is.null,rc_app_user_id.not.is.null)');
+  if (!paid.length) paid = await page('profiles?select=comp_pro,pro_until,rc_app_user_id,rc_period_type&or=(tier.eq.paid,comp_pro.eq.true,pro_until.not.is.null,rc_app_user_id.not.is.null)');
+  const notSandbox = (p) => p.rc_environment !== 'SANDBOX';   // null (legacy/comp) counts as production
+  const activePaid = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_period_type && p.rc_period_type !== 'trial' && notSandbox(p)).length;
+  const rcTrials = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_period_type === 'trial' && notSandbox(p)).length;
+  const sandboxSubs = paid.filter((p) => p.rc_app_user_id && !p.comp_pro && p.rc_environment === 'SANDBOX').length;
 
   // ── PAYWALL LEG (events, window) ──
-  const ev = await page(`analytics_events?created_at=gte.${since}&select=event`);
+  // Include props so the webhook-truth conversion counts can drop SANDBOX
+  // (props.environment==='SANDBOX'). Client legacy events carry no environment;
+  // null/absent counts as production.
+  const ev = await page(`analytics_events?created_at=gte.${since}&select=event,props`);
   const ec = {};
   for (const e of ev) ec[e.event] = (ec[e.event] || 0) + 1;
   const g = (k) => ec[k] || 0;
+  // The honest, SANDBOX-excluded "real buy" / "real trial" numbers, straight
+  // from the webhook mirror (purchase_result = success_paid, trial_start). NOTE:
+  // 'purchase_completed' was the old buy metric and is a DEAD field — the client
+  // never emits it (all-time count 0), so "→ buy 0" was never a measurement.
+  const isSandbox = (e) => e.props && e.props.environment === 'SANDBOX';
+  const realBuys = ev.filter((e) => e.event === 'purchase_result' && !isSandbox(e)).length;
+  const realTrials = ev.filter((e) => e.event === 'trial_start' && !isSandbox(e)).length;
+  const sandboxConv = ev.filter((e) => (e.event === 'purchase_result' || e.event === 'trial_start') && isSandbox(e)).length;
 
   console.log(`\n================ FUNNEL — ${nowIso} (events: last ${windowDays}d) ================`);
   console.log('ACTIVATION (all-time, authoritative):');
@@ -111,14 +131,14 @@ async function pageJobs() {
   console.log(`  post-flip jobs: ${flipJobs.length} · ${flipDone} done · ${flipFail} failed  (${pct(flipFail, flipJobs.length)} job failure rate — vs ${pct(jobsFail, jobs.length)} all-time)`);
   console.log('DEMO (sample-clip, excluded from activation above):');
   console.log(`  demo renders            ${demoJobs.length}  (${demoUsers} users · ${demoDone} done · ${demoFail} failed · ${demoFlip} post-flip)`);
-  console.log('REVENUE (server truth):');
-  console.log(`  active paid subs        ${activePaid}   ·   lapsed RC trials ${rcTrials}`);
+  console.log('REVENUE (server truth, SANDBOX excluded):');
+  console.log(`  active paid subs        ${activePaid}   ·   lapsed RC trials ${rcTrials}${sandboxSubs ? `   [+${sandboxSubs} sandbox sub${sandboxSubs === 1 ? '' : 's'}, excluded]` : ''}`);
   console.log(`PAYWALL LEG (last ${windowDays}d events):`);
-  console.log(`  paywall_view ${g('paywall_view')} → plan_selected ${g('plan_selected')} → purchase_started ${g('purchase_started')} → purchase_completed ${g('purchase_completed')}  (failed ${g('purchase_failed')})`);
-  console.log(`  RC webhook: purchase_result ${g('purchase_result')} · trial_start ${g('trial_start')}`);
+  console.log(`  paywall_view ${g('paywall_view')} → plan_selected ${g('plan_selected')} → purchase_started ${g('purchase_started')} → completed ${realBuys}  (failed ${g('purchase_failed')})`);
+  console.log(`  RC webhook (SANDBOX excluded): purchase_result ${realBuys} · trial_start ${realTrials}${sandboxConv ? `   [+${sandboxConv} sandbox conversion${sandboxConv === 1 ? '' : 's'}, excluded]` : ''}`);
   // Two [REPORT] lines side by side: lifetime (old+new blended) and the post-flip
   // cohort (new product alone). The campaign's success is the POST-FLIP line moving.
-  console.log(`\n[REPORT] funnel ${nowIso} ALL-TIME: signup ${totalUsers} → dispatch ${dispatchedU} (${pct(dispatchedU, totalUsers)}) → complete ${completedU} (${pct(completedU, totalUsers)}) | jobfail ${pct(jobsFail, jobs.length)} | paid ${activePaid} | paywall ${g('paywall_view')}→buy ${g('purchase_completed')}`);
+  console.log(`\n[REPORT] funnel ${nowIso} ALL-TIME: signup ${totalUsers} → dispatch ${dispatchedU} (${pct(dispatchedU, totalUsers)}) → complete ${completedU} (${pct(completedU, totalUsers)}) | jobfail ${pct(jobsFail, jobs.length)} | paid ${activePaid} | paywall ${g('paywall_view')}→buy ${realBuys}`);
   console.log(`[REPORT] funnel ${nowIso} POST-FLIP: signup ${nUsers} → dispatch ${nDispatchedU} (${pct(nDispatchedU, nUsers)}) → complete ${nCompletedU} (${pct(nCompletedU, nUsers)}) | jobfail ${pct(flipFail, flipJobs.length)} | (new product, since ${FLIP.slice(0, 10)})`);
   console.log(`[REPORT] funnel ${nowIso} DEMO: renders ${demoJobs.length} · users ${demoUsers} · done ${demoDone} · failed ${demoFail} (real-footage metrics above exclude these)`);
 })().catch((e) => { console.error('funnel-report failed:', e.message); process.exit(1); });
