@@ -1895,6 +1895,25 @@ const server = http.createServer((req, res) => {
         const detail = (body && body.detail) || '';
         const dur = body && body.duration_s;
         const elapsed = body && body.elapsed_s;
+        // SERVER-SIDE AT-FAULT GATE (Zac 2026-07-28): the worker's own alert gate
+        // (handler _NON_ALERTING_CODES) should only POST at-fault codes here, but
+        // enforce the split server-side too — a stale pre-gate worker container, a
+        // race, or any future caller must NEVER page the owner for a designed
+        // rejection or a non-actionable client-upload failure. Suppressed codes log
+        // a digest line (NOT [ALERT]) and skip the push; UNKNOWN + every unclassified
+        // code STILL page (loud-failsafe). Doubles as the diagnostic: an
+        // [ALERT-SUPPRESSED] line means a code was still arriving despite the worker gate.
+        const NON_ALERTING = new Set([
+          'NO_AUDIO_TRACK', 'NO_SPEECH', 'NO_SPEECH_NONENGLISH', 'NO_SPEECH_FACE',
+          'NOT_TALKING_HEAD', 'CLIP_TOO_LONG', 'CLIP_TOO_SHORT', 'WRONG_ORIENTATION',
+          'INVALID_FORMAT', 'EMPTY_UPLOAD', 'INVALID_SOURCE_URL', 'TRANSCRIPTION',
+          'TRANSCRIPTION_INCOMPLETE',
+          'UPLOAD_STALLED', 'UPLOAD_TIMEOUT', 'UPLOAD_NEVER_STARTED',
+        ]);
+        if (NON_ALERTING.has(code)) {
+          console.log(`[ALERT-SUPPRESSED] non-actionable code=${code} job=${jobId} — digest only, no owner push`);
+          return;
+        }
         console.error(`[ALERT] render failure job=${jobId} code=${code}`
           + (dur ? ` dur=${dur}s` : '') + (elapsed ? ` elapsed=${elapsed}s` : '')
           + (detail ? ` detail=${String(detail).slice(0, 200)}` : ''));
