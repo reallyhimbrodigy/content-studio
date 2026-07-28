@@ -2124,6 +2124,17 @@ const server = http.createServer((req, res) => {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
 
+  // Render quota is ROLLING 24h-from-use — closes the UTC-midnight abuse where a
+  // free user renders at 23:59 and again at 00:01 (two GPU renders minutes apart
+  // against a 1/day cap). Chat (+anything else) stays on the UTC-day window.
+  // Must match the claim_usage_slot RPC's per-kind predicate EXACTLY so the
+  // display count, the fallback count, and the atomic claim all agree.
+  function usageWindowStart(kind) {
+    return kind === 'render'
+      ? new Date(Date.now() - 86_400_000).toISOString()
+      : utcDayStart();
+  }
+
   async function countTodayUsage(userId, kind) {
     if (!supabaseAdmin) {
       // Closed by default. If supabase is down we cannot prove the user
@@ -2138,7 +2149,7 @@ const server = http.createServer((req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('kind', kind)
-      .gte('created_at', utcDayStart());
+      .gte('created_at', usageWindowStart(kind));
     if (error) {
       // Fail CLOSED instead of returning 0. A Supabase-error response
       // returning 0 lets every free user blow past the cap until the
@@ -3085,12 +3096,21 @@ const server = http.createServer((req, res) => {
         // clients — whose Snapshot decodes these as required Int — never break;
         // a pro user's UI ignores them via is_pro.
         const freeCaps = capabilities(effectiveTier('none', usageEnforce));
-        // Quota resets at the next UTC midnight — the exact day boundary the
-        // claim_usage_slot RPC (and countTodayUsage) count renders from
-        // (date_trunc('day', now() at utc)). The client renders a live countdown
-        // to this instant. Infinity (pro) can't survive JSON, so send null and
-        // let is_pro drive the "unlimited" UI.
-        const resetsAt = new Date(new Date(utcDayStart()).getTime() + 86_400_000).toISOString();
+        // Render quota is ROLLING 24h-from-use, so the meter resets when the
+        // OLDEST render in the trailing 24h ages out (+24h) — NOT at UTC
+        // midnight. With used==0 a slot is free right now, so there's no reset
+        // instant (null). Pro (unlimited) also sends null; is_pro drives the
+        // "unlimited" UI. The client renders a live local-time countdown to this.
+        let resetsAt = null;
+        if (!ent.isPro && renders > 0 && supabaseAdmin) {
+          const { data: oldest } = await supabaseAdmin
+            .from('usage_events').select('created_at')
+            .eq('user_id', u.id).eq('kind', 'render')
+            .gte('created_at', usageWindowStart('render'))
+            .order('created_at', { ascending: true }).limit(1);
+          const t = Array.isArray(oldest) && oldest[0] ? oldest[0].created_at : null;
+          if (t) resetsAt = new Date(new Date(t).getTime() + 86_400_000).toISOString();
+        }
         const renderLimit = Number.isFinite(freeCaps.renderLimit) ? freeCaps.renderLimit : null;
         return sendJson(res, 200, {
           is_pro: !!ent.isPro,
@@ -3791,14 +3811,16 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 200, { ok: true, noop: true });
         }
 
-        // Refund one of today's render usage events (best-effort; a cancel that
-        // can't refund still succeeds). usage_events isn't job-linked, so we
-        // remove the most recent 'render' event for this user today.
+        // Refund one of the user's render usage events in the rolling 24h window
+        // (best-effort; a cancel that can't refund still succeeds). usage_events
+        // isn't job-linked, so we remove the most recent 'render' event. Rolling
+        // window (not utcDayStart) so a render at 23:59 cancelled at 00:01 still
+        // finds its slot to refund.
         try {
           const { data: ev } = await supabaseAdmin
             .from('usage_events').select('id')
             .eq('user_id', authUser.id).eq('kind', 'render')
-            .gte('created_at', utcDayStart())
+            .gte('created_at', usageWindowStart('render'))
             .order('created_at', { ascending: false }).limit(1);
           if (Array.isArray(ev) && ev[0] && ev[0].id != null) {
             await supabaseAdmin.from('usage_events').delete().eq('id', ev[0].id);
