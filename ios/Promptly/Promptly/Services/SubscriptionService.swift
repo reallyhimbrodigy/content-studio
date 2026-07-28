@@ -93,6 +93,14 @@ final class SubscriptionService: ObservableObject {
 
     private var initialized = false
 
+    /// Whether RevenueCat's current app_user_id is aliased to the signed-in
+    /// Supabase user. A purchase made while this is false lands under an
+    /// anonymous RC id, and the webhook then has NO profile to write to — the
+    /// most likely reason the 2026-07-26 sandbox purchase left no server record.
+    /// The purchase/restore paths await `ensureIdentified()` so it can't happen.
+    @Published private(set) var isIdentified = false
+    private var identifiedUserId: String?
+
     private init() {}
 
     /// Boot RevenueCat. Call once from PromptlyApp.init().
@@ -120,17 +128,62 @@ final class SubscriptionService: ObservableObject {
         Task { await refreshCustomerInfo() }
     }
 
-    /// Tell RevenueCat which user is signed in. Aliases their anonymous
-    /// install ID to the Supabase user.id so cross-device + webhook
-    /// targeting both work.
-    func identify(userId: String) async {
-        guard initialized else { return }
-        do {
-            _ = try await Purchases.shared.logIn(userId)
-            await refreshCustomerInfo()
-        } catch {
-            print("[Subscription] logIn failed: \(error.localizedDescription)")
+    /// Tell RevenueCat which user is signed in. Aliases their anonymous install
+    /// ID to the Supabase user.id so cross-device + webhook targeting both work.
+    ///
+    /// Returns true once RC's appUserID equals `userId`. A swallowed logIn
+    /// failure here silently breaks EVERY future purchase's server-side write
+    /// (the webhook can't map an anonymous id to a profile), so a transient
+    /// failure is retried and a hard failure is surfaced to analytics rather
+    /// than print-swallowed.
+    @discardableResult
+    func identify(userId: String) async -> Bool {
+        guard initialized else { return false }
+        // Already aliased to this user — avoid a redundant logIn on every
+        // foreground/bootstrap while still confirming RC agrees.
+        if identifiedUserId == userId, Purchases.shared.appUserID == userId {
+            isIdentified = true
+            return true
         }
+        for attempt in 1...3 {
+            do {
+                _ = try await Purchases.shared.logIn(userId)
+                await refreshCustomerInfo()
+                if Purchases.shared.appUserID == userId {
+                    identifiedUserId = userId
+                    isIdentified = true
+                    return true
+                }
+                // logIn returned but RC's id didn't become ours — don't let a
+                // purchase proceed under the wrong id; treat as a retryable miss.
+                Analytics.track("rc_identify_mismatch", props: ["attempt": attempt])
+            } catch {
+                print("[Subscription] logIn failed (attempt \(attempt)/3): \(error.localizedDescription)")
+                if attempt == 3 {
+                    // Hard failure — VISIBLE, not a lone print. This user's
+                    // purchases can't be attributed server-side until it clears.
+                    Analytics.track("rc_identify_failed", props: [
+                        "message": error.localizedDescription,
+                        "attempts": attempt,
+                    ])
+                }
+            }
+            if attempt < 3 { try? await Task.sleep(for: .milliseconds(400 * attempt)) }
+        }
+        isIdentified = false
+        return false
+    }
+
+    /// Guarantee RC is aliased to the signed-in Supabase user before a money
+    /// action. Returns false ONLY when there's a signed-in user we couldn't
+    /// alias RC to — in which case the caller must NOT purchase (the webhook
+    /// would have no profile to write). No signed-in user → true (nothing to
+    /// align; RC's anonymous id is correct by design).
+    func ensureIdentified() async -> Bool {
+        guard initialized else { return false }
+        guard let uid = AuthService.shared.currentUser?.id else { return true }
+        if Purchases.shared.appUserID == uid { isIdentified = true; return true }
+        return await identify(userId: uid)
     }
 
     /// Called from sign-out flow.
@@ -215,6 +268,22 @@ final class SubscriptionService: ObservableObject {
     @discardableResult
     func purchase(_ package: Package) async -> Bool {
         guard initialized else { return false }
+        // ROOT-CAUSE GUARD (2026-07-26): never purchase under an anonymous RC
+        // id. With a signed-in user, RC must be aliased to them FIRST — else the
+        // webhook fires with an app_user_id that matches no profile and the paid
+        // entitlement is never written server-side (the device shows Pro; the
+        // server never learns). A pre-purchase await closes that race.
+        if AuthService.shared.currentUser?.id != nil {
+            let ok = await ensureIdentified()
+            if !ok {
+                lastError = "We couldn't verify your account. Please try again in a moment."
+                Analytics.track("purchase_blocked_unidentified", props: [
+                    "plan": planKey(package),
+                    "product": package.storeProduct.productIdentifier,
+                ])
+                return false
+            }
+        }
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }
         let plan = planKey(package)
@@ -277,6 +346,9 @@ final class SubscriptionService: ObservableObject {
     @discardableResult
     func restorePurchases() async -> Bool {
         guard initialized else { return false }
+        // Align RC to the signed-in user first so a restore re-attributes the
+        // entitlement to THIS account (and the server sync writes the right row).
+        if AuthService.shared.currentUser?.id != nil { _ = await ensureIdentified() }
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }
         do {
