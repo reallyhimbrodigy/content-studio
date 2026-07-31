@@ -3672,6 +3672,17 @@ const server = http.createServer((req, res) => {
       try {
         const u = await requireSupabaseUser(req);
         const result = await reconcileEntitlementFromRevenueCat(u.id);
+        // Log the reconcile OUTCOME so RC-side failures (esp. a bad/expired/wrong
+        // REVENUECAT_SECRET_KEY → 403 on the v2 REST API) are COUNTABLE in
+        // analytics, not just buried in Render logs. This is how we prove the
+        // entitlement self-heal is (or isn't) working after a key change.
+        if (supabaseAdmin) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'reconcile_result', anon_user_id: u.id, user_id: u.id,
+            platform: 'server', app_version: 'rc-sync',
+            props: { ok: true, is_pro: !!result.isPro, reason: result.reason || null },
+          }).then(({ error }) => { if (error) console.warn('[RevenueCat] reconcile log failed:', error.message); });
+        }
         return sendJson(res, 200, {
           is_pro: !!result.isPro,
           pro_until: result.proUntil || null,
@@ -3679,12 +3690,21 @@ const server = http.createServer((req, res) => {
         });
       } catch (error) {
         const status = error?.statusCode || 500;
+        // Pull the RC HTTP status out of the thrown `revenuecat_http_403` shape.
+        const rcMatch = /revenuecat_http_(\d+)/.exec(error?.message || '');
+        const rcStatus = rcMatch ? Number(rcMatch[1]) : null;
+        if (supabaseAdmin && status !== 503) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'reconcile_result', platform: 'server', app_version: 'rc-sync',
+            props: { ok: false, status, rc_status: rcStatus, error: String(error?.message || '').slice(0, 120) },
+          }).then(({ error: e }) => { if (e) console.warn('[RevenueCat] reconcile log failed:', e.message); });
+        }
         if (status === 503) {
           // Secret key not configured — client silently falls back to
           // webhook-only activation. Not an error worth alerting on.
           console.warn('[RevenueCat] /sync called but REVENUECAT_SECRET_KEY not set');
         } else {
-          console.error('[RevenueCat] /sync failed', { status, error: error?.message });
+          console.error('[RevenueCat] /sync failed', { status, rc_status: rcStatus, error: error?.message });
         }
         return sendJson(res, status, { error: error?.message || 'sync_failed' });
       }
