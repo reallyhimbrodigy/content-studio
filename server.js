@@ -39,7 +39,7 @@ function renderResultPage(data) {
     ? `<div class="card">
         <div class="brand">Promptly</div>
         <h1>Your video is ready 🎬</h1>
-        <video controls playsinline preload="metadata" ${data.thumbnailUrl ? `poster="${esc(data.thumbnailUrl)}"` : ''} src="${esc(data.videoUrl)}"></video>
+        <video controls playsinline preload="metadata" src="${esc(data.videoUrl)}"></video>
         <a class="btn primary" href="${esc(data.videoUrl)}" download>Download video</a>
         <a class="btn ghost" href="${APP_STORE_URL}">Open Promptly to edit or make another</a>
       </div>`
@@ -4966,10 +4966,14 @@ const server = http.createServer((req, res) => {
         try {
           if (supabaseAdmin) {
             const { data } = await supabaseAdmin.from('video_jobs')
-              .select('status, rendered_video_url, thumbnail_url')
+              .select('status, rendered_video_url')
               .eq('id', jobId).maybeSingle();
             if (data && data.status === 'completed' && data.rendered_video_url) {
-              ready = { videoUrl: data.rendered_video_url, thumbnailUrl: data.thumbnail_url || '' };
+              // Poster deliberately omitted: thumbnail_url is a presigned S3 URL
+              // that expires within days, so on an email opened later it would rot
+              // to a broken image. The rendered video is stable CloudFront and its
+              // first frame (preload=metadata) serves as the preview.
+              ready = { videoUrl: data.rendered_video_url };
             }
           }
         } catch (e) { console.warn('[result-page] lookup failed:', e && e.message); }
