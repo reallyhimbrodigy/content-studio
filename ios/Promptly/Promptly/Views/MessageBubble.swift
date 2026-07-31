@@ -1106,6 +1106,9 @@ struct PipelineProgressView: View {
 final class VideoExporter: ObservableObject {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    /// Optional job id so the EXPORT funnel event (`export_completed`) can be
+    /// tied back to the render. nil for surfaces that don't supply one.
+    let jobId: String?
 
     @Published var saveState: ActionState = .idle
 
@@ -1133,9 +1136,10 @@ final class VideoExporter: ObservableObject {
         }
     }
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
+        self.jobId = jobId
     }
 
     // MARK: - Private helpers
@@ -1172,6 +1176,14 @@ final class VideoExporter: ObservableObject {
         }
         guard let id = placeholderId else { throw ExportError.saveFailed("no asset id") }
         cachedAssetId = id
+        // EXPORT funnel: a NEW asset was just written to the camera roll — fire
+        // once per real save (repeat taps hit the cachedAssetId early-return at
+        // the top of this method and don't re-fire). job_id is attached when the
+        // constructing surface supplied one (MessageBubble does; LibraryView
+        // builds VideoExporter without a jobId, so those saves omit it).
+        var exportProps: [String: Any] = ["method": "save"]
+        if let jobId { exportProps["job_id"] = jobId }
+        Analytics.track("export_completed", props: exportProps)
         return id
     }
 
@@ -1202,6 +1214,8 @@ final class VideoExporter: ObservableObject {
 struct VideoActionRow: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    /// Threaded through so the share/save EXPORT events carry job_id.
+    let jobId: String?
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
     @StateObject private var exporter: VideoExporter
@@ -1211,12 +1225,13 @@ struct VideoActionRow: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
+        self.jobId = jobId
         self.onReedit = onReedit
         self.onMakeAnother = onMakeAnother
-        _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
+        _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr, jobId: jobId))
     }
 
     private var isPro: Bool { subscription.isPro || usage.isPro }
@@ -1464,6 +1479,12 @@ struct VideoActionRow: View {
             .accessibilityAddTraits(.isButton)
             .simultaneousGesture(TapGesture().onEnded {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                // EXPORT funnel: ShareLink exposes NO completion callback, so
+                // "share" is counted on INITIATION (intent-to-share) when the
+                // user taps the hero share pill — not on delivery confirmation.
+                var exportProps: [String: Any] = ["method": "share"]
+                if let jobId { exportProps["job_id"] = jobId }
+                Analytics.track("export_completed", props: exportProps)
             })
         }
     }
@@ -1582,6 +1603,11 @@ struct CompletedVideoView: View {
     /// (rare, frequency-capped). Lives per-video so only the watched one asks.
     @State private var showFeedbackPrompt = false
 
+    /// ACTIVATION funnel dedupe: `result_viewed` fires at most once per
+    /// appearance-session of this completed result, so scrolling the bubble
+    /// on/off screen doesn't spam the event.
+    @State private var didTrackViewed = false
+
     /// Drives the loading-vs-playable thumbnail state. Updates the
     /// instant `VideoCache.shared.cachedIds` flips for this jobId.
     @ObservedObject private var cache = VideoCache.shared
@@ -1681,6 +1707,17 @@ struct CompletedVideoView: View {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    // EXPORT funnel: ShareLink has no completion callback, so
+                    // "share" counts INITIATION (intent-to-share) on tap of the
+                    // context-menu share item. jobId is in scope here
+                    // (CompletedVideoView property). Fires best-effort — taps
+                    // inside a system context menu aren't guaranteed to deliver
+                    // a gesture, so the hero share pill is the primary signal.
+                    .simultaneousGesture(TapGesture().onEnded {
+                        var exportProps: [String: Any] = ["method": "share"]
+                        if let jobId { exportProps["job_id"] = jobId }
+                        Analytics.track("export_completed", props: exportProps)
+                    })
                     Button {
                         UIApplication.shared.open(url)
                     } label: {
@@ -1706,6 +1743,7 @@ struct CompletedVideoView: View {
             VideoActionRow(
                 videoUrlStr: videoUrlStr,
                 thumbnailUrlStr: thumbnailUrlStr,
+                jobId: jobId,
                 onReedit: onReedit,
                 onMakeAnother: onMakeAnother
             )
@@ -1734,6 +1772,17 @@ struct CompletedVideoView: View {
                 .padding(.top, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        }
+        .onAppear {
+            // ACTIVATION funnel: the finished render just became visible INLINE
+            // in the chat bubble — the common case the fullscreen player-present
+            // event (VideoPlayerPresenter.doPresent) misses. Dedupe so scrolling
+            // the bubble on/off screen fires it at most once per appearance.
+            guard !didTrackViewed else { return }
+            didTrackViewed = true
+            var viewedProps: [String: Any] = [:]
+            if let jobId { viewedProps["job_id"] = jobId }
+            Analytics.track("result_viewed", props: viewedProps)
         }
     }
 
@@ -1872,6 +1921,7 @@ enum VideoPlayerPresenter {
                 urlString: local.absoluteString,
                 title: title,
                 posterUrl: thumbnailUrl,
+                jobId: jobId,
                 onReedit: onReedit
             )
             return
@@ -1897,13 +1947,14 @@ enum VideoPlayerPresenter {
                 urlString: resolvedUrl,
                 title: title,
                 posterUrl: thumbnailUrl,
+                jobId: jobId,
                 onReedit: onReedit
             )
         }
     }
 
     @MainActor
-    private static func doPresent(urlString: String, title: String?, posterUrl: String?, onReedit: (() -> Void)?) {
+    private static func doPresent(urlString: String, title: String?, posterUrl: String?, jobId: String?, onReedit: (() -> Void)?) {
         guard let url = URL(string: urlString) else {
             print("[player] FAILED: invalid URL after refresh")
             return
@@ -1928,8 +1979,13 @@ enum VideoPlayerPresenter {
             print("[player] FAILED: no topmost view controller")
             return
         }
-        // ACTIVATION-funnel terminal: the finished render is being viewed.
-        Analytics.track("result_viewed")
+        // ACTIVATION-funnel terminal: the finished render is being viewed
+        // (fullscreen player present). The INLINE appearance fires its own
+        // result_viewed in CompletedVideoView.onAppear; both carry job_id so
+        // downstream can dedupe per render if needed.
+        var viewedProps: [String: Any] = [:]
+        if let jobId { viewedProps["job_id"] = jobId }
+        Analytics.track("result_viewed", props: viewedProps)
         topVC.present(host, animated: true)
     }
 

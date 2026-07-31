@@ -48,7 +48,11 @@ enum Analytics {
     }
 
     /// Track an event. Returns immediately; the network call runs detached.
-    static func track(_ event: String, props: [String: Any] = [:]) {
+    /// `durable`: for signals we can't afford to lose on the exact weak networks
+    /// they describe (e.g. `upload_failed`), retry the /api/events POST a few
+    /// times with backoff so the DB mirror still captures it. PostHog (sink 1)
+    /// already persists + retries its own queue; this closes the gap on sink 2.
+    static func track(_ event: String, props: [String: Any] = [:], durable: Bool = false) {
         // Resolve everything synchronous on the caller, and serialize props to
         // Data now, so only Sendable values (String / Data) cross the task
         // boundary — keeps this clean under strict concurrency.
@@ -87,7 +91,20 @@ enum Analytics {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = data
             req.timeoutInterval = 8
-            _ = try? await URLSession.shared.data(for: req) // response ignored by design
+            // Best-effort by default (fire once, ignore the response). DURABLE
+            // events retry with backoff so a weak-network drop — the exact
+            // condition an `upload_failed` describes — doesn't also drop the
+            // event that measures it.
+            let attempts = durable ? 3 : 1
+            for attempt in 0..<attempts {
+                do {
+                    let (_, resp) = try await URLSession.shared.data(for: req)
+                    if let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) { break }
+                } catch { /* fall through to retry */ }
+                if attempt < attempts - 1 {
+                    try? await Task.sleep(nanoseconds: UInt64(attempt + 1) * 2_000_000_000)
+                }
+            }
         }
     }
 

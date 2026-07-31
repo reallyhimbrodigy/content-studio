@@ -155,6 +155,29 @@ final class BackgroundUploadManager: NSObject {
         }
 
         // No continuation — task completed while app was killed.
+        // Build 222: the normal analytics emit lives on the (now-dead) caller, so
+        // an orphan success was UNDER-COUNTED (inflating apparent upload failure)
+        // and an orphan failure was invisible. Re-emit here, tagged
+        // path:"background_orphan", so the funnel counts app-killed uploads too.
+        // Safe off-MainActor (Analytics.track dispatches its own task).
+        if success {
+            Analytics.track("upload_completed", props: ["path": "background_orphan"])
+        } else {
+            let code = (error as NSError?)?.code
+            let mech: String
+            switch code {
+            case NSURLErrorTimedOut: mech = "timeout"
+            case NSURLErrorNetworkConnectionLost: mech = "network_lost"
+            case NSURLErrorNotConnectedToInternet: mech = "offline"
+            case NSURLErrorCancelled: mech = "cancelled"
+            default: mech = httpStatus > 0 ? "http_\(httpStatus)" : (code.map { "url_error_\($0)" } ?? "unknown")
+            }
+            Analytics.track("upload_failed", props: [
+                "mechanism": mech,
+                "path": "background_orphan",
+                "http_status": httpStatus,
+            ], durable: true)
+        }
         // Notify ChatStore so it can update the message in the
         // persisted chat record.
         if let ctx {

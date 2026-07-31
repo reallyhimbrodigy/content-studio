@@ -1274,6 +1274,41 @@ struct EditorView: View {
         }
     }
 
+    /// Classify an upload-path error into a coarse mechanism for the
+    /// `upload_failed` instrument (build 222). Separates user-network causes
+    /// (timeout / connection lost / offline / host unreachable) from our-side
+    /// ones (a bare uploadFailed, a job-create failure). Iterate the taxonomy in
+    /// 223 once two weeks of real mechanism×territory×bytes data exist.
+    private static func uploadFailureMechanism(_ error: Error) -> String {
+        if let urlErr = error as? URLError {
+            switch urlErr.code {
+            case .timedOut: return "timeout"
+            case .networkConnectionLost: return "network_lost"
+            case .notConnectedToInternet: return "offline"
+            case .cancelled: return "cancelled"
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed: return "host_unreachable"
+            default: return "url_error_\(urlErr.code.rawValue)"
+            }
+        }
+        if let apiErr = error as? APIError {
+            if case .uploadFailed = apiErr { return "upload_failed" }
+            if case .jobCreationFailed = apiErr { return "job_create_failed" }
+            return "api_error"
+        }
+        return "unknown"
+    }
+
+    /// Build 222: offer the notification soft-prompt AFTER the user's first
+    /// completed video (value proven), not at dispatch. Self-gated to once via
+    /// `shouldOfferSoftPrompt`, so it's safe to call from every completion sink.
+    /// Re-timing lifts the ask out of the "before they've seen it work" window
+    /// (the old dispatch-time ask saw ~44% decline before any value was shown).
+    private func maybeOfferSoftPromptOnCompletion() {
+        if PushService.shared.shouldOfferSoftPrompt {
+            showPushExplainer = true
+        }
+    }
+
     /// Original per-video upload-pipeline starter, factored out of
     /// handlePickedVideos so the precheck can gate it without
     /// duplicating logic.
@@ -1321,6 +1356,7 @@ struct EditorView: View {
                 defer {
                     Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
                 }
+                let uploadStartedAt = Date() // hoisted so the failure catch can measure elapsed
                 do {
                     let t0 = Date()
 
@@ -1591,6 +1627,21 @@ struct EditorView: View {
                     await UsageService.shared.refresh()
                 } catch {
                     print("[perf] upload task failed: \(error.localizedDescription)")
+                    // INSTRUMENT (build 222): the client was previously SILENT on
+                    // upload failure — the entire failure surface was invisible, so
+                    // the our-fault-vs-user-network split was unanswerable. Emit
+                    // upload_failed with the mechanism + context (pct/elapsed/error),
+                    // BEFORE the reset below zeroes uploadProgress. Durable (retried)
+                    // because the failure itself is usually a weak-network condition,
+                    // which is exactly when a fire-and-forget event would be lost.
+                    // territory rides the envelope automatically.
+                    let pctAtFailure = await MainActor.run { pending.uploadProgress }
+                    Analytics.track("upload_failed", props: [
+                        "mechanism": Self.uploadFailureMechanism(error),
+                        "pct_complete": pctAtFailure,
+                        "elapsed_ms": Int(Date().timeIntervalSince(uploadStartedAt) * 1000),
+                        "error_desc": String(error.localizedDescription.prefix(120)),
+                    ], durable: true)
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
                     // bytes that never arrived — that produced the
@@ -2670,14 +2721,11 @@ struct EditorView: View {
                                 messages[i].cachedVibe = vibe
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
-                                // §5: the render is now running on the server — the
-                                // most concrete moment to offer notifications ("we'll
-                                // tell you the second it's ready"). ONE ask, gated by
-                                // shouldOfferSoftPrompt so a denial is respected and we
-                                // never re-nag. Only when the bubble is on screen.
-                                if PushService.shared.shouldOfferSoftPrompt {
-                                    showPushExplainer = true
-                                }
+                                // (Build 222: the notification soft-prompt moved from
+                                // HERE — dispatch — to first COMPLETION, so we only ask
+                                // once the user has SEEN the payoff. The old timing asked
+                                // before the value was proven; ~44% declined. See
+                                // maybeOfferSoftPromptOnCompletion() at the completion sinks.)
                             } else if let cid = dispatchChatId {
                                 // User switched chats while this was uploading.
                                 // Land the jobId on the off-screen bubble's
@@ -3056,6 +3104,7 @@ struct EditorView: View {
                         messages[idx].content = "Your video is ready!"
                         messages[idx].stageTimeline?.finish()
                         persistMessages()
+                        maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)
@@ -3102,6 +3151,7 @@ struct EditorView: View {
                         messages[revealIdx].content = "Your video is ready!"
                         messages[revealIdx].stageTimeline?.finish()
                         persistMessages()
+                        maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)

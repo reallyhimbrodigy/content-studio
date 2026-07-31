@@ -73,11 +73,24 @@ final class PushService {
         case .authorized, .provisional, .ephemeral:
             // Already granted — ensure remote registration is current. iOS
             // gives us a fresh token roughly daily anyway.
+            Analytics.track("push_permission", props: [
+                "result": "granted",
+                "authorization_status": settings.authorizationStatus.rawValue,
+                "reason": "already_determined",
+            ])
             UIApplication.shared.registerForRemoteNotifications()
         case .notDetermined:
             UserDefaults.standard.set(true, forKey: askedKey)
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                // Capture the actual iOS system-dialog outcome. Re-fetch settings
+                // so authorization_status reflects the post-prompt state (the outer
+                // `settings` snapshot is still .notDetermined at this point).
+                let resolvedSettings = await center.notificationSettings()
+                Analytics.track("push_permission", props: [
+                    "result": granted ? "granted" : "denied",
+                    "authorization_status": resolvedSettings.authorizationStatus.rawValue,
+                ])
                 if granted {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
@@ -88,6 +101,11 @@ final class PushService {
             // iOS won't show the dialog again. User has to flip the switch
             // in Settings; that path triggers a fresh registration via
             // didRegisterForRemoteNotifications.
+            Analytics.track("push_permission", props: [
+                "result": "denied",
+                "authorization_status": settings.authorizationStatus.rawValue,
+                "reason": "already_determined",
+            ])
             break
         @unknown default:
             break
