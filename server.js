@@ -33,6 +33,42 @@ const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-out
 // processing / failed) → one neutral page that never confirms a job's state.
 // Self-contained (inline CSS), mobile-first (recipients open on a phone), no PII.
 const APP_STORE_URL = 'https://apps.apple.com/app/id6762497454';
+
+// Acquisition landing (/get). The store CTA carries data-store-link + a real
+// href, so normal browsers navigate straight to the App Store; inside a Meta/
+// TikTok in-app browser the escape module intercepts the tap and breaks out to
+// Safari (falling back to instructions). Self-contained, mobile-first, no PII.
+function renderGetLanding() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Get Promptly</title>
+  <style>
+    :root{color-scheme:dark}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+      padding:32px 24px calc(32px + env(safe-area-inset-bottom));text-align:center;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+      background:#0e0e10;color:#f5f4f2}
+    .wrap{width:100%;max-width:420px}
+    .brand{font-weight:800;font-size:17px;letter-spacing:.3px;color:#C8A95E;margin-bottom:28px}
+    h1{font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.02em;margin:0 0 14px}
+    p{font-size:17px;line-height:1.55;color:#a8a8ad;margin:0 0 32px}
+    .cta{display:block;width:100%;padding:17px 20px;border-radius:999px;text-decoration:none;
+      background:#C8A95E;color:#1a1a1a;font-weight:800;font-size:17px}
+    .note{margin-top:16px;font-size:13px;color:#77777e}
+  </style></head><body>
+  <div class="wrap">
+    <div class="brand">Promptly</div>
+    <h1>Make a scroll-stopping video in minutes.</h1>
+    <p>Upload a clip of yourself talking, tell Promptly the vibe, and get a captioned, edited short back — no timeline, no editing.</p>
+    <a class="cta" href="${APP_STORE_URL}" data-store-link>Download on the App Store</a>
+    <div class="note">Free to start — one video edit every day.</div>
+  </div>
+  <script src="/js/inapp-browser-escape.js"></script>
+  </body></html>`;
+}
+
 function renderResultPage(data) {
   const esc = (s) => String(s || '').replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
   const body = data
@@ -2638,6 +2674,14 @@ const server = http.createServer((req, res) => {
           // these on the allowlist the SQL mirror silently drops them (the same
           // class that bit not_talking_head_rejected); PostHog gets them regardless.
           'too_short_rejected', 'too_long_rejected', 'push_softprompt',
+          // 1.3.4 (222) instruments — the upload/no-token blind spots + true
+          // activation. MUST be here or the SQL mirror (the DB our upload/no-token
+          // analysis queries) drops them while PostHog keeps them — half-blind.
+          'upload_failed', 'export_completed', 'push_permission',
+          // In-app-browser escape (web landing /get). Meta/TikTok webviews swallow
+          // App Store taps; these size the problem + measure the breakout funnel.
+          'inapp_landing', 'escape_attempted', 'escape_succeeded',
+          'escape_fallback_shown', 'fallback_retry', 'fallback_copy',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
@@ -4943,6 +4987,20 @@ const server = http.createServer((req, res) => {
       if (fs.existsSync(landingScript)) {
         return serveFile(landingScript, res);
       }
+    }
+    // The in-app-browser escape module (vanilla, no deps).
+    if (parsed.pathname === '/js/inapp-browser-escape.js') {
+      const f = path.join(__dirname, 'js', 'inapp-browser-escape.js');
+      if (fs.existsSync(f)) return serveFile(f, res);
+    }
+    // Acquisition landing — the destination for Instagram/TikTok bio links.
+    // Meta/TikTok in-app browsers swallow taps on apps.apple.com, and NO script
+    // can run on a direct store link, so the bio link must point HERE, where the
+    // escape module breaks out to Safari (or shows instructions) and the UA-split
+    // + breakout funnel get measured. Repoint bio links → https://usepromptly.app/get
+    if (parsed.pathname === '/get' || parsed.pathname === '/download' || parsed.pathname === '/app') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(renderGetLanding());
     }
     // Editor and calendar removed — mobile-only app. Redirect to landing.
     if (parsed.pathname === '/editor' || parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html' || parsed.pathname === '/library.html') {
