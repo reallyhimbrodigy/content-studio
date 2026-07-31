@@ -5225,6 +5225,51 @@ if (require.main === module) {
     };
     setTimeout(runBleedMeter, 90 * 1000); // boot pass (fires if past report hour)
     setInterval(runBleedMeter, 60 * 60 * 1000); // hourly
+
+    // Completion-rate watchdog (2026-07-31 incident follow-up). The dispatch
+    // alert catches "the request failed"; it does NOT catch "dispatch succeeded
+    // and nothing ever completes" — worker accepts + dies, silent stall, jobs
+    // stuck forever (same silent-outage class, different seam). Of the jobs old
+    // enough to have finished (dispatched 8–30 min ago), if ≥N reached the worker
+    // (processing/completed) and ZERO completed, page. Excludes dispatch-failed
+    // (→ the dispatch alert) and worker-rejected (→ status=failed), so it fires
+    // ONLY on the accept-but-never-finish signature. Debounced; implicitly clears
+    // when any completion appears in the window.
+    let watchdogBusy = false, watchdogAlertedAt = 0;
+    const runCompletionWatchdog = async () => {
+      if (watchdogBusy) return;
+      watchdogBusy = true;
+      try {
+        const now = Date.now();
+        const winStart = new Date(now - 30 * 60 * 1000).toISOString();
+        const matureBefore = new Date(now - 8 * 60 * 1000).toISOString();
+        const { data } = await supabaseAdmin
+          .from('video_jobs')
+          .select('status')
+          .gte('created_at', winStart)
+          .lte('created_at', matureBefore)
+          .in('status', ['processing', 'completed'])
+          .limit(500);
+        const dispatchedOk = Array.isArray(data) ? data.length : 0;
+        const completed = Array.isArray(data) ? data.filter((r) => r.status === 'completed').length : 0;
+        if (dispatchedOk >= 4 && completed === 0 && now - watchdogAlertedAt > 30 * 60 * 1000) {
+          watchdogAlertedAt = now;
+          const body = `${dispatchedOk} jobs dispatched OK 8–30min ago, ZERO completed — pipeline accepts but nothing finishes (worker stall / silent downstream failure)`;
+          console.error(`[ALERT] COMPLETION-RATE WATCHDOG — ${body}`);
+          await sendOwnerAlert({
+            ownerUserId: SUBMISSION_OWNER_USER_ID,
+            title: '🚨 [Promptly] RENDERS NOT COMPLETING — pipeline stalled',
+            body, threadId: 'completion-watchdog', supabaseAdmin,
+          });
+        }
+      } catch (err) {
+        console.error('[watchdog] completion check crashed:', err?.message || err);
+      } finally {
+        watchdogBusy = false;
+      }
+    };
+    setTimeout(runCompletionWatchdog, 120 * 1000); // boot pass
+    setInterval(runCompletionWatchdog, 5 * 60 * 1000); // every 5 min
   }
 
   // Flush any pending PostHog server events before the process exits (Render
