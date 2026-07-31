@@ -4003,7 +4003,13 @@ const server = http.createServer((req, res) => {
         // renders as a friendly inline bubble (402 would wrongly trigger the
         // paywall; a bare error would read as "your video failed"). Auto-clears
         // unconditionally at KNOWN_OUTAGE_UNTIL.
-        if (isKnownOutageActive()) {
+        // OWNER CANARY EXEMPTION: the owner is NOT gated, so they can run a real
+        // render to confirm renders are actually back (a completed owner render =
+        // the true "renders are back" signal) BEFORE opening the gate for everyone.
+        // Solves the chicken-egg — while the gate blocks all traffic, nothing can
+        // complete, so we'd otherwise be opening blind at KNOWN_OUTAGE_UNTIL (which
+        // is OUR expiry, NOT Modal's billing turn — the two may not coincide).
+        if (isKnownOutageActive() && String(authUser.id) !== SUBMISSION_OWNER_USER_ID) {
           console.log('  ⏸️  video-jobs refused — KNOWN_OUTAGE active (no quota, no dispatch, no job)');
           return sendJson(res, 503, {
             error_code: 'render_paused',
@@ -4366,8 +4372,8 @@ const server = http.createServer((req, res) => {
         const authUser = await requireSupabaseUser(req);
         // MAINTENANCE GATE (known outage) — a re-edit / ask-back resume also
         // dispatches to Modal, so refuse it honestly too, before any quota or
-        // dispatch. Same structured shape as the create path.
-        if (isKnownOutageActive()) {
+        // dispatch. Owner is exempt (canary — see the create path).
+        if (isKnownOutageActive() && String(authUser.id) !== SUBMISSION_OWNER_USER_ID) {
           console.log('  ⏸️  re-edit refused — KNOWN_OUTAGE active');
           return sendJson(res, 503, {
             error_code: 'render_paused',
