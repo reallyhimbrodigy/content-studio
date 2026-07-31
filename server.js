@@ -25,6 +25,7 @@ const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
+const { postAgentAlert } = require('./lib/agent-alert');
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
 const {
   validateUploadRequest,
@@ -5245,13 +5246,14 @@ if (require.main === module) {
         const matureBefore = new Date(now - 8 * 60 * 1000).toISOString();
         const { data } = await supabaseAdmin
           .from('video_jobs')
-          .select('status')
+          .select('id, user_id, status')
           .gte('created_at', winStart)
           .lte('created_at', matureBefore)
           .in('status', ['processing', 'completed'])
           .limit(500);
-        const dispatchedOk = Array.isArray(data) ? data.length : 0;
-        const completed = Array.isArray(data) ? data.filter((r) => r.status === 'completed').length : 0;
+        const rows = Array.isArray(data) ? data : [];
+        const dispatchedOk = rows.length;
+        const completed = rows.filter((r) => r.status === 'completed').length;
         if (dispatchedOk >= 4 && completed === 0 && now - watchdogAlertedAt > 30 * 60 * 1000) {
           watchdogAlertedAt = now;
           const body = `${dispatchedOk} jobs dispatched OK 8–30min ago, ZERO completed — pipeline accepts but nothing finishes (worker stall / silent downstream failure)`;
@@ -5260,6 +5262,25 @@ if (require.main === module) {
             ownerUserId: SUBMISSION_OWNER_USER_ID,
             title: '🚨 [Promptly] RENDERS NOT COMPLETING — pipeline stalled',
             body, threadId: 'completion-watchdog', supabaseAdmin,
+          });
+          // Last known-good completion (only queried when we're already firing).
+          const { data: lastDone } = await supabaseAdmin
+            .from('video_jobs')
+            .select('updated_at')
+            .eq('status', 'completed')
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          // ALSO wake an investigating agent (gated + hard-capped; dormant until
+          // AGENT_ALERT_WEBHOOK_URL is set). The stuck jobs' ids/users let the
+          // agent inspect the exact stall without a query round-trip.
+          await postAgentAlert({
+            error_class: 'COMPLETION_STALL',
+            count: dispatchedOk,
+            window_min: 30,
+            job_ids: rows.filter((r) => r.status === 'processing').map((r) => r.id).slice(0, 10),
+            user_ids: [...new Set(rows.map((r) => r.user_id).filter(Boolean))].slice(0, 10),
+            last_good_ts: (Array.isArray(lastDone) && lastDone[0] && lastDone[0].updated_at) || null,
+            hint: 'Jobs reach the worker (status=processing) but none complete — worker accepted + stalled, or a silent downstream failure. Check the worker logs / Modal function health for these job_ids.',
           });
         }
       } catch (err) {
