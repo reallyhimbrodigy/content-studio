@@ -2678,6 +2678,10 @@ const server = http.createServer((req, res) => {
           // activation. MUST be here or the SQL mirror (the DB our upload/no-token
           // analysis queries) drops them while PostHog keeps them — half-blind.
           'upload_failed', 'export_completed', 'push_permission',
+          // 1.3.4 in-app ready-state card (returning-user recovery funnel):
+          'ready_banner_shown', 'ready_banner_open', 'ready_banner_dismiss',
+          // Billing-identity hardening (blocked-pre-identity + RC identify diagnostics):
+          'purchase_blocked_unidentified', 'rc_identify_failed', 'rc_identify_mismatch',
           // In-app-browser escape (web landing /get). Meta/TikTok webviews swallow
           // App Store taps; these size the problem + measure the breakout funnel.
           'inapp_landing', 'escape_attempted', 'escape_succeeded',
