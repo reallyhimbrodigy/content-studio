@@ -26,6 +26,7 @@ const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
 const { postAgentAlert } = require('./lib/agent-alert');
+const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
 const {
   validateUploadRequest,
@@ -3902,6 +3903,26 @@ const server = http.createServer((req, res) => {
         const authUser = await requireSupabaseUser(req);
         console.log('  ✅ Auth user:', authUser.id);
 
+        // MAINTENANCE GATE (known outage). While the render service is knowingly
+        // down (Modal spend cap → KNOWN_OUTAGE_UNTIL set), refuse HONESTLY here —
+        // BEFORE the rate-limit tick, any daily-quota claim, any job row, and any
+        // Modal dispatch. Result: no failed render (which would cost a permanent
+        // App Store review at the worst possible moment — 1.3.3 is live + the
+        // surge is on), no quota consumed, and no queued job (a 4-day backlog
+        // firing at once on Aug 1 would just re-cap the workspace). 503 + the
+        // structured error_code/user_message shape is exactly what the client
+        // renders as a friendly inline bubble (402 would wrongly trigger the
+        // paywall; a bare error would read as "your video failed"). Auto-clears
+        // unconditionally at KNOWN_OUTAGE_UNTIL.
+        if (isKnownOutageActive()) {
+          console.log('  ⏸️  video-jobs refused — KNOWN_OUTAGE active (no quota, no dispatch, no job)');
+          return sendJson(res, 503, {
+            error_code: 'render_paused',
+            user_message: maintenanceUserMessage(),
+            retryable: false,
+          });
+        }
+
         // Rate limit: 10 video jobs per 15 minutes per user. Generous for
         // legitimate use (re-edits, multiple variants) but catches a
         // runaway client before it floods Modal.
@@ -4254,6 +4275,17 @@ const server = http.createServer((req, res) => {
       try {
         if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
         const authUser = await requireSupabaseUser(req);
+        // MAINTENANCE GATE (known outage) — a re-edit / ask-back resume also
+        // dispatches to Modal, so refuse it honestly too, before any quota or
+        // dispatch. Same structured shape as the create path.
+        if (isKnownOutageActive()) {
+          console.log('  ⏸️  re-edit refused — KNOWN_OUTAGE active');
+          return sendJson(res, 503, {
+            error_code: 'render_paused',
+            user_message: maintenanceUserMessage(),
+            retryable: false,
+          });
+        }
         // Same budget as create — re-edits are equally expensive.
         if (!checkRateLimit(res, 'video-job-reedit', authUser.id, 10, 900)) return;
         const body = await readJsonBody(req);
