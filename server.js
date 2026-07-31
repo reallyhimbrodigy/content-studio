@@ -27,6 +27,47 @@ const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook')
 const { sendOwnerAlert } = require('./services/pushNotifier');
 const { postAgentAlert } = require('./lib/agent-alert');
 const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
+
+// Public result page for the completion-email deep link. `data` = { videoUrl,
+// thumbnailUrl } for a COMPLETED job, or null for anything else (missing /
+// processing / failed) → one neutral page that never confirms a job's state.
+// Self-contained (inline CSS), mobile-first (recipients open on a phone), no PII.
+const APP_STORE_URL = 'https://apps.apple.com/app/id6762497454';
+function renderResultPage(data) {
+  const esc = (s) => String(s || '').replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
+  const body = data
+    ? `<div class="card">
+        <div class="brand">Promptly</div>
+        <h1>Your video is ready 🎬</h1>
+        <video controls playsinline preload="metadata" ${data.thumbnailUrl ? `poster="${esc(data.thumbnailUrl)}"` : ''} src="${esc(data.videoUrl)}"></video>
+        <a class="btn primary" href="${esc(data.videoUrl)}" download>Download video</a>
+        <a class="btn ghost" href="${APP_STORE_URL}">Open Promptly to edit or make another</a>
+      </div>`
+    : `<div class="card">
+        <div class="brand">Promptly</div>
+        <h1>This video isn't available</h1>
+        <p class="muted">The link may be old, or the video isn't ready yet. Open Promptly to find your videos.</p>
+        <a class="btn primary" href="${APP_STORE_URL}">Open Promptly</a>
+      </div>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Your Promptly video</title>
+  <style>
+    :root{color-scheme:light dark}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0e0e10;color:#f5f4f2}
+    .card{width:100%;max-width:480px;background:#17171a;border:1px solid #26262b;border-radius:20px;padding:28px;text-align:center}
+    .brand{font-weight:800;font-size:15px;letter-spacing:.3px;color:#C8A95E;margin-bottom:14px}
+    h1{font-size:22px;font-weight:700;line-height:1.3;margin:0 0 18px}
+    video{width:100%;border-radius:14px;background:#000;margin-bottom:18px;max-height:70vh}
+    .muted{color:#a0a0a8;font-size:15px;line-height:1.6;margin:0 0 20px}
+    .btn{display:block;width:100%;padding:14px 20px;border-radius:999px;text-decoration:none;font-weight:700;font-size:15px;margin-top:10px}
+    .primary{background:#C8A95E;color:#1a1a1a}
+    .ghost{background:transparent;color:#f5f4f2;border:1px solid #3a3a42}
+  </style></head><body>${body}</body></html>`;
+}
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
 const {
   validateUploadRequest,
@@ -4907,6 +4948,35 @@ const server = http.createServer((req, res) => {
     if (parsed.pathname === '/editor' || parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html' || parsed.pathname === '/library.html') {
       res.writeHead(302, { 'Location': '/' });
       return res.end();
+    }
+
+    // Public result page — the completion-email deep link lands HERE, on the
+    // SPECIFIC job's rendered video (never a generic app open). The
+    // rendered_video_url is already a public, unsigned CloudFront URL that the
+    // app ShareLinks openly, and the jobId is already in that CDN path, so this
+    // page exposes nothing the video URL doesn't — no PII, no job metadata, no
+    // status/error, no auth. Only a COMPLETED job renders the player; anything
+    // else (missing / processing / failed) gets one neutral page, so the route
+    // never confirms a job's existence or state.
+    const resultPageMatch = parsed.pathname && parsed.pathname.match(/^\/v\/([a-zA-Z0-9-]{8,})$/);
+    if (resultPageMatch) {
+      const jobId = resultPageMatch[1];
+      (async () => {
+        let ready = null;
+        try {
+          if (supabaseAdmin) {
+            const { data } = await supabaseAdmin.from('video_jobs')
+              .select('status, rendered_video_url, thumbnail_url')
+              .eq('id', jobId).maybeSingle();
+            if (data && data.status === 'completed' && data.rendered_video_url) {
+              ready = { videoUrl: data.rendered_video_url, thumbnailUrl: data.thumbnail_url || '' };
+            }
+          }
+        } catch (e) { console.warn('[result-page] lookup failed:', e && e.message); }
+        res.writeHead(ready ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(renderResultPage(ready));
+      })();
+      return;
     }
   }
 
