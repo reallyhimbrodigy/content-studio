@@ -3829,6 +3829,19 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const prewarmUser = await requireSupabaseUser(req);
+        // 🚨 SPEND FREEZE (2026-08-01) — GPU prewarm DISABLED by default. Each
+        // prewarm downloads + transcribes on a paid Modal container, and the iOS
+        // client fires warmupRenderContainer() at editor-open, composer-focus AND
+        // dispatch — including on the ~63% who never render — so it burns paid GPU
+        // OUTSIDE any user job (a runtime×rate model can't see it). Frozen until the
+        // Modal-view spend gap is explained. Re-enable with PREWARM_ENABLED=1. This
+        // is a NO-OP to the client: prewarm is a best-effort latency hedge it never
+        // depends on (real renders just start cold). Counts frozen attempts so the
+        // warmup-fire rate is finally measurable.
+        if (process.env.PREWARM_ENABLED !== '1') {
+          serverFunnel(prewarmUser.id, 'prewarm_frozen', {}); // measure the warmup-attempt rate (the waste)
+          return sendJson(res, 202, { status: 'skipped', reason: 'prewarm_frozen' });
+        }
         // Cap GPU prewarm dispatches per user — each one downloads + transcribes
         // on a paid Modal container. Generous for real use (one per intended
         // render) but stops a loop from spraying GPU spend.
