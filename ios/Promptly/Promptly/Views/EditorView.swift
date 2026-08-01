@@ -1200,10 +1200,20 @@ struct EditorView: View {
                     // dispatch on it cost real renders. Emit proceeded:true /
                     // blocked:false so 223 non-blocking emits are distinguishable from
                     // the 222 blocking ones. No "Try Anyway" alert, no skip.
-                    let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
-                    if !valid {
+                    let faceCheck = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
+                    if !faceCheck.pass {
+                        // Log the MEASURED values, not just the verdict — a precheck
+                        // reject uploads nothing, so this event is the only way to
+                        // ever verify the 0.30 bar: face_ratio ≈ 0 = genuinely
+                        // faceless; clustering 0.15–0.29 = the bar itself is
+                        // rejecting; any_face_ratio ≫ face_ratio = the 10%-width size
+                        // floor is the cause (real face, too small in a wide shot).
                         Analytics.track("not_talking_head_rejected", props: [
                             "stage": "precheck", "proceeded": true, "blocked": false,
+                            "face_ratio": (faceCheck.faceRatio * 100).rounded() / 100,
+                            "any_face_ratio": (faceCheck.anyFaceRatio * 100).rounded() / 100,
+                            "max_face_width": (faceCheck.maxFaceWidth * 100).rounded() / 100,
+                            "samples": faceCheck.samples,
                         ])
                     }
                 }
