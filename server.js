@@ -84,6 +84,25 @@ function serverFunnel(userId, event, props = {}) {
   } catch (e) { console.warn(`[funnel] ${event} failed:`, e && e.message); }
 }
 
+// Warm the render dispatcher on REAL upload intent (server-side, no client
+// release). The Modal warmup() endpoint (boot-only, no source) provisions the
+// cpu=8 dispatcher so the run_job dispatch ~10-90s later hits a WARM container
+// instead of racing a cold-start 502 ("trouble reaching the render service").
+// This is the exact signal warmup() was DESIGNED for ("fired at upload-start");
+// it replaces the frozen blanket client prewarm for cold-start reachability at
+// ~2% of the volume — real uploads only, not editor-open/composer-focus, and not
+// the 63% who never render. Fire-and-forget; a warm failure never touches the
+// upload. Kill switch: WARM_ON_INTENT=0.
+function warmDispatcherOnIntent() {
+  if (process.env.WARM_ON_INTENT === '0') return;
+  const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
+  const warmUrl = process.env.MODAL_WARMUP_URL || modalRunUrl.replace(/-run-job(\.|$)/, '-warmup$1');
+  if (!warmUrl) return;
+  Promise.resolve(fetch(warmUrl, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(8000),
+  })).then(() => {}, (e) => console.warn('[warm-on-intent] warmup failed (non-fatal):', e && e.message));
+}
+
 function renderResultPage(data) {
   const esc = (s) => String(s || '').replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
   const body = data
@@ -2341,6 +2360,7 @@ const server = http.createServer((req, res) => {
         // on weak networks), and it lights up the signup→upload region NOW without
         // waiting on a client release. (223 adds the earlier client steps.)
         serverFunnel(authUser.id, 'upload_url_requested', { path: 'single' });
+        warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
         return sendJson(res, 200, { uploadUrl, publicUrl, key });
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
@@ -2378,6 +2398,7 @@ const server = http.createServer((req, res) => {
         const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 3600);
         const publicUrl = s3.getPublicUrl(key);
         serverFunnel(authUser.id, 'upload_url_requested', { path: 'multipart' }); // server-truth upload attempt
+        warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
         return sendJson(res, 200, { uploadId, partUrls, key, publicUrl });
       } catch (error) {
         console.error('[upload-multipart-init] error:', error?.message);
