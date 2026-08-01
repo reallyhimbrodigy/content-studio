@@ -69,6 +69,21 @@ function renderGetLanding() {
   </body></html>`;
 }
 
+// Server-side funnel event → BOTH sinks (analytics_events + PostHog), keyed by
+// the Supabase user id (the same distinct_id the client identify()s as, so the
+// funnel joins across the client/server seam). Fire-and-forget; never blocks the
+// response. Used to light up the signup→upload region from SERVER-visible signals
+// while the client-side instrumentation waits on an App Store release (build 223).
+function serverFunnel(userId, event, props = {}) {
+  if (!userId || !supabaseAdmin) return;
+  try {
+    supabaseAdmin.from('analytics_events').insert({
+      event, anon_user_id: userId, user_id: userId, platform: 'server', app_version: 'server', props,
+    }).then(({ error }) => { if (error) console.warn(`[funnel] ${event} mirror failed:`, error.message); });
+    phCapture(userId, event, props);
+  } catch (e) { console.warn(`[funnel] ${event} failed:`, e && e.message); }
+}
+
 function renderResultPage(data) {
   const esc = (s) => String(s || '').replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
   const body = data
@@ -2321,6 +2336,11 @@ const server = http.createServer((req, res) => {
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
         const uploadUrl = await s3.createPresignedPutUrl(key, 600);
         const publicUrl = s3.getPublicUrl(key);
+        // SERVER-TRUTH upload attempt — the user got far enough to request an
+        // upload URL. More reliable than the client's upload_started (which drops
+        // on weak networks), and it lights up the signup→upload region NOW without
+        // waiting on a client release. (223 adds the earlier client steps.)
+        serverFunnel(authUser.id, 'upload_url_requested', { path: 'single' });
         return sendJson(res, 200, { uploadUrl, publicUrl, key });
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
@@ -2357,6 +2377,7 @@ const server = http.createServer((req, res) => {
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
         const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 3600);
         const publicUrl = s3.getPublicUrl(key);
+        serverFunnel(authUser.id, 'upload_url_requested', { path: 'multipart' }); // server-truth upload attempt
         return sendJson(res, 200, { uploadId, partUrls, key, publicUrl });
       } catch (error) {
         console.error('[upload-multipart-init] error:', error?.message);
