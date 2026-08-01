@@ -1159,36 +1159,42 @@ struct EditorView: View {
     private func handlePickedVideos(_ videos: [PickedVideo]) {
         Task { @MainActor in
             for video in videos {
-                // LAYER 1 — on-device Vision precheck. <1s for local
-                // files, skipped for iCloud-only (Layer 2 handles those).
-                // Goal: reject obviously-incompatible clips BEFORE any
-                // upload or render cost is incurred. User sees a clear
-                // "try a different video" prompt with a "Try Anyway"
-                // escape hatch for borderline cases.
+                // DURATION GATE — enforced at PICK TIME on PHAsset.duration, which
+                // is metadata (no download), so it covers iCloud-only clips too and
+                // fires the instant they tap, before any upload. PHPickerViewController
+                // has no duration filter (it can't grey clips out), so this
+                // select-then-explain is the achievable equivalent of "not selectable."
+                // These are the ONLY hard duration rejections — under the 2.0s floor
+                // can't yield a watchable edit; over the ceiling can't render. Same
+                // wording/behaviour at both ends.
+                let seconds = video.duration
+                if seconds > 0 && seconds < Double(TalkingHeadPrecheck.minDurationSec) {
+                    Analytics.track("too_short_rejected", props: ["stage": "picker", "seconds": (seconds * 10).rounded() / 10])
+                    layer2RejectionMessage = "This clip is only \(String(format: "%.1f", seconds))s — too short to edit. Pick one at least \(TalkingHeadPrecheck.minDurationSec) seconds long."
+                    showLayer2Rejection = true
+                    continue
+                }
+                if seconds > Double(TalkingHeadPrecheck.maxDurationSec) {
+                    let mm = Int(seconds) / 60, ss = Int(seconds) % 60
+                    Analytics.track("too_long_rejected", props: ["stage": "picker", "seconds": (seconds * 10).rounded() / 10])
+                    layer2RejectionMessage = "This clip is \(String(format: "%d:%02d", mm, ss)) — longer than \(TalkingHeadPrecheck.maxDurationSec / 60) minutes. Trim it to a shorter highlight and upload again."
+                    showLayer2Rejection = true
+                    continue
+                }
+
+                // LAYER 1 — on-device Vision precheck. <1s for local files, skipped
+                // for iCloud-only (Layer 2 handles those). Advisory in 223: logs the
+                // verdict, never blocks.
                 if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
-                    // Deterministic AV prechecks (no audio / too short / too long) —
-                    // HARD blocks with specific guidance, before any upload. These
-                    // cannot succeed downstream, so there's no "Try Anyway".
+                    // Audio-only preflight now (duration is gated above, for all clips).
                     switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
                     case .noAudio:
                         // 223 ZERO-REJECT: no-audio is a WORKER ROUTE now (music /
                         // no-speech), not a rejection. Log the verdict, don't block —
                         // dispatch and let the worker route it. blocked:false marks
-                        // the non-blocking emit vs the 222 hard block. (Duration guards
-                        // below stay HARD — deterministic ceilings the pipeline can't
-                        // exceed, per the standing "keep the duration block" rule.)
+                        // the non-blocking emit vs the 222 hard block.
                         Analytics.track("no_audio_rejected", props: ["stage": "precheck", "blocked": false])
                         // fall through — no alert, no skip
-                    case .tooShort(let m):
-                        Analytics.track("too_short_rejected", props: ["stage": "precheck"])
-                        layer2RejectionMessage = "This clip is too short to edit — try one at least \(m) seconds long."
-                        showLayer2Rejection = true
-                        continue
-                    case .tooLong(let mx):
-                        Analytics.track("too_long_rejected", props: ["stage": "precheck"])
-                        layer2RejectionMessage = "This clip is longer than \(mx / 60) minutes. Trim it to a shorter highlight and upload again."
-                        showLayer2Rejection = true
-                        continue
                     case .ok:
                         break
                     }

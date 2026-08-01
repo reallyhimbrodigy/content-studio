@@ -22,32 +22,27 @@ import CoreMedia
 /// signal at a slightly higher latency.
 enum TalkingHeadPrecheck {
 
-    /// Minimum / maximum source length Promptly can edit. The max mirrors the
-    /// server's CLIP_TOO_LONG (3 min, the 2026-07 lockstep); the min filters
-    /// clips too short to yield a watchable edit.
-    static let minDurationSec = 3
+    /// Minimum / maximum source length Promptly can edit. `minDurationSec` is the
+    /// <2.0s zero-reject floor — the ONLY content-duration rejection; a sub-2s clip
+    /// can't yield a watchable edit. `maxDurationSec` mirrors the server's
+    /// CLIP_TOO_LONG (the 2026-07 lockstep). BOTH are enforced at PICK TIME on
+    /// PHAsset.duration in EditorView.handlePickedVideos — before any upload and for
+    /// iCloud-only clips too — so a too-short/too-long clip never reaches the server.
+    static let minDurationSec = 2
     static let maxDurationSec = 180
 
-    /// Deterministic, near-instant AV prechecks that run BEFORE the face check
-    /// and before any upload. Each is a HARD block (no "try anyway") because the
-    /// pipeline cannot succeed: no audio → nothing to caption/cut to; too short →
-    /// no watchable edit; too long → over the render ceiling. Fail-open on any
-    /// load error (let the backend make the call). `.ok` proceeds to the face check.
+    /// Deterministic audio precheck that runs BEFORE the face check and before any
+    /// upload (local clips only; iCloud skips Layer 1). Duration is gated earlier at
+    /// pick time on PHAsset.duration (see the constants above), so this only flags a
+    /// silent clip. Under 223 no-audio is advisory, not a block. Fail-open on load
+    /// error (let the backend make the call). `.ok` proceeds to the face check.
     enum Preflight: Equatable {
         case ok
         case noAudio
-        case tooShort(minSeconds: Int)
-        case tooLong(maxSeconds: Int)
     }
 
     static func preflight(videoURL: URL) async -> Preflight {
         let asset = AVURLAsset(url: videoURL)
-        // Duration bounds (only when we can actually read the duration).
-        if let duration = try? await asset.load(.duration), duration.seconds > 0 {
-            let secs = duration.seconds
-            if secs < Double(minDurationSec) { return .tooShort(minSeconds: minDurationSec) }
-            if secs > Double(maxDurationSec) { return .tooLong(maxSeconds: maxDurationSec) }
-        }
         // Audio track present? Empty (successfully-loaded) audio-track list = no
         // sound. A load error falls through to .ok (fail-open, backend catches).
         if let audioTracks = try? await asset.loadTracks(withMediaType: .audio), audioTracks.isEmpty {
