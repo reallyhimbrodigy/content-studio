@@ -1171,10 +1171,14 @@ struct EditorView: View {
                     // cannot succeed downstream, so there's no "Try Anyway".
                     switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
                     case .noAudio:
-                        Analytics.track("no_audio_rejected", props: ["stage": "precheck"])
-                        layer2RejectionMessage = "This clip has no sound. Promptly cuts and captions to your voice, so it needs audio we can hear you in — pick one where you're speaking."
-                        showLayer2Rejection = true
-                        continue
+                        // 223 ZERO-REJECT: no-audio is a WORKER ROUTE now (music /
+                        // no-speech), not a rejection. Log the verdict, don't block —
+                        // dispatch and let the worker route it. blocked:false marks
+                        // the non-blocking emit vs the 222 hard block. (Duration guards
+                        // below stay HARD — deterministic ceilings the pipeline can't
+                        // exceed, per the standing "keep the duration block" rule.)
+                        Analytics.track("no_audio_rejected", props: ["stage": "precheck", "blocked": false])
+                        // fall through — no alert, no skip
                     case .tooShort(let m):
                         Analytics.track("too_short_rejected", props: ["stage": "precheck"])
                         layer2RejectionMessage = "This clip is too short to edit — try one at least \(m) seconds long."
@@ -1189,16 +1193,18 @@ struct EditorView: View {
                         break
                     }
 
+                    // 223 ZERO-REJECT: the on-device Vision face check is ADVISORY
+                    // ONLY — still run it for telemetry, but never block. It rejected
+                    // valid talking-head clips whose rotation is metadata (221
+                    // VideoPicker passthrough), disagreeing with server truth; gating
+                    // dispatch on it cost real renders. Emit proceeded:true /
+                    // blocked:false so 223 non-blocking emits are distinguishable from
+                    // the 222 blocking ones. No "Try Anyway" alert, no skip.
                     let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
                     if !valid {
-                        let userWantsToProceed = await askToProceedAfterPrecheck()
-                        // ACTIVATION content-rejection: on-device precheck flagged
-                        // the clip. `proceeded` tells apart "picked another" from
-                        // "Try Anyway" (which still uploads).
                         Analytics.track("not_talking_head_rejected", props: [
-                            "stage": "precheck", "proceeded": userWantsToProceed,
+                            "stage": "precheck", "proceeded": true, "blocked": false,
                         ])
-                        if !userWantsToProceed { continue }
                     }
                 }
 
@@ -1260,17 +1266,13 @@ struct EditorView: View {
                      validation.reason ?? "n/a"))
 
         if !validation.isTalkingHead {
-            // ACTIVATION content-rejection: server sample-validate rejected it,
-            // BEFORE any render was dispatched (distinct from the server render
-            // rejections in dispatch-to-modal, which fire at render time).
-            Analytics.track("not_talking_head_rejected", props: ["stage": "validate"])
-            let message = validation.userMessage
-                ?? "Promptly works best with videos of someone talking on camera. Pick another clip?"
-            await MainActor.run {
-                layer2RejectionMessage = message
-                showLayer2Rejection = true
-            }
-            throw Layer2RejectionSentinel()
+            // 223 ZERO-REJECT: server sample-validate is ADVISORY ONLY — log the
+            // verdict, never block. Modal's cv2 face detector rejects metadata-
+            // rotated talking-head clips (221 VideoPicker passthrough), so gating
+            // dispatch here rejected valid renders. Dispatch anyway and let the
+            // worker route; blocked:false marks the non-blocking emit. No alert,
+            // no sentinel throw — fall through so the upload proceeds.
+            Analytics.track("not_talking_head_rejected", props: ["stage": "validate", "blocked": false])
         }
     }
 
