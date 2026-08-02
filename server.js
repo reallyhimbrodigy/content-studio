@@ -2353,7 +2353,13 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'Storage not configured' });
         }
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
-        const uploadUrl = await s3.createPresignedPutUrl(key, 600);
+        // Presign TTL raised 600s→3600s (2026-08-02). A 10-min TTL meant any
+        // retry/reconcile past 10 min hit a guaranteed S3 403 (expired sig) →
+        // source never lands → worker UPLOAD_STALLED. MITIGATION only: it fixes
+        // everyone retrying within the hour (most of them), NOT a 12h-stale key —
+        // that needs the 223 fix (re-mint getUploadUrl on every retry/reconcile;
+        // never reuse a stored PUT URL).
+        const uploadUrl = await s3.createPresignedPutUrl(key, 3600);
         const publicUrl = s3.getPublicUrl(key);
         // SERVER-TRUTH upload attempt — the user got far enough to request an
         // upload URL. More reliable than the client's upload_started (which drops
