@@ -8,6 +8,7 @@ const {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const cloudfront = require('./cloudfront');
@@ -97,6 +98,36 @@ if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUC
 
 function isConfigured() {
   return Boolean(s3Client && S3_BUCKET);
+}
+
+/**
+ * Does this object actually exist in the source bucket?
+ *
+ * One HEAD, ~50ms, no container. This is the check that decides whether a job
+ * is worth dispatching at all: today a source that never arrives still spawns a
+ * Modal worker that polls for 600s before failing (94 such jobs in the 7 days to
+ * 2026-08-02 — 60% of ALL failures — at ~$0.62 of held cpu=16/64GiB container
+ * each).
+ *
+ * Returns true/false for a definite answer, and `null` when we could not tell
+ * (S3 unconfigured, creds/network error). Null must never be treated as absent
+ * — an unmeasurable check has to fail OPEN and let the job run, or an S3 blip
+ * would reject every upload in the product.
+ */
+async function objectExists(key) {
+  if (!s3Client || !S3_BUCKET || !key) return null;
+  try {
+    await s3Client.send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+    return true;
+  } catch (err) {
+    const code = err?.$metadata?.httpStatusCode;
+    const name = err?.name || err?.Code;
+    if (code === 404 || name === 'NotFound' || name === 'NoSuchKey') return false;
+    // 403 on a bucket without ListBucket is ALSO "not there" for our purposes
+    // only if the bucket denies HEAD on missing keys; we cannot distinguish it
+    // from a permissions problem, so report unknown and let the job proceed.
+    return null;
+  }
 }
 
 /**
@@ -270,6 +301,7 @@ function getPublicUrl(key) {
 module.exports = {
   s3Client,
   isConfigured,
+  objectExists,
   upload,
   createPresignedPutUrl,
   createPresignedGetUrl,
