@@ -17,12 +17,14 @@ const {
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
 const { resolveEnforce, effectiveTier, clientWallCapable, clientFreemium, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
-const { wallRequiredMessage } = require('./lib/failure-copy');
+const { wallRequiredMessage, sourceMissingMessage } = require('./lib/failure-copy');
 const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
+const { findDeadSourceJob } = require('./lib/source-presence');
+
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
 const { postAgentAlert } = require('./lib/agent-alert');
@@ -4240,6 +4242,29 @@ const server = http.createServer((req, res) => {
                 message: proConcurrency
                   ? `You can have up to ${concurrencyCap} renders in flight at once.`
                   : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
+              } };
+            }
+          }
+
+          // ── DEAD SOURCE KEY: reject at CREATION, ABOVE the charge ───────
+          // A key that has ALREADY failed HEAD can never succeed — retrying it
+          // buys another 600s wait and another refund. Our first paying
+          // subscriber created three jobs against one such key over 6.5 hours
+          // and was refunded three times. Rejected here, above the charge
+          // block, so no credit is claimed and none has to be unwound. The copy
+          // names the only action that works: a fresh pick mints a fresh key.
+          {
+            const _dead = await findDeadSourceJob(supabaseAdmin, authUser.id, videoUrl);
+            if (_dead) {
+              console.log('  [source] REJECT at creation userId=%s — this exact source URL '
+                + 'already failed to upload (job %s); a retry would poll a key that does not exist',
+                authUser.id, String(_dead.id).slice(0, 8));
+              return { status: 409, body: {
+                error: 'source_missing',
+                kind: 'upload',
+                route: 'repick',
+                error_code: 'UPLOAD_NEVER_STARTED',
+                message: sourceMissingMessage(),
               } };
             }
           }
