@@ -2355,13 +2355,18 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'Storage not configured' });
         }
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
-        // Presign TTL raised 600s→3600s (2026-08-02). A 10-min TTL meant any
-        // retry/reconcile past 10 min hit a guaranteed S3 403 (expired sig) →
-        // source never lands → worker UPLOAD_STALLED. MITIGATION only: it fixes
-        // everyone retrying within the hour (most of them), NOT a 12h-stale key —
-        // that needs the 223 fix (re-mint getUploadUrl on every retry/reconcile;
-        // never reuse a stored PUT URL).
-        const uploadUrl = await s3.createPresignedPutUrl(key, 3600);
+        // Presign TTL = 604800s (7 days, the SigV4 maximum). The whole
+        // UPLOAD_NEVER_STARTED mechanism was a background URLSession task resuming
+        // hours later with a baked-in presigned URL that had expired (600s, then
+        // 3600s — both too short for an offline-overnight resume → guaranteed S3
+        // 403 → source never lands). At 7 days it does not expire in any realistic
+        // resume window, which closes the class server-side and largely obviates
+        // the client "re-mint on retry" work. Risk: a 7-day validity window on a
+        // SINGLE-USE PUT to a random per-job key — low, and far lower than users
+        // losing videos. The only remaining cause is the local file itself
+        // disappearing (camera-roll delete / iCloud eviction) → the 224 app-owned
+        // copy at pick time.
+        const uploadUrl = await s3.createPresignedPutUrl(key, 604800);
         const publicUrl = s3.getPublicUrl(key);
         // SERVER-TRUTH upload attempt — the user got far enough to request an
         // upload URL. More reliable than the client's upload_started (which drops
