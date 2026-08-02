@@ -5482,6 +5482,35 @@ if (require.main === module) {
     setTimeout(runReaper, 30 * 1000); // boot pass
     setInterval(runReaper, 120 * 1000);
 
+    // Completion reconciler (2026-08-02): a rendered video MUST reach its owner.
+    // The result -> delivery-column projection runs in dispatchJobToModal's
+    // completion tail, which is only reached when an in-process await resolves —
+    // and that await lives in a plain Map (modal-webhook.js:1). A deploy or
+    // restart drops every in-flight entry while the WORKER's durable write has
+    // already marked the job completed, leaving status='completed' with every
+    // delivery column NULL. 10 users since 07-26 had a finished video they never
+    // received; 9 of them had no double-loss event at all, so the fallback never
+    // even fired for them.
+    //
+    // No tail logic can fix that — the recovery has to be external and stateless.
+    // Same 2-min cadence as the reaper; loud on every occurrence, because a
+    // silent self-heal is exactly how this stayed invisible for six days.
+    const { reconcileCompletions } = require('./lib/completion-reconcile');
+    let reconcileBusy = false;
+    const runCompletionReconcile = async () => {
+      if (reconcileBusy) return;
+      reconcileBusy = true;
+      try {
+        await reconcileCompletions(supabaseAdmin);
+      } catch (err) {
+        console.error('[completion-reconcile] sweep crashed:', err?.message || err);
+      } finally {
+        reconcileBusy = false;
+      }
+    };
+    setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
+    setInterval(runCompletionReconcile, 120 * 1000);
+
     // Bleed meter (daily [REPORT] cost digest): once/day at a fixed UTC hour,
     // push the founder a 5-line summary of what the pipeline produced in the
     // last 24h and roughly what it cost — a silent cost runaway becomes visible
