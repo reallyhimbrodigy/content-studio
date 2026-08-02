@@ -2712,6 +2712,15 @@ const server = http.createServer((req, res) => {
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
           'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
+          // 2026-08-02 — the SPLIT names. `not_talking_head_rejected` fires with
+          // props.proceeded:true on 68 of 109 events (62%): an event whose name
+          // ends in "_rejected" describes a NON-rejection most of the time. That
+          // naming produced a false 35.9% corrected-completion figure by counting
+          // 68 warnings as blocks. Server-side normalisation below rewrites the
+          // legacy name using props.proceeded, so the split works with the
+          // CURRENT client and no app release; these are allowlisted so a future
+          // client can also send them directly.
+          'not_talking_head_warned', 'not_talking_head_blocked',
           // 1.3.1 on-device pre-checks (audio/duration) + push soft-prompt. Without
           // these on the allowlist the SQL mirror silently drops them (the same
           // class that bit not_talking_head_rejected); PostHog gets them regardless.
@@ -2746,9 +2755,16 @@ const server = http.createServer((req, res) => {
         const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
         const props = (body.props && typeof body.props === 'object' && !Array.isArray(body.props))
           ? body.props : {};
+        // Event-name normalisation + Rule-7 actor resolution. See
+        // lib/analytics-normalize.js for the full why; pinned by
+        // lib/__smoke_analytics_normalize.js.
+        const _an = require('./lib/analytics-normalize');
+        const _event = _an.normalizeEventName(body.event, body.props);
+        const _anon = str(body.anon_user_id, 128);
         const row = {
-          event: body.event,
-          anon_user_id: str(body.anon_user_id, 128),
+          event: _event,
+          user_id: _an.resolveUserId(_anon),
+          anon_user_id: _anon,
           territory: str(body.territory, 8),
           storefront: str(body.storefront, 64),
           app_version: str(body.app_version, 32),
