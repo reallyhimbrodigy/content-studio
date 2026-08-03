@@ -2251,7 +2251,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false }) {
+  // Client build stamp for build-adoption bucketing. Explicit X-App-Version
+  // header (sent by 224+, format "1.3.6 (224)") wins; older live clients fall
+  // back to the build number the default iOS URLSession User-Agent carries
+  // ("Promptly/221 ..."). Null when neither is present — never guessed.
+  function clientAppVersion(req) {
+    const explicit = String((req && req.headers && req.headers['x-app-version']) || '').trim();
+    if (explicit) return explicit.slice(0, 40);
+    const ua = String((req && req.headers && req.headers['user-agent']) || '');
+    const m = ua.match(/Promptly\/(\S+)/i);
+    return m ? m[1].slice(0, 40) : null;
+  }
+
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2294,6 +2306,13 @@ const server = http.createServer((req, res) => {
         throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
       }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
+    }
+    // Build stamp for build-adoption bucketing. Best-effort and DECOUPLED from
+    // the insert on purpose: a missing app_version column (before the additive
+    // migration lands) comes back as an error object here, never a throw, so job
+    // creation can NEVER break on it. Not awaited — zero added latency.
+    if (appVersion && data && data.id) {
+      supabaseAdmin.from('video_jobs').update({ app_version: appVersion }).eq('id', data.id).then(() => {}, () => {});
     }
     return data;
   }
@@ -4408,6 +4427,7 @@ const server = http.createServer((req, res) => {
             vibeInput,
             clientJobId,
             demo: isDemo,
+            appVersion: clientAppVersion(req),
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
@@ -4759,6 +4779,7 @@ const server = http.createServer((req, res) => {
           userId: authUser.id,
           videoUrl: orig.video_url,
           vibeInput: orig.vibe_input || 'Re-edit',
+          appVersion: clientAppVersion(req),
         });
         console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
 
