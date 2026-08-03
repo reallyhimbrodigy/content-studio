@@ -1488,6 +1488,58 @@ const server = http.createServer((req, res) => {
     return res.end('OK');
   }
 
+  // ── Internal: Gemini credential diagnostic (operator-only) ──────────────
+  // Two key-sets, two chat 502s: dashboards and local values lie — only the
+  // running process tells the truth (the MODAL_CALLBACK_SECRET saga again).
+  // Auth: exact Bearer match on the service-role key (operator-only by
+  // construction). Returns a FINGERPRINT of the running GEMINI_API_KEY (len +
+  // first/last4, NEVER the secret) plus the EXACT verdict of a live
+  // generateContent call — API_KEY_INVALID vs SERVICE_DISABLED vs a restriction
+  // — visible without Render logs or a local curl. Read-only; touches nothing.
+  if (parsed.pathname === '/api/internal/gemini-diag' && req.method === 'GET') {
+    (async () => {
+      const svc = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+      const got = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+      let authed = false;
+      if (svc && got.length === svc.length) {
+        try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(svc)); } catch { authed = false; }
+      }
+      if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
+
+      const raw = process.env.GEMINI_API_KEY || '';
+      const key = raw.trim();
+      const out = {
+        key_present: !!key,
+        key_len: key.length,
+        key_raw_len: raw.length,               // raw_len ≠ len ⇒ whitespace in the stored value
+        key_fp: key ? `${key.slice(0, 4)}…${key.slice(-4)}` : '(empty)',
+        model: 'gemini-2.5-flash',
+      };
+      try {
+        const r = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          }
+        );
+        out.gemini_http = r.status;
+        out.gemini_ok = r.status === 200;
+        const j = await r.json().catch(() => ({}));
+        out.gemini_error_status = j && j.error && j.error.status ? j.error.status : null;    // SERVICE_DISABLED | API_KEY_INVALID | ...
+        out.gemini_error_message = String((j && j.error && j.error.message) || '').slice(0, 300) || null;
+      } catch (e) {
+        out.gemini_http = 0;
+        out.gemini_ok = false;
+        out.gemini_error_status = 'FETCH_EXCEPTION';
+        out.gemini_error_message = String((e && e.message) || e).slice(0, 200);
+      }
+      return sendJson(res, 200, out);
+    })();
+    return;
+  }
+
   const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
