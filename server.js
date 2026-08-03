@@ -1538,6 +1538,26 @@ const server = http.createServer((req, res) => {
         out.gemini_error_status = 'FETCH_EXCEPTION';
         out.gemini_error_message = String((e && e.message) || e).slice(0, 200);
       }
+      // Which models can THIS key actually call generateContent on? List + test
+      // candidates so the chat model swap is a KNOWN-good value, not a guess that
+      // deprecates again (gemini-2.5-flash just did, for new-user keys).
+      try {
+        const lr = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+        const lj = await lr.json().catch(() => ({}));
+        out.models_available = (lj.models || [])
+          .filter((m) => /generateContent/.test((m.supportedGenerationMethods || []).join(',')))
+          .map((m) => String(m.name || '').replace('models/', ''));
+      } catch (e) { out.models_available = 'list_failed:' + String((e && e.message) || e).slice(0, 80); }
+      out.candidate_test = {};
+      for (const m of ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
+        try {
+          const cr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          });
+          out.candidate_test[m] = cr.status;
+        } catch (e) { out.candidate_test[m] = 'exc'; }
+      }
       return sendJson(res, 200, out);
     })();
     return;
