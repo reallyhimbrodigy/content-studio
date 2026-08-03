@@ -2415,7 +2415,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2459,12 +2459,19 @@ const server = http.createServer((req, res) => {
       }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
     }
-    // Build stamp for build-adoption bucketing. Best-effort and DECOUPLED from
-    // the insert on purpose: a missing app_version column (before the additive
+    // Provenance stamps: build (adoption bucketing) + source_type/source_duration
+    // (measuring the iCloud reliability fix + deconfounding wait-time). Best-effort
+    // and DECOUPLED from the insert: a missing column (before the additive
     // migration lands) comes back as an error object here, never a throw, so job
     // creation can NEVER break on it. Not awaited — zero added latency.
-    if (appVersion && data && data.id) {
-      supabaseAdmin.from('video_jobs').update({ app_version: appVersion }).eq('id', data.id).then(() => {}, () => {});
+    if (data && data.id) {
+      const patch = {};
+      if (appVersion) patch.app_version = appVersion;
+      if (sourceType) patch.source_type = String(sourceType).slice(0, 16);
+      if (Number.isFinite(Number(sourceDuration))) patch.source_duration = Number(sourceDuration);
+      if (Object.keys(patch).length) {
+        supabaseAdmin.from('video_jobs').update(patch).eq('id', data.id).then(() => {}, () => {});
+      }
     }
     return data;
   }
@@ -4596,6 +4603,8 @@ const server = http.createServer((req, res) => {
             clientJobId,
             demo: isDemo,
             appVersion: clientAppVersion(req),
+            sourceType: body?.source_type,
+            sourceDuration: body?.source_duration,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
