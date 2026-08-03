@@ -3025,10 +3025,13 @@ const server = http.createServer((req, res) => {
         // is its instant feel. 2.5-flash returns in ~500-1500ms with
         // identical helpfulness for short mobile-chat answers.
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
+          // and MUST travel in the x-goog-api-key header. Never send both — a
+          // query key + header triggers "Multiple authentication credentials".
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
             body: JSON.stringify({
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents,
@@ -3183,10 +3186,12 @@ const server = http.createServer((req, res) => {
         // Gemini streaming endpoint. alt=sse makes the response a true
         // SSE byte stream we can pipe through; without it Gemini returns
         // a JSON array we'd have to buffer.
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${geminiKey}`;
+        // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
+        // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse`;
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents,
