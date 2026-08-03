@@ -10,8 +10,7 @@ enum VideoCompressor {
     static func compress(sourceUrl: URL) async throws -> URL {
         let asset = AVURLAsset(url: sourceUrl)
 
-        let outputUrl = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + ".mp4")
+        let outputUrl = UploadStorage.newFile()
         try? FileManager.default.removeItem(at: outputUrl)
 
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
@@ -47,6 +46,54 @@ enum CompressorError: LocalizedError {
         switch self {
         case .sessionFailed: return "Could not create export session"
         case .exportFailed(let msg): return "Export failed: \(msg)"
+        }
+    }
+}
+
+/// Durable, app-owned storage for the pick-time source copy.
+///
+/// The upload source is copied here at pick time instead of NSTemporaryDirectory.
+/// iOS purges the temp directory under space pressure (and on some OS events)
+/// WITHOUT regard to an in-flight background upload — so a task that resumes
+/// after the app was killed can find its file gone and never send. That is the
+/// UPLOAD_NEVER_STARTED residual that remained after the 7-day presign TTL closed
+/// the URL-expiry cause: the URL was still valid, but there were no bytes to PUT.
+/// Application Support survives until we delete it, so the background session /
+/// cross-launch retry always has the source to send. Excluded from iCloud backup
+/// (these are transient render inputs, not user documents).
+enum UploadStorage {
+    static let dirName = "PromptlyUploads"
+
+    @discardableResult
+    private static func makeDir() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        var dir = base.appendingPathComponent(dirName, isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var rv = URLResourceValues()
+            rv.isExcludedFromBackup = true
+            try? dir.setResourceValues(rv)
+        }
+        return dir
+    }
+
+    /// A fresh durable file URL for a pick-time source copy.
+    static func newFile(ext: String = "mp4") -> URL {
+        makeDir().appendingPathComponent("src-\(UUID().uuidString).\(ext)")
+    }
+
+    /// Launch-time orphan cleanup. A source copy is deleted the instant its
+    /// upload confirms, so anything left here is an app-kill-mid-flight leftover.
+    /// The background session can legitimately resume for days, so only sweep
+    /// files older than `maxAge` — never starve an in-flight resume of its bytes.
+    static func sweepOrphans(olderThan maxAge: TimeInterval = 7 * 24 * 3600) {
+        let dir = makeDir()
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let cutoff = Date().addingTimeInterval(-maxAge)
+        for url in items {
+            let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if mod < cutoff { try? FileManager.default.removeItem(at: url) }
         }
     }
 }

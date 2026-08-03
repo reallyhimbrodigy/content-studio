@@ -1417,8 +1417,11 @@ struct EditorView: View {
                             // Quality-preserving copy. ~1-2s for 80 MB
                             // on local SSD; needed so the background
                             // session can read after the app suspends.
-                            let tmp = FileManager.default.temporaryDirectory
-                                .appendingPathComponent("src-\(UUID().uuidString).mp4")
+                            // App-owned durable storage (NOT temp) so the source
+                            // survives an app-kill mid-upload and the background /
+                            // cross-launch retry always has bytes to send. Cleaned
+                            // on upload-confirm below + a launch-time orphan sweep.
+                            let tmp = UploadStorage.newFile()
                             try FileManager.default.copyItem(at: sourceUrl, to: tmp)
                             materializedSourceUrl = tmp
                             print("[perf] compress skipped (copy-only)")

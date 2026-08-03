@@ -75,6 +75,10 @@ final class BackgroundUploadManager: NSObject {
         // delegate callbacks. Without this, the session sits dormant
         // until the first new upload starts.
         _ = session
+        // Reclaim durable source copies orphaned by an app-kill mid-upload.
+        // Only sweeps files older than the resume window so an in-flight
+        // background transfer never loses the bytes it's still sending.
+        UploadStorage.sweepOrphans()
     }
 
     /// Submit an upload. Caller awaits and gets back the public URL.
