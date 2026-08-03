@@ -1609,6 +1609,32 @@ const server = http.createServer((req, res) => {
           usage: rj && rj.usageMetadata ? rj.usageMetadata : null,
         };
       } catch (e) { out.real_chat_test = { http: 0, error_message: String((e && e.message) || e).slice(0, 200) }; }
+      // STREAM FRAME CAPTURE: what does gemini-flash-latest actually stream? The
+      // handler reads parts[0].text and gets nothing — capture the raw frame
+      // shapes so the fix parses the real structure (thought parts vs text).
+      try {
+        const sr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say hello in one short sentence.' }] }], generationConfig: { maxOutputTokens: 256, temperature: 0.8 } }),
+        });
+        const reader = sr.body.getReader();
+        const dec = new TextDecoder();
+        let raw = '', frames = 0;
+        const t0 = Date.now();
+        while (frames < 6) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          raw += dec.decode(value, { stream: true });
+          frames++;
+          if (Date.now() - t0 > 12000) break;
+        }
+        reader.cancel().catch(() => {});
+        // Return the first data: frame's parsed shape so we see parts structure.
+        const firstData = raw.split('\n\n').map((f) => f.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean)[0];
+        let shape = null;
+        if (firstData) { try { const p = JSON.parse(firstData.slice(6)); shape = { keys_candidate0_content: Object.keys((p.candidates && p.candidates[0] && p.candidates[0].content) || {}), parts: ((p.candidates && p.candidates[0] && p.candidates[0].content && p.candidates[0].content.parts) || []).map((x) => ({ hasText: typeof x.text === 'string', thought: !!x.thought, textSample: String(x.text || '').slice(0, 20) })) }; } catch (e) { shape = 'parse_fail'; } }
+        out.stream_capture = { http: sr.status, chunks: frames, raw_head: raw.slice(0, 600), first_frame_shape: shape };
+      } catch (e) { out.stream_capture = { error: String((e && e.message) || e).slice(0, 200) }; }
       return sendJson(res, 200, out);
     })();
     return;
