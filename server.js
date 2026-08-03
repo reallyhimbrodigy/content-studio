@@ -29,6 +29,7 @@ const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook')
 const { sendOwnerAlert } = require('./services/pushNotifier');
 const { postAgentAlert } = require('./lib/agent-alert');
 const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
+const { checkSpendGuards } = require('./lib/spend-guard');
 
 // Public result page for the completion-email deep link. `data` = { videoUrl,
 // thumbnailUrl } for a COMPLETED job, or null for anything else (missing /
@@ -4284,6 +4285,25 @@ const server = http.createServer((req, res) => {
             }
           }
           if (supabaseAdmin && !isDemo) {
+            // SPEND GUARD (Zac 2026-08-03): per-account daily render cap (50) +
+            // two-tier global breaker (alert 450 / halt 800), DB-counted, fail-open.
+            // Inside the lock + AFTER the idempotency replay above, so retries never
+            // count. Blocks with 429 + a user-facing message; pages the owner.
+            const _guard = await checkSpendGuards({
+              supabaseAdmin,
+              userId: authUser.id,
+              alert: (msg) => sendOwnerAlert({
+                ownerUserId: SUBMISSION_OWNER_USER_ID,
+                title: '🚨 Promptly spend guard',
+                body: String(msg).slice(0, 180),
+                threadId: 'spend-guard',
+                supabaseAdmin,
+              }).catch(() => {}),
+            });
+            if (!_guard.allow) {
+              console.warn('  [spend-guard] blocked render userId=%s code=%s', authUser.id, _guard.code);
+              return { status: 429, body: { error: _guard.code, message: _guard.message } };
+            }
             let pendingCount;
             try {
               // Same account-global in-flight definition the upload doors use.
