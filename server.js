@@ -3167,12 +3167,13 @@ const server = http.createServer((req, res) => {
                 // 1024 leaves headroom for "explain the pipeline" style
                 // questions without clipping mid-sentence. The system
                 // prompt holds replies short by default.
-                maxOutputTokens: 1024,
+                // Raised to 2048: gemini-flash-latest points to a thinking model
+                // (thinkingBudget:0 was rejected as INVALID_ARGUMENT — that param
+                // is what kept chat 502 after the model swap). Default thinking
+                // consumes output tokens, so give headroom for thinking + a full
+                // reply; the system prompt still holds replies short.
+                maxOutputTokens: 2048,
                 temperature: 0.8,
-                // Disable thinking — it adds 1-3s of latency for
-                // negligible quality gain on chit-chat. Flash defaults
-                // to a small thinking budget; explicitly zero it out.
-                thinkingConfig: { thinkingBudget: 0 },
               },
             }),
           }
@@ -3333,7 +3334,8 @@ const server = http.createServer((req, res) => {
               // system prompt still anchors replies to chat-shaped.
               maxOutputTokens: 2048,
               temperature: 0.8,
-              thinkingConfig: { thinkingBudget: 0 },
+              // No thinkingConfig: gemini-flash-latest rejects thinkingBudget:0
+              // (INVALID_ARGUMENT). Default thinking is fine here.
             },
           }),
         });
