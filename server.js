@@ -2025,21 +2025,32 @@ const server = http.createServer((req, res) => {
           'TRANSCRIPTION_INCOMPLETE',
           'UPLOAD_STALLED', 'UPLOAD_TIMEOUT', 'UPLOAD_NEVER_STARTED',
         ]);
-        if (NON_ALERTING.has(code)) {
+        // category (Zac 2026-08-03): 'intake' = the client-upload family. It was
+        // digest-only (suppressed below) and thus INVISIBLE on the phone — 49
+        // users in 2 days. Intake alerts now BYPASS the suppression and page under
+        // their OWN collapsed thread, so a spike is visible without spamming the
+        // render-alert thread. 'render' (default) keeps the suppression so designed
+        // rejections stay digest-only.
+        const category = (body && body.category) || 'render';
+        const userId = body && body.user_id;
+        const isIntake = category === 'intake';
+        if (!isIntake && NON_ALERTING.has(code)) {
           console.log(`[ALERT-SUPPRESSED] non-actionable code=${code} job=${jobId} — digest only, no owner push`);
           return;
         }
-        console.error(`[ALERT] render failure job=${jobId} code=${code}`
+        console.error(`[ALERT] ${category} failure job=${jobId} code=${code}`
+          + (userId ? ` user=${String(userId).slice(0, 8)}` : '')
           + (dur ? ` dur=${dur}s` : '') + (elapsed ? ` elapsed=${elapsed}s` : '')
           + (detail ? ` detail=${String(detail).slice(0, 200)}` : ''));
         const bodyLine = `job ${String(jobId).slice(0, 8)}`
+          + (userId ? ` · user ${String(userId).slice(0, 8)}` : '')
           + (dur ? ` · ${Math.round(dur)}s source` : '')
           + (elapsed ? ` · died @${Math.round(elapsed)}s` : '');
         await sendOwnerAlert({
           ownerUserId: SUBMISSION_OWNER_USER_ID,
-          title: `⚠️ [Promptly] render failed: ${code}`,
+          title: isIntake ? `📥 [Promptly] intake fail: ${code}` : `⚠️ [Promptly] render failed: ${code}`,
           body: bodyLine,
-          threadId: 'render-alert',
+          threadId: isIntake ? 'intake-alert' : 'render-alert',
           supabaseAdmin,
         });
       } catch (e) {
