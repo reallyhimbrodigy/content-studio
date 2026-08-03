@@ -1473,17 +1473,20 @@ const server = http.createServer((req, res) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   const parsed = url.parse(req.url, true);
 
+  // Count this response's outcome once it finishes. Attaches a 'finish' listener
+  // and nothing else — it cannot delay, alter or fail the response. Placed at the
+  // ABSOLUTE TOP of the entry, BEFORE the /healthz early-return and every
+  // res.writeHead handler, so the 22 writeHead paths, unrouted 404s, AND the
+  // early health check all record their outcome — closing the blind spot the
+  // instrument itself named (Zac 2026-08-03). res.on('finish') fires once per
+  // response regardless of writeHead/sendJson, so one attach here covers all.
+  apiLedger.attach(req, res);
+
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end('OK');
   }
-
-  // Count this response's outcome once it finishes. Attaches a 'finish' listener
-  // and nothing else — it cannot delay, alter or fail the response. Placed at
-  // the ONE entry point rather than in sendJson because 22 handlers write via
-  // res.writeHead directly, and unrouted 404s pass through neither.
-  apiLedger.attach(req, res);
 
   const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
