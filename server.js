@@ -24,6 +24,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
+const apiLedger = require('./lib/api-outcome-ledger');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
@@ -1473,10 +1474,171 @@ const server = http.createServer((req, res) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   const parsed = url.parse(req.url, true);
 
+  // Count this response's outcome once it finishes. Attaches a 'finish' listener
+  // and nothing else — it cannot delay, alter or fail the response. Placed at the
+  // ABSOLUTE TOP of the entry, BEFORE the /healthz early-return and every
+  // res.writeHead handler, so the 22 writeHead paths, unrouted 404s, AND the
+  // early health check all record their outcome — closing the blind spot the
+  // instrument itself named (Zac 2026-08-03). res.on('finish') fires once per
+  // response regardless of writeHead/sendJson, so one attach here covers all.
+  apiLedger.attach(req, res);
+
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end('OK');
+  }
+
+  // ── Internal: Gemini credential diagnostic (operator-only) ──────────────
+  // Two key-sets, two chat 502s: dashboards and local values lie — only the
+  // running process tells the truth (the MODAL_CALLBACK_SECRET saga again).
+  // Auth: exact Bearer match on the service-role key (operator-only by
+  // construction). Returns a FINGERPRINT of the running GEMINI_API_KEY (len +
+  // first/last4, NEVER the secret) plus the EXACT verdict of a live
+  // generateContent call — API_KEY_INVALID vs SERVICE_DISABLED vs a restriction
+  // — visible without Render logs or a local curl. Read-only; touches nothing.
+  if (parsed.pathname === '/api/internal/gemini-diag' && req.method === 'GET') {
+    (async () => {
+      // Both names — prod may set SUPABASE_SERVICE_KEY (the fallback), same as
+      // supabase-admin.js and the proof endpoint. Checking only _ROLE_KEY 401s
+      // when prod uses the other name (fail-closed on an empty svc).
+      const svc = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '').trim();
+      const got = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+      let authed = false;
+      if (svc && got.length === svc.length) {
+        try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(svc)); } catch { authed = false; }
+      }
+      if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
+
+      const raw = process.env.GEMINI_API_KEY || '';
+      const key = raw.trim();
+      const out = {
+        key_present: !!key,
+        key_len: key.length,
+        key_raw_len: raw.length,               // raw_len ≠ len ⇒ whitespace in the stored value
+        key_fp: key ? `${key.slice(0, 4)}…${key.slice(-4)}` : '(empty)',
+        model: 'gemini-2.5-flash',
+      };
+      try {
+        const r = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          }
+        );
+        out.gemini_http = r.status;
+        out.gemini_ok = r.status === 200;
+        const j = await r.json().catch(() => ({}));
+        out.gemini_error_status = j && j.error && j.error.status ? j.error.status : null;    // SERVICE_DISABLED | API_KEY_INVALID | ...
+        out.gemini_error_message = String((j && j.error && j.error.message) || '').slice(0, 300) || null;
+      } catch (e) {
+        out.gemini_http = 0;
+        out.gemini_ok = false;
+        out.gemini_error_status = 'FETCH_EXCEPTION';
+        out.gemini_error_message = String((e && e.message) || e).slice(0, 200);
+      }
+      // Which models can THIS key actually call generateContent on? List + test
+      // candidates so the chat model swap is a KNOWN-good value, not a guess that
+      // deprecates again (gemini-2.5-flash just did, for new-user keys).
+      try {
+        const lr = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+        const lj = await lr.json().catch(() => ({}));
+        out.models_available = (lj.models || [])
+          .filter((m) => /generateContent/.test((m.supportedGenerationMethods || []).join(',')))
+          .map((m) => String(m.name || '').replace('models/', ''));
+      } catch (e) { out.models_available = 'list_failed:' + String((e && e.message) || e).slice(0, 80); }
+      out.candidate_test = {};
+      for (const m of ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
+        try {
+          const cr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          });
+          out.candidate_test[m] = cr.status;
+        } catch (e) { out.candidate_test[m] = 'exc'; }
+      }
+      // Chat-body test: gemini-flash-latest 200s on a minimal body but /api/chat
+      // sends system_instruction + thinkingConfig. Test the full shape WITH and
+      // WITHOUT thinkingConfig to pinpoint which param the newer model rejects.
+      const chatBase = {
+        system_instruction: { parts: [{ text: 'You are a helpful assistant.' }] },
+        contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+        generationConfig: { maxOutputTokens: 32, temperature: 0.8 },
+      };
+      out.chatbody_test = {};
+      for (const [label, body] of [
+        ['with_thinkingConfig', { ...chatBase, generationConfig: { ...chatBase.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }],
+        ['without_thinkingConfig', chatBase],
+      ]) {
+        try {
+          const cr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify(body),
+          });
+          const cj = await cr.json().catch(() => ({}));
+          out.chatbody_test[label] = {
+            http: cr.status,
+            reply: cj && cj.candidates && cj.candidates[0] && cj.candidates[0].content && cj.candidates[0].content.parts ? String(cj.candidates[0].content.parts[0].text || '').slice(0, 20) : null,
+            error_status: cj && cj.error && cj.error.status ? cj.error.status : null,
+            error_message: String((cj && cj.error && cj.error.message) || '').slice(0, 200) || null,
+          };
+        } catch (e) { out.chatbody_test[label] = { http: 0, error_message: String((e && e.message) || e).slice(0, 120) }; }
+      }
+      // EXACT real chat body: the true system prompt (hoisted fn) + the real
+      // generationConfig, so we see what /api/chat itself sends. The simplified
+      // body above 200s; if THIS fails, the difference is the real system prompt.
+      try {
+        const realSys = promptlyChatSystemPrompt();
+        out.real_system_prompt_len = realSys.length;
+        const rr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: realSys }] },
+            contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+            generationConfig: { maxOutputTokens: 2048, temperature: 0.8 },
+          }),
+        });
+        const rj = await rr.json().catch(() => ({}));
+        out.real_chat_test = {
+          http: rr.status,
+          finish_reason: rj && rj.candidates && rj.candidates[0] ? rj.candidates[0].finishReason : null,
+          reply: rj && rj.candidates && rj.candidates[0] && rj.candidates[0].content && rj.candidates[0].content.parts ? String(rj.candidates[0].content.parts[0].text || '').slice(0, 30) : null,
+          error_status: rj && rj.error && rj.error.status ? rj.error.status : null,
+          error_message: String((rj && rj.error && rj.error.message) || '').slice(0, 250) || null,
+          usage: rj && rj.usageMetadata ? rj.usageMetadata : null,
+        };
+      } catch (e) { out.real_chat_test = { http: 0, error_message: String((e && e.message) || e).slice(0, 200) }; }
+      // STREAM FRAME CAPTURE: what does gemini-flash-latest actually stream? The
+      // handler reads parts[0].text and gets nothing — capture the raw frame
+      // shapes so the fix parses the real structure (thought parts vs text).
+      try {
+        const sr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say hello in one short sentence.' }] }], generationConfig: { maxOutputTokens: 256, temperature: 0.8 } }),
+        });
+        const reader = sr.body.getReader();
+        const dec = new TextDecoder();
+        let raw = '', frames = 0;
+        const t0 = Date.now();
+        while (frames < 6) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          raw += dec.decode(value, { stream: true });
+          frames++;
+          if (Date.now() - t0 > 12000) break;
+        }
+        reader.cancel().catch(() => {});
+        // Return the first data: frame's parsed shape so we see parts structure.
+        const firstData = raw.split('\n\n').map((f) => f.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean)[0];
+        let shape = null;
+        if (firstData) { try { const p = JSON.parse(firstData.slice(6)); shape = { keys_candidate0_content: Object.keys((p.candidates && p.candidates[0] && p.candidates[0].content) || {}), parts: ((p.candidates && p.candidates[0] && p.candidates[0].content && p.candidates[0].content.parts) || []).map((x) => ({ hasText: typeof x.text === 'string', thought: !!x.thought, textSample: String(x.text || '').slice(0, 20) })) }; } catch (e) { shape = 'parse_fail'; } }
+        out.stream_capture = { http: sr.status, chunks: frames, raw_head: raw.slice(0, 600), first_frame_shape: shape };
+      } catch (e) { out.stream_capture = { error: String((e && e.message) || e).slice(0, 200) }; }
+      return sendJson(res, 200, out);
+    })();
+    return;
   }
 
   const cspNonce = crypto.randomBytes(16).toString('base64');
@@ -2242,7 +2404,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false }) {
+  // Client build stamp for build-adoption bucketing. Explicit X-App-Version
+  // header (sent by 224+, format "1.3.6 (224)") wins; older live clients fall
+  // back to the build number the default iOS URLSession User-Agent carries
+  // ("Promptly/221 ..."). Null when neither is present — never guessed.
+  function clientAppVersion(req) {
+    const explicit = String((req && req.headers && req.headers['x-app-version']) || '').trim();
+    if (explicit) return explicit.slice(0, 40);
+    const ua = String((req && req.headers && req.headers['user-agent']) || '');
+    const m = ua.match(/Promptly\/(\S+)/i);
+    return m ? m[1].slice(0, 40) : null;
+  }
+
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2285,6 +2459,20 @@ const server = http.createServer((req, res) => {
         throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
       }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
+    }
+    // Provenance stamps: build (adoption bucketing) + source_type/source_duration
+    // (measuring the iCloud reliability fix + deconfounding wait-time). Best-effort
+    // and DECOUPLED from the insert: a missing column (before the additive
+    // migration lands) comes back as an error object here, never a throw, so job
+    // creation can NEVER break on it. Not awaited — zero added latency.
+    if (data && data.id) {
+      const patch = {};
+      if (appVersion) patch.app_version = appVersion;
+      if (sourceType) patch.source_type = String(sourceType).slice(0, 16);
+      if (Number.isFinite(Number(sourceDuration))) patch.source_duration = Number(sourceDuration);
+      if (Object.keys(patch).length) {
+        supabaseAdmin.from('video_jobs').update(patch).eq('id', data.id).then(() => {}, () => {});
+      }
     }
     return data;
   }
@@ -2913,6 +3101,7 @@ const server = http.createServer((req, res) => {
       "- Does NOT generate AI voiceovers or synthetic talking heads. Works only with the user's own uploaded clip.",
       '',
       'HOW TO ANSWER:',
+      "- YOUR IDENTITY: You are Promptly's own editing AI. If asked what you are, what model or technology you run on, who built or trains you, or whether you are ChatGPT/Gemini/Claude/an LLM — you are Promptly's AI, built by the Promptly team. NEVER say Gemini, Google, OpenAI, Anthropic, GPT, or any model or vendor name, and never call yourself 'a large language model.' Saying you are another company's model in a paid product is wrong. Deflect warmly to what you help with: editing their video.",
       "- NEVER reveal implementation details, internal architecture, specific AI models, libraries, services, vendors, file formats, or step-by-step pipeline internals. That's proprietary.",
       "- If someone asks 'how does it work' or 'what are the steps' or 'why does it take so long,' answer at a HIGH LEVEL only: 'I analyze your clip, figure out the best edit for the vibe you asked for, and render the result.' Do not name technologies. Do not list numbered pipeline steps.",
       "- You CAN list the user-facing features above when asked what the app does — those are public and marketed.",
@@ -2991,7 +3180,11 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini request
@@ -3019,10 +3212,13 @@ const server = http.createServer((req, res) => {
         // is its instant feel. 2.5-flash returns in ~500-1500ms with
         // identical helpfulness for short mobile-chat answers.
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
+          // and MUST travel in the x-goog-api-key header. Never send both — a
+          // query key + header triggers "Multiple authentication credentials".
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
             body: JSON.stringify({
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents,
@@ -3030,12 +3226,13 @@ const server = http.createServer((req, res) => {
                 // 1024 leaves headroom for "explain the pipeline" style
                 // questions without clipping mid-sentence. The system
                 // prompt holds replies short by default.
-                maxOutputTokens: 1024,
+                // Raised to 2048: gemini-flash-latest points to a thinking model
+                // (thinkingBudget:0 was rejected as INVALID_ARGUMENT — that param
+                // is what kept chat 502 after the model swap). Default thinking
+                // consumes output tokens, so give headroom for thinking + a full
+                // reply; the system prompt still holds replies short.
+                maxOutputTokens: 2048,
                 temperature: 0.8,
-                // Disable thinking — it adds 1-3s of latency for
-                // negligible quality gain on chit-chat. Flash defaults
-                // to a small thinking budget; explicitly zero it out.
-                thinkingConfig: { thinkingBudget: 0 },
               },
             }),
           }
@@ -3144,7 +3341,11 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini contents (same shape as /api/chat).
@@ -3177,10 +3378,12 @@ const server = http.createServer((req, res) => {
         // Gemini streaming endpoint. alt=sse makes the response a true
         // SSE byte stream we can pipe through; without it Gemini returns
         // a JSON array we'd have to buffer.
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${geminiKey}`;
+        // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
+        // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse`;
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents,
@@ -3190,7 +3393,8 @@ const server = http.createServer((req, res) => {
               // system prompt still anchors replies to chat-shaped.
               maxOutputTokens: 2048,
               temperature: 0.8,
-              thinkingConfig: { thinkingBudget: 0 },
+              // No thinkingConfig: gemini-flash-latest rejects thinkingBudget:0
+              // (INVALID_ARGUMENT). Default thinking is fine here.
             },
           }),
         });
@@ -3214,7 +3418,13 @@ const server = http.createServer((req, res) => {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          // Normalize CRLF → LF. gemini-flash-latest (now gemini-3.6-flash)
+          // streams SSE frames separated by \r\n\r\n; the \n\n split below never
+          // matches inside \r\n\r\n, so the handler found NO frame boundaries and
+          // emitted ZERO tokens — silently falling back to the one-shot
+          // (all-at-once, the text-message feel). This one normalization is the
+          // whole streaming fix.
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
           // SSE frames are separated by \n\n.
           let idx;
           while ((idx = buffer.indexOf('\n\n')) !== -1) {
@@ -3225,7 +3435,14 @@ const server = http.createServer((req, res) => {
             const json = dataLine.slice(6);
             try {
               const parsed = JSON.parse(json);
-              const token = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              // Concatenate text across ALL non-thought parts: a thinking model
+              // can emit a thought part alongside the visible-answer text part in
+              // the same frame, and reading only parts[0] would drop the answer.
+              const parts = parsed?.candidates?.[0]?.content?.parts || [];
+              const token = parts
+                .filter(p => p && typeof p.text === 'string' && !p.thought)
+                .map(p => p.text)
+                .join('');
               if (token) {
                 res.write(`data: ${JSON.stringify({ token })}\n\n`);
               }
@@ -4405,6 +4622,9 @@ const server = http.createServer((req, res) => {
             vibeInput,
             clientJobId,
             demo: isDemo,
+            appVersion: clientAppVersion(req),
+            sourceType: body?.source_type,
+            sourceDuration: body?.source_duration,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
@@ -4756,6 +4976,7 @@ const server = http.createServer((req, res) => {
           userId: authUser.id,
           videoUrl: orig.video_url,
           vibeInput: orig.vibe_input || 'Re-edit',
+          appVersion: clientAppVersion(req),
         });
         console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
 
@@ -5601,6 +5822,13 @@ if (require.main === module) {
     };
     setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
     setInterval(runCompletionReconcile, 120 * 1000);
+
+    // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
+    // analytics_events once a minute. Before this, the 34 non-job routes had no
+    // retained record of any kind — no APM, no log sink, stdout only — so there
+    // was no 30-day non-2xx rate to read for ANY of them. See
+    // lib/api-outcome-ledger.js.
+    apiLedger.start(supabaseAdmin);
 
     // Bleed meter (daily [REPORT] cost digest): once/day at a fixed UTC hour,
     // push the founder a 5-line summary of what the pipeline produced in the
