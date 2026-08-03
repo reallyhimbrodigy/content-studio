@@ -1020,6 +1020,17 @@ function modalCallbackAuthed(req) {
   }
 }
 
+// BOOT WARN (Zac 2026-08-03): the request-time trim above silently normalises a
+// whitespace-tainted secret — good for uptime, but silent normalisation HIDES the
+// misconfiguration. Say it ONCE at startup so the next newline-paste is visible
+// rather than absorbed forever (a trailing newline 401'd every completion tonight).
+(() => {
+  const raw = process.env.MODAL_CALLBACK_SECRET || '';
+  if (raw && raw !== raw.trim()) {
+    console.error(`[modal-auth] ⚠️ BOOT: MODAL_CALLBACK_SECRET had surrounding whitespace (raw len=${raw.length} → trimmed ${raw.trim().length}) — normalising at runtime. FIX THE RENDER ENV VALUE (strip the trailing newline); the trim is a safety net, not the config.`);
+  }
+})();
+
 // SSRF guard for a client-supplied media URL that the GPU worker will download.
 // Rejects non-https and internal/loopback/link-local/private/metadata targets
 // (e.g. 169.254.169.254 — cloud metadata) while allowing any normal public
@@ -2005,6 +2016,17 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Internal: render-failure alert (worker → owner push) ──
+  // AUTH PING (Zac 2026-08-03): a deploy-time round-trip target. deploy.sh POSTs
+  // here with the worker's live MODAL_CALLBACK_SECRET right after a worker deploy;
+  // a non-200 FAILS THE DEPLOY LOUDLY instead of the mismatch degrading silently
+  // into the recovery path for hours (which cost tonight). Uses the SAME
+  // modalCallbackAuthed as every real callback, so it proves the exact auth the
+  // completion POST will use. No side effects. Generalises to MODAL_RUN_SECRET.
+  if (parsed.pathname === '/api/internal/auth-ping' && req.method === 'POST') {
+    const authed = modalCallbackAuthed(req);
+    return sendJson(res, authed ? 200 : 401, authed ? { ok: true } : { error: 'unauthorized' });
+  }
+
   // The worker POSTs here when a job fails terminally with a REAL error (never
   // a designed rejection — those are honest and expected). Auth: the same
   // X-Modal-Secret the worker echoes on /api/modal-progress. Fire-and-forget:
