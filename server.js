@@ -1585,6 +1585,30 @@ const server = http.createServer((req, res) => {
           };
         } catch (e) { out.chatbody_test[label] = { http: 0, error_message: String((e && e.message) || e).slice(0, 120) }; }
       }
+      // EXACT real chat body: the true system prompt (hoisted fn) + the real
+      // generationConfig, so we see what /api/chat itself sends. The simplified
+      // body above 200s; if THIS fails, the difference is the real system prompt.
+      try {
+        const realSys = promptlyChatSystemPrompt();
+        out.real_system_prompt_len = realSys.length;
+        const rr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: realSys }] },
+            contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+            generationConfig: { maxOutputTokens: 2048, temperature: 0.8 },
+          }),
+        });
+        const rj = await rr.json().catch(() => ({}));
+        out.real_chat_test = {
+          http: rr.status,
+          finish_reason: rj && rj.candidates && rj.candidates[0] ? rj.candidates[0].finishReason : null,
+          reply: rj && rj.candidates && rj.candidates[0] && rj.candidates[0].content && rj.candidates[0].content.parts ? String(rj.candidates[0].content.parts[0].text || '').slice(0, 30) : null,
+          error_status: rj && rj.error && rj.error.status ? rj.error.status : null,
+          error_message: String((rj && rj.error && rj.error.message) || '').slice(0, 250) || null,
+          usage: rj && rj.usageMetadata ? rj.usageMetadata : null,
+        };
+      } catch (e) { out.real_chat_test = { http: 0, error_message: String((e && e.message) || e).slice(0, 200) }; }
       return sendJson(res, 200, out);
     })();
     return;
