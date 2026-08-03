@@ -1558,6 +1558,33 @@ const server = http.createServer((req, res) => {
           out.candidate_test[m] = cr.status;
         } catch (e) { out.candidate_test[m] = 'exc'; }
       }
+      // Chat-body test: gemini-flash-latest 200s on a minimal body but /api/chat
+      // sends system_instruction + thinkingConfig. Test the full shape WITH and
+      // WITHOUT thinkingConfig to pinpoint which param the newer model rejects.
+      const chatBase = {
+        system_instruction: { parts: [{ text: 'You are a helpful assistant.' }] },
+        contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+        generationConfig: { maxOutputTokens: 32, temperature: 0.8 },
+      };
+      out.chatbody_test = {};
+      for (const [label, body] of [
+        ['with_thinkingConfig', { ...chatBase, generationConfig: { ...chatBase.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }],
+        ['without_thinkingConfig', chatBase],
+      ]) {
+        try {
+          const cr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify(body),
+          });
+          const cj = await cr.json().catch(() => ({}));
+          out.chatbody_test[label] = {
+            http: cr.status,
+            reply: cj && cj.candidates && cj.candidates[0] && cj.candidates[0].content && cj.candidates[0].content.parts ? String(cj.candidates[0].content.parts[0].text || '').slice(0, 20) : null,
+            error_status: cj && cj.error && cj.error.status ? cj.error.status : null,
+            error_message: String((cj && cj.error && cj.error.message) || '').slice(0, 200) || null,
+          };
+        } catch (e) { out.chatbody_test[label] = { http: 0, error_message: String((e && e.message) || e).slice(0, 120) }; }
+      }
       return sendJson(res, 200, out);
     })();
     return;
