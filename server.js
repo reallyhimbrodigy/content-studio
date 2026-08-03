@@ -3410,7 +3410,13 @@ const server = http.createServer((req, res) => {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          // Normalize CRLF → LF. gemini-flash-latest (now gemini-3.6-flash)
+          // streams SSE frames separated by \r\n\r\n; the \n\n split below never
+          // matches inside \r\n\r\n, so the handler found NO frame boundaries and
+          // emitted ZERO tokens — silently falling back to the one-shot
+          // (all-at-once, the text-message feel). This one normalization is the
+          // whole streaming fix.
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
           // SSE frames are separated by \n\n.
           let idx;
           while ((idx = buffer.indexOf('\n\n')) !== -1) {
@@ -3421,7 +3427,14 @@ const server = http.createServer((req, res) => {
             const json = dataLine.slice(6);
             try {
               const parsed = JSON.parse(json);
-              const token = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              // Concatenate text across ALL non-thought parts: a thinking model
+              // can emit a thought part alongside the visible-answer text part in
+              // the same frame, and reading only parts[0] would drop the answer.
+              const parts = parsed?.candidates?.[0]?.content?.parts || [];
+              const token = parts
+                .filter(p => p && typeof p.text === 'string' && !p.thought)
+                .map(p => p.text)
+                .join('');
               if (token) {
                 res.write(`data: ${JSON.stringify({ token })}\n\n`);
               }
