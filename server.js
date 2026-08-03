@@ -3129,7 +3129,7 @@ const server = http.createServer((req, res) => {
           // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
           // and MUST travel in the x-goog-api-key header. Never send both — a
           // query key + header triggers "Multiple authentication credentials".
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
@@ -3293,7 +3293,7 @@ const server = http.createServer((req, res) => {
         // a JSON array we'd have to buffer.
         // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
         // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse`;
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
