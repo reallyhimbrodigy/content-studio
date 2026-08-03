@@ -3000,7 +3000,11 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini request
@@ -3156,7 +3160,11 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini contents (same shape as /api/chat).
