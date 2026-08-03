@@ -93,6 +93,10 @@ async function usage(token) {
         String(j.rev || '').startsWith(env.SANITY_EXPECT_REV.slice(0, 7)), `got ${j.rev}`);
     }
     check("wall_enforcement == 'off' (dark)", j.wall_enforcement === 'off', `got ${j.wall_enforcement}`);
+    // Worker-auth drift-guard: presence pinned so a "preserve current values"
+    // sweep that drops either secret is caught here (and the server boot gate).
+    check('MODAL_RUN_SECRET present', j.modal_run_secret === true, `got ${j.modal_run_secret}`);
+    check('MODAL_CALLBACK_SECRET present', j.modal_callback_secret === true, `got ${j.modal_callback_secret}`);
   } catch (e) {
     check('health probe ran', false, e.message);
   }

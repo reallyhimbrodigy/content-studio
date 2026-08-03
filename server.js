@@ -22,7 +22,7 @@ const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
@@ -997,7 +997,7 @@ function parseMultipartFormData(rawBuffer, contentType = '') {
 // FIRST, then set the env to switch enforcement on with zero downtime.
 function modalCallbackAuthed(req) {
   const secret = process.env.MODAL_CALLBACK_SECRET || '';
-  if (!secret) return true;
+  if (!secret) return false;   // FAIL CLOSED — a missing secret is misconfig, not open. Boot gate keeps it present.
   const got = String((req.headers && req.headers['x-modal-secret']) || '').trim();
   if (!got || got.length !== secret.length) return false;
   try {
@@ -2681,6 +2681,11 @@ const server = http.createServer((req, res) => {
       // client fetch failure.
       wall_enforcement: wallEnabled() ? 'on' : 'off',
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
+      // Presence only (never the values) — the deploy-sanity readback drift-guard
+      // asserts these so a "preserve current values" sweep that drops either
+      // worker-auth secret is caught loudly instead of running open.
+      modal_run_secret: !!process.env.MODAL_RUN_SECRET,
+      modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
     });
   }
 
@@ -3928,7 +3933,7 @@ const server = http.createServer((req, res) => {
         const prewarmPromise = fetch(modalPrewarmUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ video_url: videoUrl }),
+          body: JSON.stringify({ video_url: videoUrl, ...workerAuthField() }),
         }).then(async (r) => {
           const text = await r.text().catch(() => '');
           let parsed = {};
@@ -5422,6 +5427,18 @@ if (require.main === module) {
   // throwing on every startup and the catch was swallowing the error,
   // producing harmless but noisy log output.)
 
+  // FAIL-CLOSED BOOT GATE (worker-auth): a guard that disables itself when
+  // misconfigured is the silent-inert pattern. Both worker-auth secrets must be
+  // present to start. Missing → crash loudly at boot (a loud outage), never run
+  // open. This is ALSO the runtime drift-guard: a "preserve current values"
+  // sweep that drops either secret fails the next boot instead of reopening the
+  // door. Deploy note: set both secrets in Render env BEFORE deploying this.
+  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET']) {
+    if (!process.env[k]) {
+      console.error(`[boot] FATAL: ${k} not set — refusing to start (fail-closed worker auth).`);
+      process.exit(1);
+    }
+  }
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
