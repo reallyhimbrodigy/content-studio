@@ -1498,7 +1498,10 @@ const server = http.createServer((req, res) => {
   // — visible without Render logs or a local curl. Read-only; touches nothing.
   if (parsed.pathname === '/api/internal/gemini-diag' && req.method === 'GET') {
     (async () => {
-      const svc = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+      // Both names — prod may set SUPABASE_SERVICE_KEY (the fallback), same as
+      // supabase-admin.js and the proof endpoint. Checking only _ROLE_KEY 401s
+      // when prod uses the other name (fail-closed on an empty svc).
+      const svc = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '').trim();
       const got = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
       let authed = false;
       if (svc && got.length === svc.length) {
