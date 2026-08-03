@@ -24,6 +24,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
+const apiLedger = require('./lib/api-outcome-ledger');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
@@ -1477,6 +1478,12 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end('OK');
   }
+
+  // Count this response's outcome once it finishes. Attaches a 'finish' listener
+  // and nothing else — it cannot delay, alter or fail the response. Placed at
+  // the ONE entry point rather than in sendJson because 22 handlers write via
+  // res.writeHead directly, and unrouted 404s pass through neither.
+  apiLedger.attach(req, res);
 
   const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -5581,6 +5588,13 @@ if (require.main === module) {
     };
     setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
     setInterval(runCompletionReconcile, 120 * 1000);
+
+    // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
+    // analytics_events once a minute. Before this, the 34 non-job routes had no
+    // retained record of any kind — no APM, no log sink, stdout only — so there
+    // was no 30-day non-2xx rate to read for ANY of them. See
+    // lib/api-outcome-ledger.js.
+    apiLedger.start(supabaseAdmin);
 
     // Bleed meter (daily [REPORT] cost digest): once/day at a fixed UTC hour,
     // push the founder a 5-line summary of what the pipeline produced in the
