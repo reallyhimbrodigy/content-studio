@@ -996,12 +996,25 @@ function parseMultipartFormData(rawBuffer, contentType = '') {
 // (worker not yet updated) this returns true — so roll the worker's header out
 // FIRST, then set the env to switch enforcement on with zero downtime.
 function modalCallbackAuthed(req) {
-  const secret = process.env.MODAL_CALLBACK_SECRET || '';
+  // FIX (Zac 2026-08-03): the received header was .trim()'d but the server's own
+  // secret was NOT — so a value pasted into the Render dashboard with a trailing
+  // newline/space had length 65, never matched the worker's clean 64, and 401'd
+  // EVERY completion for hours while both dashboards "matched". Trim both sides.
+  const secret = String(process.env.MODAL_CALLBACK_SECRET || '').trim();
   if (!secret) return true;
   const got = String((req.headers && req.headers['x-modal-secret']) || '').trim();
-  if (!got || got.length !== secret.length) return false;
+  // DIAGNOSTIC (Zac 2026-08-03, "dashboards have lied twice"): on ANY mismatch,
+  // log the fingerprint of what the RUNNING PROCESS holds vs receives, at request
+  // time — length + first/last 4 (safe for a 64-hex secret; the value never
+  // appears). This ends the guessing in one request instead of trusting a UI.
+  if (!got || got.length !== secret.length) {
+    console.error(`[modal-auth] LENGTH MISMATCH server(len=${secret.length} fp=${secret.slice(0, 4)}..${secret.slice(-4)}) vs got(len=${got.length} fp=${got.slice(0, 4)}..${got.slice(-4)})`);
+    return false;
+  }
   try {
-    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
+    const ok = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
+    if (!ok) console.error(`[modal-auth] VALUE MISMATCH (len=${secret.length}) server(fp=${secret.slice(0, 4)}..${secret.slice(-4)}) vs got(fp=${got.slice(0, 4)}..${got.slice(-4)})`);
+    return ok;
   } catch {
     return false;
   }
