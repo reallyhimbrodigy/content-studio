@@ -998,7 +998,8 @@ function parseMultipartFormData(rawBuffer, contentType = '') {
 function modalCallbackAuthed(req) {
   // Trim BOTH sides. A trailing newline/space in the Render env value (extremely
   // common on dashboard paste) makes lengths differ and 401s a CORRECT secret —
-  // the exact "dashboards match but the server 401s" symptom.
+  // the exact "dashboards match but the server 401s" symptom. main independently
+  // shipped the same trim + fingerprint; this keeps that AND stays FAIL-CLOSED.
   const rawSecret = process.env.MODAL_CALLBACK_SECRET || '';
   const secret = rawSecret.trim();
   if (!secret) return false;   // FAIL CLOSED — a missing secret is misconfig, not open. Boot gate keeps it present.
@@ -1018,6 +1019,17 @@ function modalCallbackAuthed(req) {
   }
   return ok;
 }
+
+// BOOT WARN (Zac 2026-08-03): the request-time trim above silently normalises a
+// whitespace-tainted secret — good for uptime, but silent normalisation HIDES the
+// misconfiguration. Say it ONCE at startup so the next newline-paste is visible
+// rather than absorbed forever (a trailing newline 401'd every completion tonight).
+(() => {
+  const raw = process.env.MODAL_CALLBACK_SECRET || '';
+  if (raw && raw !== raw.trim()) {
+    console.error(`[modal-auth] ⚠️ BOOT: MODAL_CALLBACK_SECRET had surrounding whitespace (raw len=${raw.length} → trimmed ${raw.trim().length}) — normalising at runtime. FIX THE RENDER ENV VALUE (strip the trailing newline); the trim is a safety net, not the config.`);
+  }
+})();
 
 // SSRF guard for a client-supplied media URL that the GPU worker will download.
 // Rejects non-https and internal/loopback/link-local/private/metadata targets
@@ -2004,6 +2016,17 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Internal: render-failure alert (worker → owner push) ──
+  // AUTH PING (Zac 2026-08-03): a deploy-time round-trip target. deploy.sh POSTs
+  // here with the worker's live MODAL_CALLBACK_SECRET right after a worker deploy;
+  // a non-200 FAILS THE DEPLOY LOUDLY instead of the mismatch degrading silently
+  // into the recovery path for hours (which cost tonight). Uses the SAME
+  // modalCallbackAuthed as every real callback, so it proves the exact auth the
+  // completion POST will use. No side effects. Generalises to MODAL_RUN_SECRET.
+  if (parsed.pathname === '/api/internal/auth-ping' && req.method === 'POST') {
+    const authed = modalCallbackAuthed(req);
+    return sendJson(res, authed ? 200 : 401, authed ? { ok: true } : { error: 'unauthorized' });
+  }
+
   // The worker POSTs here when a job fails terminally with a REAL error (never
   // a designed rejection — those are honest and expected). Auth: the same
   // X-Modal-Secret the worker echoes on /api/modal-progress. Fire-and-forget:
@@ -2037,21 +2060,32 @@ const server = http.createServer((req, res) => {
           'TRANSCRIPTION_INCOMPLETE',
           'UPLOAD_STALLED', 'UPLOAD_TIMEOUT', 'UPLOAD_NEVER_STARTED',
         ]);
-        if (NON_ALERTING.has(code)) {
+        // category (Zac 2026-08-03): 'intake' = the client-upload family. It was
+        // digest-only (suppressed below) and thus INVISIBLE on the phone — 49
+        // users in 2 days. Intake alerts now BYPASS the suppression and page under
+        // their OWN collapsed thread, so a spike is visible without spamming the
+        // render-alert thread. 'render' (default) keeps the suppression so designed
+        // rejections stay digest-only.
+        const category = (body && body.category) || 'render';
+        const userId = body && body.user_id;
+        const isIntake = category === 'intake';
+        if (!isIntake && NON_ALERTING.has(code)) {
           console.log(`[ALERT-SUPPRESSED] non-actionable code=${code} job=${jobId} — digest only, no owner push`);
           return;
         }
-        console.error(`[ALERT] render failure job=${jobId} code=${code}`
+        console.error(`[ALERT] ${category} failure job=${jobId} code=${code}`
+          + (userId ? ` user=${String(userId).slice(0, 8)}` : '')
           + (dur ? ` dur=${dur}s` : '') + (elapsed ? ` elapsed=${elapsed}s` : '')
           + (detail ? ` detail=${String(detail).slice(0, 200)}` : ''));
         const bodyLine = `job ${String(jobId).slice(0, 8)}`
+          + (userId ? ` · user ${String(userId).slice(0, 8)}` : '')
           + (dur ? ` · ${Math.round(dur)}s source` : '')
           + (elapsed ? ` · died @${Math.round(elapsed)}s` : '');
         await sendOwnerAlert({
           ownerUserId: SUBMISSION_OWNER_USER_ID,
-          title: `⚠️ [Promptly] render failed: ${code}`,
+          title: isIntake ? `📥 [Promptly] intake fail: ${code}` : `⚠️ [Promptly] render failed: ${code}`,
           body: bodyLine,
-          threadId: 'render-alert',
+          threadId: isIntake ? 'intake-alert' : 'render-alert',
           supabaseAdmin,
         });
       } catch (e) {
@@ -2701,16 +2735,8 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  // Deploy-time auth ping (Zac 2026-08-03: dashboards lied twice). No-op endpoint
-  // — 200 iff X-Modal-Secret matches what THIS running process holds, else 401.
-  // No side effects (never pages, never writes). deploy-sanity exercises it in
-  // BOTH directions so a callback-secret mismatch fails LOUDLY at deploy instead
-  // of silently for hours. On a 401 it also emits the [modal-auth] fingerprint
-  // line, so one ping reveals exactly what the live process is comparing against.
-  if (parsed.pathname === '/api/internal/auth-ping' && req.method === 'POST') {
-    const ok = modalCallbackAuthed(req);
-    return sendJson(res, ok ? 200 : 401, { ok });
-  }
+  // (auth-ping endpoint lives above near the render-alert route — main added an
+  // equivalent one; deduped here to a single handler.)
 
   if (parsed.pathname === '/api/events' && req.method === 'POST') {
     (async () => {
