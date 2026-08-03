@@ -81,11 +81,11 @@ async function usage(token) {
 // Chat reaches Gemini and returns a real answer. A 502 (upstream auth/transport
 // failure) or a 200 with an empty reply is the "44 days dark" shape — the whole
 // point of this probe is to make that impossible to ship silently again.
-async function chatProbe(token) {
+async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
   const r = await fetch(`${HOST}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message: 'Reply with exactly the word: PONG' }),
+    body: JSON.stringify({ message }),
   });
   const body = await r.json().catch(() => ({}));
   return { status: r.status, reply: String(body.reply || '') };
@@ -162,6 +162,11 @@ async function chatProbe(token) {
     const chat = await chatProbe(token);
     check('/api/chat HTTP 200 (not 502)', chat.status === 200, `got ${chat.status}`);
     check('/api/chat reply non-empty', chat.reply.trim().length > 0, `got ${JSON.stringify(chat.reply).slice(0, 60)}`);
+    // CHAT IDENTITY — the assistant is Promptly, never the underlying model.
+    // Identity drift is invisible otherwise; catch it at deploy.
+    const idp = await chatProbe(token, 'What AI model are you? Are you Gemini or ChatGPT?');
+    const leaked = /gemini|google|openai|chatgpt|\bgpt\b|anthropic|claude|large language model/i.test(idp.reply);
+    check('/api/chat identity: no model/vendor name', idp.status === 200 && !leaked, `got ${JSON.stringify(idp.reply).slice(0, 100)}`);
   } catch (e) {
     check('pro probe ran', false, e.message);
   }
