@@ -97,6 +97,21 @@ async function usage(token) {
     // sweep that drops either secret is caught here (and the server boot gate).
     check('MODAL_RUN_SECRET present', j.modal_run_secret === true, `got ${j.modal_run_secret}`);
     check('MODAL_CALLBACK_SECRET present', j.modal_callback_secret === true, `got ${j.modal_callback_secret}`);
+    // Callback-auth instrument tested BOTH directions (closure standard d): the
+    // secret the RUNNING process holds must accept the right value AND reject a
+    // missing one. Requires MODAL_CALLBACK_SECRET in the sanity env to test the
+    // accept direction; the reject direction always runs.
+    const bad = await fetch(`${HOST}/api/internal/auth-ping`, { method: 'POST' })
+      .then((r) => r.status).catch((e) => `ERR:${e.message}`);
+    check('auth-ping rejects missing secret (401)', bad === 401, `got ${bad}`);
+    if (env.MODAL_CALLBACK_SECRET) {
+      const good = await fetch(`${HOST}/api/internal/auth-ping`, {
+        method: 'POST', headers: { 'X-Modal-Secret': env.MODAL_CALLBACK_SECRET },
+      }).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+      check('auth-ping accepts correct secret (200)', good === 200, `got ${good} — server holds a different value than sanity env`);
+    } else {
+      console.log('    (skip auth-ping accept-direction: MODAL_CALLBACK_SECRET not in sanity env)');
+    }
   } catch (e) {
     check('health probe ran', false, e.message);
   }

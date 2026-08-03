@@ -996,15 +996,27 @@ function parseMultipartFormData(rawBuffer, contentType = '') {
 // (worker not yet updated) this returns true — so roll the worker's header out
 // FIRST, then set the env to switch enforcement on with zero downtime.
 function modalCallbackAuthed(req) {
-  const secret = process.env.MODAL_CALLBACK_SECRET || '';
+  // Trim BOTH sides. A trailing newline/space in the Render env value (extremely
+  // common on dashboard paste) makes lengths differ and 401s a CORRECT secret —
+  // the exact "dashboards match but the server 401s" symptom.
+  const rawSecret = process.env.MODAL_CALLBACK_SECRET || '';
+  const secret = rawSecret.trim();
   if (!secret) return false;   // FAIL CLOSED — a missing secret is misconfig, not open. Boot gate keeps it present.
   const got = String((req.headers && req.headers['x-modal-secret']) || '').trim();
-  if (!got || got.length !== secret.length) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
-  } catch {
-    return false;
+  let ok = false;
+  if (got && got.length === secret.length) {
+    try { ok = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret)); } catch { ok = false; }
   }
+  if (!ok) {
+    // Request-time diagnostic (Zac 2026-08-03: dashboards lied twice). Logs what
+    // the RUNNING process actually holds vs what the worker sent — first/last 4 +
+    // lengths only, never the whole secret. Compare to the worker's 04fa…7553:
+    // different first/last4 ⇒ stale process / wrong Render service; same first/last4
+    // but raw_len≠len ⇒ whitespace (now auto-trimmed). One request ends the guessing.
+    const fp = (s) => (s ? `${s.slice(0, 4)}…${s.slice(-4)} len=${s.length}` : '(empty)');
+    console.warn(`[modal-auth] 401 mismatch: server=${fp(secret)} raw_len=${rawSecret.length} got=${fp(got)}`);
+  }
+  return ok;
 }
 
 // SSRF guard for a client-supplied media URL that the GPU worker will download.
@@ -2687,6 +2699,17 @@ const server = http.createServer((req, res) => {
       modal_run_secret: !!process.env.MODAL_RUN_SECRET,
       modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
     });
+  }
+
+  // Deploy-time auth ping (Zac 2026-08-03: dashboards lied twice). No-op endpoint
+  // — 200 iff X-Modal-Secret matches what THIS running process holds, else 401.
+  // No side effects (never pages, never writes). deploy-sanity exercises it in
+  // BOTH directions so a callback-secret mismatch fails LOUDLY at deploy instead
+  // of silently for hours. On a 401 it also emits the [modal-auth] fingerprint
+  // line, so one ping reveals exactly what the live process is comparing against.
+  if (parsed.pathname === '/api/internal/auth-ping' && req.method === 'POST') {
+    const ok = modalCallbackAuthed(req);
+    return sendJson(res, ok ? 200 : 401, { ok });
   }
 
   if (parsed.pathname === '/api/events' && req.method === 'POST') {
