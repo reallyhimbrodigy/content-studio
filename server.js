@@ -4769,6 +4769,37 @@ const server = http.createServer((req, res) => {
         console.error('  Stack:', error.stack);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsCreate] error:', error);
+        // TERMINALIZE A ROW WE ALREADY FLIPPED (2026-08-04). dispatchJobToModal
+        // sets status='processing' / current_step='queued' / step_message=
+        // 'Getting started...' BEFORE it spawns (dispatch-to-modal.js ~874),
+        // 156 lines ahead of the Modal fetch. A throw anywhere in that window
+        // lands HERE, which returned an HTTP error to the client and left the
+        // row in `processing` with NO terminal and NO modal_call_id — the
+        // reaper then killed it as a stall up to 50 minutes later.
+        //
+        // THAT IS WHY THESE WENT UNCAUGHT WHILE DISPATCH_UNREACHABLE DID NOT:
+        // that class is written by dispatch's OWN guarded region, so a throw
+        // before control reaches it bypasses the terminal entirely. Measured:
+        // 14 of 14 stalls in 24h had current_step='queued', progress=0,
+        // modal_call_id NULL and empty stage_timings — the worker never ran and
+        // nothing said so. This is the "43-minute Getting started…" case.
+        //
+        // Fail LOUDLY into the class that already exists rather than inventing
+        // one. Best-effort and last: the client response must not depend on it,
+        // and markJobFailed is itself guarded against overwriting a terminal.
+        try {
+          if (job && job.id) {
+            await markJobFailed(job.id, {
+              errorCode: 'DISPATCH_UNREACHABLE',
+              userMessage: 'We couldn’t start your render — please try again.',
+              userId: authUser && authUser.id,
+              pushProgressToSSE,
+            });
+            console.error(`[dispatch] ORPHANED ROW TERMINALIZED job=${job.id} — threw after the processing flip, before the spawn`);
+          }
+        } catch (e2) {
+          console.error('  ❌ could not terminalize orphaned job:', e2?.message || e2);
+        }
         return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
