@@ -32,7 +32,7 @@ const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook')
 const { sendOwnerAlert } = require('./services/pushNotifier');
 const { postAgentAlert } = require('./lib/agent-alert');
 const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
-const { checkSpendGuards } = require('./lib/spend-guard');
+const { checkSpendGuards, checkRejectionAttemptCap } = require('./lib/spend-guard');
 
 // Public result page for the completion-email deep link. `data` = { videoUrl,
 // thumbnailUrl } for a COMPLETED job, or null for anything else (missing /
@@ -4567,6 +4567,24 @@ const server = http.createServer((req, res) => {
             if (!_guard.allow) {
               console.warn('  [spend-guard] blocked render userId=%s code=%s', authUser.id, _guard.code);
               return { status: 429, body: { error: _guard.code, message: _guard.message } };
+            }
+            // REFUND-FARMING CONTROL: bound designed-rejection attempts BY DESIGN
+            // (not the coincidental 50/day spend cap). User-fault codes only, so an
+            // infra-failure streak never blocks a legitimate user. Fail-open.
+            const _rej = await checkRejectionAttemptCap({
+              supabaseAdmin,
+              userId: authUser.id,
+              alert: (msg) => sendOwnerAlert({
+                ownerUserId: SUBMISSION_OWNER_USER_ID,
+                title: '🚨 [Promptly] refund guard',
+                body: String(msg).slice(0, 180),
+                threadId: 'refund-guard',
+                supabaseAdmin,
+              }).catch(() => {}),
+            });
+            if (!_rej.allow) {
+              console.warn('  [refund-guard] blocked userId=%s code=%s', authUser.id, _rej.code);
+              return { status: 429, body: { error: _rej.code, message: _rej.message } };
             }
             let pendingCount;
             try {
