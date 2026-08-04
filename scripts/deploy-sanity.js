@@ -166,13 +166,57 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     const cleanKey = job && job.result && job.result.clean_export_key;
     if (armed) {
       check('export arming: a recent render has a clean_export_key to verify', !!cleanKey, 'none — cannot arm the gate');
+
+      // COVERAGE: NEW completions must ALL carry a clean_export_key. ERRORS' minimal/
+      // hype route persists NULL → the endpoint 404s → the client falls back to the
+      // public save → FREE export for ~that slice. A NULL population among recent
+      // completions is a structural hole: block arming until it's zero.
+      const hrs = parseInt(env.SANITY_EXPORT_WINDOW_HOURS || '24', 10);
+      const sinceIso = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
+      const nullDone = await sbJson(`video_jobs?select=id&status=eq.completed&created_at=gte.${sinceIso}&result->>clean_export_key=is.null&limit=1`);
+      check(`export arming: 0 completions (last ${hrs}h) with NULL clean_export_key`,
+        Array.isArray(nullDone) && nullDone.length === 0, `found ${Array.isArray(nullDone) ? nullDone.length : '?'} — a route still persists NULL; those export free`);
+
       if (cleanKey && cfBase) {
+        // (a) PRIVATE: the clean master's public URL must 403.
         const pub = await fetch(`${cfBase}/${cleanKey}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
         check('export arming (a): clean master public URL → 403 (private)', pub === 403, `got ${pub}`);
+
+        // (b-key) cheap necessary condition: distinct key.
         let renderedKey = null;
         try { renderedKey = new URL(job.rendered_video_url).pathname.replace(/^\/+/, ''); } catch { /* leave null */ }
-        check('export arming (b): public render is NOT the clean master (distinct key)',
-          !!renderedKey && renderedKey !== cleanKey, `rendered=${renderedKey} clean=${cleanKey}`);
+        check('export arming (b-key): public render key ≠ clean key', !!renderedKey && renderedKey !== cleanKey, `rendered=${renderedKey} clean=${cleanKey}`);
+
+        // (4th) SHARE path: Frontend deliberately keeps Share on the PUBLIC url as
+        // the free viral path — correct ONLY once that public asset is degraded.
+        // Until then Share hands out the clean full-quality file (share-to-yourself
+        // bypasses the gate). The public /v/{jobId} share page must NOT reference the
+        // clean master key.
+        const sharePage = await fetch(`${HOST}/v/${job.id}`).then((r) => r.text()).catch(() => '');
+        check('export arming: Share page (/v/) does NOT expose the clean master key',
+          !!sharePage && !sharePage.includes(cleanKey), 'clean key present in the public share page → Share bypasses the gate');
+
+        // (b-content) THE PROPERTY: distinct keys can hold byte-identical content,
+        // and until the watermark pass lands the public preview IS the clean render.
+        // Sign the clean master (Pro export) and compare Content-Length to the public
+        // render — equal size ⇒ a clean public copy ⇒ bypass stands.
+        if (env.PROBE_PRO_EMAIL && env.PROBE_PRO_PASSWORD) {
+          try {
+            const tok = await signIn(env.PROBE_PRO_EMAIL, env.PROBE_PRO_PASSWORD);
+            const ex = await fetch(`${HOST}/api/export`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+              body: JSON.stringify({ job_id: job.id }),
+            }).then((r) => r.json()).catch(() => ({}));
+            const headLen = (u) => fetch(u, { method: 'HEAD' }).then((r) => Number(r.headers.get('content-length') || 0)).catch(() => 0);
+            if (ex && ex.url) {
+              const [cLen, pLen] = await Promise.all([headLen(ex.url), headLen(job.rendered_video_url)]);
+              check('export arming (b-content): public asset DEGRADED vs clean master (size differs)',
+                cLen > 0 && pLen > 0 && cLen !== pLen, `clean=${cLen} public=${pLen} — equal ⇒ clean public copy`);
+            } else {
+              check('export arming (b-content): signed the clean master to compare', false, `export gave no url (${JSON.stringify(ex).slice(0, 80)})`);
+            }
+          } catch (e) { check('export arming (b-content) ran', false, e.message); }
+        }
       } else if (cleanKey && !cfBase) {
         check('export arming: CLOUDFRONT_DOMAIN set for the privacy check', false, 'cannot verify 403 without CLOUDFRONT_DOMAIN');
       }
