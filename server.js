@@ -4524,7 +4524,8 @@ const server = http.createServer((req, res) => {
           }
           if (supabaseAdmin && !isDemo) {
             // SPEND GUARD (Zac 2026-08-03): per-account daily render cap (50) +
-            // two-tier global breaker (alert 450 / halt 800), DB-counted, fail-open.
+            // two-tier global breaker (alert 1500 / halt 3000, raised 2026-08-04 for
+            // the surge; env-overridable), DB-counted, fail-open.
             // Inside the lock + AFTER the idempotency replay above, so retries never
             // count. Blocks with 429 + a user-facing message; pages the owner.
             const _guard = await checkSpendGuards({
