@@ -405,27 +405,43 @@ class APIService {
                 message: payload?.message ?? "Get the clean, watermark-free version with Pro."
             )
         }
+        if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+            // clean_export_key is NULL — an old render with no private asset.
+            // EXPLICIT fallback case, kept distinct from 402.
+            throw APIError.exportNotAvailable
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw APIError.jobCreationFailed("Export failed")
         }
-        // Signed URL field name is part of the contract with ERRORS — accept the
-        // likely keys so the client lands compatible; confirm the exact key on sync.
+        // Contract (export-gate-server-enforcement-SPEC): 200 → { url, expires_in }.
         struct ExportResponse: Decodable {
-            let url: String?
-            let signedUrl: String?
-            let exportUrl: String?
+            let url: String
+            let expiresIn: Int?
             enum CodingKeys: String, CodingKey {
                 case url
-                case signedUrl = "signed_url"
-                case exportUrl = "export_url"
+                case expiresIn = "expires_in"
             }
         }
         let result = try JSONDecoder().decode(ExportResponse.self, from: data)
-        guard let urlStr = result.url ?? result.signedUrl ?? result.exportUrl,
-              let signed = URL(string: urlStr) else {
-            throw APIError.jobCreationFailed("No export URL returned")
+        guard let signed = URL(string: result.url) else {
+            throw APIError.jobCreationFailed("Bad export URL")
         }
         return signed
+    }
+
+    /// Maps an export-flow error to the EXACTLY-ONE correct action. This is the
+    /// whitelist Zac mandated: a 402 must NEVER fall back to the free public save
+    /// (that would defeat the paywall for every shipped client, unfixable without
+    /// another release). Pure + total so it can be unit-tested. See
+    /// APIServiceExportRoutingTests.
+    enum ExportAction: Equatable { case save, paywall, fallbackPublicSave, surfaceError }
+    static func exportAction(for error: Error) -> ExportAction {
+        switch error {
+        case APIError.paymentRequired:   return .paywall              // 402 — NEVER fallback
+        case APIError.exportNotAvailable: return .fallbackPublicSave  // 404 — NULL key, old job
+        case is URLError:                 return .fallbackPublicSave  // network error
+        default:                          return .surfaceError        // 5xx/decode — do NOT silently free-save
+        }
     }
 
     /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
@@ -1351,6 +1367,12 @@ enum APIError: LocalizedError {
     case jobCreationFailed(String)
     case uploadFailed
     case deleteFailed
+    /// Server returned 404 on the export endpoint — the job's private clean-export
+    /// key is NULL (an old render made before the private pipeline). This is the
+    /// EXPLICIT fallback case: the caller reverts to saving the public preview.
+    /// It is deliberately DISTINCT from paymentRequired so a 402 can never be
+    /// mistaken for "fall back" — a 402 that fell back would defeat the paywall.
+    case exportNotAvailable
     /// Server returned 402 — daily quota hit or a Pro-only feature was
     /// called by a free user. `kind` is "render", "chat", or "reedit" so
     /// the caller can present the right paywall reason.
@@ -1387,6 +1409,7 @@ enum APIError: LocalizedError {
         case .wallRequired(let message): return message
         case .structuredFailure(_, let userMessage, _, _, _): return userMessage
         case .validationRejected(let userMessage, _, _): return userMessage
+        case .exportNotAvailable: return "This video can't be exported yet"
         }
     }
 }

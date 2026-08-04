@@ -56,8 +56,12 @@ check(paidBody.contains("auto-renews") && paidBody.lowercased().contains("cancel
       "confirmation uses plain renewal copy + how to cancel")
 check(!paidBody.lowercased().contains("trial"),
       "confirmation contains NO trial language")
-check(TrialCopy.confirmationTitle == "You're Pro 🎉",
+// §7 (04bd444) stripped the emoji from the title as part of the
+// looks-like-a-product pass; the assertion tracks that deliberate change.
+check(TrialCopy.confirmationTitle == "You're Pro",
       "confirmation title is the Pro celebration, no trial")
+check(!TrialCopy.confirmationTitle.lowercased().contains("trial"),
+      "confirmation title carries no trial language")
 
 // MARK: Fineprint — the required auto-renew disclosure, no trial
 check(TrialCopy.fineprint == "Auto-renews until cancelled. Cancel anytime in Settings.",

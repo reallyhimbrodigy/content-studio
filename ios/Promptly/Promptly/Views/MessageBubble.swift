@@ -1125,6 +1125,9 @@ final class VideoExporter: ObservableObject {
         case photosDenied
         case saveFailed(String)
         case appNotInstalled(String)
+        /// Export gate returned 402 — sentinel so save() presents the paywall
+        /// instead of an error, and NEVER falls back to the free public save.
+        case exportGated
 
         var errorDescription: String? {
             switch self {
@@ -1132,6 +1135,7 @@ final class VideoExporter: ObservableObject {
             case .photosDenied:      return "Photos access was denied"
             case .saveFailed(let m): return "Couldn't save: \(m)"
             case .appNotInstalled(let app): return "\(app) isn't installed"
+            case .exportGated:       return "Upgrade to save the clean version"
             }
         }
     }
@@ -1144,11 +1148,11 @@ final class VideoExporter: ObservableObject {
 
     // MARK: - Private helpers
 
-    private func ensureLocalFile() async throws -> URL {
+    private func ensureLocalFile(from urlStr: String) async throws -> URL {
         if let cached = cachedLocalUrl, FileManager.default.fileExists(atPath: cached.path) {
             return cached
         }
-        guard let remoteUrl = URL(string: videoUrlStr) else { throw ExportError.invalidUrl }
+        guard let remoteUrl = URL(string: urlStr) else { throw ExportError.invalidUrl }
         let (tempUrl, _) = try await URLSession.shared.download(from: remoteUrl)
         let finalUrl = FileManager.default.temporaryDirectory
             .appendingPathComponent("promptly-export-\(UUID().uuidString).mp4")
@@ -1156,6 +1160,27 @@ final class VideoExporter: ObservableObject {
         try FileManager.default.moveItem(at: tempUrl, to: finalUrl)
         cachedLocalUrl = finalUrl
         return finalUrl
+    }
+
+    /// Resolve the URL to download for a save/export. With a jobId, the server
+    /// export gate decides: 200 → the clean signed URL; 402 → paywall (throws
+    /// exportGated, caller NEVER falls back); 404/network → the public preview.
+    /// Without a jobId (LibraryView) → the public URL, ungated. The 402→paywall
+    /// vs 404/network→fallback split is the whitelist in APIService.exportAction —
+    /// a 402 that fell back would defeat the paywall for every shipped client.
+    private func resolveExportSourceUrl() async throws -> String {
+        guard let jobId else { return videoUrlStr }
+        do {
+            let signed = try await APIService.shared.exportJob(jobId: jobId)
+            return signed.absoluteString                       // 200 — clean export
+        } catch {
+            switch APIService.exportAction(for: error) {
+            case .paywall:            throw ExportError.exportGated           // 402 — NEVER fall back
+            case .fallbackPublicSave: return videoUrlStr                     // 404 / network
+            case .surfaceError:       throw ExportError.saveFailed("export prep failed")
+            case .save:               return videoUrlStr                     // unreachable; keep total
+            }
+        }
     }
 
     private func ensureSavedToPhotos() async throws -> String {
@@ -1166,7 +1191,8 @@ final class VideoExporter: ObservableObject {
             throw ExportError.photosDenied
         }
 
-        let localFile = try await ensureLocalFile()
+        let sourceUrl = try await resolveExportSourceUrl()
+        let localFile = try await ensureLocalFile(from: sourceUrl)
 
         var placeholderId: String?
         try await PHPhotoLibrary.shared().performChanges {
@@ -1198,6 +1224,12 @@ final class VideoExporter: ObservableObject {
                 saveState = .success
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 if saveState == .success { saveState = .idle }
+            } catch ExportError.exportGated {
+                // 402 — present the export paywall. NEVER save, NEVER show an error.
+                // (Using .manual until an .export PaywallReason with watermark copy
+                // is added; the gate itself is what matters here.)
+                saveState = .idle
+                await MainActor.run { AppState.shared.presentPaywall(.manual) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 saveState = .error(error.localizedDescription)

@@ -379,6 +379,19 @@ final class JobDispatchCoordinator {
                 paymentKind: nil,
                 paymentLimit: nil
             ))
+
+        case .exportNotAvailable:
+            // Export/save-gate only — never a render-dispatch outcome. Handled
+            // for exhaustiveness; a generic non-payment hard fail if it ever lands.
+            return .hard(HardFailure(
+                errorCode: "EXPORT_NOT_AVAILABLE",
+                userMessage: "Something went wrong.",
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: nil,
+                paymentLimit: nil
+            ))
         }
     }
 
