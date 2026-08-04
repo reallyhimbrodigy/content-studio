@@ -138,14 +138,47 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     check('health probe ran', false, e.message);
   }
 
-  // ── 0b. Export-gate PRE-FLIP guard: the clean master MUST be private before
-  // EXPORT_GATE_ENABLED is ever flipped. Set SANITY_CLEAN_ASSET_URL to a sample
-  // clean-export public URL; it must 403 (private). The whole revenue wall rests
-  // on this one fact — confirm it, don't assume it. Skipped until a sample exists.
-  if (env.SANITY_CLEAN_ASSET_URL) {
-    console.log('0b) Export clean-asset privacy:');
-    const ca = await fetch(env.SANITY_CLEAN_ASSET_URL).then((r) => r.status).catch((e) => `ERR:${e.message}`);
-    check('clean export public URL → 403 (private)', ca === 403, `got ${ca} — must be 403 before flipping EXPORT_GATE_ENABLED`);
+  // ── 0b. DB-property + export-arming guards (need the service key in the sanity
+  // env; skipped without it — direct DB reads, not HTTP). ─────────────────────
+  const _svc = env.SUPABASE_SERVICE_ROLE_KEY;
+  const _sb = (env.SUPABASE_URL || '').replace(/\/$/, '');
+  const sbJson = (p) => fetch(`${_sb}/rest/v1/${p}`, { headers: { apikey: _svc, Authorization: `Bearer ${_svc}` } }).then((r) => r.json()).catch(() => null);
+  if (_svc && _sb) {
+    console.log('0b) DB-property + export-arming guards:');
+
+    // #4 — STANDING orphan property: after 8540f3c, NO processing row may carry a
+    // NULL modal_call_id at ANY age. Non-zero ⇒ the ordering fix regressed.
+    const orphans = await sbJson('video_jobs?select=id&status=eq.processing&modal_call_id=is.null&limit=1');
+    check('orphan property: 0 processing rows with NULL modal_call_id',
+      Array.isArray(orphans) && orphans.length === 0, `found ${Array.isArray(orphans) ? orphans.length : '?'}`);
+
+    // #1+#3 — EXPORT ARMING guard. Target derived from the MOST RECENT real render
+    // with a clean_export_key (a static fixture wouldn't catch a pipeline regression
+    // to a public key). BOTH halves of the invariant, FAIL-CLOSED when armed:
+    //   (a) the clean master's PUBLIC url must 403 (private), AND
+    //   (b) the public rendered_video_url must NOT be the clean master (distinct key).
+    // If the gate is ARMED (EXPORT_GATE_ENABLED=1) with no verifiable clean asset,
+    // the flip is BLOCKED — an absent target must never silently pass.
+    const armed = String(env.EXPORT_GATE_ENABLED || '') === '1';
+    const cfBase = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
+    const recent = await sbJson('video_jobs?select=id,result,rendered_video_url&result->>clean_export_key=not.is.null&order=created_at.desc&limit=1');
+    const job = Array.isArray(recent) && recent[0];
+    const cleanKey = job && job.result && job.result.clean_export_key;
+    if (armed) {
+      check('export arming: a recent render has a clean_export_key to verify', !!cleanKey, 'none — cannot arm the gate');
+      if (cleanKey && cfBase) {
+        const pub = await fetch(`${cfBase}/${cleanKey}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+        check('export arming (a): clean master public URL → 403 (private)', pub === 403, `got ${pub}`);
+        let renderedKey = null;
+        try { renderedKey = new URL(job.rendered_video_url).pathname.replace(/^\/+/, ''); } catch { /* leave null */ }
+        check('export arming (b): public render is NOT the clean master (distinct key)',
+          !!renderedKey && renderedKey !== cleanKey, `rendered=${renderedKey} clean=${cleanKey}`);
+      } else if (cleanKey && !cfBase) {
+        check('export arming: CLOUDFRONT_DOMAIN set for the privacy check', false, 'cannot verify 403 without CLOUDFRONT_DOMAIN');
+      }
+    } else if (cleanKey) {
+      console.log('    (gate dark; clean_export_key present on a recent job — arming guard enforces both halves once EXPORT_GATE_ENABLED=1)');
+    }
   }
 
   // ── 1. Unauth equivalence: auth-first, no walls ────────────────────────────
