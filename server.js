@@ -4533,7 +4533,7 @@ const server = http.createServer((req, res) => {
               userId: authUser.id,
               alert: (msg) => sendOwnerAlert({
                 ownerUserId: SUBMISSION_OWNER_USER_ID,
-                title: '🚨 Promptly spend guard',
+                title: '🚨 [Promptly] spend guard',
                 body: String(msg).slice(0, 180),
                 threadId: 'spend-guard',
                 supabaseAdmin,
