@@ -216,7 +216,7 @@ test('queued-stall KILL-SWITCH: with QUEUED_STALL_DISABLED=1, a queued-stuck job
   process.env.QUEUED_STALL_DISABLED = '1';
   const fake = makeFake({
     video_jobs: [vj({ id: 'ks1', user_id: 'uks', status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) })],
     usage_events: [],
   });
   const out = await sweepJobReaper(fake, {});
@@ -225,10 +225,10 @@ test('queued-stall KILL-SWITCH: with QUEUED_STALL_DISABLED=1, a queued-stuck job
   delete process.env.QUEUED_STALL_DISABLED;
 });
 
-test('queued-stall selector: current_step=queued past 8min; not before; not other steps', () => {
-  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-9 * 60000) }, NOW), true, 'queued 9min = never picked up');
+test('queued-stall selector: current_step=queued past 30min backstop; not before; not other steps', () => {
+  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-31 * 60000) }, NOW), true, 'queued 31min = past the backstop (cron would have acted long before)');
   assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-96 * 1000) }, NOW), false, 'queued 96s = healthy cold-start, protected');
-  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-7 * 60000) }, NOW), false, 'under 8min threshold');
+  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-29 * 60000) }, NOW), false, 'under 30min backstop (re-dispatch cron owns this window)');
   assert.equal(isQueuedStall({ current_step: 'downloading', updated_at: iso(-30 * 60000) }, NOW), false, 'download can legit run minutes — OUT of scope');
   assert.equal(isQueuedStall({ current_step: 'rendering', updated_at: iso(-30 * 60000) }, NOW), false, 'render OUT of scope (heartbeat masks; needs frame signal)');
   assert.equal(isQueuedStall({ current_step: undefined, updated_at: iso(-30 * 60000) }, NOW), false, 'no current_step');
@@ -241,8 +241,8 @@ test('queued-stall reap: status=processing but current_step=queued 9min → JOB_
   // 50-min processing lease sits on it; queued_stall reaps it at 8min.
   const fake = makeFake({
     video_jobs: [vj({ id: 'q1', user_id: 'uq', status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
-    usage_events: [{ id: 1, user_id: 'uq', kind: 'render', created_at: iso(-10 * 60000 - 90) }],
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) })],
+    usage_events: [{ id: 1, user_id: 'uq', kind: 'render', created_at: iso(-33 * 60000 - 90) }],
   });
   const sse = [];
   const out = await sweepJobReaper(fake, { pushProgressToSSE: (id, ev) => sse.push({ id, ev }) });
@@ -273,7 +273,7 @@ test('queued-stall PROTECTS a healthy cold-starting job (96s at queued, under th
 test('queued-stall CAS: worker writes first step (current_step off queued) between read and write → NOT killed', async () => {
   const fake = makeFake({
     video_jobs: [vj({ id: 'q3', user_id: 'uq3', status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) })],
     usage_events: [],
   });
   const row = fake._state.video_jobs[0];
@@ -292,7 +292,7 @@ test('queued-stall MASS GUARD: >8 queued-stale in one sweep = systemic → 0 rea
   const jobs = [];
   for (let i = 0; i < 9; i += 1) {
     jobs.push(vj({ id: `m${i}`, user_id: `um${i}`, status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) }));
   }
   const fake = makeFake({ video_jobs: jobs, usage_events: [] });
   const out = await sweepJobReaper(fake, {});
@@ -308,7 +308,7 @@ test('queued-stall alert BATCHING: N queued_stall reaps → ONE never-dispatch p
   const jobs = [];
   for (let i = 0; i < 3; i += 1) {
     jobs.push(vj({ id: `qa${i}`, user_id: `uqa${i}`, status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) }));
   }
   // a genuinely distinct stall (rare class) must STILL page per-job
   jobs.push(vj({ id: 'st1', user_id: 'ust', status: 'processing',
@@ -327,7 +327,7 @@ test('queued-stall alert BATCHING: within the same window, further reaps do NOT 
   const sendAlert = async (a) => { pages.push(a.threadId); };
   const fake = makeFake({
     video_jobs: [vj({ id: 'qw1', user_id: 'uqw', status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) })],
     usage_events: [],
   });
   const out = await sweepJobReaper(fake, { sendAlert });
@@ -340,7 +340,7 @@ test('queued-stall mass guard boundary: exactly 8 still reap (guard is > not >=)
   const jobs = [];
   for (let i = 0; i < 8; i += 1) {
     jobs.push(vj({ id: `b${i}`, user_id: `ub${i}`, status: 'processing', current_step: 'queued',
-      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
+      created_at: iso(-33 * 60000), started_at: iso(-33 * 60000), updated_at: iso(-31 * 60000) }));
   }
   const fake = makeFake({ video_jobs: jobs, usage_events: [] });
   const out = await sweepJobReaper(fake, {});

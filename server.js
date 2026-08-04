@@ -5901,6 +5901,31 @@ if (require.main === module) {
     setTimeout(runReaper, 30 * 1000); // boot pass
     setInterval(runReaper, 120 * 1000);
 
+    // Orphan re-dispatch (Zac 2026-08-04): RECOVER never-dispatched jobs — rows with
+    // modal_call_id NULL past ~11min (a server restart mid-dispatch, or the per-job
+    // spawn-2xx-yet-null cause). Only the ~24% whose upload actually completed (source
+    // present on S3) are re-dispatched (idempotent on job_id) so the user gets their
+    // video; the 76% whose upload never landed get one honest UPLOAD terminal instead
+    // of a 600s re-wait for bytes that will never arrive. dispatchJobToModal is
+    // injected (imported at top). This is the primary handler for the never-dispatch
+    // class; the reaper's queued_stall is now only a >30-min backstop for when this
+    // cron is down.
+    const { sweepOrphanRedispatch } = require('./lib/orphan-redispatch');
+    let redispatchBusy = false;
+    const runOrphanRedispatch = async () => {
+      if (redispatchBusy) return;
+      redispatchBusy = true;
+      try {
+        await sweepOrphanRedispatch(supabaseAdmin, { pushProgressToSSE, dispatchJobToModal });
+      } catch (err) {
+        console.error('[redispatch] sweep crashed:', err?.message || err);
+      } finally {
+        redispatchBusy = false;
+      }
+    };
+    setTimeout(runOrphanRedispatch, 90 * 1000); // boot pass, offset from the reaper
+    setInterval(runOrphanRedispatch, 180 * 1000); // every 3 min
+
     // Completion reconciler (2026-08-02): a rendered video MUST reach its owner.
     // The result -> delivery-column projection runs in dispatchJobToModal's
     // completion tail, which is only reached when an in-process await resolves —
