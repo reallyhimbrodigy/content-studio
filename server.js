@@ -25,6 +25,7 @@ const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
 const apiLedger = require('./lib/api-outcome-ledger');
+const { makeJob404Guard } = require('./lib/job404-guard');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
@@ -169,6 +170,9 @@ function normalizePlanLabel(value) {
 // Module-level state the restored rate-limiter + self-heal functions depend on.
 const _rateBuckets = new Map(); // `${scope}:${key}` -> { tokens, lastRefill }
 const _selfHealNextAllowed = new Map();
+// Caps runaway GET /api/video-jobs/:jobId poll loops on dead job_ids (see
+// lib/job404-guard.js). Module-level so the negative cache survives across requests.
+const _jobStatusGuard = makeJob404Guard();
 const SELF_HEAL_TTL_MS = 5 * 60 * 1000;       // after a DEFINITIVE RC answer
 const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — retry soon
 const isProduction = process.env.NODE_ENV === 'production';
@@ -5029,6 +5033,24 @@ const server = http.createServer((req, res) => {
         console.log('  User ID:', authUser.id);
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
+        // Runaway-poll guard. A client (on ANY shipped build) that polls a job it
+        // will never own — job_never_existed or identity_mismatch — otherwise hits
+        // the DB ~1.3x/sec forever (38,070 such 404s in one 24h window). Once a
+        // (user,job) has 404'd enough to be confirmed dead, short-circuit every
+        // later poll WITHOUT a query. The client ignores 429, so this bites with no
+        // release; the 429 + Retry-After is a correct signal for any future build.
+        const guardKey = `${authUser.id}:${jobId}`;
+        const guardNow = Date.now();
+        const guarded = _jobStatusGuard.check(guardKey, guardNow);
+        if (guarded.shortCircuit) {
+          res.setHeader('Retry-After', '30');
+          return sendJson(res, 429, {
+            error: 'Job not found',
+            cause: guarded.cause,
+            retry_after_seconds: 30,
+          });
+        }
+
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
           .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
@@ -5042,9 +5064,45 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
-          console.error('  ❌ Job not found');
-          return sendJson(res, 404, { error: 'Job not found' });
+          // Split the cause ONCE: does the id exist under ANY user_id? A row under a
+          // different user is an identity_mismatch (a real, different bug); no row at
+          // all is job_never_existed (upload/create never landed). Bounded — the DB
+          // 404 path runs at most `shortCircuitAfter` times per id before short-circuit.
+          let cause = 'job_never_existed';
+          try {
+            const probe = await supabaseAdmin
+              .from('video_jobs')
+              .select('user_id')
+              .eq('id', jobId)
+              .limit(1)
+              .maybeSingle();
+            if (probe.data && probe.data.user_id && String(probe.data.user_id) !== String(authUser.id)) {
+              cause = 'identity_mismatch';
+            }
+          } catch (_) { /* probe is best-effort; default cause stands */ }
+
+          const rec = _jobStatusGuard.record404(guardKey, cause, guardNow);
+          console.warn(`  ❌ Job not found [cause=${cause} count=${rec.count}]`);
+
+          // Persist the cause EXACTLY once per (user,job) so the 404 volume is
+          // attributable by cause. Server-side insert bypasses the /api/events
+          // client allowlist — the same path the api_outcome ledger uses.
+          // Fire-and-forget; never blocks or fails the response.
+          if (rec.emitFirst && supabaseAdmin) {
+            supabaseAdmin
+              .from('analytics_events')
+              .insert({ event: 'jobstatus_404', props: { cause, job_id: jobId, user_id: authUser.id, route: '/api/video-jobs/:id' } })
+              .then(() => {}, () => {});
+          }
+
+          res.setHeader('Retry-After', '30');
+          return sendJson(res, rec.shortCircuit ? 429 : 404, {
+            error: 'Job not found',
+            cause,
+            retry_after_seconds: 30,
+          });
         }
+        _jobStatusGuard.clear(guardKey);
         console.log('  ✅ Job found, status:', data.status);
 
         // Prevent any caching of job status
