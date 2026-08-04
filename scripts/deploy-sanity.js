@@ -138,6 +138,16 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     check('health probe ran', false, e.message);
   }
 
+  // ── 0b. Export-gate PRE-FLIP guard: the clean master MUST be private before
+  // EXPORT_GATE_ENABLED is ever flipped. Set SANITY_CLEAN_ASSET_URL to a sample
+  // clean-export public URL; it must 403 (private). The whole revenue wall rests
+  // on this one fact — confirm it, don't assume it. Skipped until a sample exists.
+  if (env.SANITY_CLEAN_ASSET_URL) {
+    console.log('0b) Export clean-asset privacy:');
+    const ca = await fetch(env.SANITY_CLEAN_ASSET_URL).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+    check('clean export public URL → 403 (private)', ca === 403, `got ${ca} — must be 403 before flipping EXPORT_GATE_ENABLED`);
+  }
+
   // ── 1. Unauth equivalence: auth-first, no walls ────────────────────────────
   console.log('1) Unauthenticated surface (must 401, never wall):');
   for (const [p, body] of [

@@ -5414,20 +5414,28 @@ const server = http.createServer((req, res) => {
       if (String(process.env.EXPORT_GATE_ENABLED || '') !== '1') {
         return sendJson(res, 501, { error: 'export_not_enabled' });
       }
-      if (!allowed) return sendJson(res, 402, { error: 'upgrade_required', reason: decision.reason });
 
-      // Entitled + enabled: verify ownership, mint a SHORT-TTL SIGNED url. (225
-      // repoints this at the private clean-asset key, not the public render.)
+      // Load the job + the ERRORS-owned private key. KEY CONTRACT: clean master at
+      // exports/{job_id}/clean.mp4, recorded on result.clean_export_key (nullable).
       const jobId = String((body && body.job_id) || '').trim();
       if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
       const { data: job, error } = await supabaseAdmin.from('video_jobs')
-        .select('id, user_id, rendered_video_url').eq('id', jobId).maybeSingle();
+        .select('id, user_id, result').eq('id', jobId).maybeSingle();
       if (error) return sendJson(res, 500, { error: 'load_failed' });
       if (!job || job.user_id !== authUser.id) return sendJson(res, 404, { error: 'not_found' });
-      let key = null;
-      try { key = new URL(job.rendered_video_url).pathname.replace(/^\/+/, '') || null; } catch { key = null; }
-      const exportUrl = key ? await s3.createPresignedGetUrl(key, 300) : job.rendered_video_url;
-      return sendJson(res, 200, { export_url: exportUrl, ttl_seconds: 300 });
+
+      const cleanKey = job.result && job.result.clean_export_key;
+      // NULL key → 404 FIRST, BEFORE the entitlement 402: an old job has no private
+      // asset, so the client knows to fall back to the public save. A 402 must NEVER
+      // be returned for a missing key (that would show "upgrade" instead of fallback).
+      if (!cleanKey) return sendJson(res, 404, { error: 'no_private_asset' });
+
+      // Key present (a new, gated render) → NOW enforce entitlement.
+      if (!allowed) return sendJson(res, 402, { error: 'upgrade_required', reason: decision.reason });
+
+      // Entitled + private key present: SHORT-TTL SIGNED url for the CLEAN master.
+      const url = await s3.createPresignedGetUrl(cleanKey, 300);
+      return sendJson(res, 200, { url, expires_in: 300 });
     })();
     return;
   }
