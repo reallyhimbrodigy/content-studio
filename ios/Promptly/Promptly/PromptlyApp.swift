@@ -529,7 +529,7 @@ enum OnboardingProofHarness {
         s.debugForceRepro()
         // Walk the beats. Signup is skipped (needs real auth); every other beat
         // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
-        let beats: [OnboardingState.Step] = [.language, .socialProof, .wall]
+        let beats: [OnboardingState.Step] = [.language, .audience, .intent, .attribution]
         Task { @MainActor in
             for beat in beats {
                 s.debugSet(beat)

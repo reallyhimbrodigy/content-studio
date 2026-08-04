@@ -160,6 +160,12 @@ class PendingVideo: Identifiable, ObservableObject {
     @Published var uploadFailed = false
     var fileName: String = "video.mp4"
     var uploadTask: Task<Void, Never>?
+    /// Instrumentation (224): where the source came from ("local" | "icloud") and
+    /// its duration in seconds, stamped on the job so the iCloud reliability fix
+    /// is measurable (which UNS jobs were iCloud) and wait-time can be deconfounded
+    /// from clip length. Nil until the pick/strategy resolves.
+    var sourceType: String?
+    var sourceDuration: Double?
 }
 
 // MARK: - Persisted Chat Threads

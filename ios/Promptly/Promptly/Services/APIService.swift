@@ -116,11 +116,27 @@ class APIService {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         WallCapability.stamp(&request)
+        // Build stamp on EVERY authed request (job creation included), so the
+        // server can bucket outcomes by build — the difference between "the fix
+        // works, users haven't updated" and "the fix is broken", which is
+        // otherwise unanswerable. Matches Analytics' "v (b)" format so job rows
+        // and analytics_events read the same. One header, one choke point.
+        request.setValue(Self.appVersionHeader, forHTTPHeaderField: "X-App-Version")
         if let token = await validToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
     }
+
+    /// Short version + build, e.g. "1.3.6 (224)". Same shape Analytics uses so a
+    /// job's app_version and its events line up. Falls back to "?" so a malformed
+    /// Info.plist never crashes request construction.
+    static let appVersionHeader: String = {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(v) (\(b))"
+    }()
 
     // MARK: - Validation (Layer 2)
 
@@ -161,7 +177,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, demo: Bool = false) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, demo: Bool = false, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
@@ -194,6 +210,10 @@ class APIService {
             // stays as the kill switch ON TOP (worker + client both gate on it).
             // Omitted for demos (they don't need a live preview).
             let supports_progressive: Bool?
+            // Instrumentation (224): source provenance for measuring the iCloud
+            // reliability fix + deconfounding wait-time. Optional → omitted when nil.
+            let source_type: String?
+            let source_duration: Double?
         }
         let body = Body(
             video_url: videoUrl,
@@ -203,7 +223,9 @@ class APIService {
             premium_pipeline_enabled: premiumPipeline ? true : nil,
             client_job_id: clientJobId,
             demo: demo ? true : nil,
-            supports_progressive: demo ? nil : true
+            supports_progressive: demo ? nil : true,
+            source_type: sourceType,
+            source_duration: sourceDuration
         )
         request.httpBody = try JSONEncoder().encode(body)
 

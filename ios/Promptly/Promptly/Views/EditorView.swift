@@ -469,6 +469,14 @@ struct EditorView: View {
     /// otherwise a fast app-kill mid-reveal would persist a partial.
     private func injectWelcomeIfEmpty() {
         guard messages.isEmpty else { return }
+        // Onboarding → picker BRIDGE: seed the composer with the style the user
+        // chose in the intent question, so they land ON A VIBE, not a blank
+        // field. Consumed once (cleared) so it never re-applies to a later empty
+        // chat. This is what makes Q2's preselect actually reach the render.
+        if inputText.isEmpty, let vibe = OnboardingState.shared.preselectedVibe, !vibe.isEmpty {
+            inputText = vibe
+            OnboardingState.shared.preselectedVibe = nil
+        }
         let fullText = "Hey, I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
         var welcome = ChatMessage(role: .assistant, content: "")
         welcome.isOnboarding = true
@@ -1386,6 +1394,12 @@ struct EditorView: View {
                     let strategy = await PHAssetResolver.resolveStrategy(asset: video.asset)
                     print(String(format: "[perf] strategy-probe %.2fs", Date().timeIntervalSince(resolveStart)))
 
+                    // Instrumentation (224): stamp source duration now; source
+                    // type is set per-branch below (local vs icloud). Carried on
+                    // the job so the iCloud reliability fix is measurable and
+                    // wait-time can be separated from clip length.
+                    pending.sourceDuration = video.duration
+
                     var publicUrl: String?
 
                     // Fire prewarm the moment we know the eventual S3 URL.
@@ -1397,6 +1411,7 @@ struct EditorView: View {
 
                     switch strategy {
                     case .local(let sourceUrl):
+                        pending.sourceType = "local"
                         print("[perf] path=local dual-upload")
                         await MainActor.run { pending.fileUrl = sourceUrl }
                         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
@@ -1588,19 +1603,46 @@ struct EditorView: View {
                         publicUrl = sourcePub
 
                     case .stream(let resource, let fileSize):
-                        // iCloud-only path. Streams iCloud → S3 in parallel.
-                        // No fallback: if streaming fails, the upload fails.
-                        print(String(format: "[perf] path=stream fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
+                        // iCLOUD RELIABILITY FIX (224): the old path STREAMED the
+                        // iCloud asset straight to S3 on the FOREGROUND session,
+                        // which dies when the app is backgrounded mid-transfer —
+                        // the proven UPLOAD_NEVER_STARTED cause for slow iCloud
+                        // clips. Now: download the asset to a DURABLE local file,
+                        // then hand it to the SAME background uploader the .local
+                        // path uses (survives suspension + app-kill). The stream
+                        // speedup is traded for actually landing the bytes.
+                        pending.sourceType = "icloud"
+                        print(String(format: "[perf] path=stream→durable fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
                         let uploadStart = Date()
-                        publicUrl = try await APIService.shared.streamUploadFromICloud(
-                            resource: resource,
-                            fileSize: fileSize,
-                            fileName: pending.fileName,
-                            onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
-                        ) { progress in
-                            pending.uploadProgress = progress
+                        // 1. iCloud → durable app-owned file (download is the
+                        //    first ~half of perceived progress).
+                        let durableSource = UploadStorage.newFile()
+                        try await PHAssetResourceIO.write(resource: resource, to: durableSource) { p in
+                            Task { @MainActor in pending.uploadProgress = p * 0.5 }
                         }
-                        print(String(format: "[perf] stream-step %.2fs", Date().timeIntervalSince(uploadStart)))
+                        // 2. Presign + prewarm, then BACKGROUND-upload the file.
+                        let streamResp = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
+                        guard let streamPutUrl = streamResp.uploadUrl,
+                              let streamPub = streamResp.publicUrl else {
+                            try? FileManager.default.removeItem(at: durableSource)
+                            throw APIError.uploadFailed
+                        }
+                        firePrewarmOnce.fire(streamPub)
+                        await MainActor.run { pending.uploadedUrl = streamPub }
+                        try await APIService.shared.uploadFileToS3(
+                            url: streamPutUrl,
+                            fileUrl: durableSource,
+                            mimeType: "video/mp4",
+                            messageId: pending.id.uuidString,
+                            chatId: chatStore.activeChatId,
+                            publicUrl: streamPub
+                        ) { p in
+                            Task { @MainActor in pending.uploadProgress = 0.5 + p * 0.5 }
+                        }
+                        try? FileManager.default.removeItem(at: durableSource)
+                        await MainActor.run { pending.sourceUploadCompleted = true }
+                        publicUrl = streamPub
+                        print(String(format: "[perf] stream→durable+bg done %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     case .none:
                         // Strategy probe couldn't resolve the asset — fail.

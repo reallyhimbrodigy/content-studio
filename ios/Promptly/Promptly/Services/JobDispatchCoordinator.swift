@@ -159,7 +159,9 @@ final class JobDispatchCoordinator {
                     proxyVideoUrl: pendingVideo.proxyUploadedUrl,
                     vibe: vibe,
                     premiumPipeline: premiumPipeline,
-                    clientJobId: clientJobId
+                    clientJobId: clientJobId,
+                    sourceType: pendingVideo.sourceType,
+                    sourceDuration: pendingVideo.sourceDuration
                 )
                 print("[dispatch-coord] success jobId=\(jobId) attempt=\(attempt)")
                 return .success(jobId: jobId)
