@@ -2951,6 +2951,11 @@ struct EditorView: View {
     // were being absorbed by a different message. Resolving by id each
     // event is O(messages) but the array is tiny and SSE is sparse.
     private func startSSE(jobId: String, messageId: UUID) {
+        // Idempotent: tear down any existing client for this job before replacing
+        // it. Overwriting the dict entry without disconnecting orphaned the old
+        // SSEClient — it stayed connected + reconnecting, untracked, and multiple
+        // of them per job compounded into the /stream 429-storm.
+        sseClients[jobId]?.disconnect()
         let client = SSEClient(jobId: jobId)
         sseClients[jobId] = client
 

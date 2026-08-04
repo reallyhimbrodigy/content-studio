@@ -2,6 +2,16 @@ import Foundation
 
 class SSEClient {
     private var task: URLSessionDataTask?
+    /// Retain the URLSession. Previously connect() created it in a local var —
+    /// each reconnect leaked a session (never invalidated → its delegate is
+    /// retained forever) and left orphaned transports that could reopen /stream.
+    private var session: URLSession?
+    /// Reopen throttle. A belt-and-suspenders floor so no path (caller re-entry,
+    /// scene churn, a stale forceReconnect) can reopen /stream faster than this,
+    /// independent of the 2s backoff. The server-side sse-stream rate-limit exists
+    /// because this was missing; this removes the cause, not just the symptom.
+    private var lastConnectAt = Date.distantPast
+    private static let minReconnectInterval: TimeInterval = 1.0
     private let url: URL
     private let jobId: String
     var onEvent: ((SSEEvent) -> Void)?
@@ -29,6 +39,19 @@ class SSEClient {
 
     func connect() {
         guard !isClosed else { return }
+        // Reopen throttle: never open /stream faster than minReconnectInterval.
+        // Cheap guard against any caller/scene re-entry that would otherwise churn
+        // the endpoint (the 429-storm). The legitimate paths (2s backoff, an
+        // infrequent foreground forceReconnect) clear this easily.
+        let sinceLast = Date().timeIntervalSince(lastConnectAt)
+        guard sinceLast >= Self.minReconnectInterval else { return }
+        lastConnectAt = Date()
+
+        // Tear down any prior transport before opening a new one — otherwise the
+        // old session/task leaks and its socket can keep delivering/reconnecting.
+        task?.cancel()
+        session?.invalidateAndCancel()
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
@@ -39,6 +62,7 @@ class SSEClient {
         )
 
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        self.session = session   // retain — was a local var that leaked every reconnect
 
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -62,6 +86,10 @@ class SSEClient {
         reconnectTask = nil
         task?.cancel()
         task = nil
+        // Invalidate the session so its delegate is released and the transport
+        // is fully torn down — not just the task cancelled.
+        session?.invalidateAndCancel()
+        session = nil
     }
 
     /// Foreground-recovery hook. iOS suspends the app aggressively; the
