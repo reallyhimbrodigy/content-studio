@@ -208,6 +208,23 @@ test('re-entered processing (started_at just reset) is NOT wall-reaped despite o
 });
 
 // ─── QUEUED-STALL notify (Zac 2026-08-03): the 43-min "Getting started…" case ──
+// The feature is OFF unless QUEUED_STALL_ENABLED=1 (kill-switch, default off after
+// it over-fired during the surge). These sweep tests exercise the ENABLED path.
+process.env.QUEUED_STALL_ENABLED = '1';
+
+test('queued-stall KILL-SWITCH: with QUEUED_STALL_ENABLED unset, a queued-stuck job is NOT reaped', async () => {
+  const prev = process.env.QUEUED_STALL_ENABLED;
+  delete process.env.QUEUED_STALL_ENABLED;
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'ks1', user_id: 'uks', status: 'processing', current_step: 'queued',
+      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) })],
+    usage_events: [],
+  });
+  const out = await sweepJobReaper(fake, {});
+  assert.equal(out.reaped, 0, 'kill-switch off → no queued-stall reap (pre-2026-08-03 behaviour)');
+  assert.equal(fake._state.video_jobs[0].status, 'processing');
+  process.env.QUEUED_STALL_ENABLED = prev;
+});
 
 test('queued-stall selector: current_step=queued past 5min; not before; not other steps', () => {
   assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-6 * 60000) }, NOW), true, 'queued 6min = never picked up');
