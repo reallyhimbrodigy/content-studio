@@ -1166,7 +1166,7 @@ final class VideoExporter: ObservableObject {
     /// export gate decides: 200 → the clean signed URL; 402 → paywall (throws
     /// exportGated, caller NEVER falls back); 404/network → the public preview.
     /// Without a jobId (LibraryView) → the public URL, ungated. The 402→paywall
-    /// vs 404/network→fallback split is the whitelist in APIService.exportAction —
+    /// vs 404/network→fallback split is the whitelist in ExportRouting.action —
     /// a 402 that fell back would defeat the paywall for every shipped client.
     private func resolveExportSourceUrl() async throws -> String {
         guard let jobId else { return videoUrlStr }
@@ -1174,7 +1174,7 @@ final class VideoExporter: ObservableObject {
             let signed = try await APIService.shared.exportJob(jobId: jobId)
             return signed.absoluteString                       // 200 — clean export
         } catch {
-            switch APIService.exportAction(for: error) {
+            switch ExportRouting.action(for: error) {
             case .paywall:            throw ExportError.exportGated           // 402 — NEVER fall back
             case .fallbackPublicSave: return videoUrlStr                     // 404 / network
             case .surfaceError:       throw ExportError.saveFailed("export prep failed")
@@ -1226,8 +1226,8 @@ final class VideoExporter: ObservableObject {
                 if saveState == .success { saveState = .idle }
             } catch ExportError.exportGated {
                 // 402 — present the export paywall. NEVER save, NEVER show an error.
-                // (Using .manual until an .export PaywallReason with watermark copy
-                // is added; the gate itself is what matters here.)
+                // (Using .manual until a dedicated .export PaywallReason is added;
+                // the gate itself is what matters here.)
                 saveState = .idle
                 await MainActor.run { AppState.shared.presentPaywall(.manual) }
             } catch {

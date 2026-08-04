@@ -57,7 +57,10 @@ swiftc "$DIR/UsageMeterRegressionTests.swift" -o "${TMPDIR:-/tmp}/usagetest"
 "${TMPDIR:-/tmp}/usagetest"
 
 # ExportRouting — the export-gate whitelist (build-225 revenue gate): a 402 must
-# present the paywall and NEVER fall back to the free public save. Greps the real
-# APIService.exportAction(for:) so the regression can't return.
-swiftc "$DIR/ExportRoutingTests.swift" -o "${TMPDIR:-/tmp}/exporttest"
+# present the paywall and NEVER fall back to the public save. Exercises the REAL
+# router against the REAL error types (ExportRouting + APIError are standalone).
+swiftc "$DIR/../Promptly/Services/APIError.swift" \
+       "$DIR/../Promptly/Services/ExportRouting.swift" \
+       "$DIR/ExportRoutingTests.swift" \
+       -o "${TMPDIR:-/tmp}/exporttest"
 "${TMPDIR:-/tmp}/exporttest"

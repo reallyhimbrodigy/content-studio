@@ -378,12 +378,15 @@ class APIService {
         return jobId
     }
 
-    /// Request the CLEAN (watermark-free) export of a completed job. The server
-    /// checks entitlement from the DB — identity from the token, NEVER a client
-    /// flag — and mints a short-TTL signed URL for the PRIVATE clean asset. Free /
-    /// non-entitled users get 402 → the caller presents the export paywall. The
-    /// public `rendered_video_url` is only the watermarked preview and must never
-    /// be used as the export. Matches export-gate-server-enforcement-SPEC.md.
+    /// Request the export of a completed job — the private, entitlement-gated
+    /// master at exports/{job_id}/clean.mp4. The server checks entitlement from the
+    /// DB — identity from the token, NEVER a client flag — and mints a short-TTL
+    /// signed URL for that private asset. Free / non-entitled users get 402 → the
+    /// caller presents the export paywall. The public `rendered_video_url` is the
+    /// free/public asset (currently the same rendered video; whether it gets
+    /// degraded — a watermark or otherwise — is a separate, still-open decision)
+    /// and must never be handed out AS the gated export. Matches
+    /// export-gate-server-enforcement-SPEC.md.
     /// `clientJobId` is the idempotency replay key so a repeat export returns the
     /// same URL rather than re-minting.
     func exportJob(jobId: String, clientJobId: String? = nil) async throws -> URL {
@@ -395,14 +398,14 @@ class APIService {
         let (data, response) = try await requestData(request)
         try Self.throwIfWall(response, data)
         if let http = response as? HTTPURLResponse, http.statusCode == 402 {
-            // Not entitled → the export paywall. Free user keeps the watermarked
-            // preview; this sheet is an upgrade ("remove the watermark"), not a denial.
+            // Not entitled → the export paywall. Free user keeps the public asset;
+            // this sheet is an upgrade to the gated export, not a denial.
             struct LimitPayload: Decodable { let kind: String?; let limit: Int?; let message: String? }
             let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
             throw APIError.paymentRequired(
                 kind: payload?.kind ?? "export",
                 limit: payload?.limit,
-                message: payload?.message ?? "Get the clean, watermark-free version with Pro."
+                message: payload?.message ?? "Upgrade to Pro to export this video."
             )
         }
         if let http = response as? HTTPURLResponse, http.statusCode == 404 {
@@ -428,21 +431,9 @@ class APIService {
         }
         return signed
     }
-
-    /// Maps an export-flow error to the EXACTLY-ONE correct action. This is the
-    /// whitelist Zac mandated: a 402 must NEVER fall back to the free public save
-    /// (that would defeat the paywall for every shipped client, unfixable without
-    /// another release). Pure + total so it can be unit-tested. See
-    /// APIServiceExportRoutingTests.
-    enum ExportAction: Equatable { case save, paywall, fallbackPublicSave, surfaceError }
-    static func exportAction(for error: Error) -> ExportAction {
-        switch error {
-        case APIError.paymentRequired:   return .paywall              // 402 — NEVER fallback
-        case APIError.exportNotAvailable: return .fallbackPublicSave  // 404 — NULL key, old job
-        case is URLError:                 return .fallbackPublicSave  // network error
-        default:                          return .surfaceError        // 5xx/decode — do NOT silently free-save
-        }
-    }
+    // The export-flow save decision (402 → paywall, never fallback) lives in
+    // ExportRouting.action(for:) — a pure, standalone-testable file. See
+    // ExportRoutingTests.
 
     /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
     /// job in place. A 404/409/403 means the job is no longer awaiting THIS input
@@ -636,6 +627,19 @@ class APIService {
         guard let remoteUrl = URL(string: url) else { throw APIError.uploadFailed }
         let pub = publicUrl ?? remoteUrl.absoluteString.components(separatedBy: "?").first ?? remoteUrl.absoluteString
         let msgId = messageId ?? UUID().uuidString
+
+        // UNS-by-size instrumentation: record the upload SIZE + PATH + a join key
+        // (the source object key, which the job row also carries) at attempt time —
+        // BEFORE the upload can die on suspension — so the failing (never-settled)
+        // population HAS a size to band by. durable so it survives an app kill
+        // mid-upload. NOTE: `path` is ALWAYS bg-single — every source upload uses
+        // the background single-PUT; the multipart path is dead code (zero callers),
+        // so these bands measure the real path, not a per-size branch.
+        Analytics.track("upload_attempt", props: [
+            "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+            "path": "bg-single",
+            "src_key": URL(string: pub)?.lastPathComponent ?? "",
+        ], durable: true)
 
         let uploadStart = Date()
         _ = try await BackgroundUploadManager.shared.upload(
@@ -1362,57 +1366,8 @@ class APIService {
     }
 }
 
-enum APIError: LocalizedError {
-    case notAuthenticated
-    case jobCreationFailed(String)
-    case uploadFailed
-    case deleteFailed
-    /// Server returned 404 on the export endpoint — the job's private clean-export
-    /// key is NULL (an old render made before the private pipeline). This is the
-    /// EXPLICIT fallback case: the caller reverts to saving the public preview.
-    /// It is deliberately DISTINCT from paymentRequired so a 402 can never be
-    /// mistaken for "fall back" — a 402 that fell back would defeat the paywall.
-    case exportNotAvailable
-    /// Server returned 402 — daily quota hit or a Pro-only feature was
-    /// called by a free user. `kind` is "render", "chat", or "reedit" so
-    /// the caller can present the right paywall reason.
-    case paymentRequired(kind: String, limit: Int?, message: String)
-    /// Server returned 403 `wall_required` — an enforced `.none` account hit a
-    /// gated door (post-flip; inert while the wall knob is off). The client
-    /// routes to the trial wall (TrialWallView, context .door), never a usable
-    /// screen. `message` is old-client-safe display text for the rare straggler.
-    case wallRequired(message: String)
-    /// Render dispatch returned a structured failure shape: error_code +
-    /// user_message + the three behavioural flags (retryable,
-    /// requires_new_video, requires_vibe_change). Callers branch on the
-    /// flags to decide which failure screen to show. Carries the
-    /// underlying error_code string so analytics can group failures.
-    case structuredFailure(
-        errorCode: String?,
-        userMessage: String,
-        retryable: Bool,
-        requiresNewVideo: Bool,
-        requiresVibeChange: Bool
-    )
-    /// Layer 2 of pick-validate-upload flow: Modal /validate said the
-    /// sample isn't a talking-head video. userMessage is the backend's
-    /// human-readable reason; faceRatio + confidence are debug info.
-    case validationRejected(userMessage: String, faceRatio: Double?, confidence: Double?)
-
-    var errorDescription: String? {
-        switch self {
-        case .notAuthenticated: return "Please sign in"
-        case .jobCreationFailed(let msg): return msg
-        case .uploadFailed: return "Upload failed"
-        case .deleteFailed: return "Delete failed"
-        case .paymentRequired(_, _, let msg): return msg
-        case .wallRequired(let message): return message
-        case .structuredFailure(_, let userMessage, _, _, _): return userMessage
-        case .validationRejected(let userMessage, _, _): return userMessage
-        case .exportNotAvailable: return "This video can't be exported yet"
-        }
-    }
-}
+// APIError moved to APIError.swift (Foundation-only) so ExportRouting and its
+// standalone tests can compile against it without APIService's networking deps.
 
 /// Modal /validate response shape. is_talking_head is the only field
 /// the iOS app branches on; the rest are surfaced for logging and
