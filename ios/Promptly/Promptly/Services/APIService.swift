@@ -378,6 +378,56 @@ class APIService {
         return jobId
     }
 
+    /// Request the CLEAN (watermark-free) export of a completed job. The server
+    /// checks entitlement from the DB — identity from the token, NEVER a client
+    /// flag — and mints a short-TTL signed URL for the PRIVATE clean asset. Free /
+    /// non-entitled users get 402 → the caller presents the export paywall. The
+    /// public `rendered_video_url` is only the watermarked preview and must never
+    /// be used as the export. Matches export-gate-server-enforcement-SPEC.md.
+    /// `clientJobId` is the idempotency replay key so a repeat export returns the
+    /// same URL rather than re-minting.
+    func exportJob(jobId: String, clientJobId: String? = nil) async throws -> URL {
+        struct ExportBody: Encodable { let client_job_id: String? }
+        var request = await authorizedRequest("/api/jobs/\(jobId)/export", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(ExportBody(client_job_id: clientJobId))
+
+        let (data, response) = try await requestData(request)
+        try Self.throwIfWall(response, data)
+        if let http = response as? HTTPURLResponse, http.statusCode == 402 {
+            // Not entitled → the export paywall. Free user keeps the watermarked
+            // preview; this sheet is an upgrade ("remove the watermark"), not a denial.
+            struct LimitPayload: Decodable { let kind: String?; let limit: Int?; let message: String? }
+            let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
+            throw APIError.paymentRequired(
+                kind: payload?.kind ?? "export",
+                limit: payload?.limit,
+                message: payload?.message ?? "Get the clean, watermark-free version with Pro."
+            )
+        }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw APIError.jobCreationFailed("Export failed")
+        }
+        // Signed URL field name is part of the contract with ERRORS — accept the
+        // likely keys so the client lands compatible; confirm the exact key on sync.
+        struct ExportResponse: Decodable {
+            let url: String?
+            let signedUrl: String?
+            let exportUrl: String?
+            enum CodingKeys: String, CodingKey {
+                case url
+                case signedUrl = "signed_url"
+                case exportUrl = "export_url"
+            }
+        }
+        let result = try JSONDecoder().decode(ExportResponse.self, from: data)
+        guard let urlStr = result.url ?? result.signedUrl ?? result.exportUrl,
+              let signed = URL(string: urlStr) else {
+            throw APIError.jobCreationFailed("No export URL returned")
+        }
+        return signed
+    }
+
     /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
     /// job in place. A 404/409/403 means the job is no longer awaiting THIS input
     /// (already resumed, self-completed on timeout, double-answered, or a stale
