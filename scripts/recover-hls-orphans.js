@@ -15,6 +15,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local') });
 const { supabaseAdmin } = require('../services/supabase-admin');
 const s3 = require('../services/s3');
+const { pickPlayableOutput } = require('../lib/playable-output');
 const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
 const DRY_RUN = process.env.RECOVER_DRY_RUN !== '0'; // default dry-run; set 0 to write
@@ -27,14 +28,18 @@ if (!s3.isConfigured || !s3.isConfigured()) {
 const client = new S3Client({ region: s3.AWS_REGION });
 
 async function renderKeyFor(jobId) {
-  // List renders/<jobId>/ — return the newest -edited.mp4 key if present.
+  // Resolve via the SHARED helper. This function previously matched /\.mp4$/i
+  // and sorted by NEWEST, which picked `<job>-hls/stream_1080p/init.mp4` — a
+  // 0-byte HLS init segment — over the real `-edited.mp4`, because the HLS
+  // artifacts are written AFTER the deliverable. It then wrote that key's URL
+  // into the job row, so a user would have received a 0-byte file as their
+  // video. Same bug was later written twice more in verification probes;
+  // lib/playable-output.js exists so there is no fourth site.
   const out = await client.send(new ListObjectsV2Command({
-    Bucket: s3.S3_BUCKET, Prefix: `renders/${jobId}/`, MaxKeys: 20,
+    Bucket: s3.S3_BUCKET, Prefix: `renders/${jobId}/`, MaxKeys: 100,
   }));
-  const mp4s = (out.Contents || []).filter((o) => /\.mp4$/i.test(o.Key || ''));
-  if (!mp4s.length) return null;
-  mp4s.sort((a, b) => new Date(b.LastModified) - new Date(a.LastModified));
-  return mp4s[0].Key;
+  const picked = pickPlayableOutput(out.Contents || []);
+  return picked ? picked.key : null;
 }
 
 (async () => {
