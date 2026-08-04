@@ -208,46 +208,45 @@ test('re-entered processing (started_at just reset) is NOT wall-reaped despite o
 });
 
 // ─── QUEUED-STALL notify (Zac 2026-08-03): the 43-min "Getting started…" case ──
-// The feature is OFF unless QUEUED_STALL_ENABLED=1 (kill-switch, default off after
-// it over-fired during the surge). These sweep tests exercise the ENABLED path.
-process.env.QUEUED_STALL_ENABLED = '1';
+// Feature is ON by default (proven safe on its full population); QUEUED_STALL_DISABLED=1
+// kills it. Threshold 8min (QUEUED_STALL_MS). Ensure no disable flag leaks into tests.
+delete process.env.QUEUED_STALL_DISABLED;
 
-test('queued-stall KILL-SWITCH: with QUEUED_STALL_ENABLED unset, a queued-stuck job is NOT reaped', async () => {
-  const prev = process.env.QUEUED_STALL_ENABLED;
-  delete process.env.QUEUED_STALL_ENABLED;
+test('queued-stall KILL-SWITCH: with QUEUED_STALL_DISABLED=1, a queued-stuck job is NOT reaped', async () => {
+  process.env.QUEUED_STALL_DISABLED = '1';
   const fake = makeFake({
     video_jobs: [vj({ id: 'ks1', user_id: 'uks', status: 'processing', current_step: 'queued',
-      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) })],
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
     usage_events: [],
   });
   const out = await sweepJobReaper(fake, {});
-  assert.equal(out.reaped, 0, 'kill-switch off → no queued-stall reap (pre-2026-08-03 behaviour)');
+  assert.equal(out.reaped, 0, 'disable flag → no queued-stall reap (pre-2026-08-03 behaviour)');
   assert.equal(fake._state.video_jobs[0].status, 'processing');
-  process.env.QUEUED_STALL_ENABLED = prev;
+  delete process.env.QUEUED_STALL_DISABLED;
 });
 
-test('queued-stall selector: current_step=queued past 5min; not before; not other steps', () => {
-  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-6 * 60000) }, NOW), true, 'queued 6min = never picked up');
+test('queued-stall selector: current_step=queued past 8min; not before; not other steps', () => {
+  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-9 * 60000) }, NOW), true, 'queued 9min = never picked up');
   assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-96 * 1000) }, NOW), false, 'queued 96s = healthy cold-start, protected');
-  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-4 * 60000) }, NOW), false, 'under 5min');
+  assert.equal(isQueuedStall({ current_step: 'queued', updated_at: iso(-7 * 60000) }, NOW), false, 'under 8min threshold');
   assert.equal(isQueuedStall({ current_step: 'downloading', updated_at: iso(-30 * 60000) }, NOW), false, 'download can legit run minutes — OUT of scope');
   assert.equal(isQueuedStall({ current_step: 'rendering', updated_at: iso(-30 * 60000) }, NOW), false, 'render OUT of scope (heartbeat masks; needs frame signal)');
   assert.equal(isQueuedStall({ current_step: undefined, updated_at: iso(-30 * 60000) }, NOW), false, 'no current_step');
   assert.equal(isQueuedStall({ current_step: 'queued', updated_at: 'not-a-date' }, NOW), false, 'unparseable ts never reaps');
 });
 
-test('queued-stall reap: status=processing but current_step=queued 6min → JOB_NEVER_STARTED, honest "didn\'t start" copy, refunded, retry-able', async () => {
+test('queued-stall reap: status=processing but current_step=queued 9min → JOB_NEVER_STARTED, honest "didn\'t start" copy, refunded, retry-able', async () => {
   // The exact 43-min "Getting started…" case: dispatch flipped status→processing
   // and set current_step=queued, but the worker never wrote a first step. The
-  // 50-min processing lease sits on it; queued_stall reaps it at 5min.
+  // 50-min processing lease sits on it; queued_stall reaps it at 8min.
   const fake = makeFake({
     video_jobs: [vj({ id: 'q1', user_id: 'uq', status: 'processing', current_step: 'queued',
-      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) })],
-    usage_events: [{ id: 1, user_id: 'uq', kind: 'render', created_at: iso(-7 * 60000 - 90) }],
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
+    usage_events: [{ id: 1, user_id: 'uq', kind: 'render', created_at: iso(-10 * 60000 - 90) }],
   });
   const sse = [];
   const out = await sweepJobReaper(fake, { pushProgressToSSE: (id, ev) => sse.push({ id, ev }) });
-  assert.equal(out.reaped, 1, 'queued-stuck job reaped at 5min, not 50');
+  assert.equal(out.reaped, 1, 'queued-stuck job reaped at 8min, not 50');
   const row = fake._state.video_jobs[0];
   assert.equal(row.status, 'failed');
   assert.equal(row.error_message, STALLED_COPY.queued, 'honest "didn\'t get started" copy, not the "stalled" processing copy');
@@ -274,7 +273,7 @@ test('queued-stall PROTECTS a healthy cold-starting job (96s at queued, under th
 test('queued-stall CAS: worker writes first step (current_step off queued) between read and write → NOT killed', async () => {
   const fake = makeFake({
     video_jobs: [vj({ id: 'q3', user_id: 'uq3', status: 'processing', current_step: 'queued',
-      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) })],
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
     usage_events: [],
   });
   const row = fake._state.video_jobs[0];
@@ -293,7 +292,7 @@ test('queued-stall MASS GUARD: >8 queued-stale in one sweep = systemic → 0 rea
   const jobs = [];
   for (let i = 0; i < 9; i += 1) {
     jobs.push(vj({ id: `m${i}`, user_id: `um${i}`, status: 'processing', current_step: 'queued',
-      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) }));
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
   }
   const fake = makeFake({ video_jobs: jobs, usage_events: [] });
   const out = await sweepJobReaper(fake, {});
@@ -305,7 +304,7 @@ test('queued-stall mass guard boundary: exactly 8 still reap (guard is > not >=)
   const jobs = [];
   for (let i = 0; i < 8; i += 1) {
     jobs.push(vj({ id: `b${i}`, user_id: `ub${i}`, status: 'processing', current_step: 'queued',
-      created_at: iso(-7 * 60000), started_at: iso(-7 * 60000), updated_at: iso(-6 * 60000) }));
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
   }
   const fake = makeFake({ video_jobs: jobs, usage_events: [] });
   const out = await sweepJobReaper(fake, {});
