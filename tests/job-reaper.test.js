@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   sweepJobReaper, isPastLease, isPastExecutionWall, isQueuedStall, reapReason,
-  LEASE_MS, EXEC_WALL_MS, STALLED_COPY,
+  LEASE_MS, EXEC_WALL_MS, STALLED_COPY, _qsAlert,
 } = require('../lib/job-reaper');
 
 // Reuse the refund-leg fake pattern: minimal supabase-js chainable over memory.
@@ -298,6 +298,42 @@ test('queued-stall MASS GUARD: >8 queued-stale in one sweep = systemic → 0 rea
   const out = await sweepJobReaper(fake, {});
   assert.equal(out.reaped, 0, 'a systemic container-queue is NOT nine deaths — alert, do not mass-reap');
   assert.ok(fake._state.video_jobs.every((r) => r.status === 'processing'), 'all live-but-waiting jobs preserved');
+});
+
+test('queued-stall alert BATCHING: N queued_stall reaps → ONE never-dispatch page (not N); timeout/stall stay per-job', async () => {
+  // A ~15/hr class one-paging per job trains the owner to ignore the channel.
+  _qsAlert.count = 0; _qsAlert.sinceMs = 0; _qsAlert.lastPageMs = 0; // fresh window
+  const pages = [];
+  const sendAlert = async (a) => { pages.push(a.threadId); };
+  const jobs = [];
+  for (let i = 0; i < 3; i += 1) {
+    jobs.push(vj({ id: `qa${i}`, user_id: `uqa${i}`, status: 'processing', current_step: 'queued',
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) }));
+  }
+  // a genuinely distinct stall (rare class) must STILL page per-job
+  jobs.push(vj({ id: 'st1', user_id: 'ust', status: 'processing',
+    created_at: iso(-56 * 60000), updated_at: iso(-51 * 60000) }));
+  const fake = makeFake({ video_jobs: jobs, usage_events: [] });
+  const out = await sweepJobReaper(fake, { sendAlert });
+  assert.equal(out.reaped, 4, 'all 4 reaped');
+  assert.equal(pages.filter((t) => t === 'never-dispatch').length, 1, 'ONE batched page for the 3 queued_stall, not 3');
+  assert.equal(pages.filter((t) => t === 'render-alert').length, 1, 'the rare stall still gets its own per-job page');
+});
+
+test('queued-stall alert BATCHING: within the same window, further reaps do NOT page again', async () => {
+  // Prime the window (lastPageMs = now) so a second sweep is inside it.
+  _qsAlert.count = 0; _qsAlert.sinceMs = 0; _qsAlert.lastPageMs = Date.now();
+  const pages = [];
+  const sendAlert = async (a) => { pages.push(a.threadId); };
+  const fake = makeFake({
+    video_jobs: [vj({ id: 'qw1', user_id: 'uqw', status: 'processing', current_step: 'queued',
+      created_at: iso(-10 * 60000), started_at: iso(-10 * 60000), updated_at: iso(-9 * 60000) })],
+    usage_events: [],
+  });
+  const out = await sweepJobReaper(fake, { sendAlert });
+  assert.equal(out.reaped, 1, 'still reaped + told the user');
+  assert.equal(pages.filter((t) => t === 'never-dispatch').length, 0, 'no repeat page inside the window (only the count accumulates)');
+  assert.equal(_qsAlert.count, 1, 'occurrence still counted for the next window flush');
 });
 
 test('queued-stall mass guard boundary: exactly 8 still reap (guard is > not >=)', async () => {
