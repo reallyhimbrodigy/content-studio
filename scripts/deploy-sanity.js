@@ -73,6 +73,15 @@ async function gateProbe(token) {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }
 
+async function exportProbe(token) {
+  const r = await fetch(`${HOST}/api/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ gate_probe: true }),
+  });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}
+
 async function usage(token) {
   const r = await fetch(`${HOST}/api/usage`, { headers: { Authorization: `Bearer ${token}` } });
   return { status: r.status, body: await r.json().catch(() => ({})) };
@@ -158,6 +167,9 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     const u = await usage(token);
     check('/api/usage is_pro == true', u.body.is_pro === true, `got ${u.body.is_pro}`);
     check("/api/usage tier == 'paid'", u.body.tier === 'paid', `got '${u.body.tier}'`);
+    // Export gate — the coming revenue wall — must ALLOW a Pro account server-side.
+    const exPro = await exportProbe(token);
+    check('export gate: Pro → 200 allowed', exPro.status === 200 && exPro.body.allowed === true, `got ${exPro.status}/${exPro.body.allowed}`);
     // CHAT LIVENESS — the check that turns "44 days dark" into "caught on deploy".
     const chat = await chatProbe(token);
     check('/api/chat HTTP 200 (not 502)', chat.status === 200, `got ${chat.status}`);
@@ -185,6 +197,9 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     check('app_usable == true (knob off — no wall)', g.body.app_usable === true);
     const u = await usage(token);
     check('/api/usage is_pro == false', u.body.is_pro === false, `got ${u.body.is_pro}`);
+    // Export gate — must BLOCK a free account server-side (the other direction).
+    const exFree = await exportProbe(token);
+    check('export gate: free → 402 blocked', exFree.status === 402 && exFree.body.allowed === false, `got ${exFree.status}/${exFree.body.allowed}`);
   } catch (e) {
     check('free probe ran', false, e.message);
   }

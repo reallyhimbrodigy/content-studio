@@ -3920,8 +3920,33 @@ const server = http.createServer((req, res) => {
               console.error('[RevenueCat] TRANSFER reconcile failed', { tid, error: e.message });
             }
           }
-          console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length });
-          return sendJson(res, 200, { ok: true, transferred: granted });
+          // SOURCE RECONCILE (Zac 2026-08-04): the sub moved AWAY from these ids.
+          // reconcile is grant-only, so lingering Pro on the source would persist
+          // until pro_until lapsed — a small leak (mostly anon sources, but real→
+          // real transfers exist). Re-check each source against RC; if RC confirms
+          // it no longer holds the entitlement, revoke ONLY the profile still keyed
+          // to that exact id (never touch one that re-subscribed under a new id).
+          const fromIds = Array.isArray(event.transferred_from) ? event.transferred_from : [];
+          let revoked = 0;
+          for (const rawId of fromIds) {
+            const fid = String(rawId || '').trim();
+            if (!fid || fid.startsWith('$RCAnonymousID')) continue;
+            try {
+              const r = await reconcileEntitlementFromRevenueCat(fid); // authoritative; grants if still Pro
+              if (!r.isPro) {
+                const { data: rev } = await supabaseAdmin.from('profiles')
+                  .update({ tier: 'free', pro_until: null })
+                  .eq('id', fid).eq('rc_app_user_id', fid)
+                  .select('id');
+                if (Array.isArray(rev) && rev.length) revoked++;
+              }
+            } catch (e) {
+              if (e.statusCode === 503) break; // no RC secret — ack; /sync reconciles
+              console.error('[RevenueCat] TRANSFER from-reconcile failed', { fid, error: e.message });
+            }
+          }
+          console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length, revoked });
+          return sendJson(res, 200, { ok: true, transferred: granted, revoked });
         } else {
           // TEST, SUBSCRIBER_ALIAS, etc — log and ack so RevenueCat doesn't retry.
           console.log('[RevenueCat] unhandled event type, acking', { type, appUserId });
@@ -5333,6 +5358,58 @@ const server = http.createServer((req, res) => {
         console.error('[refresh-urls] error:', error?.message);
         return sendJson(res, status, { error: clientSafeMessage(error) });
       }
+    })();
+    return;
+  }
+
+  // ── Export gate — server-enforced monetization wall (shipped DARK ahead of 225) ──
+  // The conversion data says the 3/day render cap engages only 0.5% of users, so
+  // EXPORT becomes the real revenue wall. It is enforced SERVER-SIDE from the same
+  // authoritative DB/RC path renders use (assertProEntitled) — NEVER a client flag
+  // — and delivers only a SHORT-TTL SIGNED url, never a public one. Shipped dark:
+  //   • gate_probe:true → the entitlement DECISION only (no mint/meter). Always
+  //     answers, independent of the flag, so deploy-sanity can prove both
+  //     directions (free→402, pro→200) on every roll.
+  //   • real call → inert 501 until EXPORT_GATE_ENABLED=1 AND 225 wires the client
+  //     + a private clean-asset. Nothing changes for anyone until then.
+  if (parsed.pathname === '/api/export' && req.method === 'POST') {
+    (async () => {
+      let authUser;
+      try { authUser = await requireSupabaseUser(req); }
+      catch { return sendJson(res, 401, { error: 'unauthorized' }); }
+      if (!checkRateLimit(res, 'export', authUser.id, 60, 60)) return;
+      const body = await readJsonBody(req).catch(() => ({}));
+
+      // SERVER-SIDE entitlement — the same authoritative decision the render gate
+      // uses. A client 'isPro'/'tier' field NEVER influences this.
+      let decision;
+      try { decision = await assertProEntitled(authUser.id); }
+      catch (e) { console.error('[export] entitlement check failed:', e?.message); decision = { isPro: false, reason: 'entitlement_error' }; }
+      const allowed = decision.isPro === true; // 225 may widen with a metered free-export allowance
+
+      // Dry-run (deploy-sanity + client preview): decision only, no side effects.
+      if (body && body.gate_probe === true) {
+        return sendJson(res, allowed ? 200 : 402, { allowed, tier: allowed ? 'paid' : 'free', reason: decision.reason });
+      }
+
+      // DARK: real exports inert until the flag flips + the private asset exists.
+      if (String(process.env.EXPORT_GATE_ENABLED || '') !== '1') {
+        return sendJson(res, 501, { error: 'export_not_enabled' });
+      }
+      if (!allowed) return sendJson(res, 402, { error: 'upgrade_required', reason: decision.reason });
+
+      // Entitled + enabled: verify ownership, mint a SHORT-TTL SIGNED url. (225
+      // repoints this at the private clean-asset key, not the public render.)
+      const jobId = String((body && body.job_id) || '').trim();
+      if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
+      const { data: job, error } = await supabaseAdmin.from('video_jobs')
+        .select('id, user_id, rendered_video_url').eq('id', jobId).maybeSingle();
+      if (error) return sendJson(res, 500, { error: 'load_failed' });
+      if (!job || job.user_id !== authUser.id) return sendJson(res, 404, { error: 'not_found' });
+      let key = null;
+      try { key = new URL(job.rendered_video_url).pathname.replace(/^\/+/, '') || null; } catch { key = null; }
+      const exportUrl = key ? await s3.createPresignedGetUrl(key, 300) : job.rendered_video_url;
+      return sendJson(res, 200, { export_url: exportUrl, ttl_seconds: 300 });
     })();
     return;
   }
