@@ -639,13 +639,21 @@ class APIService {
 
     private static let multipartChunkSize: Int64 = 16 * 1024 * 1024   // 16MB chunks — bigger chunks amortize per-part overhead
     private static let multipartConcurrency = 6                        // matches httpMaximumConnectionsPerHost — saturates the connection pool
-    // Lower threshold (30MB) so typical 1080p iPhone clips (40-90MB) get
-    // the parallel-upload speedup. Multipart adds ~700ms of init+complete
-    // roundtrips, which is paid back as soon as parallel-stream throughput
-    // beats single-stream. On a 20Mbps wifi a 60MB video goes from 24s
-    // (single PUT) to ~7s (6-way multipart). Threshold below 30MB isn't
-    // worth the roundtrip overhead.
-    private static let multipartThreshold: Int64 = 30 * 1024 * 1024
+    // RAISED to 200MB (2026-08-04) — RELIABILITY over speed. Multipart runs on
+    // the FOREGROUND URLSession (its per-chunk Data body can't use a background
+    // session), so it DIES when iOS suspends the app mid-upload → the source
+    // never lands → 600s wait → UPLOAD_NEVER_STARTED. Single PUT goes through
+    // BackgroundUploadManager (URLSessionConfiguration.background), which the OS
+    // finishes while suspended/terminated. At 30MB the typical 40-90MB clip took
+    // the fragile multipart path — measured as ~64% of remaining failures. At
+    // 200MB those clips use the surviving single-PUT path. Cost: a 60MB clip goes
+    // ~7s (6-way multipart) → ~24s (single PUT), but the background session's 30-min
+    // resource timeout covers it and it SURVIVES backgrounding. Files >200MB (rare;
+    // the cap is ~500MB) stay multipart — covered by the server-side dead-upload
+    // fast-fail + Option B (background-eligible multipart) later. Measure UNS by
+    // app_version on the next build vs 1.3.6, and upload wall-clock; revert if
+    // wall-clock regresses without a UNS drop.
+    private static let multipartThreshold: Int64 = 200 * 1024 * 1024
 
     struct MultipartInitResponse: Codable {
         let uploadId: String
