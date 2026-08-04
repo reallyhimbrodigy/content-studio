@@ -26,6 +26,7 @@ const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO
 const { findDeadSourceJob } = require('./lib/source-presence');
 const apiLedger = require('./lib/api-outcome-ledger');
 const { makeJob404Guard } = require('./lib/job404-guard');
+const { isTerminalJobStatus } = require('./lib/job-status');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
@@ -1964,6 +1965,16 @@ const server = http.createServer((req, res) => {
     const jobId = decodeURIComponent(sseStreamMatch[1] || '').trim();
     if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
 
+    // Runaway-reconnect guard. A client (on ANY shipped build) that reopens the
+    // SSE stream for the same job several times per second — a lifecycle churn we
+    // can't fix without a release — otherwise pays auth.getUser + 2 Supabase
+    // queries PER open (~15 round-trips/sec from one 2-job user). A real viewer
+    // holds ONE connection open for minutes; a storm reopens ~150x/min. Cap opens
+    // per job BEFORE spending any Supabase call — keyed on the URL's jobId so the
+    // throttle runs pre-auth. On 429 the client falls back to its 45s DB poll and
+    // SSEClient backs off to its 2s reconnect floor, so the storm self-dampens.
+    if (!checkRateLimit(res, 'sse-stream', jobId, 12, 60)) return;
+
     (async () => {
     // Authenticate + verify ownership BEFORE opening the stream. Without this,
     // anyone holding a job UUID could read its status + signed rendered_video_url.
@@ -2010,6 +2021,12 @@ const server = http.createServer((req, res) => {
                 hlsManifestUrl: data.hls_manifest_url || null,
                 thumbnailUrl: data.thumbnail_url || null,
                 error: data.error_message || null,
+                // final:true on a terminal snapshot lets a correct client stop
+                // reconnecting the moment it connects to an already-finished job
+                // (SSEClient sets receivedFinalEvent → no reconnect). Its absence
+                // is why a client that reconnects onto a completed job never learns
+                // to quit. Matches the poll path, which already sets final:true.
+                final: isTerminalJobStatus(data.status),
               })}\n\n`);
             } catch (e) {}
           }
