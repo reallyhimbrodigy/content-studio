@@ -5425,16 +5425,32 @@ const server = http.createServer((req, res) => {
       if (!job || job.user_id !== authUser.id) return sendJson(res, 404, { error: 'not_found' });
 
       const cleanKey = job.result && job.result.clean_export_key;
-      // NULL key → 404 FIRST, BEFORE the entitlement 402: an old job has no private
-      // asset, so the client knows to fall back to the public save. A 402 must NEVER
-      // be returned for a missing key (that would show "upgrade" instead of fallback).
+      // NULL key → 404 FIRST, BEFORE the paywall: an old job has no private asset,
+      // so the client falls back to the public save. A 402 must NEVER be returned
+      // for a missing key (that would show "upgrade" instead of the fallback).
       if (!cleanKey) return sendJson(res, 404, { error: 'no_private_asset' });
 
-      // Key present (a new, gated render) → NOW enforce entitlement.
-      if (!allowed) return sendJson(res, 402, { error: 'upgrade_required', reason: decision.reason });
+      // WALL (Zac 2026-08-04): Pro = unlimited; a free user gets ONE free export,
+      // then 402. Under the ERRORS model there is NO degraded public asset, so the
+      // public≠clean check is trivially satisfied and cannot be the wall — THE
+      // COUNTER IS THE WALL. Fail-CLOSED on a count error (never give the product
+      // away on a DB blip). NOTE: getFeatureUsageCount→increment is not atomic;
+      // arming MUST switch to an atomic claim (claim_usage_slot-style) to close the
+      // parallel-double-free-export race — tracked in the export spec.
+      const FREE_EXPORT_LIMIT = parseInt(process.env.FREE_EXPORT_LIMIT || '1', 10);
+      if (!allowed) {
+        let used;
+        try { used = await getFeatureUsageCount(supabaseAdmin, authUser.id, 'export'); }
+        catch (e) { console.error('[export] usage-count failed — fail CLOSED (revenue wall):', e?.message); used = FREE_EXPORT_LIMIT; }
+        if (used >= FREE_EXPORT_LIMIT) {
+          return sendJson(res, 402, { error: 'upgrade_required', free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT });
+        }
+      }
 
-      // Entitled + private key present: SHORT-TTL SIGNED url for the CLEAN master.
+      // Allowed (Pro unlimited, or free within quota): mint + record the export.
       const url = await s3.createPresignedGetUrl(cleanKey, 300);
+      try { await incrementFeatureUsage(supabaseAdmin, authUser.id, 'export'); }
+      catch (e) { console.error('[export] usage-increment failed (non-fatal):', e?.message); }
       return sendJson(res, 200, { url, expires_in: 300 });
     })();
     return;
