@@ -2988,6 +2988,11 @@ const server = http.createServer((req, res) => {
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          // upload_attempt (1.3.7/225): durable {size_mb, path, src_key} fired at
+          // upload START so the failing (never-settled) population has a SIZE to
+          // band UNS by. Emitted on app-1.3.3; allowlisted here so the SQL mirror
+          // keeps it (PostHog does regardless).
+          'upload_attempt',
           'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
           // 2026-08-02 — the SPLIT names. `not_talking_head_rejected` fires with
           // props.proceeded:true on 68 of 109 events (62%): an event whose name
