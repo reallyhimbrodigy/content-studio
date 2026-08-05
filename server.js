@@ -6060,6 +6060,30 @@ if (require.main === module) {
     setTimeout(runBleedMeter, 90 * 1000); // boot pass (fires if past report hour)
     setInterval(runBleedMeter, 60 * 60 * 1000); // hourly
 
+    // EXPORT-INTEGRITY MONITOR. Security's "zero completions with a NULL
+    // clean_export_key" is the condition for arming the export paywall — but a
+    // pre-flight only proves the rate is zero at one instant, and the rate is
+    // exactly what drifts afterwards (a rotated credential, a bucket-policy
+    // edit, or an agent deploying a branch that reverts the upload — which is
+    // how v512 dropped the key two minutes after it shipped). Every completion
+    // missing the key exports unwatermarked for free, so this runs continuously
+    // and alerts on the RATE, not just at arming time.
+    let exportBusy = false;
+    const runExportIntegrity = async () => {
+      if (exportBusy) return;
+      exportBusy = true;
+      try {
+        const { sweepExportIntegrity } = require('./lib/export-integrity-monitor');
+        await sweepExportIntegrity(supabaseAdmin, { sendAlert: sendOwnerAlert });
+      } catch (err) {
+        console.error('[export-integrity] tick crashed:', err?.message || err);
+      } finally {
+        exportBusy = false;
+      }
+    };
+    setTimeout(runExportIntegrity, 120 * 1000);
+    setInterval(runExportIntegrity, 15 * 60 * 1000); // every 15 min
+
     // Completion-rate watchdog (2026-07-31 incident follow-up). The dispatch
     // alert catches "the request failed"; it does NOT catch "dispatch succeeded
     // and nothing ever completes" — worker accepts + dies, silent stall, jobs
