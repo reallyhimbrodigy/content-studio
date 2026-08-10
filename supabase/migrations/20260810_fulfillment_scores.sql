@@ -16,6 +16,7 @@ create table if not exists public.fulfillment_scores (
   asks jsonb not null,              -- [{text, class, verdict, noted, evidence}]
   flags jsonb,
   vibe_input text,
+  created_at timestamptz,          -- the JOB's created_at (scoreboard filters by day on this)
   change_request text
 );
 create index if not exists fulfillment_scores_judged_at_idx on public.fulfillment_scores (judged_at);

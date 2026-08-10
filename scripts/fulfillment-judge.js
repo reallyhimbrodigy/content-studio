@@ -38,7 +38,7 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 const MODEL = 'claude-haiku-4-5-20251001';
 const OUT_DIR = path.join(__dirname, '..', 'out');
 const OUT = path.join(OUT_DIR, 'fulfillment_scores.jsonl');
-const JUDGE_VERSION = 1;
+const JUDGE_VERSION = 2;
 // Haiku 4.5 list pricing (USD per Mtok). [CODE-EXTERNAL] anthropic pricing page.
 const PRICE_IN = 1.0, PRICE_OUT = 5.0;
 
@@ -55,11 +55,17 @@ async function pageAll(pathq) {
   return out;
 }
 async function pullCohort(sinceIso) {
+  // RECIPE LOCATION MOVED 2026-08-04 [MEASURED]: <=08-03 recipes live in the
+  // edit_recipe COLUMN; >=08-04 they live in result.edit_recipe (jsonb). The
+  // column is NULL on all 2,459 completions since. Coalesce both.
   const since = sinceIso ? `&created_at=gte.${sinceIso}` : '';
-  return pageAll(
-    `video_jobs?status=eq.completed&edit_recipe=not.is.null${since}` +
-    `&select=id,created_at,vibe_input,change_request,edit_recipe,notes:result->capability_notes,route:result->>route&order=created_at.asc`
+  const rows = await pageAll(
+    `video_jobs?status=eq.completed${since}` +
+    `&select=id,created_at,vibe_input,change_request,edit_recipe,er2:result->edit_recipe,notes:result->capability_notes,route:result->>route&order=created_at.asc`
   );
+  return rows
+    .map(r => ({ ...r, edit_recipe: r.edit_recipe || r.er2 || null }))
+    .filter(r => r.edit_recipe);
 }
 
 // ── preset detection (code, not LLM): any vibe string used by >=20 jobs ──
@@ -95,7 +101,14 @@ function extractEvidence(j) {
     ev.n_cuts = arr(er.cuts).length;
     const em = arr(er.emphasis_moments).length ? arr(er.emphasis_moments) : arr(er._emphasis_moments);
     ev.n_emphasis = em.length;
-    ev.zoom_types = [...new Set(em.map(e => e && (e.zoom || (e.layers || []).find?.(l => /zoom/i.test(String(l))))).flat().filter(Boolean).map(String))];
+    // JUDGE_VERSION 2 fix: on full-editorial recipes zooms live on
+    // cuts[]._zoom_effect ([MEASURED] 17/18 recent full recipes carry it; 0 carry
+    // emphasis_moments[].zoom). v1 read only the emphasis key -> false
+    // "zoom_types=[]" evidence -> zoom drop rate inflated to 88%.
+    const cutZooms = arr(er.cuts).map(c => c && c._zoom_effect && (c._zoom_effect.type || 'zoom')).filter(Boolean);
+    const emZooms = em.map(e => e && (e.zoom || (e.layers || []).find?.(l => /zoom/i.test(String(l))))).flat().filter(Boolean).map(String);
+    ev.zoom_types = [...new Set([...cutZooms.map(String), ...emZooms])];
+    ev.n_zooms = cutZooms.length;
     ev.n_motion_graphics = arr(er.motion_graphics).length;
     ev.mg_types = [...new Set(arr(er.motion_graphics).map(m => m && (m.type || m.name || m.component)).filter(Boolean))];
     ev.n_text_overlays = arr(er.text_overlays).length;
@@ -264,11 +277,22 @@ function report() {
   const presets = detectPresets(await pullCohort(null));   // presets detected on the FULL corpus always
   console.log(`preset strings (>=20 uses): ${presets.size}`);
 
-  const done = new Set(
-    fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l).job_id) : []
-  );
-  jobs = jobs.filter(j => !done.has(j.id));
-  console.log(`remaining after resume-skip: ${jobs.length}`);
+  if (args.includes('--rejudge-cutzoom')) {
+    // v2 correction pass: re-judge ONLY full-editorial jobs whose zoom evidence
+    // changed (cuts[]._zoom_effect present — v1 read the wrong key). Bypasses
+    // resume-skip; --report / the loader dedupe by job_id, last judgment wins.
+    jobs = jobs.filter(j => {
+      const er = j.edit_recipe || {};
+      return !(er.plan && er.route) && Array.isArray(er.cuts) && er.cuts.some(c => c && c._zoom_effect);
+    });
+    console.log(`rejudge-cutzoom slice: ${jobs.length} full-editorial jobs with cuts[]._zoom_effect`);
+  } else {
+    const done = new Set(
+      fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l).job_id) : []
+    );
+    jobs = jobs.filter(j => !done.has(j.id));
+    console.log(`remaining after resume-skip: ${jobs.length}`);
+  }
 
   if (sampleIx >= 0) {
     const nWant = parseInt(args[sampleIx + 1] || '30', 10);

@@ -19,7 +19,7 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'content-type': 'applic
   console.log(`loading ${dedup.length} judgments (deduped from ${rows.length})…`);
   // table columns only (drop JSONL-only convenience fields)
   const cols = ['job_id','judged_at','judge_model','judge_version','is_preset','route','n_asks','n_honored',
-    'n_dropped_with_note','n_dropped_silently','n_unsupported','honor_rate','asks','flags','vibe_input','change_request'];
+    'n_dropped_with_note','n_dropped_silently','n_unsupported','honor_rate','asks','flags','vibe_input','change_request','created_at'];
   for (let i = 0; i < dedup.length; i += 500) {
     const batch = dedup.slice(i, i + 500).map(r => Object.fromEntries(cols.map(c => [c, r[c] ?? null])));
     const res = await fetch(`${URL_}/rest/v1/fulfillment_scores?on_conflict=job_id`, { method: 'POST', headers: H, body: JSON.stringify(batch) });
