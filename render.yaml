@@ -78,3 +78,15 @@ crons:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+  - name: daily-scoreboard
+    runtime: node
+    schedule: "0 15 * * *"
+    buildCommand: npm install
+    startCommand: node scripts/scoreboard.js
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

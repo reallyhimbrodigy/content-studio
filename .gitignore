@@ -11,3 +11,4 @@ reference-videos/_last_analyses.json
 reference-videos/_last_style_guide.txt
 
 # Capacitor iOS build
+out/
