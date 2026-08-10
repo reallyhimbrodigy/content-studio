@@ -4,7 +4,11 @@ services:
     runtime: node
     branch: main
     rootDir: .
-    buildCommand: npm install --omit=dev
+    # GATE (TRUTH 2026-08-09): the 19 lib/__smoke_*.js safety smokes each encode
+    # a real past incident, and until today were wired into NOTHING — neither
+    # this build nor CI ran them. A red smoke now FAILS the build, so the
+    # previous version stays live. Verified prod-deps-only (no dev deps needed).
+    buildCommand: npm install --omit=dev && node validate_deploy.js
     startCommand: npm start
     autoDeploy: true
     envVars:
