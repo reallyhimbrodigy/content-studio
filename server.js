@@ -154,6 +154,9 @@ const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID:
 // the gate (the fact nobody could establish from outside). Read failures never
 // affect boot.
 const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+// npm postinstall marker — read at boot beside the receipt. See
+// scripts/build-marker.js: together they say WHICH half of the build ran.
+const BOOT_BUILD_MARKER = require('./lib/gate-receipt').readBuildMarker(__dirname);
 
 // ARMED-BUT-UNVERIFIED alarm (2026-08-11). Say it once, loudly, at boot — hours
 // before the first free export rather than after it. The predicate is a pure
@@ -3062,6 +3065,12 @@ const server = http.createServer((req, res) => {
       // curl). Shape: {passed, total, at} mirroring the receipt's
       // {smokes_passed, smokes_total, at}.
       gate: BOOT_GATE_RECEIPT,
+      // npm postinstall marker (scripts/build-marker.js). Only meaningful when
+      // `gate` is null, and then it is decisive: non-null here means npm install
+      // ran and `node validate_deploy.js` did not — i.e. the live service is not
+      // running render.yaml's buildCommand, so the 24 safety smokes are gating
+      // nothing on Render. Both null means build writes never reach runtime.
+      build: BOOT_BUILD_MARKER,
       // The ONE knob, effective value. Pre-auth clients read this to route the
       // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
       // today's legacy flow, byte-for-byte. Same knob that drives the server
