@@ -731,6 +731,12 @@ function isUserPro(req) {
 // first successful lookup.
 let _rcProEntitlementInternalId = null;
 
+// Process-lifetime probe of the RC PROJECT itself: null = never probed (or the
+// probe was transient-failed and will retry), 'ok' = project readable under the
+// configured secret, 'http_NNN' = the project 404s/403s under this key — the
+// misconfig signature that makes every customer lookup 404 as NO_RC_CUSTOMER.
+let _rcProjectProbe = null;
+
 /**
  * Resolve the internal id for the 'pro' lookup_key from RevenueCat. Returns
  * null on any failure — callers treat null as "accept any active entitlement",
@@ -826,8 +832,28 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
     err.statusCode = 502;
     throw err;
   }
-  // 404 = RC has never seen this customer (no purchase under this identity).
+  // 404 = RC has never seen this customer (no purchase under this identity) —
+  // OR the PROJECT id itself is wrong, which 404s identically and had every
+  // /sync ever made reading NO_RC_CUSTOMER (measured 2026-08-10: 100% of
+  // reconcile_result rows, including one 16s after a webhook-applied purchase).
+  // Disambiguate by probing the project itself once per process: a project
+  // that 404s under this key means REVENUECAT_PROJECT_ID / REVENUECAT_SECRET_KEY
+  // don't belong together — a misconfig, not a customer fact. Grant behavior
+  // is unchanged either way (isPro:false); only the REASON stops lying.
   if (rcRes.status === 404) {
+    if (_rcProjectProbe === null) {
+      try {
+        const probe = await fetch(
+          `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}`,
+          { headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+            signal: AbortSignal.timeout(10000) });
+        _rcProjectProbe = probe.ok ? 'ok' : `http_${probe.status}`;
+      } catch (_) { _rcProjectProbe = null; /* transient — re-probe next time */ }
+    }
+    if (_rcProjectProbe && _rcProjectProbe !== 'ok') {
+      console.error(`[RevenueCat] CONFIG SUSPECT: project ${projectId ? projectId.slice(0, 8) + '…' : '(empty)'} is ${_rcProjectProbe} under this secret key — every /sync will 404. Fix REVENUECAT_PROJECT_ID (must be the V2 "proj…" id) / REVENUECAT_SECRET_KEY (a V2 sk_ key for THAT project).`);
+      return { ok: true, isPro: false, reason: 'RC_CONFIG_SUSPECT', proUntil: null };
+    }
     return { ok: true, isPro: false, reason: 'NO_RC_CUSTOMER', proUntil: null };
   }
   if (!rcRes.ok) {
@@ -2391,8 +2417,65 @@ const server = http.createServer((req, res) => {
         // The worker's return value (success payload OR classified error envelope);
         // the dispatch tail branches on it exactly as it did on the sync response.
         const output = (body && (body.result || body.output)) || {};
-        const settled = settlePendingModalJob({ id: callId, status: 'completed', output });
+        const settled = settlePendingModalJob({ id: callId, status: 'completed', output, via: 'callback' });
         console.log(`[modal-complete] call=${callId} job=${(body && body.job_id) || '?'} settled=${settled}`);
+        // ORPHANED CALLBACK (lane/delivery 2026-08-10): settled=false means NO
+        // pending promise holds this call_id in THIS process — the worker's POST
+        // reached a process that isn't awaiting the job (a deploy/restart routed
+        // it to the fresh instance while the old one holds the map, or the map
+        // entry was already consumed). Every deploy orphans in-flight jobs this
+        // way (standing law, 2026-08-04). Until now the 202 swallowed the POST
+        // and the job's completion survived only through the worker's own
+        // durable row + the old process's nets. Make the orphan VISIBLE and
+        // repair the user-facing pieces that are claim-guarded/idempotent:
+        //   • analytics row (the scoreboard's orphan counter)
+        //   • completed_at backfill (the tail that would stamp it is gone)
+        //   • completion_delivery = 'orphan_callback' (first-stamp-wins)
+        //   • claim-guarded lifecycle push (no-op if any other path pushed)
+        // Deliberately NO status write and NO URL signing here — the worker's
+        // durable write owns the row; this only fills the gaps it can't.
+        const jobIdForOrphan = (body && body.job_id) || null;
+        if (!settled && jobIdForOrphan && supabaseAdmin) {
+          (async () => {
+            try {
+              supabaseAdmin.from('analytics_events').insert({
+                event: 'completion_callback_orphaned', platform: 'server',
+                props: { job_id: jobIdForOrphan, call_id: callId },
+              }).then(() => {}).catch(() => {});
+              const { data: row } = await supabaseAdmin
+                .from('video_jobs')
+                .select('status, user_id, vibe_input, completed_at')
+                .eq('id', jobIdForOrphan)
+                .maybeSingle();
+              if (String(row?.status || '') !== 'completed') {
+                console.warn(`[modal-complete] ORPHAN call=${callId} job=${jobIdForOrphan} row status=${row?.status || 'missing'} — durable write not landed; nets own recovery`);
+                return;
+              }
+              if (!row.completed_at) {
+                await supabaseAdmin.from('video_jobs')
+                  .update({ completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                  .eq('id', jobIdForOrphan)
+                  .is('completed_at', null);
+              }
+              const { error: cdErr } = await supabaseAdmin.from('video_jobs')
+                .update({ completion_delivery: 'orphan_callback' })
+                .eq('id', jobIdForOrphan)
+                .is('completion_delivery', null);
+              if (cdErr && !/completion_delivery/.test(cdErr.message || '')) {
+                console.warn(`[modal-complete] orphan marker soft-failed: ${cdErr.message}`);
+              }
+              if (row.user_id) {
+                sendLifecyclePush(supabaseAdmin, {
+                  jobId: jobIdForOrphan, userId: row.user_id, kind: 'completed',
+                  vibe: row.vibe_input || null,
+                }).catch(() => {});
+              }
+              console.log(`[modal-complete] ORPHAN repaired call=${callId} job=${jobIdForOrphan} (completed row: marker+completed_at+push-claim)`);
+            } catch (e) {
+              console.warn(`[modal-complete] orphan repair failed job=${jobIdForOrphan}: ${e && e.message}`);
+            }
+          })();
+        }
       } catch (e) {
         console.error('[modal-complete] error:', e && e.message ? e.message : e);
       }
@@ -2415,7 +2498,7 @@ const server = http.createServer((req, res) => {
         const output = body?.output;
         const error = body?.error || body?.message || null;
         console.log(`[modal] Webhook received: ${id || 'unknown'} status=${status || 'UNKNOWN'}`);
-        settlePendingModalJob({ id, status, output, error });
+        settlePendingModalJob({ id, status, output, error, via: 'webhook' });
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[modal] Webhook handler failed:', err.message);
@@ -3784,9 +3867,21 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/revenuecat/webhook' && req.method === 'POST') {
     (async () => {
       try {
+        // RECEIVED counter (lane/delivery 2026-08-10): one durable row for EVERY
+        // webhook hit, INCLUDING auth failures and misconfig — before this, a
+        // 401ing webhook was invisible outside Render logs and "has RC ever
+        // called us?" was unanswerable from the DB. Fire-and-forget.
+        const rcReceived = (props) => {
+          if (!supabaseAdmin) return;
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'rc_webhook_received', platform: 'server', app_version: 'rc-webhook',
+            props,
+          }).then(() => {}).catch(() => {});
+        };
         const expected = process.env.REVENUECAT_WEBHOOK_AUTH || '';
         if (!expected) {
           console.warn('[RevenueCat] webhook called but REVENUECAT_WEBHOOK_AUTH not set');
+          rcReceived({ outcome: 'not_configured' });
           return sendJson(res, 503, { error: 'webhook_not_configured' });
         }
         // Accept the secret whether RevenueCat's dashboard sends it bare or as
@@ -3795,6 +3890,7 @@ const server = http.createServer((req, res) => {
         // secret VALUE still has to match, so this grants nothing extra.
         if (!revenuecatWebhookAuthMatches(req.headers.authorization, expected)) {
           console.warn('[RevenueCat] webhook auth mismatch');
+          rcReceived({ outcome: 'auth_mismatch' });
           return sendJson(res, 401, { error: 'unauthorized' });
         }
         if (!supabaseAdmin) {
@@ -3802,7 +3898,12 @@ const server = http.createServer((req, res) => {
         }
         const body = await readJsonBody(req);
         const event = body?.event;
-        if (!event) return sendJson(res, 400, { error: 'event_missing' });
+        if (!event) { rcReceived({ outcome: 'event_missing' }); return sendJson(res, 400, { error: 'event_missing' }); }
+        rcReceived({
+          outcome: 'received',
+          rc_type: String(event.type || '').toUpperCase().slice(0, 40) || null,
+          app_user_id: String(event.app_user_id || '').slice(0, 64) || null,
+        });
 
         const type = String(event.type || '').toUpperCase();
         // app_user_id is whatever we set in Purchases.shared.logIn(...) on
@@ -4157,6 +4258,37 @@ const server = http.createServer((req, res) => {
       try {
         const u = await requireSupabaseUser(req);
         const result = await reconcileEntitlementFromRevenueCat(u.id);
+        // SCOPED REVOKE (lane/delivery 2026-08-10) — the grant-only asymmetry
+        // meant a lapsed subscriber's tier column stayed 'pro' forever unless
+        // the EXPIRATION webhook landed. Revoke here ONLY under the narrowest
+        // definitive predicate, all four required:
+        //   • RC found the CUSTOMER but no active pro (RC_NOT_ACTIVE — never
+        //     NO_RC_CUSTOMER, which the current project-id misconfig produces
+        //     for everyone, and never a transient/config error, which throws)
+        //   • the profile's Pro is RC-SOURCED (rc_app_user_id set), never comped
+        //   • pro_until is null or already past — the entitlement window the
+        //     user PAID for is over, so this can never strip a paid period, and
+        //     RC's eventually-consistent read lagging a renewal keeps pro_until
+        //     in the future → skipped.
+        // isUserPro() already denies on a past pro_until, so this is state
+        // hygiene (tier column + analytics truth), not an access change.
+        if (result && result.isPro === false && result.reason === 'RC_NOT_ACTIVE' && supabaseAdmin) {
+          try {
+            const { data: revoked } = await supabaseAdmin.from('profiles')
+              .update({ tier: 'free' })
+              .eq('id', u.id)
+              .eq('tier', 'pro')
+              .not('rc_app_user_id', 'is', null)
+              .not('comp_pro', 'is', true)
+              .or(`pro_until.is.null,pro_until.lt.${new Date().toISOString().replace(/\+.*$/, 'Z')}`)
+              .select('id');
+            if (Array.isArray(revoked) && revoked.length) {
+              console.log('[RevenueCat] /sync revoked lapsed pro tier', { userId: u.id });
+            }
+          } catch (e) {
+            console.warn('[RevenueCat] /sync revoke check failed (non-fatal)', { userId: u.id, error: e?.message });
+          }
+        }
         // Log the reconcile OUTCOME so RC-side failures (esp. a bad/expired/wrong
         // REVENUECAT_SECRET_KEY → 403 on the v2 REST API) are COUNTABLE in
         // analytics, not just buried in Render logs. This is how we prove the
