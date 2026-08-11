@@ -226,9 +226,27 @@ async function computeSentinel(day) {
   if (up.ok) console.log(`[scoreboard] row upserted for ${DAY}`);
   else {
     const err = await up.text();
+    // V1-DEGRADE (2026-08-11): the v2 columns (20260811_daily_scoreboard_v2.sql)
+    // may lag the v1 table — PostgREST bounces the WHOLE row on one missing
+    // column, which left the board EMPTY while only 5 columns were pending.
+    // Retry once with the v2 keys stripped so the v1 board lands TODAY; the
+    // full row still goes to JSONL and re-upserts whole once v2 is applied
+    // (merge-duplicates on day). Loud either way.
+    const V2_KEYS = ['active_pro_subs', 'outage', 'outage_note', 'sentinel', 'purchase_funnel'];
+    let landedV1 = false;
+    if (/PGRST204|42703/.test(err)) {
+      const v1row = Object.fromEntries(Object.entries(row).filter(([k]) => !V2_KEYS.includes(k)));
+      const up1 = await fetch(`${URL_}/rest/v1/daily_scoreboard?on_conflict=day`, {
+        method: 'POST',
+        headers: { ...H, 'content-type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(v1row),
+      });
+      landedV1 = up1.ok;
+      if (landedV1) console.error(`[scoreboard] V1-DEGRADED row upserted for ${DAY} — v2 columns DROPPED pending 20260811_daily_scoreboard_v2.sql (sentinel/funnel/active_pro_subs stay blind)`);
+    }
     fs.mkdirSync(path.join(__dirname, '..', 'out'), { recursive: true });
     fs.appendFileSync(path.join(__dirname, '..', 'out', 'daily_scoreboard.jsonl'), JSON.stringify(row) + '\n');
-    console.error(`[scoreboard] TABLE WRITE FAILED (${up.status}: ${err.slice(0, 120)}) — row appended to out/daily_scoreboard.jsonl. Apply supabase/migrations/20260810_daily_scoreboard.sql.`);
+    if (!landedV1) console.error(`[scoreboard] TABLE WRITE FAILED (${up.status}: ${err.slice(0, 120)}) — row appended to out/daily_scoreboard.jsonl. Apply supabase/migrations/20260810_daily_scoreboard.sql + 20260811_daily_scoreboard_v2.sql.`);
   }
 
   // ── digest (four numbers, one line each, 7-day delta when history exists) ──
