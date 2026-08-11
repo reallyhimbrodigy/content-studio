@@ -68,15 +68,33 @@ async function computeSentinel(day) {
   const baseShare = {};
   baseDone.forEach(j => { const r = j.route || 'std'; baseShare[r] = (baseShare[r] || 0) + 1; });
   Object.keys(baseShare).forEach(r => baseShare[r] = baseShare[r] / (baseDone.length || 1));
-  // 1. route_collapse — second-half absence of any baseline-share>=5% route
+  // 1. route_collapse — second-half absence of any baseline-share>=5% route.
+  //
+  // SELF-SILENCING FIX (JUDGE 2026-08-11, a defect in my OWN instrument):
+  // the trailing baseline DECAYS during a sustained outage — moodreel's
+  // measured baseline fell 24%→20% over four outage days [MEASURED in the
+  // 08-05→08-11 backtest], and once it crosses below 5% the alarm goes SILENT
+  // WHILE THE OUTAGE IS STILL RUNNING (~08-15 at that rate; certain by 08-15
+  // when the whole 7-day window is outage days). An alarm that forgets what
+  // healthy looked like reports green on the very failure it exists to catch.
+  // Fix: compare against max(trailing, FROZEN HEALTHY REFERENCE). The freeze
+  // is [MEASURED] over 08-01 → 08-08T11:00Z (the outage began 11:16Z), n=2,616
+  // completions — the last known-good week. Re-measure and bump this ONLY
+  // after a route mix is deliberately retired.
+  const HEALTHY_REF = { std: 0.448, minimal_speech_uncut: 0.246, moodreel: 0.245, minimal: 0.041, hype: 0.020 };
+  const effShare = {};
+  for (const r of new Set([...Object.keys(baseShare), ...Object.keys(HEALTHY_REF)])) {
+    effShare[r] = Math.max(baseShare[r] || 0, HEALTHY_REF[r] || 0);
+  }
   const secondHalf = dayJobs.filter(j => j.status === 'completed' && j.created_at.slice(11, 13) >= '12');
   const shCounts = {};
   secondHalf.forEach(j => { const r = j.route || 'std'; shCounts[r] = (shCounts[r] || 0) + 1; });
   if (secondHalf.length >= 15) {
-    for (const [r, share] of Object.entries(baseShare)) {
+    for (const [r, share] of Object.entries(effShare)) {
       if (share >= 0.05 && !shCounts[r]) {
+        const src = (baseShare[r] || 0) >= (HEALTHY_REF[r] || 0) ? 'trailing' : 'frozen-healthy';
         flags.push(`route_collapse:${r}`);
-        notes.push(`route ${r} (baseline ${(100 * share).toFixed(0)}% of completions) absent from the day's second half`);
+        notes.push(`route ${r} (baseline ${(100 * share).toFixed(0)}% of completions, ${src}) absent from the day's second half`);
       }
     }
   }
