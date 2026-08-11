@@ -180,7 +180,7 @@ async function computeSentinel(day) {
   // unexpired pro. Day-over-day delta = net conversions (minus churn).
   const nowIso = new Date().toISOString();
   const rPro = await fetch(
-    `${URL_}/rest/v1/profiles?tier=eq.pro&comp_pro=not.is.true&rc_environment=eq.production&or=(pro_until.is.null,pro_until.gt.${nowIso})&select=id`,
+    `${URL_}/rest/v1/profiles?tier=eq.pro&comp_pro=not.is.true&rc_product_id=not.is.null&pro_until=gt.${nowIso}&select=id`,
     { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } });
   const proCr = rPro.headers.get('content-range');
   const active_pro_subs = proCr ? parseInt(proCr.split('/')[1], 10) : null;

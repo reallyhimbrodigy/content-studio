@@ -19,7 +19,7 @@ create table if not exists public.daily_scoreboard (
   result_views int,
   export_per_viewed numeric,
   purchases int,                   -- PINNED: purchase_started MINUS purchase_failed that day (client-side net-attempt proxy; purchase_completed event is broken: 6 all-time vs RC truth)
-  active_pro_subs int,             -- PINNED: snapshot count of profiles tier=pro AND comp_pro!=true AND rc_environment=production AND (pro_until null OR > now) — RevenueCat-fed truth LEVEL; day-over-day delta = net conversions
+  active_pro_subs int,             -- PINNED: snapshot count of profiles tier=pro AND comp_pro!=true AND rc_product_id NOT NULL (a real RC purchase; excludes comps + manual grants) AND pro_until > now. NOTE rc_environment is NULL on all rows [MEASURED] so it cannot be used — RevenueCat-fed truth LEVEL; day-over-day delta = net conversions
   -- sentinel: outage annotation (backtested against the 2026-08-08 route-collapse window)
   outage boolean not null default false,
   outage_note text,
