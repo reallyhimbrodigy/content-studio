@@ -3220,6 +3220,11 @@ const server = http.createServer((req, res) => {
     ].join('\n');
   }
 
+  // LANE-SEAM Step 4 mount (one line, specified by routes/chat-actions.js and
+  // applied by TRUTH). DARK behind PROMPTLY_CHAT_ACTIONS — unset ⇒ the handler
+  // 404s, so the route does not exist as far as any client can tell.
+  if (parsed.pathname === '/api/chat/actions' && req.method === 'POST') return require('./routes/chat-actions').handle(req, res, { requireSupabaseUser, readJsonBody, sendJson, supabaseAdmin, checkRateLimit, PORT });
+
   if (parsed.pathname === '/api/chat' && req.method === 'POST') {
     (async () => {
       try {
