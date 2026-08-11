@@ -153,6 +153,44 @@ Context for the call: every weekly subscriber to date cancelled inside week 1
 [MEASURED 2026-08-10]; the one renewal we have is the one who never saw a
 reason to cancel.
 
+## 7. Upload leg — resumable, or the front door stays broken
+
+Full evidence: `reports/UNS_MECHANISM.md`. The headline [MEASURED 2026-08-12,
+since 08-06]: **`upload_failed` hit 720 USERS**; only **24.1%** of started
+uploads complete (1,161/4,825); **79% of failures died with under 1% of the
+file transferred**, after hanging p90 **30.4 minutes**. `cancelled` is the
+single biggest mechanism (704 events / 395 users), and
+`upload_url_requested` is **13,310 `single` vs 7 `multipart`** — multipart is
+dead in practice.
+
+One PUT of the whole file, no resumability. Background the app or wobble the
+network and it dies at byte ~zero, the presigned key is dead, and the retry
+starts from scratch. **82% of affected users never complete anything, ever.**
+
+1. **Use multipart/resumable for anything but a trivially small file.** Chunked
+   parts survive a suspension and a wobble; a single PUT does not. The server
+   half can ship dark ahead of this build.
+2. **Use a background URLSession with a proper transfer task**, so an upload in
+   progress is not killed the moment the app leaves the foreground — that is
+   what `background_orphan` (347 failures vs 109 completions) is counting.
+3. **Emit `upload_attempt`** with `{size_mb, path, src_key}` at upload START.
+   It is allowlisted server-side [CODE server.js:3178] and has fired **0 times**
+   — so nobody can currently band this class by file size. Without it, "big
+   files or slow networks?" stays [UNKNOWN].
+4. **Fix the remedy copy.** "Pick it again to start a fresh upload" is honest
+   about the dead key and still tells a user on a slow connection to repeat,
+   from zero, a 30-minute action that just failed. If a resumable transfer
+   exists, offer RESUME; if not, say the connection is too slow for the file's
+   size and name that.
+
+**Acceptance:** start an upload on a throttled connection, background the app
+for 60s, return → the transfer continues rather than restarting; and
+`upload_attempt` rows appear in `analytics_events` with a real `size_mb` (they
+cannot today — the event has never fired).
+
+**Unblocks:** nothing server-side; this is the front door. A great editor
+behind a broken front door is not a great product.
+
 ---
 
 ## Server flips gated on this build (TRUTH's queue, one at a time, post-ship)
