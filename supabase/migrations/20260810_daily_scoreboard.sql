@@ -18,7 +18,12 @@ create table if not exists public.daily_scoreboard (
   exports int,
   result_views int,
   export_per_viewed numeric,
-  purchases int,
+  purchases int,                   -- PINNED: purchase_started MINUS purchase_failed that day (client-side net-attempt proxy; purchase_completed event is broken: 6 all-time vs RC truth)
+  active_pro_subs int,             -- PINNED: snapshot count of profiles tier=pro AND comp_pro!=true AND rc_environment=production AND (pro_until null OR > now) — RevenueCat-fed truth LEVEL; day-over-day delta = net conversions
+  -- sentinel: outage annotation (backtested against the 2026-08-08 route-collapse window)
+  outage boolean not null default false,
+  outage_note text,
+  sentinel jsonb,
   -- 4. defect rate (placeholder — populated when Lane 2's harness emits it)
   defect_rate numeric,
   defect_n int
