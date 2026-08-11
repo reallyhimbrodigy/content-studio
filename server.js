@@ -26,7 +26,7 @@ const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO
 const { findDeadSourceJob } = require('./lib/source-presence');
 const apiLedger = require('./lib/api-outcome-ledger');
 const { makeJob404Guard } = require('./lib/job404-guard');
-const { isTerminalJobStatus } = require('./lib/job-status');
+const { isTerminalJobStatus, classifyLostTransition } = require('./lib/job-status');
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
@@ -154,6 +154,9 @@ const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID:
 // the gate (the fact nobody could establish from outside). Read failures never
 // affect boot.
 const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+// npm postinstall marker — read at boot beside the receipt. See
+// scripts/build-marker.js: together they say WHICH half of the build ran.
+const BOOT_BUILD_MARKER = require('./lib/gate-receipt').readBuildMarker(__dirname);
 
 // ARMED-BUT-UNVERIFIED alarm (2026-08-11). Say it once, loudly, at boot — hours
 // before the first free export rather than after it. The predicate is a pure
@@ -2162,7 +2165,13 @@ const server = http.createServer((req, res) => {
         // .select('id') so we KNOW whether this request won the transition —
         // when status flips to 'completed' here, the winner (and only the
         // winner) owns the lifecycle push below.
-        const { data: transitionRows } = await supabaseAdmin
+        // The error is CAPTURED, not discarded (2026-08-11). Dropping it made a
+        // failed write indistinguishable from a genuine zero-row match: both
+        // land here as `data == null`, and the stuck-job diagnostic below then
+        // reported one mechanism for two different faults. The cancel path at
+        // the /api/jobs/:id/cancel handler already captured its error; this one
+        // did not, which is how the distinction went missing.
+        const { data: transitionRows, error: transitionErr } = await supabaseAdmin
           .from('video_jobs')
           .update(updateData)
           .eq('id', job_id)
@@ -2188,12 +2197,50 @@ const server = http.createServer((req, res) => {
         } else if (status === 'completed' && !wonCompletedTransition
                    && prevState
                    && !['completed', 'failed', 'canceled', 'needs_input'].includes(String(prevState.status))) {
-          console.error(`[modal-progress] TERMINAL-FLIP LOST job=${job_id} — completed patch matched 0 rows `
-            + `while prev status='${prevState.status}' (guard/race — the row will stick non-terminal)`);
-          supabaseAdmin.from('analytics_events').insert({
-            event: 'terminal_flip_lost', platform: 'server',
-            props: { job_id, mechanism: 'zero_rows_nonterminal', prev_status: prevState.status },
-          }).then(() => {}).catch(() => {});
+          // FIRED FOR REAL on job 4f37eb44, twice, 2026-08-11 20:20:16Z and
+          // 20:22:37Z — 20 minutes after this diagnostic went live, on the
+          // post-hang-fix worker image. It named the branch and stopped there,
+          // because 'zero rows' still covers three different faults:
+          //
+          //   update_error        the write FAILED; data is null and the error
+          //                       was being discarded, so a failed write was
+          //                       indistinguishable from a matched-zero
+          //   lost_race_benign    a concurrent writer terminalized the row
+          //                       between our read and our write. First-terminal-
+          //                       wins working AS DESIGNED — not a defect, and
+          //                       counting it as one inflates the class
+          //   row_still_nonterminal  the row is STILL non-terminal after our
+          //                       write. THE REAL STUCK CLASS: the render is
+          //                       finished and the user will be told it failed
+          //                       when the fallback timer terminalises it
+          //
+          // The re-read costs one query and only on this path (which is
+          // supposed to be empty), and it is what makes the next occurrence
+          // self-explaining instead of another round of inference.
+          (async () => {
+            let nowStatus = null;
+            try {
+              const { data: nowRow } = await supabaseAdmin
+                .from('video_jobs').select('status').eq('id', job_id).maybeSingle();
+              nowStatus = nowRow?.status ?? null;
+            } catch (_) { /* diagnostic must never affect the response */ }
+            const cause = classifyLostTransition({ transitionErr, nowStatus });
+            console.error(`[modal-progress] TERMINAL-FLIP LOST job=${job_id} cause=${cause} — completed patch `
+              + `matched 0 rows while prev status='${prevState.status}', row now '${nowStatus}'`
+              + (transitionErr ? ` — UPDATE ERROR ${transitionErr.code || ''} ${transitionErr.message || ''}` : '')
+              + (cause === 'row_still_nonterminal'
+                ? ' — THE RENDER IS DONE AND THE ROW WILL STICK: the user gets a failure for a finished video'
+                : ''));
+            supabaseAdmin.from('analytics_events').insert({
+              event: 'terminal_flip_lost', platform: 'server',
+              props: {
+                job_id, mechanism: 'zero_rows_nonterminal', cause,
+                prev_status: prevState.status, now_status: nowStatus,
+                err_code: transitionErr?.code || null,
+                err: String(transitionErr?.message || '').slice(0, 160) || null,
+              },
+            }).then(() => {}).catch(() => {});
+          })();
         }
 
         if (step === 'complete') {
@@ -3062,6 +3109,12 @@ const server = http.createServer((req, res) => {
       // curl). Shape: {passed, total, at} mirroring the receipt's
       // {smokes_passed, smokes_total, at}.
       gate: BOOT_GATE_RECEIPT,
+      // npm postinstall marker (scripts/build-marker.js). Only meaningful when
+      // `gate` is null, and then it is decisive: non-null here means npm install
+      // ran and `node validate_deploy.js` did not — i.e. the live service is not
+      // running render.yaml's buildCommand, so the 24 safety smokes are gating
+      // nothing on Render. Both null means build writes never reach runtime.
+      build: BOOT_BUILD_MARKER,
       // The ONE knob, effective value. Pre-auth clients read this to route the
       // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
       // today's legacy flow, byte-for-byte. Same knob that drives the server
