@@ -184,10 +184,33 @@ async function computeSentinel(day) {
     { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } });
   const proCr = rPro.headers.get('content-range');
   const active_pro_subs = proCr ? parseInt(proCr.split('/')[1], 10) : null;
+  // PER-SKU FUNNEL (2026-08-11): wall_view -> start -> paid, daily — so an
+  // offer/paywall change is measurable the morning it flips. wall has no SKU
+  // (it shows all plans; context=manual|limit); starts/abandons/paid cut by
+  // props.plan. "paid" = purchase_completed events (fires 6/6 for event-era
+  // payers [MEASURED]; RC profiles stay the LEVEL check via active_pro_subs).
+  const wallViews = await evCount('upgrade_wall_viewed');
+  const wallCtx = {};
+  const pev = [];
+  for (const ev of ['upgrade_wall_viewed', 'purchase_started', 'purchase_failed', 'purchase_completed']) {
+    const rows = await pageAll(`analytics_events?event=eq.${ev}&created_at=gte.${T0}&created_at=lte.${T1}&select=event,props`);
+    if (ev === 'upgrade_wall_viewed') rows.forEach(r => { const c = (r.props || {}).context || '?'; wallCtx[c] = (wallCtx[c] || 0) + 1; });
+    else pev.push(...rows);
+  }
+  const bySku = {};
+  for (const e of pev) {
+    const sku = (e.props || {}).plan || 'unknown';
+    const s = (bySku[sku] = bySku[sku] || { starts: 0, abandons: 0, errors: 0, paid: 0 });
+    if (e.event === 'purchase_started') s.starts++;
+    else if (e.event === 'purchase_completed') s.paid++;
+    else if ((e.props || {}).billing_error === 'user_cancelled') s.abandons++;
+    else s.errors++;
+  }
+  const purchase_funnel = { wall_views: wallViews, wall_by_context: wallCtx, by_sku: bySku };
   const exportConv = {
     exports: exports_, result_views: views,
     export_per_viewed: views ? +((exports_ || 0) / views).toFixed(3) : null,
-    purchases, active_pro_subs,
+    purchases, active_pro_subs, purchase_funnel,
   };
 
   // ── 4. defect rate placeholder + sentinel annotation ─────────────────
@@ -218,4 +241,7 @@ async function computeSentinel(day) {
   console.log(`LATENCY      p50 ${d(row.latency_p50_s, prev && prev.latency_p50_s, 's')} · p90 ${row.latency_p90_s}s · p99 ${row.latency_p99_s}s · premium p50 ${row.latency_premium_p50_s}s · callback-gap ${row.callback_gap_jobs} · n=${row.latency_n_jobs}`);
   console.log(`EXPORT/CONV  exports ${d(row.exports, prev && prev.exports)} · views ${row.result_views} · export/viewed ${d(row.export_per_viewed, prev && prev.export_per_viewed)} · purchases(net-attempts) ${row.purchases} · active-pro ${row.active_pro_subs}`);
   console.log(`DEFECTS      ${row.defect_rate == null ? 'awaiting Lane 2 harness (column wired)' : row.defect_rate}`);
+  const fn = row.purchase_funnel || {};
+  const skuLine = Object.entries(fn.by_sku || {}).map(([k, v]) => `${k} ${v.starts}→${v.paid}${v.abandons ? ` (${v.abandons} bail)` : ''}`).join(' · ') || 'no purchase activity';
+  console.log(`FUNNEL       wall ${fn.wall_views ?? 'n/a'} (${Object.entries(fn.wall_by_context || {}).map(([c, n]) => `${c}:${n}`).join(',') || '-'}) · ${skuLine}`);
 })().catch(e => { console.error('FATAL', e.message); process.exit(1); });
