@@ -145,6 +145,22 @@ function renderResultPage(data) {
   </style></head><body>${body}</body></html>`;
 }
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
+
+// BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11, reports/REQUEST_
+// DELIVERY_GATE_RECEIPT.md): validate_deploy.js writes .gate_receipt.json when
+// the 20-smoke gate passes during the Render build. Read ONCE at boot —
+// boot-time truth is the point (the receipt describes THIS build) — and served
+// on /api/health as `gate`. null = the file is absent = the build did not run
+// the gate (the fact nobody could establish from outside). Read failures never
+// affect boot.
+const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+
+// ARMED-BUT-UNVERIFIED alarm (2026-08-11). Say it once, loudly, at boot — hours
+// before the first free export rather than after it. The predicate is a pure
+// function in lib/gate-receipt so the smoke proves it actually fires; a warning
+// nobody has watched fire is not a warning. Logs only, never blocks boot.
+const _wmWarning = require('./lib/gate-receipt').watermarkArmingWarning(BOOT_GATE_RECEIPT);
+if (_wmWarning) console.error(_wmWarning);
 const {
   validateUploadRequest,
   validateSubmission,
@@ -2154,6 +2170,31 @@ const server = http.createServer((req, res) => {
           .select('id');
         const wonCompletedTransition = status === 'completed'
           && Array.isArray(transitionRows) && transitionRows.length > 0;
+        // STUCK-JOB DIAGNOSTIC (lane/delivery 2026-08-11, TRUTH's b384e1c watch):
+        // two jobs completed at the worker and their rows NEVER flipped to
+        // 'completed' — the half-landed signature (progress=100/current_step=
+        // 'complete'/status='processing'). The two candidate mechanisms both
+        // become one loud, greppable line here on their next occurrence:
+        //   (a) a 'complete' step whose pct did not parse >=100 → this handler
+        //       computed status='processing' — the half-landed patch EXACTLY;
+        //   (b) a completed-status patch matching 0 rows on a NON-terminal row.
+        if (step === 'complete' && status !== 'completed') {
+          console.error(`[modal-progress] COMPLETE-WITHOUT-TERMINAL job=${job_id} pct=${JSON.stringify(pct)} `
+            + `parsed=${incomingPct} — status computed '${status}'; this writes the half-landed stuck row`);
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'terminal_flip_lost', platform: 'server',
+            props: { job_id, mechanism: 'complete_step_bad_pct', pct: String(pct).slice(0, 20) },
+          }).then(() => {}).catch(() => {});
+        } else if (status === 'completed' && !wonCompletedTransition
+                   && prevState
+                   && !['completed', 'failed', 'canceled', 'needs_input'].includes(String(prevState.status))) {
+          console.error(`[modal-progress] TERMINAL-FLIP LOST job=${job_id} — completed patch matched 0 rows `
+            + `while prev status='${prevState.status}' (guard/race — the row will stick non-terminal)`);
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'terminal_flip_lost', platform: 'server',
+            props: { job_id, mechanism: 'zero_rows_nonterminal', prev_status: prevState.status },
+          }).then(() => {}).catch(() => {});
+        }
 
         if (step === 'complete') {
           // Fast-path: tell the UI the video is ready as soon as the worker
@@ -3013,6 +3054,14 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
+      // BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11): validate_deploy
+      // writes .gate_receipt.json on success; we read it ONCE at boot and expose
+      // it here beside rev. `null` is the load-bearing value — it PROVES the
+      // build did NOT run the gate (Render blueprint-sync can silently keep an
+      // old buildCommand; this converts the owner's build-log eyeball into a
+      // curl). Shape: {passed, total, at} mirroring the receipt's
+      // {smokes_passed, smokes_total, at}.
+      gate: BOOT_GATE_RECEIPT,
       // The ONE knob, effective value. Pre-auth clients read this to route the
       // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
       // today's legacy flow, byte-for-byte. Same knob that drives the server
@@ -5532,8 +5581,18 @@ const server = http.createServer((req, res) => {
   //     directions (free→402, pro→200) on every roll.
   //   • real call → inert 501 until EXPORT_GATE_ENABLED=1 AND 225 wires the client
   //     + a private clean-asset. Nothing changes for anyone until then.
-  if (parsed.pathname === '/api/export' && req.method === 'POST') {
+  // ALIAS (lane/delivery 2026-08-11): /api/jobs/:id/export → the SAME gate.
+  // The client-shape route lands on the identical entitlement + quota + private-
+  // asset logic; only the job_id source differs (path vs body). NOTE for the
+  // client half (reports/EXPORT_CLIENT_HALF.md): the SHIPPED app falls back to
+  // the public save on ANY export failure, so this server gate alone cannot
+  // fully wall exports — the fallback removal rides the owner's final iOS build.
+  const _exportAliasMatch = req.method === 'POST'
+    ? parsed.pathname.match(/^\/api\/jobs\/([0-9a-f-]{8,64})\/export$/i)
+    : null;
+  if ((parsed.pathname === '/api/export' && req.method === 'POST') || _exportAliasMatch) {
     (async () => {
+      const jobIdFromPath = _exportAliasMatch ? _exportAliasMatch[1] : null;
       let authUser;
       try { authUser = await requireSupabaseUser(req); }
       catch { return sendJson(res, 401, { error: 'unauthorized' }); }
@@ -5559,7 +5618,7 @@ const server = http.createServer((req, res) => {
 
       // Load the job + the ERRORS-owned private key. KEY CONTRACT: clean master at
       // exports/{job_id}/clean.mp4, recorded on result.clean_export_key (nullable).
-      const jobId = String((body && body.job_id) || '').trim();
+      const jobId = String(jobIdFromPath || (body && body.job_id) || '').trim();
       if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
       const { data: job, error } = await supabaseAdmin.from('video_jobs')
         .select('id, user_id, result').eq('id', jobId).maybeSingle();
@@ -5590,10 +5649,32 @@ const server = http.createServer((req, res) => {
       }
 
       // Allowed (Pro unlimited, or free within quota): mint + record the export.
-      const url = await s3.createPresignedGetUrl(cleanKey, 300);
+      // WATERMARK-AT-EXPORT v1 (dark behind EXPORT_WATERMARK_ENABLED=1): the
+      // FREE-quota export ships watermarked; Pro ships the clean master. A
+      // watermark failure falls back to the clean asset LOUDLY — a paying-
+      // funnel free export must never 500 on an overlay pass. Policy variants
+      // (watermark-instead-of-402 beyond quota) are documented in
+      // reports/EXPORT_CLIENT_HALF.md and deliberately NOT built into v1.
+      let mintKey = cleanKey;
+      let watermarked = false;
+      if (!allowed && String(process.env.EXPORT_WATERMARK_ENABLED || '') === '1') {
+        try {
+          const { ensureWatermarkedExport } = require('./lib/export-watermark');
+          mintKey = await ensureWatermarkedExport({ s3, jobId, cleanKey });
+          watermarked = true;
+        } catch (e) {
+          console.error(`[export] WATERMARK FAILED job=${jobId} — serving clean fallback (defect, count me):`, e?.message);
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'export_watermark_failed', platform: 'server',
+            props: { job_id: jobId, error: String(e?.message || '').slice(0, 160) },
+          }).then(() => {}).catch(() => {});
+          mintKey = cleanKey;
+        }
+      }
+      const url = await s3.createPresignedGetUrl(mintKey, 300);
       try { await incrementFeatureUsage(supabaseAdmin, authUser.id, 'export'); }
       catch (e) { console.error('[export] usage-increment failed (non-fatal):', e?.message); }
-      return sendJson(res, 200, { url, expires_in: 300 });
+      return sendJson(res, 200, { url, expires_in: 300, watermarked });
     })();
     return;
   }
