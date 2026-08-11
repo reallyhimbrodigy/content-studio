@@ -145,6 +145,15 @@ function renderResultPage(data) {
   </style></head><body>${body}</body></html>`;
 }
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
+
+// BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11, reports/REQUEST_
+// DELIVERY_GATE_RECEIPT.md): validate_deploy.js writes .gate_receipt.json when
+// the 20-smoke gate passes during the Render build. Read ONCE at boot —
+// boot-time truth is the point (the receipt describes THIS build) — and served
+// on /api/health as `gate`. null = the file is absent = the build did not run
+// the gate (the fact nobody could establish from outside). Read failures never
+// affect boot.
+const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
 const {
   validateUploadRequest,
   validateSubmission,
@@ -3013,6 +3022,14 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
+      // BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11): validate_deploy
+      // writes .gate_receipt.json on success; we read it ONCE at boot and expose
+      // it here beside rev. `null` is the load-bearing value — it PROVES the
+      // build did NOT run the gate (Render blueprint-sync can silently keep an
+      // old buildCommand; this converts the owner's build-log eyeball into a
+      // curl). Shape: {passed, total, at} mirroring the receipt's
+      // {smokes_passed, smokes_total, at}.
+      gate: BOOT_GATE_RECEIPT,
       // The ONE knob, effective value. Pre-auth clients read this to route the
       // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
       // today's legacy flow, byte-for-byte. Same knob that drives the server
