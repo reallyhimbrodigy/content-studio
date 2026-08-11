@@ -154,6 +154,13 @@ const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID:
 // the gate (the fact nobody could establish from outside). Read failures never
 // affect boot.
 const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+
+// ARMED-BUT-UNVERIFIED alarm (2026-08-11). Say it once, loudly, at boot — hours
+// before the first free export rather than after it. The predicate is a pure
+// function in lib/gate-receipt so the smoke proves it actually fires; a warning
+// nobody has watched fire is not a warning. Logs only, never blocks boot.
+const _wmWarning = require('./lib/gate-receipt').watermarkArmingWarning(BOOT_GATE_RECEIPT);
+if (_wmWarning) console.error(_wmWarning);
 const {
   validateUploadRequest,
   validateSubmission,
