@@ -77,22 +77,69 @@ never render. No UX change: renders already start cold-tolerant.
 "after" number (owner dashboard protocol in `LANE4_STUCKJOBS_AND_PAUSE.md`)
 gets its cleanest read once these calls stop.
 
-## 5. Post-cancel identity split (JUDGE's finding)
+## 5. `rc_identify` retry — a swallowed logIn strands the purchase identity
 
-The identity contract is `Analytics.identify(userId:)` at auth resolve and
-`reset()` on sign-out [CODE docs/analytics/freemium-funnels.md §Identity].
-JUDGE observed one human splitting into two analytics identities around a
-CANCEL flow — a `reset()` (or a never-re-identify) firing on a flow
-cancellation that is not a true sign-out, so the device continues on a fresh
-anonymous id and every later event orphans from the person's history (this is
-the "ghosts" class that already polluted activation counts once).
+> **Replaces the former item 5 (post-cancel identity split), WITHDRAWN
+> 2026-08-11 on JUDGE's retraction of the two-identities finding.** Numbering is
+> contiguous: this is item 5, paywall order stays item 6. Nothing else moved.
 
-Client rule to enforce: **`reset()` fires ONLY on explicit account sign-out.**
-Cancelling Sign-in-with-Apple mid-onboarding, cancelling a purchase sheet, or
-backing out of any flow must never reset or re-anon; on return, re-`identify`
-with the same Supabase id. [The precise repro lives with JUDGE — confirm the
-exact call site with them before changing; the rule above is the invariant
-whatever the site turns out to be.]
+`SubscriptionService.identify(userId:)` aliases the anonymous install to the
+Supabase user. On failure it does exactly one thing — `print` [CODE
+ios/Promptly/Promptly/Services/SubscriptionService.swift:125-133]:
+
+```swift
+do {
+    _ = try await Purchases.shared.logIn(userId)
+    await refreshCustomerInfo()
+} catch {
+    print("[Subscription] logIn failed: \(error.localizedDescription)")   // <- ends here
+}
+```
+
+One transient network blip at sign-in therefore leaves RevenueCat on
+`$RCAnonymousID` **permanently** — nothing ever retries. The server already
+knows this shape: it handles purchases arriving under `$RCAnonymousID`
+"because logIn() hadn't aliased yet" [CODE server.js:4173], and treats a truly
+orphaned purchase as a real class. That is this bug seen from the other end.
+
+**And it is currently invisible.** `rc_identify_failed`, `rc_identify_mismatch`
+and `purchase_blocked_unidentified` are allowlisted server-side
+[CODE server.js:3202] and **emitted by nothing in the iOS tree** — grep returns
+zero call sites. The allowlist has been carrying three events no client sends,
+which is the same "shipped but inert" class as the BOOLEAN preview column.
+
+**The change** (one retry + one event):
+
+```swift
+func identify(userId: String) async {
+    guard initialized else { return }
+    for attempt in 1...3 {
+        do {
+            _ = try await Purchases.shared.logIn(userId)
+            await refreshCustomerInfo()
+            return
+        } catch {
+            if attempt == 3 {
+                Analytics.capture("rc_identify_failed",
+                                  ["error": error.localizedDescription,
+                                   "attempts": attempt])
+                return
+            }
+            try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+        }
+    }
+}
+```
+
+Retry is correct HERE and is not a violation of the no-retries law: that law
+forbids retrying a *render* instead of root-causing it. This is an idempotent
+identity alias against a third party, where the only alternative to retrying is
+staying anonymous forever.
+
+**Acceptance:** with the network disabled at sign-in, `rc_identify_failed`
+appears in `analytics_events` (it cannot today — no emitter exists); with the
+network restored on a later launch, `profiles.rc_app_user_id` is the Supabase
+id, not `$RCAnonymousID`.
 
 ## 6. Paywall order — only if it is hardcoded
 
@@ -125,7 +172,8 @@ reason to cancel.
    second export → paywall; Pro → clean. Old job (no private asset) → legacy
    save still works.
 4. Open the editor 5× without rendering → zero warmup calls on the wire.
-5. Cancel Sign-in-with-Apple mid-flow, complete it after → PostHog shows ONE
-   person, no new anon id.
+5. Disable the network at sign-in → `rc_identify_failed` lands in
+   `analytics_events` (impossible today — no emitter). Restore the network,
+   relaunch → `profiles.rc_app_user_id` is the Supabase id, not `$RCAnonymousID`.
 6. Paywall order changes from the RC dashboard (or config) without a build —
    or the no-op is documented.
