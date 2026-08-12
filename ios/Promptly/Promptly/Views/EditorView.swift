@@ -40,6 +40,7 @@ struct EditorView: View {
     /// content stay in place, and starts a fresh conversation turn —
     /// same behavior as ChatGPT iOS.
     @State private var activeChatTask: Task<Void, Never>?
+    @State private var isChatStreaming = false   // 225 item 2: composer Stop affordance while a reply streams
     @FocusState private var isInputFocused: Bool
 
     /// Layer 1 (TalkingHeadPrecheck) rejection state. When a picked
@@ -810,10 +811,10 @@ struct EditorView: View {
                             .clipShape(Circle())
                             .accessibilityHidden(true)
                     }
-                    .opacity(canSend ? 0 : 1)
-                    .scaleEffect(canSend ? 0.5 : 1)
+                    .opacity(canSend || isChatStreaming ? 0 : 1)
+                    .scaleEffect(canSend || isChatStreaming ? 0.5 : 1)
                     .accessibilityLabel("Voice input")
-                    .allowsHitTesting(!canSend)
+                    .allowsHitTesting(!canSend && !isChatStreaming)
 
                     // Send — surfaces the moment there's something to send.
                     Button(action: send) {
@@ -825,13 +826,37 @@ struct EditorView: View {
                             .clipShape(Circle())
                             .accessibilityHidden(true)
                     }
-                    .opacity(canSend ? 1 : 0)
-                    .scaleEffect(canSend ? 1 : 0.5)
+                    .opacity(canSend && !isChatStreaming ? 1 : 0)
+                    .scaleEffect(canSend && !isChatStreaming ? 1 : 0.5)
                     .accessibilityLabel("Send")
-                    .allowsHitTesting(canSend)
+                    .allowsHitTesting(canSend && !isChatStreaming)
                     .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
+
+                    // 225 item 2: Stop — visible while a reply streams; cancels the
+                    // task and keeps the partial text (long-press retry still works).
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        activeChatTask?.cancel()
+                        isChatStreaming = false
+                        for i in messages.indices where messages[i].isStreaming {
+                            messages[i].isStreaming = false
+                        }
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                    }
+                    .opacity(isChatStreaming ? 1 : 0)
+                    .scaleEffect(isChatStreaming ? 1 : 0.5)
+                    .accessibilityLabel("Stop")
+                    .allowsHitTesting(isChatStreaming)
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isChatStreaming)
                 .padding(.trailing, 5)
                 .padding(.bottom, 5)
             }
@@ -2109,7 +2134,9 @@ struct EditorView: View {
         // Reset the assistant message to thinking state and re-stream.
         messages[idx].content = ""
         messages[idx].isThinking = true
+        messages[idx].isStreaming = true   // 225 item 2: drives the tail caret
         messages[idx].error = nil
+        isChatStreaming = true             // 225 item 2: composer shows Stop
 
         activeChatTask = Task { @MainActor in
             await streamReplyWithFallback(
@@ -2117,6 +2144,13 @@ struct EditorView: View {
                 prompt: prompt,
                 context: context
             )
+            // 225 item 2: reply finished (or the stream returned after cancel) —
+            // clear streaming state so the caret stops and the composer button
+            // returns from Stop to Send.
+            if let i = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[i].isStreaming = false
+            }
+            isChatStreaming = false
         }
     }
 

@@ -4,6 +4,9 @@ import Photos
 
 struct MessageBubble: View {
     let message: ChatMessage
+    /// 225 item 2: drives the blinking streaming caret (toggled only while
+    /// message.isStreaming; see the assistant text block's .task).
+    @State private var caretOn = true
     /// Long-press → "Regenerate." Provided only on assistant text
     /// replies (not on the welcome message, in-flight thinking messages,
     /// or video render messages — those don't make sense to regenerate).
@@ -80,8 +83,10 @@ struct MessageBubble: View {
                 Spacer(minLength: 48)
                 userContent
             } else {
+                // 225 item 2: assistant messages are FULL-WIDTH (bubbles stay for
+                // the user side only). No trailing 48pt gutter.
                 assistantContent
-                Spacer(minLength: 48)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -252,31 +257,26 @@ struct MessageBubble: View {
             }
 
             if !message.content.isEmpty {
-                bubbleText(message.content)
+                // 225 item 2: full-width assistant TEXT — no glass bubble. Plus a
+                // blinking caret at the tail while the reply streams (caretOn is
+                // toggled by the .task below only while message.isStreaming).
+                bubbleText(message.isStreaming && caretOn ? message.content + "\u{258C}" : message.content)
                     .font(.system(.body, design: .default).weight(.regular))
                     .tracking(0.2)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(
-                        // Assistant bubble: subtler glass — softer than
-                        // the user bubble so the conversation alternates
-                        // with clear visual rhythm.
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color.white.opacity(0.03))
+                    .padding(.vertical, 4)
+                    .task(id: message.isStreaming) {
+                        guard message.isStreaming else { return }
+                        while !Task.isCancelled {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            caretOn.toggle()
                         }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
                     .contextMenu {
                         if message.error == nil {
                             Button {

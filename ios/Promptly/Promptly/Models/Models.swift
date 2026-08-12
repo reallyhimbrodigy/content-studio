@@ -47,6 +47,9 @@ struct ChatMessage: Identifiable {
     var postPackage: PostPackage?
     var error: String?
     var isThinking: Bool = false
+    /// 225 item 2: transient (not persisted) — true while an assistant reply is
+    /// actively streaming, so the bubble can show a blinking caret at the tail.
+    var isStreaming: Bool = false
     /// Transient (not persisted): set true the moment a job truly completes,
     /// just before the processing bubble is swapped for the finished video.
     /// The progress views observe this to release the bar's cap and let it
