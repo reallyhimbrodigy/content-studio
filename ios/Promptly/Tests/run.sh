@@ -55,3 +55,12 @@ swiftc "$DIR/../Promptly/Services/EntitlementTier.swift" \
 # UsageMeter — free-tier quota display never invents a limit (build-215 revenue fix).
 swiftc "$DIR/UsageMeterRegressionTests.swift" -o "${TMPDIR:-/tmp}/usagetest"
 "${TMPDIR:-/tmp}/usagetest"
+
+# ResumableUpload — item 7b contract-free machinery: part-plan split math,
+# chunk-to-file byte fidelity, and the resume ledger (skip-completed-parts +
+# persistence round-trip). Pure Foundation; the network contract and the
+# background-session resume loop are validated elsewhere (server + device).
+swiftc "$DIR/../Promptly/Services/ResumableUpload.swift" \
+       "$DIR/ResumableUploadTests.swift" \
+       -o "${TMPDIR:-/tmp}/resumabletest"
+"${TMPDIR:-/tmp}/resumabletest"
