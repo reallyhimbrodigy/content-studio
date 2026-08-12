@@ -1,11 +1,41 @@
 # IOS_FINAL_BUILD — every client item, one spec, one build
 
+> # 🔒 FROZEN — 2026-08-12. Items 1–7 are FINAL for build 225.
+>
+> Nothing is added to this spec before 225 ships. A new client finding goes to
+> 226; a new *server* finding goes to a server lane. This is a freeze on the
+> SPEC, not on thinking — the reason for it is that this file exists so the
+> owner ships **exactly one build**, and a spec that keeps growing is a build
+> that never ships.
+>
+> Frozen contents: **1** chat router · **2** UI trio · **3** export gate client
+> half · **4** warmup removal · **5** `rc_identify` retry · **6** paywall order
+> · **7** upload leg. Seven items, contiguous, each with its file:line, its
+> change, its acceptance, and the server flip that waits on it.
+
 **Consolidated 2026-08-12 (Lane 4, on Zac's directive: the owner ships exactly
 one build).** Sources folded in: SEAM's `IOS_HANDOFF_CHAT_ACTIONS.md`,
 DELIVERY's `reports/EXPORT_CLIENT_HALF.md`, the true-pause filing, JUDGE's
-identity finding, the paywall-order question. Each item says what changes,
-where, and which SERVER FLIP waits on it. **Not in this build:** multi-clip
-adapter #2 — server-side, continues as its own build item in the SEAM lane.
+withdrawn identity finding (item 5 replaced), the paywall-order question, and
+the UNS mechanism (`reports/UNS_MECHANISM.md` → item 7). Each item says what
+changes, where, and which SERVER FLIP waits on it.
+
+**Not in this build:** multi-clip adapter #2 — BUILT server-side 2026-08-12
+(`adapter_contract.adapt_multi_clip`, cert_multi_clip.py in the deploy gate,
+dark behind `PROMPTLY_ADAPTER_V1`). It needs a client attach-N-clips affordance
+to reach users; that is a **226** item, deliberately not smuggled into 225.
+
+## What each item is worth (so the build order is not a guess)
+
+| item | measured cost of NOT shipping it | denominator |
+|---|---|---|
+| **7 upload leg** | `upload_failed` hit **720 users**; only 24.1% of started uploads complete; 79% of failures died under 1% transferred | since 08-06 |
+| **3 export gate** | the wall is **inert** — the shipped client falls back to public save on any export failure | — |
+| **1 chat router** | `PROMPTLY_CHAT_ACTIONS` cannot flip at all until this ships | — |
+| **5 rc_identify** | one network blip at sign-in strands RevenueCat on `$RCAnonymousID` **permanently**; 3 allowlisted events have **0** emitters | — |
+| **4 warmup** | every editor-open spins a Modal container; ~63% never render | — |
+| **2 UI trio** | owner-named quality items | — |
+| **6 paywall order** | may be a no-op; verify and say so | — |
 
 ---
 
@@ -195,11 +225,17 @@ behind a broken front door is not a great product.
 
 ## Server flips gated on this build (TRUTH's queue, one at a time, post-ship)
 
-| flip | waits on item |
-|---|---|
-| `PROMPTLY_CHAT_ACTIONS` | 1 (router) |
-| `EXPORT_GATE_ENABLED=1` | 3 (fallback removal) |
-| `EXPORT_WATERMARK_ENABLED=1` | 3, after the gate flip |
+| flip | waits on item | note |
+|---|---|---|
+| `PROMPTLY_CHAT_ACTIONS` | 1 (router) | server half live and dark |
+| `EXPORT_GATE_ENABLED=1` | 3 (fallback removal) | server half live and dark |
+| `EXPORT_WATERMARK_ENABLED=1` | 3, after the gate flip | **check `/api/health` `.gate.skipped` first** — if it names `export_watermark`, Render has no ffmpeg and this flip would silently ship every free export clean |
+
+Flips that do **NOT** wait on this build, listed so nobody blocks them on it:
+`PROMPTLY_COMPONENT_OBEY` (server-only; JUDGE's lean-route honesty lever),
+`PROMPTLY_ADAPTER_V1` (server-only), `PROMPTLY_UNIFIED_CORE`,
+`PROMPTLY_SURGICAL_V2`, `PROMPTLY_CAPTION_TRANSLATE`,
+`PROMPTLY_UPSCALE_NEGOTIATE`.
 
 ## Acceptance pass (one run through the app)
 
