@@ -2810,10 +2810,33 @@ struct EditorView: View {
                             case .retrying:
                                 messages[i].stepMessage = "Reconnecting…"
                             }
+                        } preflight: { sourceUrl, proxyUrl in
+                            // Item 1 (dark today): now that the upload reference has
+                            // resolved, give the server's chat action router the first
+                            // look before we createVideoJob. On the route's 404 (flag
+                            // off) or ANY error chatActions yields .notFound → .proceed
+                            // → today's createVideoJob, byte-identical to pre-item-1.
+                            // A real render limit still surfaces via createVideoJob's
+                            // own 402 → the existing paywall path, so routing refusals
+                            // to .proceed never strands the user.
+                            let action = (try? await APIService.shared.chatActions(
+                                message: vibe, videoUrl: sourceUrl, proxyVideoUrl: proxyUrl
+                            )) ?? .notFound
+                            switch action {
+                            case .renderDispatched(let jobId, _), .reeditDispatched(let jobId, _):
+                                // Server dispatched the render itself — adopt its jobId
+                                // (the .preempted outcome attaches it + starts SSE).
+                                return jobId.isEmpty ? .proceed : .handled(jobId: jobId)
+                            case .notFound, .converse, .status, .clarify, .refusal:
+                                // Fall through to today's render. converse/clarify UX
+                                // on the video path is a device-validation item — see
+                                // IOS_226_PLAN. Unreachable while the flag is dark.
+                                return .proceed
+                            }
                         }
 
                         switch outcome {
-                        case .success(let jobId):
+                        case .success(let jobId), .preempted(let jobId):
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true

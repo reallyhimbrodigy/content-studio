@@ -42,6 +42,21 @@ final class JobDispatchCoordinator {
         case success(jobId: String)
         case hardFailure(HardFailure)
         case cancelled
+        /// Item 1 (dark today): the chat action router took the turn during the
+        /// pre-dispatch check, dispatching the render itself server-side. `jobId`
+        /// is the server-minted job — the caller attaches it + starts SSE exactly
+        /// like `.success`. Unreachable while `PROMPTLY_CHAT_ACTIONS` is off (the
+        /// preflight returns `.proceed` on the route's 404), so it never changes
+        /// today's flow.
+        case preempted(jobId: String)
+    }
+
+    /// The pre-dispatch decision returned by the optional `preflight` closure,
+    /// consulted once the upload reference has resolved and BEFORE `createVideoJob`.
+    /// Default callers get `.proceed`, i.e. byte-identical to the pre-item-1 flow.
+    enum Preflight {
+        case proceed                    // run createVideoJob as today (the dark path)
+        case handled(jobId: String)     // the chat action router dispatched a render itself
     }
 
     /// The only thing that escapes to the UI. Everything else is a
@@ -98,12 +113,20 @@ final class JobDispatchCoordinator {
         vibe: String,
         premiumPipeline: Bool = false,
         clientJobId: String? = nil,
-        onPhase: @escaping (AttemptPhase) -> Void = { _ in }
+        onPhase: @escaping (AttemptPhase) -> Void = { _ in },
+        // Item 1 (dark today): consulted ONCE, right after the upload reference
+        // resolves and before createVideoJob. Receives the resolved (source, proxy)
+        // URLs. Default `.proceed` preserves EVERY existing caller unchanged.
+        preflight: @escaping (_ sourceUrl: String, _ proxyUrl: String?) async -> Preflight = { _, _ in .proceed }
     ) async -> Outcome {
         if let id = clientJobId?.lowercased() { activeClientJobIds.insert(id) }
         defer { if let id = clientJobId?.lowercased() { activeClientJobIds.remove(id) } }
         let startTime = Date()
         var attempt = 0
+        // The preflight is a network call (chat/actions); it must fire exactly
+        // once, NOT on every createVideoJob soft-retry. This latches after the
+        // first post-upload look.
+        var preflightDone = false
 
         while true {
             if Task.isCancelled { return .cancelled }
@@ -147,6 +170,24 @@ final class JobDispatchCoordinator {
                 try? await Task.sleep(for: .seconds(delay))
                 attempt += 1
                 continue
+            }
+
+            // Item 1 (dark today): now that the upload reference exists, give the
+            // chat action router the first look — exactly once, before we ever
+            // createVideoJob. On the route's 404 (flag off) or ANY error the
+            // closure returns `.proceed` and the flow below is byte-identical to
+            // the pre-item-1 path. `.handled` means the server dispatched the
+            // render itself; we surface its jobId and stop (no client dispatch,
+            // so exactly one job is ever created).
+            if !preflightDone {
+                preflightDone = true
+                switch await preflight(sourceUrl, pendingVideo.proxyUploadedUrl) {
+                case .proceed:
+                    break
+                case .handled(let jobId):
+                    return .preempted(jobId: jobId)
+                }
+                if Task.isCancelled { return .cancelled }
             }
 
             attempt += 1
