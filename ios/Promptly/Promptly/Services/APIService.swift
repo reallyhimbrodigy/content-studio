@@ -378,6 +378,52 @@ class APIService {
         }
     }
 
+    // MARK: - Chat action router (226 item 1)
+
+    /// The server's converse-vs-act decision for one chat turn. `.notFound` is the
+    /// dark-flag fallback: while PROMPTLY_CHAT_ACTIONS is off the endpoint 404s and
+    /// the caller runs TODAY's client router unchanged.
+    enum ChatActionResult {
+        case converse                                        // just talk → /api/chat/stream as today
+        case status(String)                                  // deterministic status text
+        case clarify(String)                                 // ask-back text
+        case renderDispatched(jobId: String, message: String?)
+        case reeditDispatched(jobId: String, message: String?)
+        case refusal(status: Int)                            // 402/429/503 → composer refusal
+        case notFound                                        // 404 → today's client router (dark)
+    }
+
+    /// POST /api/chat/actions — one server call decides converse vs act. The server
+    /// parses intent (never the client). Attach a resolved `videoUrl` only AFTER the
+    /// upload completes (226: no racing the presign). Network/other errors map to
+    /// `.notFound` so the caller safely falls back to today's router.
+    func chatActions(message: String, videoUrl: String? = nil, proxyVideoUrl: String? = nil) async throws -> ChatActionResult {
+        var request = await authorizedRequest("/api/chat/actions", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["message": message]
+        if let videoUrl { body["video_url"] = videoUrl }
+        if let proxyVideoUrl { body["proxy_video_url"] = proxyVideoUrl }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse else { return .notFound }
+        switch http.statusCode {
+        case 404:                return .notFound
+        case 402, 429, 503:      return .refusal(status: http.statusCode)
+        case 200:
+            struct R: Decodable { let action: String; let message: String?; let job_id: String? }
+            guard let r = try? JSONDecoder().decode(R.self, from: data) else { return .converse }
+            switch r.action {
+            case "converse":          return .converse
+            case "status":            return .status(r.message ?? "")
+            case "clarify":           return .clarify(r.message ?? "")
+            case "render_dispatched": return .renderDispatched(jobId: r.job_id ?? "", message: r.message)
+            case "reedit_dispatched": return .reeditDispatched(jobId: r.job_id ?? "", message: r.message)
+            default:                  return .converse   // unknown → safe default
+            }
+        default:                 throw APIError.jobCreationFailed("chat/actions \(http.statusCode)")
+        }
+    }
+
     /// Kick off a re-edit derived from an existing completed job. Server loads
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.

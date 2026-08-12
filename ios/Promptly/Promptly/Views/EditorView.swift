@@ -2431,6 +2431,11 @@ struct EditorView: View {
         let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
         messages.append(thinkingMsg)
         let msgId = thinkingMsg.id
+        // 225 item 2 (fixed in 226): the caret + composer Stop must appear on the
+        // PRIMARY initial send, not only on regenerate. Set the streaming state here
+        // too; cleared after the reply returns.
+        if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = true }
+        isChatStreaming = true
 
         // History snapshot must EXCLUDE the message we just appended
         // — that's the CURRENT turn, sent as `message` separately.
@@ -2439,11 +2444,43 @@ struct EditorView: View {
         activeChatTask = Task { @MainActor in
             _ = await ensureActiveChat()
             persistMessages()
-            await streamReplyWithFallback(
-                intoMessageId: msgId,
-                prompt: text,
-                context: historySnapshot
-            )
+
+            // 226 item 1: route the turn through the server action router. Dark-safe —
+            // /api/chat/actions 404s while PROMPTLY_CHAT_ACTIONS is off, and network/
+            // other errors also map to .notFound, so we fall through to today's
+            // streaming chat (identical to 225). No client-side intent parsing.
+            let outcome = (try? await APIService.shared.chatActions(message: text)) ?? .notFound
+            switch outcome {
+            case .notFound, .converse:
+                await streamReplyWithFallback(intoMessageId: msgId, prompt: text, context: historySnapshot)
+            case .status(let m), .clarify(let m):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = m
+                }
+            case .renderDispatched(let jobId, let m), .reeditDispatched(let jobId, let m):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = m ?? "On it — starting your edit."
+                    messages[i].jobId = jobId
+                    messages[i].jobStatus = "processing"
+                }
+                if !jobId.isEmpty { startSSE(jobId: jobId, messageId: msgId) }
+            case .refusal(let status):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = status == 402
+                        ? "You're at today's limit — upgrade to keep chatting."
+                        : "The service is busy right now — please try again in a moment."
+                }
+                if status == 402 {
+                    let lim = UsageService.shared.chatLimit ?? 5
+                    appState.presentPaywall(.dailyChats(used: lim, limit: lim))
+                }
+            }
+            persistMessages()
+            if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = false }
+            isChatStreaming = false
         }
     }
 
