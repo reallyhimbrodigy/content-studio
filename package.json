@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --expose-gc server.js",
     "validate": "node validate_deploy.js",
-    "postinstall": "node scripts/build-marker.js",
+    "postinstall": "node scripts/build-marker.js && node scripts/gate-on-render.js",
     "worker": "node --expose-gc worker.js",
     "dev": "node --expose-gc server.js",
     "export-logos": "node tools/export-logos.js",
