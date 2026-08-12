@@ -69,8 +69,9 @@ struct TrialWallView: View {
 
     private func selectDefaultPackage() {
         guard selectedPackage == nil else { return }
-        // Default to annual (best value) when present, else the first package.
-        selectedPackage = packages.first(where: { $0.packageType == .annual }) ?? packages.first
+        // Default to the offering's FIRST package (position 0). Order is owned by
+        // the RevenueCat offering (config, no build), so obey whatever it returns.
+        selectedPackage = packages.first
     }
 
     private var contextKey: String {
@@ -144,7 +145,7 @@ struct TrialWallView: View {
                                 Text(planTitle(pkg))
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
-                                if pkg.packageType == .annual {
+                                if pkg.identifier == packages.first?.identifier {
                                     Text("BEST VALUE")
                                         .font(.system(size: 10, weight: .heavy))
                                         .foregroundColor(.black)

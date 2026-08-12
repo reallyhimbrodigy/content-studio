@@ -197,10 +197,11 @@ struct PaywallView: View {
             // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
             Analytics.track("upgrade_wall_viewed", props: ["context": reasonKey])
             await subscription.refreshOfferings()
-            // Default selection: pick the yearly package if present (better
-            // value, hint at savings) — otherwise the first available.
+            // Default selection: the offering's FIRST package (position 0).
+            // Order is owned by the RevenueCat offering (config, no build), so
+            // the client obeys whatever sequence the offering returns.
             if let pkgs = currentPackages {
-                selectedPackage = pkgs.first(where: { $0.packageType == .annual }) ?? pkgs.first
+                selectedPackage = pkgs.first
             }
         }
         .onChange(of: subscription.isPro) { _, isPro in
@@ -359,7 +360,9 @@ struct PaywallView: View {
             default: return ""
             }
         }()
-        let savingsLabel: String? = pkg.packageType == .annual ? "BEST VALUE" : nil
+        // Badge the offering's FIRST package (position 0) — order is config-owned
+        // by the RevenueCat offering, so whatever it returns first is "BEST VALUE".
+        let savingsLabel: String? = pkg.identifier == currentPackages?.first?.identifier ? "BEST VALUE" : nil
 
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
