@@ -1125,6 +1125,7 @@ final class VideoExporter: ObservableObject {
         case photosDenied
         case saveFailed(String)
         case appNotInstalled(String)
+        case gatedPaywall   // 225 item 3: 402 — sentinel routed to the paywall, never shown
 
         var errorDescription: String? {
             switch self {
@@ -1132,6 +1133,7 @@ final class VideoExporter: ObservableObject {
             case .photosDenied:      return "Photos access was denied"
             case .saveFailed(let m): return "Couldn't save: \(m)"
             case .appNotInstalled(let app): return "\(app) isn't installed"
+            case .gatedPaywall:      return "Upgrade to export"
             }
         }
     }
@@ -1144,11 +1146,26 @@ final class VideoExporter: ObservableObject {
 
     // MARK: - Private helpers
 
-    private func ensureLocalFile() async throws -> URL {
+    /// 225 item 3: resolve which URL the save downloads from. With a jobId the
+    /// export gate rules (a signed private/watermarked asset on 200; the public
+    /// URL only when the gate says legacy-save is correct — 404 no_private_asset
+    /// or 501/route-dark; a 402 throws .gatedPaywall so we NEVER silent-public-save
+    /// a walled export). Without a jobId (LibraryView / pre-gate items) the public
+    /// URL — those predate the gate. Network errors propagate → retry, never public save.
+    private func resolveSaveSourceUrl() async throws -> String {
+        guard let jobId else { return videoUrlStr }
+        switch try await APIService.shared.exportJob(jobId: jobId) {
+        case .gated(let url, _):   return url.absoluteString
+        case .legacyPublicSaveOK:  return videoUrlStr
+        case .paymentRequired:     throw ExportError.gatedPaywall
+        }
+    }
+
+    private func ensureLocalFile(from urlStr: String) async throws -> URL {
         if let cached = cachedLocalUrl, FileManager.default.fileExists(atPath: cached.path) {
             return cached
         }
-        guard let remoteUrl = URL(string: videoUrlStr) else { throw ExportError.invalidUrl }
+        guard let remoteUrl = URL(string: urlStr) else { throw ExportError.invalidUrl }
         let (tempUrl, _) = try await URLSession.shared.download(from: remoteUrl)
         let finalUrl = FileManager.default.temporaryDirectory
             .appendingPathComponent("promptly-export-\(UUID().uuidString).mp4")
@@ -1166,7 +1183,10 @@ final class VideoExporter: ObservableObject {
             throw ExportError.photosDenied
         }
 
-        let localFile = try await ensureLocalFile()
+        // 225 item 3: the gate decides the source (throws .gatedPaywall on 402,
+        // URLError on network — caller handles both, never a silent public save).
+        let sourceUrl = try await resolveSaveSourceUrl()
+        let localFile = try await ensureLocalFile(from: sourceUrl)
 
         var placeholderId: String?
         try await PHPhotoLibrary.shared().performChanges {
@@ -1198,6 +1218,11 @@ final class VideoExporter: ObservableObject {
                 saveState = .success
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 if saveState == .success { saveState = .idle }
+            } catch ExportError.gatedPaywall {
+                // 225 item 3: 402 — out of free exports. Present the upgrade paywall;
+                // NEVER fall back to a public save. No error copy (this is a flow).
+                saveState = .idle
+                await MainActor.run { AppState.shared.presentPaywall(.manual) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 saveState = .error(error.localizedDescription)

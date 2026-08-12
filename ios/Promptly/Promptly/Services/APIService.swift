@@ -338,6 +338,46 @@ class APIService {
         }
     }
 
+    // MARK: - Export gate (225 item 3)
+
+    /// The one correct action for an export attempt. Dark-safe: while the server
+    /// export gate is off it returns 501 (or the alias route 404s) → .legacyPublicSaveOK,
+    /// so 225 saves behave exactly like 224 today. When the gate flips on: 200 = a
+    /// signed, possibly-watermarked private asset; 402 = out of free exports → the
+    /// upgrade paywall, NEVER a silent public save; 404 no_private_asset = an old job
+    /// with no private asset, the ONLY case a public save is still correct.
+    enum ExportOutcome {
+        case gated(url: URL, watermarked: Bool)                             // 200
+        case legacyPublicSaveOK                                             // 404 (no_private_asset / route-dark) or 501 gate-dark
+        case paymentRequired(freeExportsUsed: Int?, freeExportLimit: Int?)  // 402
+    }
+
+    /// POST /api/jobs/{id}/export with the Supabase bearer. Throws URLError on a
+    /// network failure — the caller shows a retry, NEVER a silent public save —
+    /// and APIError on an unexpected status.
+    func exportJob(jobId: String) async throws -> ExportOutcome {
+        var request = await authorizedRequest("/api/jobs/\(jobId)/export", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.uploadFailed }
+        switch http.statusCode {
+        case 200:
+            struct R: Decodable { let url: String; let watermarked: Bool? }
+            let r = try JSONDecoder().decode(R.self, from: data)
+            guard let u = URL(string: r.url) else { throw APIError.jobCreationFailed("Bad export URL") }
+            return .gated(url: u, watermarked: r.watermarked ?? false)
+        case 402:
+            struct P: Decodable { let free_exports_used: Int?; let free_export_limit: Int? }
+            let p = try? JSONDecoder().decode(P.self, from: data)
+            return .paymentRequired(freeExportsUsed: p?.free_exports_used, freeExportLimit: p?.free_export_limit)
+        case 404, 501:
+            return .legacyPublicSaveOK
+        default:
+            throw APIError.jobCreationFailed("Export failed (\(http.statusCode))")
+        }
+    }
+
     /// Kick off a re-edit derived from an existing completed job. Server loads
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.
