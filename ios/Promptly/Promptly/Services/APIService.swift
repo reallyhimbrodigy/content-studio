@@ -394,9 +394,19 @@ class APIService {
     }
 
     /// POST /api/chat/actions — one server call decides converse vs act. The server
-    /// parses intent (never the client). Attach a resolved `videoUrl` only AFTER the
-    /// upload completes (226: no racing the presign). Network/other errors map to
-    /// `.notFound` so the caller safely falls back to today's router.
+    /// parses intent (never the client) and, for an act_render, self-forwards to
+    /// /api/video-jobs verbatim with the SAME `video_url` the composer uses
+    /// [SERVER_CONTRACTS_226 Contract 1].
+    ///
+    /// URL-IMMEDIATE: pass the presigned `videoUrl` the MOMENT it exists — do NOT
+    /// wait for the bytes. Both upload endpoints return the URL before a byte moves,
+    /// and dispatch waits server-side up to 600s for the object with no Modal
+    /// container running [Contract 1(a)]. Network/other errors map to `.notFound` so
+    /// the caller safely falls back to today's router.
+    ///
+    /// The caller MUST enforce: an attachment ⇒ a non-empty `videoUrl` here. A video
+    /// intent sent without its URL is misclassified as a re-edit of the user's OLD
+    /// job [Contract 1(b) trap] — that guard lives at the send site, not here.
     func chatActions(message: String, videoUrl: String? = nil, proxyVideoUrl: String? = nil) async throws -> ChatActionResult {
         var request = await authorizedRequest("/api/chat/actions", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -410,14 +420,19 @@ class APIService {
         case 404:                return .notFound
         case 402, 429, 503:      return .refusal(status: http.statusCode)
         case 200:
-            struct R: Decodable { let action: String; let message: String?; let job_id: String? }
+            // The server lifts job_id from `job_id || id || job.id`, but the
+            // render_dispatched shape documents `job_id` as `<uuid|null>` with the
+            // real id also under `job.job_id` — so fall back to the nested field.
+            struct JobEnvelope: Decodable { let job_id: String? }
+            struct R: Decodable { let action: String; let message: String?; let job_id: String?; let job: JobEnvelope? }
             guard let r = try? JSONDecoder().decode(R.self, from: data) else { return .converse }
+            let jid = (r.job_id?.isEmpty == false ? r.job_id : nil) ?? r.job?.job_id ?? ""
             switch r.action {
             case "converse":          return .converse
             case "status":            return .status(r.message ?? "")
             case "clarify":           return .clarify(r.message ?? "")
-            case "render_dispatched": return .renderDispatched(jobId: r.job_id ?? "", message: r.message)
-            case "reedit_dispatched": return .reeditDispatched(jobId: r.job_id ?? "", message: r.message)
+            case "render_dispatched": return .renderDispatched(jobId: jid, message: r.message)
+            case "reedit_dispatched": return .reeditDispatched(jobId: jid, message: r.message)
             default:                  return .converse   // unknown → safe default
             }
         default:                 throw APIError.jobCreationFailed("chat/actions \(http.statusCode)")

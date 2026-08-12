@@ -2761,82 +2761,56 @@ struct EditorView: View {
                         func indexOfProcessingMsg() -> Int? {
                             messages.firstIndex(where: { $0.id == msgId })
                         }
-                        // Hand off to the dispatch coordinator. It owns
-                        // the upload-wait + createVideoJob loop and
-                        // retries every soft failure (network blip,
-                        // worker hiccup, S3 stall, rate limit, etc.)
-                        // silently with exponential backoff. The only
-                        // outcomes that escape to the UI are:
-                        //   - success → start SSE + stuck detector
-                        //   - hardFailure → user must act (paywall, bad
-                        //     video, vibe rewrite)
-                        //   - cancelled → user explicitly cancelled
-                        let outcome = await JobDispatchCoordinator.shared.dispatch(
-                            pendingVideo: video,
-                            vibe: vibe,
-                            premiumPipeline: premiumPipeline,
-                            clientJobId: mintedJobId
-                        ) { phase in
-                            // Phase callback drives the bar's Phase 1
-                            // (iOS → S3 upload) portion. Per the new
-                            // contract: real upload progress 0…1 → bar
-                            // 0–30%. NO fake timer, NO plant-to-40 jump
-                            // on dispatch. The bar continues smoothly
-                            // from wherever upload left it (e.g. 12) and
-                            // the first /api/modal-progress event
-                            // (download=5 → bar=33.5) drives the
-                            // transition into Phase 2 without any visible
-                            // discontinuity.
-                            guard let i = indexOfProcessingMsg() else { return }
-                            switch phase {
-                            case .waitingForUpload(let progress):
-                                let mapped = Int(progress * 30)
-                                if mapped > (messages[i].jobProgress ?? 0) {
-                                    messages[i].jobProgress = mapped
+                        // Item 1 (URL-immediate): fire /api/chat/actions the moment
+                        // the presigned source URL exists — NOT the bytes; the server's
+                        // 600s source-wait absorbs the upload. If the router dispatches
+                        // the render/re-edit itself we adopt that outcome; converse /
+                        // clarify / refusal and the dark 404 / a network error fall
+                        // through to the coordinator's upload-wait + createVideoJob loop,
+                        // byte-identical to today. The HARD GUARD (attachment ⇒ video_url)
+                        // lives in the helper: no url ⇒ no video act is ever sent.
+                        let outcome: JobDispatchCoordinator.Outcome
+                        if let acted = await chatActRouterURLImmediate(video: video, vibe: vibe, msgId: msgId) {
+                            outcome = acted
+                        } else {
+                            // The coordinator owns the upload-wait + createVideoJob loop
+                            // and retries every soft failure (network blip, worker hiccup,
+                            // S3 stall, rate limit) silently with backoff. The only
+                            // outcomes that escape to the UI are success / hardFailure
+                            // (user must act) / cancelled.
+                            outcome = await JobDispatchCoordinator.shared.dispatch(
+                                pendingVideo: video,
+                                vibe: vibe,
+                                premiumPipeline: premiumPipeline,
+                                clientJobId: mintedJobId
+                            ) { phase in
+                                // Phase callback drives the bar's Phase 1 (iOS → S3
+                                // upload): real upload progress 0…1 → bar 0–30%. NO fake
+                                // timer, NO plant-to-40 on dispatch. The first
+                                // /api/modal-progress event (download=5 → bar=33.5) makes
+                                // the Phase-2 transition with no visible discontinuity.
+                                guard let i = indexOfProcessingMsg() else { return }
+                                switch phase {
+                                case .waitingForUpload(let progress):
+                                    let mapped = Int(progress * 30)
+                                    if mapped > (messages[i].jobProgress ?? 0) {
+                                        messages[i].jobProgress = mapped
+                                    }
+                                case .dispatching:
+                                    // STATUS FIDELITY: do NOT light "analyze" here — the
+                                    // job isn't on the server yet; only a real SSE/
+                                    // reconcile `analyze` token advances that stage.
+                                    messages[i].stepMessage = "Sending to the editor…"
+                                case .waitingForNetwork:
+                                    messages[i].stepMessage = "Waiting for a connection…"
+                                case .retrying:
+                                    messages[i].stepMessage = "Reconnecting…"
                                 }
-                            case .dispatching:
-                                // STATUS FIDELITY: do NOT light "analyze"
-                                // ("Preparing your footage") here — the job
-                                // isn't on the server yet, and firing a RENDER
-                                // stage during dispatch is the "frozen at
-                                // Preparing your footage" lie. Keep the headline
-                                // on "Uploading your video" and say honestly what
-                                // we're doing in the subtitle. Only a real server
-                                // SSE/reconcile `analyze` token advances the stage
-                                // to "Preparing your footage".
-                                messages[i].stepMessage = "Sending to the editor…"
-                            case .waitingForNetwork:
-                                messages[i].stepMessage = "Waiting for a connection…"
-                            case .retrying:
-                                messages[i].stepMessage = "Reconnecting…"
-                            }
-                        } preflight: { sourceUrl, proxyUrl in
-                            // Item 1 (dark today): now that the upload reference has
-                            // resolved, give the server's chat action router the first
-                            // look before we createVideoJob. On the route's 404 (flag
-                            // off) or ANY error chatActions yields .notFound → .proceed
-                            // → today's createVideoJob, byte-identical to pre-item-1.
-                            // A real render limit still surfaces via createVideoJob's
-                            // own 402 → the existing paywall path, so routing refusals
-                            // to .proceed never strands the user.
-                            let action = (try? await APIService.shared.chatActions(
-                                message: vibe, videoUrl: sourceUrl, proxyVideoUrl: proxyUrl
-                            )) ?? .notFound
-                            switch action {
-                            case .renderDispatched(let jobId, _), .reeditDispatched(let jobId, _):
-                                // Server dispatched the render itself — adopt its jobId
-                                // (the .preempted outcome attaches it + starts SSE).
-                                return jobId.isEmpty ? .proceed : .handled(jobId: jobId)
-                            case .notFound, .converse, .status, .clarify, .refusal:
-                                // Fall through to today's render. converse/clarify UX
-                                // on the video path is a device-validation item — see
-                                // IOS_226_PLAN. Unreachable while the flag is dark.
-                                return .proceed
                             }
                         }
 
                         switch outcome {
-                        case .success(let jobId), .preempted(let jobId):
+                        case .success(let jobId):
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true
@@ -2964,6 +2938,62 @@ struct EditorView: View {
             }
             isSending = false
             }
+        }
+    }
+
+    /// Item 1 — URL-immediate chat action router for a video send.
+    ///
+    /// Fires POST /api/chat/actions the moment the presigned source URL exists —
+    /// NOT when the bytes finish. Both upload endpoints return the URL before a
+    /// byte moves, and the server's dispatch waits up to 600s for the object with
+    /// no Modal container running (SERVER_CONTRACTS_226, Contract 1(a)), so the
+    /// client never holds the request for the upload. Returns:
+    ///   • `.success(jobId)` when the server dispatched the render/re-edit itself —
+    ///     the caller's existing `.success` handling attaches it + starts SSE;
+    ///   • `nil` to fall through to the coordinator: the dark path (404 / network)
+    ///     plus converse/clarify/refusal, which createVideoJob handles exactly like
+    ///     today (a real 402 re-surfaces through its hardFailure path).
+    ///
+    /// HARD GUARD (Contract 1(b)): a video-attached act is sent ONLY with its
+    /// `video_url`. We wait for `uploadedUrl` and return nil if the upload dies
+    /// before the URL resolves — so chatActions is NEVER called with a nil/empty
+    /// video_url on the attachment path, which the server would misclassify as a
+    /// re-edit of the user's OLD job (`reedit_dispatched` — looks like success but
+    /// edits the wrong video). That trap is structurally impossible here.
+    private func chatActRouterURLImmediate(video: PendingVideo, vibe: String, msgId: UUID) async -> JobDispatchCoordinator.Outcome? {
+        // Wait for the presigned URL (seconds — the presign, not the transfer).
+        // Bounded, so a stuck/slow presign falls through to the coordinator, which
+        // owns the full retry / ceiling / dead-upload-fast-fail logic.
+        let deadline = Date().addingTimeInterval(30)
+        while video.uploadedUrl == nil && !video.uploadFailed && !Task.isCancelled && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard let url = video.uploadedUrl, !url.isEmpty else { return nil }   // HARD GUARD
+
+        let result = (try? await APIService.shared.chatActions(
+            message: vibe, videoUrl: url, proxyVideoUrl: video.proxyUploadedUrl
+        )) ?? .notFound
+
+        switch result {
+        case .renderDispatched(let jobId, _), .reeditDispatched(let jobId, _):
+            // video_url present ⇒ act_render unconditionally, so reedit_dispatched
+            // should not occur on this path; either way it's a dispatched job.
+            guard !jobId.isEmpty else { return nil }
+            // The coordinator normally drives the Phase-1 upload bar; it isn't
+            // running on this path, so mirror client upload progress into the bar
+            // until the bytes land and SSE owns it. Monotonic, capped at 30%.
+            Task { @MainActor in
+                while !video.sourceUploadCompleted && !Task.isCancelled {
+                    if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                        let mapped = Int(video.uploadProgress * 30)
+                        if mapped > (messages[i].jobProgress ?? 0) { messages[i].jobProgress = mapped }
+                    }
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
+            return .success(jobId: jobId)
+        case .converse, .status, .clarify, .refusal, .notFound:
+            return nil
         }
     }
 
