@@ -1,6 +1,20 @@
 # IOS_FINAL_BUILD — every client item, one spec, one build
 
-> # 🔒 FROZEN — 2026-08-12. Items 1–7 are FINAL for build 225.
+> # 🔒 FROZEN — 2026-08-12. Items 1–7 FINAL; 1 and 7-substance ship in 226.
+>
+> **Reconciled 2026-08-12 against what 225 actually contains** (canonical record:
+> `LAUNCH_DAY.md` §BUILD 225). The freeze held — nothing was added — but two
+> items moved out, so this file must not read as though all seven ship at once:
+>
+> | in 225 | 2 UI trio · 3 export gate · 4 warmup · 6 paywall order · **7 telemetry only** · 5 (**pre-existing**, nothing to build) |
+> |---|---|
+> | in **226** | **1 chat router** · **7 substance** (resumable/multipart + background URLSession) |
+>
+> Flip consequence, recorded in full in LAUNCH_DAY: **`PROMPTLY_CHAT_ACTIONS`
+> flips at LAUNCH, not after item 1.** 224/225 clients never call
+> `/api/chat/actions`, so an armed flag is invisible to every client in users'
+> hands; the acceptance script exercises it; and 226 then arrives already live.
+> Export flags run their four-step order once 225 is in users' hands.
 >
 > Nothing is added to this spec before 225 ships. A new client finding goes to
 > 226; a new *server* finding goes to a server lane. This is a freeze on the
@@ -184,6 +198,12 @@ Context for the call: every weekly subscriber to date cancelled inside week 1
 reason to cancel.
 
 ## 7. Upload leg — resumable, or the front door stays broken
+
+> **SPLIT ACROSS BUILDS.** 225 ships **§3 only** (the `upload_attempt`
+> telemetry). §1, §2 and §4 — the resumable transfer, the background session and
+> the copy — are **226**. So the UNS mechanism is NOT closed by 225: a flat UNS
+> rate after 225 means nothing was fixed, only that it became measurable. Read
+> it that way or the next report will call a working instrument a failed fix.
 
 Full evidence: `reports/UNS_MECHANISM.md`. The headline [MEASURED 2026-08-12,
 since 08-06]: **`upload_failed` hit 720 USERS**; only **24.1%** of started
