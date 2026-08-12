@@ -682,13 +682,10 @@ struct EditorView: View {
                 }
             }
             .onChange(of: isInputFocused) { _, focused in
-                // Vibe entry = send intent: focusing the composer with a clip pending
-                // means a render is imminent. Re-fire the GPU warmup here (the earliest
-                // reliable signal) so the container is hot by dispatch — the cold-start
-                // race the backend traced. Idempotent; a second fire lands at send().
-                if focused, !pendingVideos.isEmpty {
-                    fireRenderWarmup()
-                }
+                // 225 item 4: composer-focus GPU warmup removed. The server
+                // neutered dispatch-latency warmup (funnel A/B: it does not
+                // convert) and /api/prewarm is frozen, so every focus-with-clip
+                // warmup just spun a Modal dispatcher container for pure burn.
                 guard focused, let lastId = messages.last?.id else { return }
                 // Defer past the keyboard-rise animation so the scroll
                 // position lands on the new visible bounds, not the
@@ -1341,17 +1338,8 @@ struct EditorView: View {
     private func addPendingVideoAndStartUpload(_ video: PickedVideo) {
         // ACTIVATION-funnel: an upload begins (after any talking-head precheck).
         Analytics.track("upload_started")
-        // Warm the GPU render container the instant an upload begins — the
-        // earliest possible point — so its ~15-30s cold start (heavy import +
-        // CUDA init) overlaps the entire upload + preprocessing and the render
-        // starts hot instead of stalling on container boot. Fire-and-forget:
-        // detached, never awaited, all errors swallowed inside the call, so it
-        // can't block or fail the upload. Idempotent — firing once per picked
-        // clip just keeps the container warm. (GPU-side counterpart to the
-        // prewarm call fired later once the S3 URL is known.)
-        Task.detached(priority: .utility) {
-            await APIService.shared.warmupRenderContainer()
-        }
+        // 225 item 4: pick-time GPU warmup removed (server neutered warmup;
+        // renders start cold-tolerant, so this was pure dark-period burn).
 
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
@@ -2427,31 +2415,15 @@ struct EditorView: View {
 
     // MARK: - Send
 
-    /// Re-fire the GPU render-container warmup on SEND INTENT. Backend root-caused
-    /// dispatch stalls to a cold-start race: the pick-time / editor-open warmup
-    /// (~15-30s cold start) expires before a real user finishes entering a vibe and
-    /// hits send, so the container is cold again at dispatch and the render stalls on
-    /// boot. Re-firing at vibe entry and again just before dispatch keeps it hot.
-    /// Fire-and-forget, detached, idempotent — Modal dedupes container warmup, and all
-    /// errors are swallowed inside the call, so it can never block or fail a send.
-    private func fireRenderWarmup() {
-        Task.detached(priority: .utility) {
-            await APIService.shared.warmupRenderContainer()
-        }
-    }
+    // 225 item 4: fireRenderWarmup() and its send-intent/dispatch call removed —
+    // dispatch-latency warmup was proven non-converting server-side and every
+    // call spun a dispatcher container for pure burn. Renders start cold-tolerant.
 
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
-
-        // Send intent → re-fire the GPU warmup for any path that hits the render
-        // container (a fresh video send, a re-edit, or a vibe-change re-dispatch),
-        // closing the cold-start race the backend traced.
-        if hasVideos || reeditActive || pendingVibeEditMessageId != nil {
-            fireRenderWarmup()
-        }
 
         // ── requires_vibe_change re-dispatch path ─────────────────────
         // Backend told us the source was fine but the vibe was the
