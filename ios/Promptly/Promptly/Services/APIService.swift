@@ -378,6 +378,21 @@ class APIService {
         }
     }
 
+    /// POST /api/jobs/{id}/export {"gate_probe": true} — the export gate's DRY RUN.
+    /// It is evaluated BEFORE the 501 [SERVER_CONTRACTS_226], so it answers while
+    /// `EXPORT_GATE_ENABLED` is still dark — which is what makes the paywall branch
+    /// verifiable today, zero flips. Network / any failure → `.indeterminate` so
+    /// verification never blocks. This NEVER gates a real export (see ExportGateDecision):
+    /// the shipping paywall is driven by the real 402 from `exportJob`, post-flip.
+    func gateProbe(jobId: String) async -> ExportGateDecision {
+        var request = await authorizedRequest("/api/jobs/\(jobId)/export", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{\"gate_probe\":true}".utf8)
+        guard let (data, response) = try? await requestData(request),
+              let http = response as? HTTPURLResponse else { return .indeterminate(status: -1) }
+        return ExportGateDecision.from(status: http.statusCode, body: data)
+    }
+
     // MARK: - Chat action router (226 item 1)
 
     /// The server's converse-vs-act decision for one chat turn. `.notFound` is the

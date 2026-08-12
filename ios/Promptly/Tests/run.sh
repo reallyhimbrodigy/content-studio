@@ -64,3 +64,11 @@ swiftc "$DIR/../Promptly/Services/ResumableUpload.swift" \
        "$DIR/ResumableUploadTests.swift" \
        -o "${TMPDIR:-/tmp}/resumabletest"
 "${TMPDIR:-/tmp}/resumabletest"
+
+# ExportGateDecision — the export gate_probe dry-run parser (allowed/gated/
+# indeterminate + fail-open wouldGate). Verifies the paywall branch today, zero
+# flips, no device (SERVER_CONTRACTS_226 confirming line). Pure Foundation.
+swiftc "$DIR/../Promptly/Services/ExportGateProbe.swift" \
+       "$DIR/ExportGateDecisionTests.swift" \
+       -o "${TMPDIR:-/tmp}/gateprobetest"
+"${TMPDIR:-/tmp}/gateprobetest"

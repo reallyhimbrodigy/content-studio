@@ -537,6 +537,33 @@ final class AppState: ObservableObject {
         mirrorPaywallRouting()
     }
 
+    #if DEBUG
+    /// DEBUG-only: verify the export paywall branch TODAY via the dry-run gate probe,
+    /// zero flips [SERVER_CONTRACTS_226]. Probes the gate for `jobId`; if a free user
+    /// would be gated it drives the SAME `.manual` paywall the post-flip export uses,
+    /// so the branch is proven on a real device (run once as Pro → allowed, once as
+    /// free → paywall). Returns a one-line report. DEBUG + explicit-call only → zero
+    /// effect on Release/TestFlight, and it never touches the shipping export flow
+    /// (a free user still saves publicly while the gate is dark).
+    @MainActor
+    @discardableResult
+    func debugVerifyExportPaywallBranch(jobId: String) async -> String {
+        let decision = await APIService.shared.gateProbe(jobId: jobId)
+        let report: String
+        switch decision {
+        case .allowed(let tier):
+            report = "gate_probe: allowed (tier=\(tier)) — Pro, no paywall ✓"
+        case .gated(let tier, let reason):
+            presentPaywall(.manual)   // the exact branch the post-flip 402 drives
+            report = "gate_probe: gated (tier=\(tier), reason=\(reason ?? "—")) — paywall presented ✓"
+        case .indeterminate(let status):
+            report = "gate_probe: indeterminate (status=\(status)) — fail-open, no paywall"
+        }
+        print("[gate-probe] \(report)")
+        return report
+    }
+    #endif
+
     /// UPGRADE-funnel head: a free user encountered a Pro-gated limit. Fired from
     /// the SINGLE routing chokepoint (present + defer) so every gated door counts
     /// once, with the specific cap in `limit`. `.manual` is intentionally excluded
