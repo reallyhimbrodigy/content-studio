@@ -183,6 +183,57 @@ struct ResumableUploadTestMain {
         check(MultipartResumeLedger.load(uploadId: "up-123", in: tmp) == nil, "clear removes the ledger (post-abort)")
         check(MultipartResumeLedger.all(in: tmp).map { $0.uploadId } == ["up-partial"], "all() reflects the clear")
 
+        // ── 6. Reconcile — the kill-path state machine ───────────────────────
+        // Every mid-transfer death maps to exactly ONE outcome: resume, complete,
+        // or fresh — never a dangle, never a double-schedule.
+
+        func ledgerOf(parts: Int, done: [Int]) -> MultipartResumeLedger {
+            var l = MultipartResumeLedger(uploadId: "recon", key: "k", publicUrl: "u",
+                                          fileSize: Int64(parts) * 16 * MB, partSize: 16 * MB, createdAt: created)
+            for p in done { l.record(partNumber: p, eTag: "\"etag-\(p)\"") }
+            return l
+        }
+
+        // Stage A — death BEFORE init was recorded: no ledger → a fresh upload.
+        check(MultipartResumeLedger.load(uploadId: "never-existed", in: tmp) == nil,
+              "kill before init → no ledger → fresh upload (nothing to resume)")
+
+        // Stage B — death MID-PARTS: 1,2 done; 3,4 in flight; 5,6 not started.
+        let midLedger = ledgerOf(parts: 6, done: [1, 2])
+        let midDecision = midLedger.reconcile(liveTaskParts: [3, 4])
+        check(midDecision.partsToSchedule == [5, 6], "mid-parts: schedule only not-started, not-live parts (5,6)")
+        check(!midDecision.shouldComplete, "mid-parts: not complete")
+        check(midDecision.redundantLiveParts.isEmpty, "mid-parts: no redundant live tasks")
+
+        // A live task for an ALREADY-DONE part is redundant (harmless idempotent re-PUT).
+        let midRedundant = midLedger.reconcile(liveTaskParts: [2, 3])
+        check(midRedundant.partsToSchedule == [4, 5, 6], "a live task for a done part is never rescheduled")
+        check(midRedundant.redundantLiveParts == [2], "a live task for a done part is flagged redundant (cancellable)")
+
+        // Idempotent re-record of a done part changes NOTHING — resume never double-counts.
+        var midCopy = midLedger
+        midCopy.record(partNumber: 1, eTag: "\"etag-1-again\"")
+        check(midCopy.remainingPartNumbers() == midLedger.remainingPartNumbers(),
+              "re-PUT of a completed part leaves the remaining set unchanged")
+        check(midCopy.reconcile(liveTaskParts: [3, 4]) == midDecision,
+              "re-PUT of a done part yields the identical reconcile decision (harmless)")
+
+        // Stage C — death with ALL PARTS DONE but complete() not yet called.
+        let allDone = ledgerOf(parts: 3, done: [1, 2, 3])
+        let completeDecision = allDone.reconcile(liveTaskParts: [])
+        check(completeDecision.shouldComplete && completeDecision.partsToSchedule.isEmpty,
+              "all parts done → reconcile says complete(), schedule nothing")
+        check(allDone.reconcile(liveTaskParts: [3]).shouldComplete,
+              "all done + a straggler live task → still complete")
+        check(allDone.reconcile(liveTaskParts: [3]).redundantLiveParts == [3],
+              "the straggler live task is redundant (cancel it)")
+
+        // Stage D — death AFTER complete: the ledger was cleared → nothing to resume.
+        try allDone.save(in: tmp)
+        MultipartResumeLedger.clear(uploadId: "recon", in: tmp)   // complete() clears it
+        check(MultipartResumeLedger.load(uploadId: "recon", in: tmp) == nil,
+              "kill after complete → ledger cleared → nothing to resume")
+
         print("\n\(checks - failures)/\(checks) passed")
         exit(failures == 0 ? 0 : 1)
     }

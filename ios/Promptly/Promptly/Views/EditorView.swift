@@ -1503,22 +1503,13 @@ struct EditorView: View {
                             throw APIError.uploadFailed
                         }
 
-                        // Fire prewarm with the SOURCE URL — worker polls
-                        // S3 until the source lands, then starts the
-                        // download + transcribe pipeline. Proxy is only
-                        // used by Gemini visual analysis (in the main
-                        // video-jobs path), so it doesn't need its own
-                        // prewarm.
-                        firePrewarmOnce.fire(sourcePub)
-
-                        // Publish the eventual source URL IMMEDIATELY so
-                        // send() can dispatch the job the moment the proxy
-                        // is ready — the worker polls S3 for the source
-                        // file regardless of whether bytes have arrived.
-                        // Upload progress (0→1) is tracked separately on
-                        // pending.uploadProgress so the UI still reflects
-                        // real byte movement.
-                        await MainActor.run { pending.uploadedUrl = sourcePub }
+                        // Prewarm and the URL-immediate `pending.uploadedUrl` now fire
+                        // from inside uploadSourceNeverWorse's onPublicUrlResolved, with
+                        // the RESOLVED source url — the multipart publicUrl when 7b runs,
+                        // else the single-PUT one. Firing them here (before we know which)
+                        // would prewarm/dispatch the WRONG key whenever multipart lands the
+                        // object at its own key. Both still fire the moment the url exists
+                        // (init returns it before a byte moves), so URL-immediate holds.
 
                         // Encode the Gemini proxy in parallel with the
                         // upcoming source upload. Proxy failure is NON-
@@ -1582,38 +1573,46 @@ struct EditorView: View {
                             }
                         }()
 
-                        async let sourceUpload: Void = {
-                            try await APIService.shared.uploadFileToS3(
-                                url: sourcePutUrl,
+                        async let sourceUpload: String = {
+                            // 226 item 7b: resumable multipart on a background URLSession,
+                            // with the NEVER-WORSE fallback to the single-PUT already
+                            // presigned above. onPublicUrlResolved fires prewarm + the
+                            // URL-immediate uploadedUrl with whichever url wins; the return
+                            // is the resolved publicUrl (multipart's key, or the single-PUT).
+                            let resolvedPub = try await APIService.shared.uploadSourceNeverWorse(
                                 fileUrl: materializedSourceUrl,
-                                mimeType: "video/mp4",
+                                fileName: pending.fileName,
+                                singlePutUrl: sourcePutUrl,
+                                singlePutPublicUrl: sourcePub,
                                 messageId: pending.id.uuidString,
                                 chatId: chatStore.activeChatId,
-                                publicUrl: sourcePub
-                            ) { p in
-                                Task { @MainActor in pending.uploadProgress = p }
-                            }
+                                onPublicUrlResolved: { pub in
+                                    firePrewarmOnce.fire(pub)
+                                    Task { @MainActor in pending.uploadedUrl = pub }
+                                },
+                                onProgress: { p in
+                                    Task { @MainActor in pending.uploadProgress = p }
+                                }
+                            )
                             try? FileManager.default.removeItem(at: materializedSourceUrl)
                             await MainActor.run {
                                 pending.uploadProgress = 1.0
-                                // Bytes are in S3 now — release the job
-                                // dispatcher. `uploadedUrl` was set early
-                                // (line 985) for prewarm + UI, but the
-                                // dispatcher gates on `sourceUploadCompleted`
-                                // so a slow upload can't trigger a job that
-                                // would 404 + time the worker out.
+                                // Bytes are in S3 now — release the job dispatcher. The
+                                // dispatcher gates on `sourceUploadCompleted` so a slow
+                                // upload can't trigger a job that 404s the worker.
                                 pending.sourceUploadCompleted = true
                             }
                             print("[perf] source upload complete (background)")
+                            return resolvedPub
                         }()
 
                         // proxyUpload swallows its own errors so await
                         // is non-throwing here — only the source upload
                         // can fail the whole task.
                         _ = await proxyUpload
-                        _ = try await sourceUpload
+                        let resolvedSourcePub = try await sourceUpload
                         print(String(format: "[perf] both-uploads-done %.2fs", Date().timeIntervalSince(uploadStart)))
-                        publicUrl = sourcePub
+                        publicUrl = resolvedSourcePub
 
                     case .stream(let resource, let fileSize):
                         // iCLOUD RELIABILITY FIX (224): the old path STREAMED the
@@ -1640,21 +1639,27 @@ struct EditorView: View {
                             try? FileManager.default.removeItem(at: durableSource)
                             throw APIError.uploadFailed
                         }
-                        firePrewarmOnce.fire(streamPub)
-                        await MainActor.run { pending.uploadedUrl = streamPub }
-                        try await APIService.shared.uploadFileToS3(
-                            url: streamPutUrl,
+                        // 226 item 7b: resumable multipart on a background URLSession for
+                        // the iCloud durable file too, NEVER-WORSE fallback to single-PUT.
+                        // Prewarm + URL-immediate uploadedUrl fire from onPublicUrlResolved.
+                        let streamResolvedPub = try await APIService.shared.uploadSourceNeverWorse(
                             fileUrl: durableSource,
-                            mimeType: "video/mp4",
+                            fileName: pending.fileName,
+                            singlePutUrl: streamPutUrl,
+                            singlePutPublicUrl: streamPub,
                             messageId: pending.id.uuidString,
                             chatId: chatStore.activeChatId,
-                            publicUrl: streamPub
-                        ) { p in
-                            Task { @MainActor in pending.uploadProgress = 0.5 + p * 0.5 }
-                        }
+                            onPublicUrlResolved: { pub in
+                                firePrewarmOnce.fire(pub)
+                                Task { @MainActor in pending.uploadedUrl = pub }
+                            },
+                            onProgress: { p in
+                                Task { @MainActor in pending.uploadProgress = 0.5 + p * 0.5 }
+                            }
+                        )
                         try? FileManager.default.removeItem(at: durableSource)
                         await MainActor.run { pending.sourceUploadCompleted = true }
-                        publicUrl = streamPub
+                        publicUrl = streamResolvedPub
                         print(String(format: "[perf] stream→durable+bg done %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     case .none:

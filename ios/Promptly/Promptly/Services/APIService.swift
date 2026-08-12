@@ -713,6 +713,63 @@ class APIService {
         print(String(format: "[perf] upload bg-single success elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
     }
 
+    /// Source-leg upload with the NEVER-WORSE guarantee (226 item 7b). Tries the
+    /// resumable multipart transfer on a background URLSession; ANY init failure
+    /// (404 / 5xx / network / timeout, the kill switch, or a sub-threshold file) falls
+    /// to the single-PUT path — byte-for-byte the 225 upload. Multipart is only ever
+    /// ATTEMPTED behind a successful `multipartInit`, so it can only match or beat 225.
+    ///
+    /// `onPublicUrlResolved` fires the MOMENT the url is known — the multipart publicUrl
+    /// (from init, before a byte moves) or the single-PUT one — so the URL-immediate
+    /// chat/render dispatch never waits for the bytes. The single-PUT branch emits its
+    /// own `upload_attempt` (path="bg-single"); the multipart branch emits path="multipart".
+    @discardableResult
+    func uploadSourceNeverWorse(
+        fileUrl: URL,
+        fileName: String,
+        singlePutUrl: String,
+        singlePutPublicUrl: String,
+        messageId: String,
+        chatId: String?,
+        onPublicUrlResolved: @escaping (String) -> Void,
+        onProgress: @escaping (Double) -> Void
+    ) async throws -> String {
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
+
+        // Resumable multipart — only above the threshold and only if init succeeds.
+        // `multipartInit` throwing is the never-worse hinge → single-PUT below.
+        if MultipartConfig.enabled, size >= MultipartConfig.threshold {
+            // Law 3: sweep-and-abort stale uploads before every new init.
+            await ResumableMultipartUploader.shared.resumeAndSweepOnForeground()
+            let partSize = MultipartChunker.chosenPartSize(fileSize: size)
+            let partCount = MultipartChunker.partCount(fileSize: size, partSize: partSize)
+            if let initResp = try? await multipartInit(fileName: fileName, partCount: partCount) {
+                onPublicUrlResolved(initResp.publicUrl)   // URL-immediate: the multipart publicUrl
+                Analytics.track("upload_attempt", props: [
+                    "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+                    "path": "multipart",
+                    "src_key": URL(string: initResp.publicUrl)?.lastPathComponent ?? "",
+                    "parts": partCount,
+                ])
+                if (try? await ResumableMultipartUploader.shared.transfer(
+                    fileUrl: fileUrl, size: size, initResponse: initResp,
+                    messageId: messageId, chatId: chatId, onProgress: onProgress)) != nil {
+                    onProgress(1.0)
+                    return initResp.publicUrl   // multipart landed the object
+                }
+                // transfer threw (parts/complete gave up; abort already fired) → single-PUT.
+            }
+        }
+
+        // Single-PUT fallback — the 225 path, unchanged (emits its own upload_attempt).
+        onPublicUrlResolved(singlePutPublicUrl)
+        try await uploadFileToS3(
+            url: singlePutUrl, fileUrl: fileUrl, mimeType: "video/mp4",
+            messageId: messageId, chatId: chatId, publicUrl: singlePutPublicUrl,
+            onProgress: onProgress)
+        return singlePutPublicUrl
+    }
+
     /// Foreground single-PUT for SMALL files (proxy uploads). The
     /// background path's lifecycle overhead isn't worth it for files
     /// that finish in 5-10s before the user even types their vibe.
@@ -789,6 +846,62 @@ class APIService {
     struct MultipartPart: Codable {
         let PartNumber: Int
         let ETag: String
+    }
+
+    // MARK: - Multipart networking (226 item 7b — SERVER_CONTRACTS_226 Contract 2)
+
+    /// POST /api/upload-multipart-init {fileName, partCount} → {uploadId, partUrls[],
+    /// key, publicUrl}. `partUrls[i]` is presigned for PartNumber i+1 (the number is
+    /// baked into the signature); the key is server-generated. Throws on ANY non-2xx
+    /// or malformed body — this is the NEVER-WORSE hinge: the caller treats every
+    /// throw as "fall back to the single-PUT path", so multipart can only match or
+    /// beat 225, never make an upload worse.
+    func multipartInit(fileName: String, partCount: Int) async throws -> MultipartInitResponse {
+        var request = await authorizedRequest("/api/upload-multipart-init", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["fileName": fileName, "partCount": partCount])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.uploadFailed
+        }
+        let r = try JSONDecoder().decode(MultipartInitResponse.self, from: data)
+        guard r.partUrls.count == partCount, !r.uploadId.isEmpty, !r.key.isEmpty else { throw APIError.uploadFailed }
+        return r
+    }
+
+    /// POST /api/upload-multipart-complete {key, uploadId, parts:[{PartNumber, ETag}]}
+    /// → publicUrl. ETags are sent VERBATIM (quotes included); the server sorts by
+    /// PartNumber but we send them sorted anyway. The returned publicUrl is the SAME
+    /// value single-PUT returns and is the `video_url` for the job / chat act.
+    func multipartComplete(key: String, uploadId: String, parts: [MultipartPart]) async throws -> String {
+        var request = await authorizedRequest("/api/upload-multipart-complete", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "key": key,
+            "uploadId": uploadId,
+            "parts": parts.sorted { $0.PartNumber < $1.PartNumber }
+                .map { ["PartNumber": $0.PartNumber, "ETag": $0.ETag] },
+        ])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.uploadFailed
+        }
+        return try JSONDecoder().decode(MultipartCompleteResponse.self, from: data).publicUrl
+    }
+
+    /// POST /api/upload-multipart-abort {key, uploadId} → {ok:true}. A safe no-op if
+    /// already completed / never initialised. Best-effort: abandoned parts bill
+    /// forever, so we always TRY on cancel / give-up / expiry, but a failed abort
+    /// never blocks the caller. Returns whether the server acked.
+    @discardableResult
+    func multipartAbort(key: String, uploadId: String) async -> Bool {
+        guard !key.isEmpty, !uploadId.isEmpty else { return false }
+        var request = await authorizedRequest("/api/upload-multipart-abort", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["key": key, "uploadId": uploadId])
+        guard let (_, response) = try? await requestData(request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return false }
+        return true
     }
 
     /// Upload a file using S3 multipart + Transfer Acceleration. Returns the

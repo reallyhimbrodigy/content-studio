@@ -22,9 +22,14 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
         // Touching the singleton instantiates its background URLSession
         // with the matching identifier, which lets iOS deliver the
         // queued delegate callbacks for tasks that completed while we
-        // were terminated.
+        // were terminated. Route by identifier — the single-PUT and the
+        // 226 multipart sessions are distinct and each drains its own events.
         Task { @MainActor in
-            BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
+            if identifier == ResumableMultipartUploader.shared.sessionIdentifier {
+                ResumableMultipartUploader.shared.savedCompletionHandler = completionHandler
+            } else {
+                BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
+            }
         }
     }
 
@@ -311,6 +316,12 @@ struct PromptlyApp: App {
                     didStartSession = true
                     Analytics.track("session_started")
                 }
+                // 226 item 7b: on every foreground (and cold launch), touch the
+                // multipart uploader so its background session reconnects, then
+                // reconcile + resume in-flight uploads and abort any that expired.
+                // Abandoned parts bill forever, so the sweep must NEVER wait for the
+                // user to revisit a screen.
+                Task { @MainActor in ResumableMultipartUploader.shared.resumeAndSweepOnForeground() }
             }
             .environmentObject(appState)
             // Apply the onboarding language choice app-wide this session (the

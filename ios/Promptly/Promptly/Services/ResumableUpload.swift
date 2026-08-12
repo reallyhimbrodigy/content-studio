@@ -261,3 +261,41 @@ extension MultipartResumeLedger {
             .map { (key: $0.key, uploadId: $0.uploadId) }
     }
 }
+
+// MARK: - Reconcile (the relaunch / network-return state machine)
+
+/// What to do for one upload after a relaunch or a network return, derived PURELY
+/// from the ledger + the set of part numbers that currently have a LIVE background
+/// task. Keeping it pure is what lets the kill-path stages be unit-tested with no
+/// URLSession: every mid-transfer death maps to exactly one of these outcomes.
+struct MultipartReconcileDecision: Equatable {
+    /// Remaining parts (no ETag yet) that have NO live task — schedule these. A part
+    /// that is already in flight is never rescheduled (no double-schedule); a part
+    /// with an ETag is never re-scheduled (resume skips it).
+    let partsToSchedule: [Int]
+    /// Every part has an ETag — call `/api/upload-multipart-complete` instead of
+    /// scheduling anything.
+    let shouldComplete: Bool
+    /// Live tasks for parts that ALREADY have an ETag (or are out of range). A
+    /// harmless idempotent re-PUT — `UploadPart` is idempotent [Contract 2] — so it
+    /// may be left to finish or cancelled; it is never re-recorded incorrectly.
+    let redundantLiveParts: [Int]
+}
+
+extension MultipartResumeLedger {
+    /// The 1-based part numbers that already have an ETag (the resume-completed set).
+    func completedPartNumbers() -> Set<Int> {
+        Set(completed.keys)
+    }
+
+    /// Derive the reconcile decision from this ledger and the parts currently in
+    /// flight on the background session. See `MultipartReconcileDecision`.
+    func reconcile(liveTaskParts: Set<Int>) -> MultipartReconcileDecision {
+        let remaining = Set(remainingPartNumbers())            // no ETag yet
+        return MultipartReconcileDecision(
+            partsToSchedule: remaining.subtracting(liveTaskParts).sorted(),
+            shouldComplete: isComplete,
+            redundantLiveParts: liveTaskParts.subtracting(remaining).sorted()
+        )
+    }
+}
