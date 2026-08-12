@@ -352,7 +352,7 @@ struct SerializedMessage: Codable, Hashable {
                 // "Picking up where it left off..." corpse is not representable:
                 // it terminalizes into the failure card right here.
                 msg.jobStatus = "failed"
-                msg.error = "This upload didn't finish — your video is safe on your device. Please send it again."
+                msg.error = "This upload didn't finish — the connection was likely too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight."
                 msg.stageTimeline = nil
                 msg.stepMessage = nil
             } else {

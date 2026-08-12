@@ -3367,7 +3367,7 @@ struct EditorView: View {
                 messages[idx].stepMessage = nil
                 messages[idx].error = wasProcessing
                     ? "This render expired on our side — you weren't charged. Please try again."
-                    : "This upload didn't finish — your video is safe on your device. Please send it again."
+                    : "This upload didn't finish — the connection was likely too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight."
                 persistMessages()
                 return
             }

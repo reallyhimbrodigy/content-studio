@@ -611,6 +611,17 @@ class APIService {
         let pub = publicUrl ?? remoteUrl.absoluteString.components(separatedBy: "?").first ?? remoteUrl.absoluteString
         let msgId = messageId ?? UUID().uuidString
 
+        // 225 item 7: emit upload_attempt at the START of the transfer — before it
+        // can die — so the failing (never-settled) population has a SIZE to band by.
+        // The event is allowlisted server-side and has had ZERO emitters, so nobody
+        // can currently answer "big files or slow networks?". size_mb + path + a
+        // join key (the source object key, which the job row also carries).
+        Analytics.track("upload_attempt", props: [
+            "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+            "path": "bg-single",
+            "src_key": URL(string: pub)?.lastPathComponent ?? "",
+        ])
+
         let uploadStart = Date()
         _ = try await BackgroundUploadManager.shared.upload(
             fileUrl: fileUrl,

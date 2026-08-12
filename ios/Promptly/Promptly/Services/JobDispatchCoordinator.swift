@@ -110,7 +110,7 @@ final class JobDispatchCoordinator {
             if Date().timeIntervalSince(startTime) > Self.totalRetryCeiling {
                 return .hardFailure(HardFailure(
                     errorCode: "DISPATCH_CEILING",
-                    userMessage: "Upload didn't finish — check your connection and try again. Your video is safe on your device.",
+                    userMessage: "Upload didn't finish — the connection may be too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight.",
                     requiresNewVideo: false,
                     requiresVibeChange: false,
                     isPaymentRequired: false,
