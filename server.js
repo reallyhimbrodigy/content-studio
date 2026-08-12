@@ -154,6 +154,13 @@ const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID:
 // the gate (the fact nobody could establish from outside). Read failures never
 // affect boot.
 const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+
+// DAILY SCOREBOARD, IN-PROCESS (2026-08-12). Was a separate render.yaml cron
+// service whose existence has been [UNKNOWN] since it was added — the same
+// blueprint-sync question that turned out to be REAL for the build gate. Moved
+// into the process that is provably running. Idempotent: the scoreboard upserts
+// one row per UTC day, so catch-up on every boot cannot double-count. Started
+// below, after supabaseAdmin exists.
 // npm postinstall marker — read at boot beside the receipt. See
 // scripts/build-marker.js: together they say WHICH half of the build ran.
 const BOOT_BUILD_MARKER = require('./lib/gate-receipt').readBuildMarker(__dirname);
@@ -1517,6 +1524,30 @@ function isProfileSettingsSchemaMissing(err) {
     code === '42703' ||
     (msg.includes('profile_settings') && msg.includes('column') && msg.includes('does not exist'))
   );
+}
+
+// ── Daily scoreboard scheduler (see lib/scoreboard-scheduler.js) ─────────────
+// hasRow is injected so the scheduler never owns a DB client. It returns null
+// on ANY uncertainty (table absent, query error) and the scheduler then does
+// NOT run — an unknown is not a missing row, and running blindly every boot
+// would hammer the judge.
+if (String(process.env.SCOREBOARD_SCHEDULER_DISABLED || '') !== '1') {
+  try {
+    require('./lib/scoreboard-scheduler').startScoreboardScheduler({
+      hasRow: async (day) => {
+        try {
+          const { data, error } = await supabaseAdmin
+            .from('daily_scoreboard').select('day').eq('day', day).maybeSingle();
+          if (error) return null;
+          return Boolean(data);
+        } catch (_) {
+          return null;
+        }
+      },
+    });
+  } catch (e) {
+    console.error('[scoreboard] scheduler failed to start (non-fatal):', e?.message);
+  }
 }
 
 const server = http.createServer((req, res) => {
