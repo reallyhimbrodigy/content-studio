@@ -12,6 +12,24 @@ services:
     startCommand: npm start
     autoDeploy: true
     envVars:
+      # [§2.1] LUMEN ACCESS. PREMIUM_PIPELINE_ENABLED was never declared here,
+      # which is why generated_scenes fired 0 in 2,074 jobs — the master gate of
+      # a five-way AND, unset and invisible. Declared now so it EXISTS as a knob
+      # (value set in the dashboard, sync:false). /api/health reports
+      # premium_pipeline so its state is a curl, not a log dig.
+      - key: PREMIUM_PIPELINE_ENABLED
+        sync: false
+      # The metered dial (§2.1 "default 0, never a doctrine") and the quota
+      # sized to unit cost. Absent = the code's own safe defaults (free 0,
+      # paid 30); declared here so they are visible knobs rather than folklore.
+      - key: LUMEN_FREE_RENDERS_PER_MONTH
+        sync: false
+      - key: LUMEN_PAID_RENDERS_PER_MONTH
+        sync: false
+      - key: LUMEN_BUDGET_USD_PER_RENDER
+        sync: false
+      - key: LUMEN_GLOBAL_DAILY_BUDGET_USD
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY

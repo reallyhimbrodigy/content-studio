@@ -5025,12 +5025,34 @@ const server = http.createServer((req, res) => {
         // Zac's eye. Designed scenes have never emitted (0/473 in 30d), so this
         // costs Pro nothing today (premium output ≡ standard) and removes the
         // risk of shipping an unreviewed Lumen scene to a paying user.
-        const premiumPipeline = entitlement.isPro === true
-          && body?.premium_pipeline_enabled === true
-          && premiumPipelineEnabled();
-        console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s masterFlag=%s) job=%s',
-          premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true,
-          premiumPipelineEnabled(), job.id);
+        // [§2.1] LUMEN ACCESS — entitlement-driven, NEVER client-picker-dependent.
+        // The old chain required `body.premium_pipeline_enabled === true`, so a
+        // Pro user who never opened the model picker silently got standard. That
+        // client dependency is one of the three gates that produced 0/2,074 and
+        // §2.1's ruling removes it: absence of the field is NOT a decline, only
+        // an explicit `false` is. Quota + budget are what make always-on-for-Pro
+        // affordable at ~$1/render.
+        const lumenAccess = require('./lib/lumen-access');
+        // Reads the row ITSELF rather than via getFeatureUsageCount, which
+        // returns 0 for "table missing" — indistinguishable from a genuine
+        // zero, and here that conflation hands out unlimited ~$1 renders.
+        const lumenUsedThisMonth = await lumenAccess.readMonthlyUsage(
+          supabaseAdmin, authUser.id);
+        const lumenVerdict = lumenAccess.decide({
+          isPro: entitlement.isPro === true,
+          clientDeclined: body?.premium_pipeline_enabled === false,
+          usedThisMonth: lumenUsedThisMonth,
+          spentTodayUsd: null,                  // wired with the cost meter
+        });
+        const premiumPipeline = lumenVerdict.premium;
+        console.log('  [model] premium_pipeline=%s reason=%s quota=%s used=%s (isPro=%s masterFlag=%s) job=%s',
+          premiumPipeline, lumenVerdict.reason, lumenVerdict.quota,
+          lumenUsedThisMonth === null ? 'UNKNOWN' : lumenUsedThisMonth,
+          entitlement.isPro, premiumPipelineEnabled(), job.id);
+        if (premiumPipeline) {
+          incrementFeatureUsage(supabaseAdmin, authUser.id, lumenAccess.monthKey())
+            .catch((e) => console.error('  [model] lumen usage increment failed:', e?.message));
+        }
 
         // NO_SPEECH pre-dispatch gate — reject a 0-word (speechless) clip here,
         // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
