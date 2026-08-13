@@ -3151,6 +3151,14 @@ const server = http.createServer((req, res) => {
       // today's legacy flow, byte-for-byte. Same knob that drives the server
       // gates — flip once, both halves move together. Default 'off' on any
       // client fetch failure.
+      // [§3.1/§6.1] LUMEN'S MASTER GATE, VISIBLE. generated_scenes fires 0/2,074
+      // and the cause chain ends at a three-way AND (isPro && client asked &&
+      // this flag). From outside the box the three were indistinguishable —
+      // the discriminator lived only in a Render log line nobody can curl. It
+      // is the same class as the build-gate receipt: an unanswerable question
+      // that stayed unanswered because answering it required access. Now it is
+      // a curl, for the owner and for me.
+      premium_pipeline: premiumPipelineEnabled(),
       wall_enforcement: wallEnabled() ? 'on' : 'off',
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
       // Presence only (never the values) — the deploy-sanity readback drift-guard
