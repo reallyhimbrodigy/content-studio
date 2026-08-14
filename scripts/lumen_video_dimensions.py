@@ -55,7 +55,17 @@ FFPROBE = os.environ.get("FFPROBE_PATH", "ffprobe")
 # is a vibe the bar itself does not meet. 3.5s admits both references with
 # margin. REF-2's long-take + caption-rhythm style is the reason, and §1.G names
 # it explicitly, so this is the spec's own case — not a concession.
-STILL_GAP_BAR_S = 3.5
+# ── TWO DIFFERENT 3.5s. NAMED APART (owner, 2026-08-14) ──────────────────────
+# They collided in my first report and a collision like that is how a target
+# gets read as a ceiling. They are not the same kind of number:
+#   MOTION_DENSITY_TARGET_EVPS  PRIMARY  — moving samples per SECOND. A TARGET
+#       to build toward (both references sit at ~3.5/s across two very different
+#       formats, which is what makes it portable). Higher is not automatically
+#       better; 40 caption pops in 2s scores well and looks like a seizure.
+#   STILL_GAP_CEILING_S         SECONDARY — the longest DEAD STRETCH in seconds.
+#       A CEILING never to exceed. This is the LAW; density is the aim.
+MOTION_DENSITY_TARGET_EVPS = 3.5
+STILL_GAP_CEILING_S = 3.5
 AUDIO_MEAN_FLOOR_DB = -20.0  # both refs sit near -15.8; a silent bed must fail
 AUDIO_MEAN_CEIL_DB = -10.0   # BOTH directions bounded: nothing passes by absence
 AUDIO_PEAK_CEIL_DB = 0.5     # clipping guard
@@ -194,7 +204,7 @@ def report(m):
         # hard cuts and would fail a cut-based bar. Reported for context only;
         # the LAW is measured on all visible motion.
         print(f"     (context) longest cut-to-cut gap {h['longest_cut_gap_s']}s — NOT a bar; refs run 6.1s/9.5s")
-        checks.append((f"motion_stillness<={STILL_GAP_BAR_S}s", r["max_still_gap_s"] <= STILL_GAP_BAR_S))
+        checks.append((f"motion_stillness<={STILL_GAP_CEILING_S}s", r["max_still_gap_s"] <= STILL_GAP_CEILING_S))
     for name, ok in checks:
         print(f"     {'PASS' if ok else 'FAIL'}  {name}")
     return checks
