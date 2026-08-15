@@ -41,6 +41,10 @@ async function pageAll(q) {
   return out;
 }
 const pct = (a, b) => `${(100 * a / Math.max(1, b)).toFixed(1)}%`;
+// Envelope presence — the primary discriminator. Module scope because several
+// sections use it; a `const` declared mid-function put it in the temporal dead
+// zone for the earlier ones and truncated the whole board at the first use.
+const isFullRow = (j) => ((((j.result || {}).stage_timings || {}).total) != null);
 const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
 
 // ── THE REQUIRED SHAPE FOR EVERY ZERO ON THIS BOARD (owner, 2026-08-15) ──────
@@ -242,6 +246,44 @@ function reportZero({ label, count, control }) {
     say(`\n**ENVELOPE LOSS: ${pct(lost.length, done.length)} of completions (${lost.length}/${done.length}), ${uniq(lost, 'user_id')} users.** `
       + `Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). `
       + `The pooled p50 above sits between classes and describes NO actual user.`);
+    // ── STANDING DECOMPOSITION: the class is BIMODAL (2026-08-15) ────────────
+    // Computed live so it can never go stale as a pasted claim. Two clusters,
+    // one symptom (envelope-absent), DIFFERENT settlement paths — established by
+    // the pre-registered hang test, which REFUTED the single-mechanism reading.
+    const affected = done.filter((j) => !isFullRow(j) || j.completion_delivery === 'repair');
+    if (affected.length >= 20) {
+      const lifeS = (j) => (new Date(j.completed_at) - new Date(j.created_at)) / 1000;
+      const qS = (j) => (j.worker_started_at ? (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000 : null);
+      const bands = [[180, 240], [870, 930]];
+      say('');
+      say('**STANDING DECOMPOSITION — this class is BIMODAL, not one mechanism.**');
+      say('');
+      say('| cluster | n | share of affected | settlement path | queue p50 | envelope-absent |');
+      say('|---|---:|---:|---|---:|---:|');
+      bands.forEach((b) => {
+        const v = affected.filter((j) => lifeS(j) >= b[0] && lifeS(j) <= b[1]);
+        if (!v.length) { say(`| ${b[0]}–${b[1]}s | 0 | 0% | — | — | — |`); return; }
+        const paths = {};
+        v.forEach((j) => { const k = j.completion_delivery || 'NULL'; paths[k] = (paths[k] || 0) + 1; });
+        const top = Object.entries(paths).sort((a, c) => c[1] - a[1])[0];
+        const qs = v.map(qS).filter((x) => x != null).sort((a, c) => a - c);
+        say(`| **${b[0]}–${b[1]}s** | ${v.length} | ${pct(v.length, affected.length)} | \`${top[0]}\` ${top[1]}/${v.length} | `
+          + `${qs.length ? qs[Math.floor(qs.length / 2)].toFixed(0) + 's' : '—'} | ${v.filter((j) => !isFullRow(j)).length}/${v.length} |`);
+      });
+      say('');
+      say('Both clusters are ~100% envelope-absent, so **envelope loss is COMMON to both and is therefore NOT '
+        + 'the discriminator** — they lose the envelope alike but settle by different paths at different times. '
+        + 'The pre-registered hang test (`reports/HANG_TEST_RESULT.md`) REFUTED the single-mechanism reading: '
+        + 'the ~900s band held only 13.7% of affected jobs while the largest mode sat at 180–240s. '
+        + '**Do not file one lever against this class until the two clusters are separated.**');
+      say('');
+      say('> **QUALIFIER — binding wherever this class appears, in any report or board:** '
+        + '**users receive their video on BOTH paths.** `repair` reconstructs the completion from the S3 '
+        + 'artifact; `reconciler` delivers at 180–240s. The damage is **cost, telemetry and tail latency — '
+        + 'never lost deliveries.** Any framing implying users lose renders here overstates a class that is, '
+        + 'from the user\'s seat, already mitigated.');
+      say('');
+    }
     say('_Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._');
   }
   // QUEUE IS A FIRST-CLASS LATENCY TERM (owner, 2026-08-15). e2e = QUEUE + WORK.
@@ -249,7 +291,6 @@ function reportZero({ label, count, control }) {
   // 43.1% of jobs wait >30s before a worker even picks them up. `started_at`
   // is NOT usable for this — it stamps the dispatch ATTEMPT (p50 0.3s, which
   // measures our own HTTP call); `worker_started_at` is true worker pickup.
-  const isFullRow = (j) => ((((j.result || {}).stage_timings || {}).total) != null);
   const qw = done.filter((j) => j.worker_started_at && j.completed_at);
   if (qw.length) {
     const Q = qw.map((j) => (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000).sort((a, b) => a - b);

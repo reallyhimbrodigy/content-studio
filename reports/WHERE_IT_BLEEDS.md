@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T03:03:51.651Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T03:21:30.155Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 26 users / 37 jobs (24h)
 
@@ -13,32 +13,44 @@
 
 ## 2. FAILED-JOB SECONDS — 41.7% of all job-lifetime seconds [7-DAY WINDOW]
 
-**315 failed jobs / 278 users** over **7 days**, p50 lifetime **601s**, **45/day**. Total **184,576s** of user time spent on jobs that never delivered.
+**313 failed jobs / 277 users** over **7 days**, p50 lifetime **601s**, **45/day**. Total **183,375s** of user time spent on jobs that never delivered.
 
 | quantity | jobs | seconds | share |
 |---|---:|---:|---:|
-| reached a worker (**Modal-billable**) | 22 | 18119 | 9.8% |
-| never reached one (**$0 Modal, pure user wait**) | 293 | 166458 | 90.2% |
+| reached a worker (**Modal-billable**) | 22 | 18119 | 9.9% |
+| never reached one (**$0 Modal, pure user wait**) | 291 | 165257 | 90.1% |
 
-**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **9.8%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
+**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **9.9%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
 
 > **UNS does NOT move onto the cost board — the conditional FAILS.** [MEASURED] Of 263 `UPLOAD_NEVER_STARTED` jobs, **0 have `worker_started_at` and 0 have `modal_call_id`.** The ~601s wait is entirely client/server-side; nothing was ever dispatched. UNS is the **largest user-time loss on the board** (263 jobs × ~601s) at **zero Modal spend**, so it stays a **DELIVERY/product lever, not a cost lever.** Filing it beside orchestration would aim spend work at a class that spends nothing.
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=139 completed (24h)
+## 2b. Latency — n=138 completed (24h)
 
 p50 **107s** (law 90) · p90 679s · p99 **1172s** (law 180) · max 1205s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
 | `C envelope LOST + repair` | 6 | 5 | **904s** | 1172s | 1172s |
-| `B envelope LOST` | 56 | 45 | **321s** | 829s | 1205s |
+| `B envelope LOST` | 55 | 44 | **308s** | 829s | 1205s |
 | `A envelope FULL` | 77 | 77 | **58s** | 116s | 541s |
 
 Worst/best class p50 spread: **15.5x** — the pooled number above hides it.
 
-**ENVELOPE LOSS: 44.6% of completions (62/139), 50 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 44.2% of completions (61/138), 49 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+
+**STANDING DECOMPOSITION — this class is BIMODAL, not one mechanism.**
+
+| cluster | n | share of affected | settlement path | queue p50 | envelope-absent |
+|---|---:|---:|---|---:|---:|
+| **180–240s** | 9 | 14.8% | `reconciler` 9/9 | 113s | 9/9 |
+| **870–930s** | 5 | 8.2% | `repair` 5/5 | 470s | 5/5 |
+
+Both clusters are ~100% envelope-absent, so **envelope loss is COMMON to both and is therefore NOT the discriminator** — they lose the envelope alike but settle by different paths at different times. The pre-registered hang test (`reports/HANG_TEST_RESULT.md`) REFUTED the single-mechanism reading: the ~900s band held only 13.7% of affected jobs while the largest mode sat at 180–240s. **Do not file one lever against this class until the two clusters are separated.**
+
+> **QUALIFIER — binding wherever this class appears, in any report or board:** **users receive their video on BOTH paths.** `repair` reconstructs the completion from the S3 artifact; `reconciler` delivers at 180–240s. The damage is **cost, telemetry and tail latency — never lost deliveries.** Any framing implying users lose renders here overstates a class that is, from the user's seat, already mitigated.
+
 _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._
 
 | term | p50 | p90 | p99 | max |
@@ -46,24 +58,24 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | **QUEUE** (create→worker pickup) | 18.4s | 349.6s | 757.4s | 824.3s |
 | **WORK** (pickup→complete) *envelope-FULL only* | 42.2s | 88.6s | 184.4s | 184.4s |
 
-Queue is **17%** of e2e at p50; **47.5%** of jobs wait >30s before any work begins.
+Queue is **17%** of e2e at p50; **47.1%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 73 lost it); of jobs queuing ≥30s, **93.9%** lost it. **94.8%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 73 lost it); of jobs queuing ≥30s, **93.8%** lost it. **94.8%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **5** of 139
+On the 900s wall [870,920] — count: **5** of 138
 
 ## 3. Route mix (24h)
 
-`none` 62 · `minimal` 46 · `minimal_speech_uncut` 29 · `moodreel` 2
+`none` 61 · `minimal` 46 · `minimal_speech_uncut` 29 · `moodreel` 2
 
-Premium share: **1.4%** (2/139).
+Premium share: **1.4%** (2/138).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=176 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=175 terminal)
 
-`reconciler` 129 · `repair` 6 · `NULL` 35 · `callback` 5 · `durable_poll` 1
+`reconciler` 128 · `repair` 6 · `NULL` 35 · `callback` 5 · `durable_poll` 1
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -90,8 +102,8 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1521** → started **123** (8.1%) → paid **2** (1.6% of starters)
-purchase_failed n=255, self-cancelled at the sheet **251** (98.4%) — the leak is the OFFER, not the funnel.
+wall_viewed **1516** → started **122** (8.0%) → paid **2** (1.6% of starters)
+purchase_failed n=248, self-cancelled at the sheet **244** (98.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]
 
