@@ -74,27 +74,24 @@ predicate is stopping four of them from ever being observed.
 So the answer to "why does the write still miss": for these 23 the worker
 produced a render but **no result envelope is present in Postgres**.
 
-**MECHANISM RETIRED TO [UNCONFIRMED] (2026-08-14).** I previously wrote that
-this "matches the worker-side hang class." That was an inference stated with
-more confidence than the evidence carries, and I withdraw it. An absent
-envelope is equally consistent with two mechanisms I cannot yet distinguish:
+**MECHANISM SETTLED 2026-08-15: OVERWRITE, not never-arrived. The worker-hang
+framing is RETIRED.** The envelope is written and then CLOBBERED by a later
+read-modify-write on the same `result` jsonb (the lifecycle-push claim marker
+performs exactly such a merge) — a classic lost update. Fix: compare-and-set on
+`updated_at`.
 
-  NEVER-ARRIVED  the worker's write never reached Postgres (the hang class), or
-  OVERWRITTEN    the envelope landed and was then CLOBBERED by a later
-                 read-modify-write on the same `result` jsonb (the lifecycle-push
-                 claim marker does exactly such a merge).
+I keep the full arc on the record because the intermediate step is the point: I
+first asserted the worker-hang class as though established, withdrew it to
+[UNCONFIRMED] when I could not distinguish overwrite from never-arrived, and it
+has now settled on the *other* branch. **My original framing was wrong.** The
+dating evidence I flagged at the time — envelope loss at 0.0% for eight straight
+days (08-04..08-11, 2,108 completions), then a hard switch-on at 08-11T23Z — was
+the signal pointing away from a latent hang toward an introduced regression.
+Consequence for the 23-repair cohort: their envelope was not missing because the
+worker never wrote it; it was written and then overwritten.
 
-Both leave an identical row. The distinguishing evidence would be a worker-side
-terminal-write receipt (which logs `matched=` for the write) timestamped against
-the row's `updated_at` — if the receipt says the write landed and the envelope
-is gone, it was overwritten. **The symptom is [MEASURED]; the mechanism is
-[UNCONFIRMED] and must not be quoted as settled.**
-
-Note the dating pressure on the hang hypothesis: envelope loss was **0.0% for
-eight consecutive days (08-04..08-11, 2,108 completions)** and switched on at
-**2026-08-11T23Z**. A latent hang class does not usually keep that schedule; a
-regression introduced by a change does. That is a reason to doubt my original
-framing, not yet a reason to assert the other one.
+Post-fix reads are PRE-REGISTERED in `reports/PREREG_ENVELOPE_FIX.md`, committed
+before the deploy.
 
 ## CORRECTION to my own 48h verdict
 
