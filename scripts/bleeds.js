@@ -137,6 +137,37 @@ function nullMeans({ column, klass, klassNulls, klassTotal, healthyKlass, health
         + `happened and confirm the column is set there BEFORE drawing any conclusion.`);
 }
 
+// ── STANDING GUARD: THE BUILT-NOT-WIRED CLASS (2026-08-15) ──────────────────
+// CERT-GREEN PROVES CAPABILITY. ONLY A PRODUCTION COUNTER PROVES CONNECTION.
+// Five instances this project, all one direction — built, certified, and never
+// once connected to a live path:
+//
+//   gate receipt          shipped as a READER with no writer anywhere in the repo;
+//                         /api/health.gate would have read null on every build forever
+//   `callback` stamp      written correctly, then DISCARDED by an always-false
+//                         predicate — 0 of 432+ completions ever carried it
+//   rc_identify_* events  allowlisted server-side, emitted by NOTHING in the iOS
+//                         tree; grep returns zero call sites
+//   generated scenes      "defined but INERT" — 0 of 3,949 jobs (0 of 2,074 premium)
+//   completion_delivery   read by my own board while never SELECTed by its query,
+//                         so every row scored NULL and a live instrument read dead
+//
+// ZERO instances of the reverse. Nothing has ever been wired-but-not-built,
+// because wiring something absent fails loudly and immediately; wiring something
+// that exists but is never called fails SILENTLY and indefinitely. The asymmetry
+// is structural, which is what makes this a rule rather than a tally.
+//
+// THEREFORE: a green cert, a passing smoke, and a merged PR are all evidence of
+// CAPABILITY. None is evidence of CONNECTION. Before any component is reported
+// as live, name the PRODUCTION COUNTER that is non-zero — a row, an event, a
+// stamp seen on real traffic. If that counter cannot be named, the component is
+// [BUILT-NOT-WIRED] regardless of how green its cert is.
+function wiredCheck({ component, cert, productionCounter, count }) {
+  if (count > 0) return `${component}: **WIRED** — ${productionCounter} = ${count} on real traffic.`;
+  return `${component}: ⚠️ **[BUILT-NOT-WIRED]** — cert ${cert || 'green'}, but ${productionCounter} = 0. `
+    + 'Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.';
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;
@@ -624,6 +655,17 @@ function reportZero({ label, count, control }) {
   say('_Break-even now lives in the ALL-IN section above ($0.21/render measured). The superseded table here '
     + '— built on the retired $0.481 bottom-up premium figure — is REMOVED rather than left to contradict it: '
     + 'two break-even tables on one board is how a stale number gets quoted._');
+  say('');
+  say('### Built-not-wired check — production counters, not certs');
+  say('');
+  const scenesLive = done.filter((j) => Object.keys((j.result || {})).some((k) => /scene|canvas|lumen/i.test(k))).length;
+  const cbLive = done.filter((j) => j.completion_delivery === 'callback').length;
+  say(`- ${wiredCheck({ component: 'Lumen scene vocabulary', cert: 'green (First Light 10/10)', productionCounter: 'completions carrying scene telemetry', count: scenesLive })}`);
+  say(`- ${wiredCheck({ component: '`callback` delivery stamp', cert: 'green', productionCounter: 'completion_delivery=callback rows', count: cbLive })}`);
+  say('');
+  say('_The `callback` line is the class resolving in real time: it was [BUILT-NOT-WIRED] for 432+ completions '
+    + 'and is now wired — the predicate fix connected a stamp that had always been written and always discarded. '
+    + 'The scene vocabulary is still on the other side of that line._');
   say('');
   say('_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not '
     + 'production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._');

@@ -12,11 +12,17 @@ convenience. A component is a FRAGMENT: a name-plate is a 2s static overlay, an
 end-card is a held frame, a music bed has no picture at all. Applying a
 whole-edit bar to a fragment manufactures false failures — a static end-card
 would "fail" the 3.5s stillness ceiling by doing exactly what an end-card is
-supposed to do. So each component declares which dimensions APPLY, and every
-other dimension is reported N/A rather than scored. **An N/A is not a pass and
-must never be counted as one.**
+supposed to do. So each component has a declared applicability, and every other
+dimension is reported N/A rather than scored. **An N/A is not a pass and must
+never be counted as one.**
 
-Component applicability is declared from the build sheet's own descriptions:
+THE MAP IS JUDGE-OWNED (owner ruling 2026-08-15). A component supplies ONE fact
+— WHICH component it is. It does NOT declare which dimensions apply to it: a
+subject that writes its own exemptions can always exempt the dimension it fails,
+and from outside, the exemption and the defect are indistinguishable. An
+externally-supplied applicability set is REFUSED, not merged. The map below is
+derived from the build sheet's descriptions, never from what a component turns
+out to score well on:
 
   B insert_scenes      motion, palette, canvas          (a moving inserted scene)
   H music_bed          audio ONLY                       (no picture)
@@ -55,6 +61,22 @@ REFS = {
              "evps": 3.51, "still_gap": 3.25, "u_spread": 5.26, "v_spread": 4.34},
 }
 
+# ── THE APPLICABILITY MAP IS JUDGE-OWNED. COMPONENTS DO NOT DECLARE THEIR OWN. ──
+# (owner ruling 2026-08-15)
+#
+# A component that declares which dimensions apply to it can exempt itself from
+# the dimension it fails, and it will always be able to justify doing so —
+# "a name-plate isn't really about motion" is indistinguishable, from the
+# outside, from "our name-plate fails the motion bar." The exemption and the
+# defect look identical the moment the subject writes the rule.
+#
+# So: a component under test supplies ONE fact — WHICH component it is. This map
+# supplies what that means. It lives in JUDGE's lane, changes only by JUDGE's
+# measurement, and a scorecard run against an externally-supplied applicability
+# set is REFUSED, not merged (see assert_judge_owned below).
+#
+# Each entry is justified from the build sheet's own description of the
+# component, not from what the component turns out to score well on.
 APPLIES = {
     "insert_scenes":    {"canvas", "motion", "palette"},
     "music_bed":        {"audio"},
@@ -73,10 +95,33 @@ TASTE_UNCALIBRATED = [
 ]
 
 
-def score(component, path):
+def assert_judge_owned(supplied=None):
+    """Refuse any externally-supplied applicability. The subject of a measurement
+    does not get to define the measurement. Callers pass a component NAME; if a
+    caller tries to pass a dimension set, that is a scope negotiation and the run
+    is refused rather than silently honoured."""
+    if supplied is not None:
+        raise SystemExit(
+            "REFUSED: applicability was supplied by the caller. The map is JUDGE-owned "
+            "(scripts/score_component.py). A component declares WHICH component it is; "
+            "it does not declare which dimensions apply to it. If a dimension genuinely "
+            "does not apply, that is a measured argument to bring to JUDGE, not a flag "
+            "to pass at score time.")
+
+
+def score(component, path, applies_override=None):
+    assert_judge_owned(applies_override)
     if component not in APPLIES:
         raise SystemExit(f"unknown component '{component}'. Known: {', '.join(sorted(APPLIES))}")
     ap = APPLIES[component]
+    # A declared N/A is checked against the ARTIFACT where the artifact can speak.
+    # 'audio does not apply' is a claim the file can refute: if a component whose
+    # map says no-audio ships WITH an audio stream, the map is stale or the
+    # component changed shape, and either way the scorecard must say so.
+    probe_a = audio_master(path)
+    if "audio" not in ap and probe_a.get("mean_db") is not None and probe_a["mean_db"] > -60:
+        print(f"  ⚠️  MAP-DRIFT: '{component}' is mapped audio-N/A but this artifact HAS audible audio "
+              f"({probe_a['mean_db']}dB). The map may be stale — JUDGE re-derives it before this scores.")
     out = {"component": component, "artifact": os.path.basename(path),
            "applies": sorted(ap), "dimensions": {}, "na": [], "checks": []}
 
