@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T02:40:45.479Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T02:43:25.318Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 26 users / 37 jobs (24h)
 
@@ -75,7 +75,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1534** → started **124** (8.1%) → paid **2** (1.6% of starters)
+wall_viewed **1525** → started **123** (8.1%) → paid **2** (1.6% of starters)
 purchase_failed n=255, self-cancelled at the sheet **251** (98.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]
@@ -120,6 +120,26 @@ _Effective cost = sticker ÷ acceptance. At 71.4% the run's true unit cost is 1.
 
 > **PROVENANCE [OWNER-SUPPLIED]:** the ~$0.21 all-in and the $0.37/day agent line come from the owner's invoice reconciliation. I could not locate the reconciliation document in either repo, so these are NOT [MEASURED-BY-ME] — the closest repo figure is RECON's bottom-up `$0.214 (orch-only)`, which is a model rather than an invoice and agrees only by coincidence of magnitude. **To upgrade to [MEASURED]: commit the invoice split (per-app, per-resource, with its cycle window) and I will re-derive both.**
 
+#### THE ANCHOR — per-function split of the invoice ($597.99 / 14 days)
+
+| function | share | $ cycle | $/day | $/render (cycle) |
+|---|---:|---:|---:|---:|
+| **orchestration** | **72.3%** | $432.35 | $30.88 | $0.1089 |
+| rendering | **9.6%** | $57.41 | $4.10 | $0.0145 |
+| validator | **9.1%** | $54.42 | $3.89 | $0.0137 |
+| prewarm | **9.0%** | $53.82 | $3.84 | $0.0136 |
+| TOTAL | 100.0% | $597.99 | $42.71 | $0.1507 |
+
+**Orchestration is 72.3% — 7.5x the next largest slice.** This is now the cost board's anchor: every cost claim is filed against a named function share, not against a blended per-render figure.
+
+#### L1/L2 — the campaign's LARGEST CONFIRMED LEVER
+
+L1 (cpu=4 while waiting) and L2 (no burst double-pay) act on **orchestration** — the 72.3% slice. Re-filed against the invoice rather than the marginal model:
+
+> **Prize: $203–$255 per cycle** ($14.51–$18.22/day, **$5,283–$6,632/year**), from the prior 47–59% job-compute cut applied to orchestration's $432.35.
+
+**My retired framing called L1/L2 "~4% of the bill."** Against the invoice it is **34–43%** — I was off by **8–11x**, and that error came from the unreproducible $87/day figure, exactly as its own source warned. Scale check: **eliminating any ONE other function entirely** — all of rendering, or all of validator, or all of prewarm — **saves only 26–28% of even the LOW L1/L2 estimate.** There is no second lever of comparable size on this board.
+
 #### CYCLE-AVERAGE vs RECENT-SLICE — state which one, always
 
 The billing cycle spans a **config change** (cpu 64→16, memory cuts, `min_containers` removal) AND a **volume regime change** (~250-460/day before ~08-11, ~150/day since). By the homogeneity rule above, a cycle-average over that window is not one population:
@@ -127,7 +147,8 @@ The billing cycle spans a **config change** (cpu 64→16, memory cuts, `min_cont
 - **Cycle-average $/render** — what was actually billed across the whole cycle. Correct for *reconciling the invoice*, and the only figure that ties to a statement.
 - **Recent-slice $/render** — the same measure over the current config and current volume. Correct for *forecasting and pricing*, because it is the only one that describes what the next render will cost.
 
-**~$0.21 is used below as the recent-slice figure.** A pricing ruling takes the recent slice; an invoice check takes the cycle average; quoting one where the other belongs is the same error as averaging across the regime change in the first place.
+**~$0.21 is used below as the recent-slice figure; the cycle average is $0.151** ($597.99 / 3,969 completed renders). The two differ by **1.39x**, and that gap is not an inconsistency — **it is the cycle/slice distinction, measured for the first time.** Cycle daily spend was $42.71/day at a mean 284 renders/day; recent volume is ~150/day at ~$31.50/day. **Spend fell 26% while volume fell 47%** — less than proportionally, which is precisely what a fixed component predicts. The two figures are consistent on different bases.
+_A pricing ruling takes the recent slice; an invoice check takes the cycle average. Quoting one where the other belongs is the same error as averaging across the regime change in the first place._
 
 #### Renders/month one subscriber's margin buys, at $31.50 net
 

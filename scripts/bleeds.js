@@ -384,6 +384,33 @@ function reportZero({ label, count, control }) {
     + 'model rather than an invoice and agrees only by coincidence of magnitude. **To upgrade to [MEASURED]: '
     + 'commit the invoice split (per-app, per-resource, with its cycle window) and I will re-derive both.**');
   say('');
+  say('#### THE ANCHOR — per-function split of the invoice ($597.99 / 14 days)');
+  say('');
+  say('| function | share | $ cycle | $/day | $/render (cycle) |');
+  say('|---|---:|---:|---:|---:|');
+  [['**orchestration**', 72.3], ['rendering', 9.6], ['validator', 9.1], ['prewarm', 9.0]].forEach((r) => {
+    const amt = 597.99 * r[1] / 100;
+    say(`| ${r[0]} | **${r[1].toFixed(1)}%** | $${amt.toFixed(2)} | $${(amt / 14).toFixed(2)} | $${(amt / 3969).toFixed(4)} |`);
+  });
+  say('| TOTAL | 100.0% | $597.99 | $42.71 | $0.1507 |');
+  say('');
+  say('**Orchestration is 72.3% — 7.5x the next largest slice.** This is now the cost board\'s anchor: '
+    + 'every cost claim is filed against a named function share, not against a blended per-render figure.');
+  say('');
+  say('#### L1/L2 — the campaign\'s LARGEST CONFIRMED LEVER');
+  say('');
+  say('L1 (cpu=4 while waiting) and L2 (no burst double-pay) act on **orchestration** — the 72.3% slice. '
+    + 'Re-filed against the invoice rather than the marginal model:');
+  say('');
+  say('> **Prize: $203–$255 per cycle** ($14.51–$18.22/day, **$5,283–$6,632/year**), from the prior '
+    + '47–59% job-compute cut applied to orchestration\'s $432.35.');
+  say('');
+  say('**My retired framing called L1/L2 "~4% of the bill."** Against the invoice it is **34–43%** — I was off '
+    + 'by **8–11x**, and that error came from the unreproducible $87/day figure, exactly as its own source '
+    + 'warned. Scale check: **eliminating any ONE other function entirely** — all of rendering, or all of '
+    + 'validator, or all of prewarm — **saves only 26–28% of even the LOW L1/L2 estimate.** There is no second '
+    + 'lever of comparable size on this board.');
+  say('');
   say('#### CYCLE-AVERAGE vs RECENT-SLICE — state which one, always');
   say('');
   say('The billing cycle spans a **config change** (cpu 64→16, memory cuts, `min_containers` removal) AND a '
@@ -395,9 +422,14 @@ function reportZero({ label, count, control }) {
   say('- **Recent-slice $/render** — the same measure over the current config and current volume. Correct for '
     + '*forecasting and pricing*, because it is the only one that describes what the next render will cost.');
   say('');
-  say('**~$0.21 is used below as the recent-slice figure.** A pricing ruling takes the recent slice; an invoice '
-    + 'check takes the cycle average; quoting one where the other belongs is the same error as averaging across '
-    + 'the regime change in the first place.');
+  say('**~$0.21 is used below as the recent-slice figure; the cycle average is $0.151** ($597.99 / 3,969 '
+    + 'completed renders). The two differ by **1.39x**, and that gap is not an inconsistency — **it is the '
+    + 'cycle/slice distinction, measured for the first time.** Cycle daily spend was $42.71/day at a mean 284 '
+    + 'renders/day; recent volume is ~150/day at ~$31.50/day. **Spend fell 26% while volume fell 47%** — less '
+    + 'than proportionally, which is precisely what a fixed component predicts. The two figures are consistent '
+    + 'on different bases.');
+  say('_A pricing ruling takes the recent slice; an invoice check takes the cycle average. Quoting one where '
+    + 'the other belongs is the same error as averaging across the regime change in the first place._');
   say('');
   say('#### Renders/month one subscriber\'s margin buys, at $31.50 net');
   say('');
