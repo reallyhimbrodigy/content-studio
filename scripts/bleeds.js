@@ -807,6 +807,42 @@ function reportZero({ label, count, control }) {
       + 'understates the recent slice. State which basis any per-render number uses._');
     say('');
   }
+  // ── WEDGED ROWS — an OPERATIONAL metric, not just a defect count ──────────
+  // The deploy quiet-window gate counts IN-FLIGHT DB ROWS. A row stuck
+  // non-terminal is therefore not merely a lost job: it is a deploy blocker that
+  // never clears on its own. Corpses hold the gate shut, so this number answers
+  // "can we ship right now?" as directly as it answers "did something break?".
+  //
+  // THRESHOLD IS PRINCIPLED, not chosen: the Modal function timeout is 1200s, so
+  // nothing can legitimately still be running past ~30 minutes. Anything older is
+  // a corpse by construction, not by judgement.
+  const nowMs = Date.now();
+  const inflight = await pageAll('video_jobs?select=id,user_id,status,created_at,worker_started_at,modal_call_id'
+    + '&status=in.(queued,processing)');
+  const ageH = (j) => (nowMs - new Date(j.created_at)) / 3600e3;
+  const corpses = inflight.filter((j) => ageH(j) > 0.5);
+  say('### Wedged rows — OPERATIONAL: these hold the deploy gate');
+  say('');
+  say(`| in-flight rows (what the gate counts) | **${inflight.length}** |`);
+  say('|---|---:|');
+  say(`| plausibly live (<30min) | ${inflight.length - corpses.length} |`);
+  say(`| **WEDGED (>30min — past the 1200s Modal timeout)** | **${corpses.length}** |`);
+  say(`| users holding a wedged row | ${uniq(corpses, 'user_id')} |`);
+  if (corpses.length) {
+    const oldest = corpses.map(ageH).sort((a, z) => z - a)[0];
+    say(`| oldest corpse | **${oldest.toFixed(1)}h** |`);
+  }
+  say('');
+  say(corpses.length
+    ? `**The deploy gate currently sees ${inflight.length} busy when at most ${inflight.length - corpses.length} `
+      + `could possibly be live.** Every wedged row is a deploy held shut by a job that will never settle — `
+      + 'the quiet window cannot arrive on its own, so this is a number that must be *cleared*, not waited out.'
+    : '**No wedged rows — the gate reflects real work only.** A quiet window will arrive on its own.');
+  say('');
+  say('_Why this is operational and not merely a defect line: the same count answers "did something break?" '
+    + 'and "can we ship right now?". A defect metric can be triaged tomorrow; a metric that blocks deploys is '
+    + 'read before every deploy. It belongs on the board for the second reason even when it is small for the first._');
+  say('');
   say('### Agent / harness spend — counted like user jobs [Rule 6]');
   say('');
   say('| run | $ | note |');

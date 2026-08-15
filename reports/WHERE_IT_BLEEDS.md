@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T22:22:23.872Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T22:53:48.129Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 41 users / 47 jobs (24h)
 
@@ -25,7 +25,7 @@
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=93 completed (24h)
+## 2b. Latency — n=94 completed (24h)
 
 p50 **142s** (law 90) · p90 604s · p99 **1172s** (law 180) · max 1172s
 
@@ -33,11 +33,11 @@ p50 **142s** (law 90) · p90 604s · p99 **1172s** (law 180) · max 1172s
 |---|---:|---:|---:|---:|---:|
 | `C envelope LOST + repair` | 5 | 4 | **904s** | 1172s | 1172s |
 | `B envelope LOST` | 29 | 29 | **379s** | 760s | 904s |
-| `A envelope FULL` | 59 | 58 | **96s** | 203s | 547s |
+| `A envelope FULL` | 60 | 59 | **96s** | 203s | 547s |
 
 Worst/best class p50 spread: **9.5x** — the pooled number above hides it.
 
-**ENVELOPE LOSS: 36.6% of completions (34/93), 33 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 36.2% of completions (34/94), 33 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 
 **STANDING DECOMPOSITION — this class is BIMODAL, not one mechanism.**
 
@@ -57,24 +57,24 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | **QUEUE** (create→worker pickup) | 13.2s | 406.6s | 2215.2s | 2215.2s |
 | **WORK** (pickup→complete) *envelope-FULL only* | 83.4s | 181.7s | 332.8s | 332.8s |
 
-Queue is **9%** of e2e at p50; **37.6%** of jobs wait >30s before any work begins.
+Queue is **9%** of e2e at p50; **37.2%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **96.6%** kept their envelope (2 of 58 lost it); of jobs queuing ≥30s, **91.4%** lost it. **94.9%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **96.6%** kept their envelope (2 of 59 lost it); of jobs queuing ≥30s, **91.4%** lost it. **95.0%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **4** of 93
+On the 900s wall [870,920] — count: **4** of 94
 
 ## 3. Route mix (24h)
 
-`moodreel` 36 · `none` 34 · `minimal_speech_uncut` 17 · `hype` 3 · `minimal` 3
+`moodreel` 36 · `none` 34 · `minimal_speech_uncut` 18 · `hype` 3 · `minimal` 3
 
-Premium share: **41.9%** (39/93).
+Premium share: **41.5%** (39/94).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=140 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=141 terminal)
 
-`callback` 57 · `NULL` 15 · `repair` 37 · `durable_poll` 26 · `reconciler` 4 · `fallback_timer` 1
+`callback` 58 · `NULL` 15 · `repair` 37 · `durable_poll` 26 · `reconciler` 4 · `fallback_timer` 1
 
 fallback_timer share **0.7%** — PASS bar met (~0).
 
@@ -82,7 +82,7 @@ fallback_timer share **0.7%** — PASS bar met (~0).
 
 n=8818 asks over 4115 judged jobs (all-time table).
 
-> ⚠️ **COVERAGE: these figures describe 63.4% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
+> ⚠️ **COVERAGE: these figures describe 63.8% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
 
 > **IS THE LOST CLASS SCOREABLE AT ALL? — NO, and the split is exact.** The **ASK** side survives: `vibe_input` is a top-level COLUMN, intact on **210/210** lost rows. The **VERDICT** side does not: `edit_recipe` moved INSIDE `result` jsonb on **2026-08-04**, the exact object the lost update clobbers — **0/210**. So for these jobs we can know what the user asked for and **never what was done about it**. Fulfillment needs both, so **the already-lost population is PERMANENTLY UNSCOREABLE** — no reprocessing recovers a verdict that was never persisted.
 
@@ -107,7 +107,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1097** → started **92** (8.4%) → paid **2** (2.2% of starters)
+wall_viewed **1094** → started **92** (8.4%) → paid **2** (2.2% of starters)
 purchase_failed n=173, self-cancelled at the sheet **171** (98.8%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -220,7 +220,7 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 ### Built-not-wired check — production counters, not certs
 
 - Lumen scene vocabulary: ⚠️ **[BUILT-NOT-WIRED]** — cert green (First Light 10/10), but completions carrying scene telemetry = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
-- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 57 on real traffic.
+- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 58 on real traffic.
 
 _The `callback` line is the class resolving in real time: it was [BUILT-NOT-WIRED] for 432+ completions and is now wired — the predicate fix connected a stamp that had always been written and always discarded. The scene vocabulary is still on the other side of that line._
 
@@ -228,6 +228,19 @@ _NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are har
 
 _Denominator guard — completed renders/day: n=2 — too short to test homogeneity_
 _**Denominator basis:** the completion denominator behind cost-per-render figures is a **7-DAY MEAN** (~233/day over 08-08→08-15), **not the current regime** (~150/day since 08-11). Cost-per-render on the 7-day mean understates the current per-render figure by ~1.55x for exactly the reason the cycle-average understates the recent slice. State which basis any per-render number uses._
+
+### Wedged rows — OPERATIONAL: these hold the deploy gate
+
+| in-flight rows (what the gate counts) | **1** |
+|---|---:|
+| plausibly live (<30min) | 0 |
+| **WEDGED (>30min — past the 1200s Modal timeout)** | **1** |
+| users holding a wedged row | 1 |
+| oldest corpse | **0.6h** |
+
+**The deploy gate currently sees 1 busy when at most 0 could possibly be live.** Every wedged row is a deploy held shut by a job that will never settle — the quiet window cannot arrive on its own, so this is a number that must be *cleared*, not waited out.
+
+_Why this is operational and not merely a defect line: the same count answers "did something break?" and "can we ship right now?". A defect metric can be triaged tomorrow; a metric that blocks deploys is read before every deploy. It belongs on the board for the second reason even when it is small for the first._
 
 ### Agent / harness spend — counted like user jobs [Rule 6]
 
