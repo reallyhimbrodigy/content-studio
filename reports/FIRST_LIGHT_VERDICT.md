@@ -1,4 +1,4 @@
-# FIRST LIGHT — JUDGE's verified envelope, and the two laws it breaks
+# FIRST LIGHT — JUDGE's verified envelope, the law it breaks, and the constraint that actually binds
 
 **2026-08-15. I hold this gate on the terms that the envelope is MY verified
 number, not the builder's estimate. I recomputed every field from the 14 raw
@@ -140,5 +140,10 @@ quota approval lands. Anything measured above n=4 must be labelled
   10**, with the failure detector proven live in the same run.
 - **Hero/alpha component: BLOCKED** from the default path (Law 4, 0-for-2,
   cost unmeasured).
-- **Phase 2 sizing: proceed at n ≤ 4**, cost law breach acknowledged and owned
-  as a pricing decision at n=1.
+- **Phase 2 sizing: proceed at n ≤ 4**, bound by the **quota** ceiling, not by
+  cost — scene spend at n=4 is 56% of §2.1's ≤$1 premium budget. My earlier
+  "cost law breaks at n=1" framing was misfiled against the standard tier and
+  is withdrawn.
+- **Pricing ruling: open**, and it now has its number — **~65 renders/month
+  break-even at $45 with no scenes, ~30 at the 4-scene ceiling**, with the
+  Modal input (not scene count) dominating the answer.
