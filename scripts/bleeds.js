@@ -199,6 +199,42 @@ function sharedFailureCheck({ measurement, subject, sharesWith }) {
     : `\`${measurement}\` is independent of \`${subject}\` — survives its failure.`;
 }
 
+// ── STANDING GUARD: THE REFERENCES OUTRANK THE DOCUMENT (2026-08-15) ────────
+// A SPEC CLAIM CAN BE THE THING THAT FAILS A CALIBRATION.
+//
+// The canon rule was "a dimension the references fail is a broken dimension."
+// This extends it one level up, because a case arrived that the original wording
+// did not cover: the spec described REF-1 as carrying "lower-third keyword
+// accents." Two independent methods disagreed with that and with each other —
+// band energy called it a 0.6pt tie, edge density put the dominant band at
+// MIDDLE. The measurement was not broken and the reference was not broken. THE
+// CLAIM WAS. REF-1's captions are not position-locked to a third; they are
+// placed CLEAR OF THE SUBJECT, which in a landscape composition means they move
+// as the speaker moves. Both methods were asking a POSITIONAL question about a
+// RELATIONAL rule, and a correct answer to the wrong question looks exactly like
+// a failed instrument.
+//
+// THEREFORE, in precedence order:
+//   1. the REFERENCES — the artifacts themselves, the only ground truth
+//   2. MEASUREMENTS of them, if reproducible by more than one method
+//   3. the DOCUMENT describing them — spec text, build sheet, my own reports
+// When 3 conflicts with 1, the document is wrong. Do not tune a dimension to
+// reproduce a sentence; re-read the frames and find the rule the artifact is
+// actually following.
+//
+// The corollary is what makes this operational: a calibration that fails should
+// be triaged as EITHER a broken dimension OR a broken claim — never assumed to
+// be the former. Assuming the dimension is at fault is how a wrong claim
+// survives contact with evidence, quietly reshaping the instrument until it
+// agrees.
+function claimVsReference({ claim, methods, agree }) {
+  return agree
+    ? `claim "${claim}" is CONFIRMED by ${methods} independent method(s).`
+    : `⚠️ **[CLAIM REFUTED BY REFERENCE]** "${claim}" — ${methods} method(s) fail to reproduce it. `
+      + 'The references outrank the document: treat the CLAIM as the defect until a method that '
+      + 'reproduces it is shown. Do not tune the dimension to agree with the sentence.';
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;

@@ -111,10 +111,25 @@ APPLIES = {
 # REF-1 bar is UNCONFIRMED and must not be scored. Scoring it would grade our
 # captions against a bar I could not reproduce from the reference itself.
 CAPTION_PLACEMENT = {
+    # CONFIRMED and scored today.
     "ref2_centre_frame_numbers": {"band": "middle", "confirmed": True,
                                   "separation_pt": 43.1, "methods_agreeing": 2},
-    "ref1_lower_third_accents": {"band": "lower", "confirmed": False,
-                                 "note": "2 methods, neither confirms; m1 tie 0.6pt, m2 says middle"},
+    # REPLACED 2026-08-15. The lower-third framing was the WRONG DIMENSION, not a
+    # failed measurement. REF-1's captions are not position-locked to a third;
+    # they are placed CLEAR OF THE SUBJECT, which in a landscape composition means
+    # they move as the speaker moves. That is why two band methods disagreed with
+    # each other and with the spec: both were asking a positional question about a
+    # relational rule. The frames confirm the relational reading.
+    "ref1_clear_of_subject": {
+        "rule": "caption/accent region does not overlap the subject mask",
+        "confirmed": None,
+        "status": "BLOCKED-ON-DEPENDENCY (not unconfirmed — the method is known)",
+        "needs": "subject mask — person segmentation EXISTS at matting/matting_app.py "
+                 "on the UNMERGED branch behind-layer-phase1 (component C). This is a "
+                 "merge-and-certify dependency, not research.",
+        "method": "per-frame IoU between the caption/accent bbox and the subject mask; "
+                  "bar = zero-overlap on >=95% of caption frames, calibrated on REF-1 first",
+    },
 }
 
 TASTE_UNCALIBRATED = [
@@ -125,9 +140,10 @@ TASTE_UNCALIBRATED = [
 
 # Measurable-but-unconfirmed, listed apart from taste so the two are never conflated:
 PLACEMENT_UNCONFIRMED = [
-    "REF-1 lower-third keyword accent placement — measurable in principle, "
-    "NOT reproducible from the reference by either method tried; needs a text-mask "
-    "(caption bounding boxes from our own recipe) before it can be a bar",
+    "REF-1 caption CLEAR-OF-SUBJECT — the correct dimension (replaces the withdrawn "
+    "'lower third' framing, which was an authored claim the references refuted). "
+    "Method known: caption-bbox vs subject-mask IoU. BLOCKED on merging "
+    "behind-layer-phase1 (person segmentation already built, unmerged).",
 ]
 
 
@@ -219,7 +235,8 @@ def score(component, path, applies_override=None):
             out["checks"].append(("hero numbers centre-frame (REF-2 confirmed bar: middle dominant)",
                                   m >= u and m >= l))
         else:
-            out["na"].append("caption_placement (landscape: REF-1 bar UNCONFIRMED, not scored)")
+            out["na"].append("caption_placement (landscape: the bar is CLEAR-OF-SUBJECT, "
+                             "blocked on the subject mask in behind-layer-phase1 — not scored)")
 
     if "palette" in ap:
         p = palette(path)
