@@ -807,41 +807,65 @@ function reportZero({ label, count, control }) {
       + 'understates the recent slice. State which basis any per-render number uses._');
     say('');
   }
-  // ── WEDGED ROWS — an OPERATIONAL metric, not just a defect count ──────────
-  // The deploy quiet-window gate counts IN-FLIGHT DB ROWS. A row stuck
-  // non-terminal is therefore not merely a lost job: it is a deploy blocker that
-  // never clears on its own. Corpses hold the gate shut, so this number answers
-  // "can we ship right now?" as directly as it answers "did something break?".
+  // ── WEDGED ROWS — READ FROM THE GATE'S OWN PREDICATE ─────────────────────
+  // Re-pointed 2026-08-15: this section INVOKES preflight_quiet_window.py, the
+  // script the pre-push hook itself runs, rather than re-implementing its rule.
+  // A board that reimplements a gate will eventually disagree with it, and the
+  // disagreement surfaces at the worst moment — when someone is deciding whether
+  // to ship. One implementation, one verdict.
   //
-  // THRESHOLD IS PRINCIPLED, not chosen: the Modal function timeout is 1200s, so
-  // nothing can legitimately still be running past ~30 minutes. Anything older is
-  // a corpse by construction, not by judgement.
-  const nowMs = Date.now();
-  const inflight = await pageAll('video_jobs?select=id,user_id,status,created_at,worker_started_at,modal_call_id'
-    + '&status=in.(queued,processing)');
-  const ageH = (j) => (nowMs - new Date(j.created_at)) / 3600e3;
-  const corpses = inflight.filter((j) => ageH(j) > 0.5);
-  say('### Wedged rows — OPERATIONAL: these hold the deploy gate');
+  // MY REIMPLEMENTATION WAS ALREADY WRONG IN THREE WAYS, which is the argument:
+  //   · it omitted `pending` from the in-flight set
+  //   · it aged rows from created_at, while the gate uses UPDATED_AT (last
+  //     touch) — so a long job that is actively heartbeating is LIVE to the gate
+  //     and looked "wedged" to me
+  //   · it used a 30-min threshold against the gate's 1200s CONTAINER_CAP_S
+  const { execFileSync } = require('child_process');
+  const PREFLIGHT = '/Users/zaclibman/promptly-gpu-worker/promptly-gpu-worker/preflight_quiet_window.py';
+  say('### Deploy quiet-window — the GATE\'s own verdict');
   say('');
-  say(`| in-flight rows (what the gate counts) | **${inflight.length}** |`);
-  say('|---|---:|');
-  say(`| plausibly live (<30min) | ${inflight.length - corpses.length} |`);
-  say(`| **WEDGED (>30min — past the 1200s Modal timeout)** | **${corpses.length}** |`);
-  say(`| users holding a wedged row | ${uniq(corpses, 'user_id')} |`);
-  if (corpses.length) {
-    const oldest = corpses.map(ageH).sort((a, z) => z - a)[0];
-    say(`| oldest corpse | **${oldest.toFixed(1)}h** |`);
+  let gateOut = null, gateRc = null;
+  try {
+    gateOut = execFileSync('python3', [PREFLIGHT], { encoding: 'utf8', timeout: 60000 });
+    gateRc = 0;
+  } catch (e) {
+    gateOut = String((e.stdout || '') + (e.stderr || '')).trim() || null;
+    gateRc = typeof e.status === 'number' ? e.status : null;
+  }
+  if (gateOut) {
+    const verdict = gateRc === 0 ? 'QUIET — safe to push'
+      : gateRc === 1 ? 'BUSY — push BLOCKED'
+        : gateRc === 2 ? 'UNKNOWN — push BLOCKED (cannot measure is not quiet)'
+          : `rc=${gateRc}`;
+    say(`**${verdict}**`);
+    say('');
+    say('```');
+    gateOut.trim().split('\n').slice(0, 12).forEach((l) => say(l));
+    say('```');
+    const wedgedLines = (gateOut.match(/WEDGED/g) || []).length;
+    say('');
+    say(wedgedLines
+      ? `**${wedgedLines} WEDGED row(s)** — surfaced by the gate but **not blocking it**.`
+      : '**No wedged rows surfaced.**');
+  } else {
+    say('⚠️ **[UNKNOWN]** — the gate script could not be run from here, so the quiet window is unmeasured. '
+      + 'Per the gate\'s own stance, an unmeasurable window is not a quiet one.');
   }
   say('');
-  say(corpses.length
-    ? `**The deploy gate currently sees ${inflight.length} busy when at most ${inflight.length - corpses.length} `
-      + `could possibly be live.** Every wedged row is a deploy held shut by a job that will never settle — `
-      + 'the quiet window cannot arrive on its own, so this is a number that must be *cleared*, not waited out.'
-    : '**No wedged rows — the gate reflects real work only.** A quiet window will arrive on its own.');
+  say('> **CORRECTION to my previous board (2026-08-15).** I published that wedged rows *hold the deploy gate '
+    + 'shut* and that the gate "sees 1 busy when at most 0 could be live." **That is no longer true and the gate '
+    + 'is the thing that is right.** `preflight_quiet_window.py` now splits LIVE from WEDGED on staleness and '
+    + 'excludes anything past `CONTAINER_CAP_S=1200` — because nothing can still be running past the Modal '
+    + 'timeout, so excluding it cannot exclude live work *by construction*. The corpse I found was real, and the '
+    + 'gate correctly reported QUIET anyway.');
   say('');
-  say('_Why this is operational and not merely a defect line: the same count answers "did something break?" '
-    + 'and "can we ship right now?". A defect metric can be triaged tomorrow; a metric that blocks deploys is '
-    + 'read before every deploy. It belongs on the board for the second reason even when it is small for the first._');
+  say('_The premise is HISTORICAL, not current: one wedged row (fb702c40, 2,180s old, last touched 2,170s ago) '
+    + 'did block every deploy for ~17 minutes — including the fix for a live bug — which is what forced the '
+    + 'container-cap split. So "corpses hold the gate" was exactly right until it was fixed today._');
+  say('');
+  say('_Why the count still belongs on the board: the gate deliberately surfaces wedged rows LOUDLY rather than '
+    + 'silently ignoring them, because trading a blocked deploy for an invisible stuck job is the worse of the '
+    + 'two. It is now a defect metric that the gate refuses to hide — not a deploy blocker._');
   say('');
   say('### Agent / harness spend — counted like user jobs [Rule 6]');
   say('');
