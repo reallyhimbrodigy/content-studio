@@ -108,6 +108,35 @@ function bottomUpCaveat(label, value) {
     + `(2.1x, 3.5x, 9.5x, 9.6x); omissions can only subtract, so treat as a floor and rank on the invoice.`;
 }
 
+// ── STANDING GUARD: THE VESTIGIAL-COLUMN CLASS (2026-08-15) ─────────────────
+// A null that NOBODY WRITES and a null whose WRITE FAILED look identical in the
+// database. "Column X is null for this class, therefore event X never happened"
+// is only valid once you have shown the column is populated for a class where
+// the event DID happen. Without that control you may simply be reading a column
+// nothing writes.
+//
+// This is the check that refuted the UNS-on-Modal hypothesis: 0/263 UNS jobs had
+// `worker_started_at` — which on its own is equally consistent with "UNS never
+// reaches a worker" and "worker_started_at is vestigial." It was decidable ONLY
+// because DISPATCH_UNREACHABLE showed 19/27 populated in the same window. The
+// healthy class is what turned a suggestive null into evidence.
+//
+// The campaign has hit this repeatedly from the other side: completion_delivery
+// read null because the query never SELECTED it; `callback` never appeared
+// because the stamp was discarded; the gate receipt read null because it had a
+// reader and no writer. Every one was a null that meant "nobody wrote", not
+// "nothing happened".
+function nullMeans({ column, klass, klassNulls, klassTotal, healthyKlass, healthyPopulated, healthyTotal }) {
+  const ctrl = healthyPopulated > 0;
+  return `\`${column}\` null on ${klassNulls}/${klassTotal} of ${klass} — `
+    + (ctrl
+      ? `**evidence**: control class ${healthyKlass} has it populated ${healthyPopulated}/${healthyTotal}, `
+        + `so the column IS written when the event occurs.`
+      : `⚠️ **[VESTIGIAL-COLUMN RISK — NOT evidence]**: no control class shows this column populated, so a `
+        + `null here is equally consistent with "nothing writes it". Find a class where the event demonstrably `
+        + `happened and confirm the column is set there BEFORE drawing any conclusion.`);
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;
@@ -583,19 +612,10 @@ function reportZero({ label, count, control }) {
     + '4-scene quota ceiling it is **$0.56 = 56% of budget — comfortably inside**. My earlier "$0.10 law breaks at '
     + 'one scene" headline was MISFILED against the wrong tier and is withdrawn.');
   say('');
-  say('**BREAK-EVEN RENDER QUOTA — the number the pricing ruling now needs.** At $45/mo net of Apple\'s 30% = **$31.50**, '
-    + 'against premium Modal cost $0.481/render [RECON C-9]:');
+  say('_Break-even now lives in the ALL-IN section above ($0.21/render measured). The superseded table here '
+    + '— built on the retired $0.481 bottom-up premium figure — is REMOVED rather than left to contradict it: '
+    + 'two break-even tables on one board is how a stale number gets quoted._');
   say('');
-  say('| scenes/render | $/render | renders/mo at break-even |');
-  say('|---:|---:|---:|');
-  [0, 1, 2, 4].forEach((n) => {
-    const t = n * 0.14 + 0.481;
-    say(`| ${n} | $${t.toFixed(2)} | **${(31.50 / t).toFixed(0)}** |`);
-  });
-  say('');
-  say('A $45 subscriber breaks even at **~65 renders/month with no generative scenes**, falling to **~30/month at the '
-    + '4-scene ceiling**. Sensitivity: on the $0.257 blended-with-burst Modal figure instead, those become ~123 and ~39. '
-    + '_The quota ruling should be made against this curve, not against a single average._');
   say('_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not '
     + 'production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._');
   say('');
