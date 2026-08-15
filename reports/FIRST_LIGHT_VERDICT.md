@@ -83,6 +83,29 @@ budget — comfortably inside.** The quota ceiling binds well before the budget
 does, which reverses my earlier framing: **cost is not the binding constraint
 on scene count; quota is.**
 
+## ACCEPTANCE RATE (written / billed) — now a standing board term
+
+§2.1's gate is written against the **measured** acceptance rate, not the
+sticker rate, so acceptance is the term that converts a price into a cost.
+From the First Light ledger:
+
+| family | billed | delivered | acceptance | effective $/delivered |
+|---|---:|---:|---:|---:|
+| scene | 10 | 10 | **100.0%** | $0.14 (= sticker) |
+| alpha *legs* (billed level) | 4 | 2 | 50.0% | $0.28 |
+| alpha *attempts* (**delivered level**) | 2 | **0** | **0.0%** | **$0.56 spent, 0 delivered** |
+| **ALL** | 14 | 10 | **71.4%** | **$0.196 = 1.40x sticker** |
+
+**The structural trap, and it is the reason this must be a standing term: the
+alpha family BILLS at leg level but DELIVERS at attempt level.** A 50%
+leg-acceptance reads survivable; the attempt-acceptance it actually produces is
+**0%**. Measured at the wrong level, a component that delivered nothing would
+have reported a merely-mediocre number.
+
+**Rule: acceptance is always measured at the level the USER receives**, never
+the level we are billed. Effective cost = sticker ÷ acceptance; at this run's
+71.4% the true unit cost is **1.40x** the sticker price.
+
 ## BREAK-EVEN RENDER QUOTA — the number the pricing ruling now needs
 
 At **$45/mo**, net of Apple's 30% = **$31.50** of margin, against premium Modal
@@ -99,12 +122,20 @@ cost **$0.481/render** [RECON C-9 MEASURED]:
 falling to ~30/month at the 4-scene ceiling.** Every scene added costs ~35% of
 the remaining quota headroom at n=1 and less thereafter.
 
-**Sensitivity, stated because the Modal figure drives the answer more than the
-scene figure does:** on the $0.257 blended-with-burst Modal cost instead of the
-$0.481 premium mean, the same curve reads ~123/month (no scenes) and ~39/month
-(4 scenes). **The ruling should be made against the curve, not a single
-average**, and the Modal input should be pinned first — it moves the answer
-roughly twice as much as scene count does.
+**Published with MODAL COST AS THE SENSITIVITY AXIS**, because that is the
+number that actually moves the answer — the ruling should be read row-first:
+
+| Modal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |
+|---|---:|---:|---:|---:|
+| $0.257 (blended + burst) | 123 | 79 | 59 | **39** |
+| $0.35 (midpoint) | 90 | 64 | 50 | **35** |
+| **$0.481 (premium mean, RECON C-9)** | 65 | 51 | 41 | **30** |
+| $0.60 (if burst widens) | 53 | 43 | 36 | **27** |
+
+Across the plausible Modal range a 4-scene edit breaks even between **27 and 39
+renders/month**; across the whole scene range at a fixed Modal figure it moves
+far less. **Pin the Modal cost before ruling on the scene count** — one input
+narrows the answer, the other barely does.
 
 This also connects to §2.1's own pre-registered go/no-go gate, which requires
 the p90 generative ask to fit inside one month's margin at $45 **at the

@@ -43,6 +43,25 @@ async function pageAll(q) {
 const pct = (a, b) => `${(100 * a / Math.max(1, b)).toFixed(1)}%`;
 const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
 
+// ── THE REQUIRED SHAPE FOR EVERY ZERO ON THIS BOARD (owner, 2026-08-15) ──────
+// A zero has two parents: the thing stopped, or the DETECTOR stopped. A control
+// that fires INSIDE THE SAME RUN removes that branch permanently — it proves the
+// detector was live at the moment the zero was recorded. First Light is the
+// canonical example: scene_failure_rate 0.0 was credible because
+// alpha_failure_rate 1.0 was recorded by the same harness in the same run.
+//
+// EVERY zero printed by this board goes through this function. A zero WITHOUT a
+// live same-run control is labelled [UNVERIFIED-ZERO] and is NOT a result.
+function reportZero({ label, count, control }) {
+  if (count > 0) return `${label}: **${count}**`;
+  const live = control && control.count > 0;
+  return live
+    ? `${label}: **0** ✅ [VERIFIED-ZERO — detector proven live in the same window: `
+      + `${control.label} = ${control.count}]`
+    : `${label}: **0** ⚠️ [UNVERIFIED-ZERO — no same-run control fired`
+      + `${control ? ` (${control.label} also 0)` : ''}; the detector may simply be dead. NOT a result.]`;
+}
+
 (async () => {
   const L = [];
   const say = (s = '') => { L.push(s); console.log(s); };
@@ -174,7 +193,10 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say('_Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._');
   }
   const wall = e2e.filter((s) => s >= 870 && s <= 920).length;
-  say(`On the 900s wall [870,920]: **${wall}** of ${e2e.length}`);
+  // Zeros go through reportZero. Control for "0 on the wall": the >120s bucket —
+  // if THAT is also 0 the latency detector itself is suspect, not the wall.
+  const over120 = e2e.filter((s) => s > 120).length;
+  say(`On the 900s wall [870,920] — ${reportZero({ label: 'count', count: wall, control: { label: 'jobs >120s in the same window', count: over120 } })} of ${e2e.length}`);
   say('');
   const routes = {};
   done.forEach((j) => { const r = (j.result || {}).route || 'none'; routes[r] = (routes[r] || 0) + 1; });
@@ -288,6 +310,38 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     + 'A 4-scene edit needs ~71s of quota time and ~75s wall in scene generation alone — **~60% of the 120s law**. '
     + 'It is a QUOTA ceiling, not a spend ceiling: the lever is a quota-increase approval, not a spend decision.');
   say('**Every Phase 2 number is quoted at n ≤ 4 scenes**; above that is [ABOVE-QUOTA-CEILING] and hypothetical until the approval lands.');
+  say('');
+  say('');
+  say('### Acceptance rate (written / billed) — §3.2\'s dominant cost variable');
+  say('');
+  say('| family | billed | delivered | acceptance | effective $/delivered |');
+  say('|---|---:|---:|---:|---:|');
+  say('| scene | 10 | 10 | **100.0%** | $0.14 (= sticker) |');
+  say('| alpha *legs* (billed level) | 4 | 2 | 50.0% | $0.28 |');
+  say('| alpha *attempts* (**delivered level**) | 2 | **0** | **0.0%** | **$0.56 spent, 0 delivered** |');
+  say('| ALL | 14 | 10 | **71.4%** | **$0.196 = 1.40x sticker** |');
+  say('');
+  say('**The alpha family bills at LEG level but delivers at ATTEMPT level.** A 50% leg-acceptance reads harmless; '
+    + 'the attempt-acceptance it produces is **0%**. Acceptance must always be measured at the level the USER '
+    + 'receives, never the level we are billed — §2.1\'s gate is written against the *measured* rate, not the sticker rate.');
+  say('_Effective cost = sticker ÷ acceptance. At 71.4% the run\'s true unit cost is 1.40x its sticker price._');
+  say('');
+  say('### Break-even — MODAL COST as the sensitivity axis');
+  say('');
+  say('Modal cost moves this answer ~2x more than scene count does, so it is the axis, not a footnote. '
+    + 'Renders/month at break-even on $31.50 net ($45 less Apple 30%):');
+  say('');
+  say('| Modal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |');
+  say('|---|---:|---:|---:|---:|');
+  [['$0.257 (blended + burst)', 0.257], ['$0.35 (midpoint)', 0.35], ['**$0.481 (premium mean, RECON C-9)**', 0.481], ['$0.60 (if burst widens)', 0.60]].forEach((row) => {
+    const lbl = row[0], m = row[1];
+    const cells = [0, 1, 2, 4].map((n) => (31.50 / (m + n * 0.14)).toFixed(0));
+    say(`| ${lbl} | ${cells[0]} | ${cells[1]} | ${cells[2]} | **${cells[3]}** |`);
+  });
+  say('');
+  say('_Read the ROW first: pinning the Modal figure narrows the answer more than any scene decision. '
+    + 'Across the plausible Modal range a 4-scene edit breaks even somewhere between **27 and 39 renders/month** — '
+    + 'the scene axis moves it far less than the Modal axis does._');
   say('');
   say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
   say('|---:|---:|---:|---:|---:|');
