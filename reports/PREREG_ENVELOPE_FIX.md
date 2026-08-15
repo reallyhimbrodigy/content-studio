@@ -28,6 +28,50 @@ completed+failed; `created_at` vs `started_at` basis) — mine is stable at
 transposed. I am registering against my reproducible baseline **and** against
 the baseline-independent comparator below, so the verdict survives either.
 
+## QUEUE — a first-class latency term, added 2026-08-15
+
+`e2e = QUEUE + WORK`. Reporting only e2e blames the pipeline for time it never
+spent working. Measured on the frozen baseline window (n=459), using
+`worker_started_at` (true worker pickup) — **not** `started_at`, which stamps
+the dispatch ATTEMPT and reads p50 0.3s, i.e. it measures our own HTTP call:
+
+| term | p50 | p90 | p99 | max |
+|---|---:|---:|---:|---:|
+| QUEUE (create→pickup) | **13.3s** | 273.6s | 637.1s | 824.3s |
+| WORK (pickup→complete) | **70.4s** | 289.5s | 799.5s | 900.3s |
+
+**43.1% of jobs wait >30s before any work begins**; 134 wait >120s. Queue is
+15.2% of e2e at p50 and far more in the tail.
+
+**Split by envelope class, the queue term is where the classes diverge most:**
+
+| class | queue p50 | queue p90 | work p50 |
+|---|---:|---:|---:|
+| A envelope FULL | **10.0s** | 16.8s | 37.3s |
+| B/C envelope LOST | **148.9s** | 325.8s | 174.8s |
+
+The lost class is slow in BOTH terms — **15x** on queue, 4.7x on work. That is a
+coherent common-cause shape (under contention, jobs queue longer AND concurrent
+writers collide more often, making the lost update more likely), but it is a
+HYPOTHESIS, not a finding.
+
+### [UNFALSIFIABLE] — the queue instrument has no pre-Aug-11 history
+
+`worker_started_at` landed with the **2026-08-11T19:50Z** migration. **There is
+no queue data before that date at all.** Therefore:
+
+- **"Queue delay is new" is UNFALSIFIABLE with current data.** So is "queue got
+  worse", "the regression caused it", and "queue was fine before". None of
+  these can be tested; none may be asserted, by me or anyone reading this board.
+- What IS claimable: the queue term's CURRENT size, its split by class, and any
+  change measured **from 2026-08-11T19:50Z forward**.
+- The pre-Aug-11 `started_at` column cannot substitute — it stamps dispatch
+  attempt, not pickup, so it answers a different question (a cohort that
+  predates the instrument is not evidence).
+- This resolves only by accumulating forward history. First honest
+  before/after on queue is available **2026-08-18** (7 days of instrumented
+  baseline).
+
 ## THE PREDICTIONS — thresholds fixed now
 
 Read at **T+24h**, and only once **n ≥ 100** post-deploy completions exist
@@ -77,6 +121,14 @@ a second, independent cause that envelope loss was riding alongside.**
 >   FIXED (#1 PASS); slow class has an independent second cause, now isolated
 >   and measurable for the first time"* — which is a better position than
 >   before, not a regression.
+>
+> **The second cause is NAMED IN ADVANCE: queue delay.** The lost class already
+> carries a 148.9s queue p50 against the full class's 10.0s. If the CAS fix
+> converts those jobs to envelope-FULL while their queue term stays ~149s,
+> latency will NOT reach the 51s comparator and #3/#4 will fail **for a reason
+> that has nothing to do with the fix**. Registered test: post-deploy, decompose
+> the ex-lost cohort into QUEUE and WORK. Queue still ~149s ⇒ second cause
+> CONFIRMED as queue, and the next campaign is container supply, not delivery.
 
 Corollary guard: if #1 passes, the **composition** of envelope-FULL changes
 (it absorbs ~40% more jobs). So a *rise* in envelope-FULL p50 from 50.9s is

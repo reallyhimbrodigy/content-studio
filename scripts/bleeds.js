@@ -59,7 +59,7 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
   // fetched is not a field that is empty.
   let jobs;
   try {
-    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,completed_at,result,completion_delivery&created_at=gte.${SINCE}`);
+    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,completed_at,worker_started_at,result,completion_delivery&created_at=gte.${SINCE}`);
   } catch (e) {
     if (!/42703|PGRST204/.test(e.message)) throw e;
     console.error('[bleeds] completion_delivery column absent — delivery section will read (none yet)');
@@ -124,7 +124,26 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say(`\n**ENVELOPE LOSS: ${pct(lost.length, done.length)} of completions (${lost.length}/${done.length}), ${uniq(lost, 'user_id')} users.** `
       + `Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). `
       + `The pooled p50 above sits between classes and describes NO actual user.`);
-    say('_Mechanism [UNCONFIRMED]: overwrite-vs-never-arrived is not settled. The symptom is measured; the cause is not._');
+    say('_Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._');
+  }
+  // QUEUE IS A FIRST-CLASS LATENCY TERM (owner, 2026-08-15). e2e = QUEUE + WORK.
+  // Reporting only e2e blames the pipeline for time it never spent working:
+  // 43.1% of jobs wait >30s before a worker even picks them up. `started_at`
+  // is NOT usable for this — it stamps the dispatch ATTEMPT (p50 0.3s, which
+  // measures our own HTTP call); `worker_started_at` is true worker pickup.
+  const qw = done.filter((j) => j.worker_started_at && j.completed_at);
+  if (qw.length) {
+    const Q = qw.map((j) => (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000).sort((a, b) => a - b);
+    const W = qw.map((j) => (new Date(j.completed_at) - new Date(j.worker_started_at)) / 1000).sort((a, b) => a - b);
+    const q = (xs, p) => xs[Math.min(xs.length - 1, Math.floor(p * xs.length))];
+    say('');
+    say('| term | p50 | p90 | p99 | max |');
+    say('|---|---:|---:|---:|---:|');
+    say(`| **QUEUE** (create→worker pickup) | ${q(Q, 0.5).toFixed(1)}s | ${q(Q, 0.9).toFixed(1)}s | ${q(Q, 0.99).toFixed(1)}s | ${Q[Q.length - 1].toFixed(1)}s |`);
+    say(`| **WORK** (pickup→complete) | ${q(W, 0.5).toFixed(1)}s | ${q(W, 0.9).toFixed(1)}s | ${q(W, 0.99).toFixed(1)}s | ${W[W.length - 1].toFixed(1)}s |`);
+    const over30 = Q.filter((x) => x > 30).length;
+    say(`\nQueue is **${(100 * q(Q, 0.5) / Math.max(1, P(0.5))).toFixed(0)}%** of e2e at p50; **${pct(over30, Q.length)}** of jobs wait >30s before any work begins.`);
+    say('_Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._');
   }
   const wall = e2e.filter((s) => s >= 870 && s <= 920).length;
   say(`On the 900s wall [870,920]: **${wall}** of ${e2e.length}`);
