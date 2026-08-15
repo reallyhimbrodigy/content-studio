@@ -89,6 +89,30 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
   say(`## 2. Latency — n=${e2e.length} completed (${HOURS}h)`);
   say('');
   say(`p50 **${P(0.5).toFixed(0)}s** (law 90) · p90 ${P(0.9).toFixed(0)}s · p99 **${P(0.99).toFixed(0)}s** (law 180) · max ${(e2e[e2e.length - 1] || 0).toFixed(0)}s`);
+  // BY ENVELOPE CLASS, NEVER POOLED (owner, 2026-08-14). One median over a
+  // multi-modal population hides the defect that matters: repair-class users
+  // wait ~904s while the pooled p50 reads 86s — an 11.5x spread the single
+  // number erases. A pooled p50 is reported ONLY beside the per-class split.
+  const byCls = new Map();
+  done.forEach((j) => {
+    const k = j.completion_delivery || 'NULL';
+    if (!byCls.has(k)) byCls.set(k, []);
+    byCls.get(k).push((new Date(j.completed_at) - new Date(j.created_at)) / 1000);
+  });
+  const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  if (byCls.size) {
+    say('');
+    say('| envelope class | n | users | p50 | p90 | max |');
+    say('|---|---:|---:|---:|---:|---:|');
+    [...byCls.entries()].sort((a, b) => med(b[1]) - med(a[1])).forEach(([k, xs]) => {
+      const s = [...xs].sort((a, b) => a - b);
+      const us = uniq(done.filter((j) => (j.completion_delivery || 'NULL') === k), 'user_id');
+      say(`| \`${k}\` | ${s.length} | ${us} | **${med(s).toFixed(0)}s** | ${s[Math.floor(0.9 * s.length)].toFixed(0)}s | ${s[s.length - 1].toFixed(0)}s |`);
+    });
+    const meds = [...byCls.values()].map(med).filter((x) => x > 0);
+    if (meds.length > 1) say(`\nWorst/best class p50 spread: **${(Math.max(...meds) / Math.min(...meds)).toFixed(1)}x** — the pooled number above hides it.`);
+    say('\n_Caveat: while the `_delivered` predicate discards the `callback` stamp, `reconciler` is a MIXTURE (fast primary deliveries + slow recoveries share the label), so these are not yet the true envelope classes._');
+  }
   const wall = e2e.filter((s) => s >= 870 && s <= 920).length;
   say(`On the 900s wall [870,920]: **${wall}** of ${e2e.length}`);
   say('');

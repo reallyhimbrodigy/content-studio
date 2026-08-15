@@ -1,34 +1,41 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-11T23:24:26.522Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T00:05:00.411Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
-## 1. Failures — 39 users / 39 jobs (24h)
+## 1. Failures — 28 users / 39 jobs (24h)
 
 | class | users | jobs | share of failing users |
 |---|---:|---:|---:|
-| UPLOAD_NEVER_STARTED | 24 | 24 | 61.5% |
-| DISPATCH_UNREACHABLE | 13 | 13 | 33.3% |
-| JOB_STALLED | 1 | 1 | 2.6% |
-| CLIP_TOO_SHORT | 1 | 1 | 2.6% |
+| UPLOAD_NEVER_STARTED | 23 | 33 | 82.1% |
+| DISPATCH_UNREACHABLE | 3 | 4 | 10.7% |
+| TIER_CONCURRENCY | 1 | 1 | 3.6% |
+| PLATFORM_TIMEOUT | 1 | 1 | 3.6% |
 
-## 2. Latency — n=156 completed (24h)
+## 2. Latency — n=146 completed (24h)
 
-p50 **94s** (law 90) · p90 261s · p99 **719s** (law 180) · max 901s
-On the 900s wall [870,920]: **1** of 156
+p50 **154s** (law 90) · p90 678s · p99 **1172s** (law 180) · max 1205s
+
+| envelope class | n | users | p50 | p90 | max |
+|---|---:|---:|---:|---:|---:|
+| `repair` | 5 | 5 | **904s** | 1172s | 1172s |
+| `reconciler` | 141 | 130 | **116s** | 541s | 1205s |
+
+Worst/best class p50 spread: **7.8x** — the pooled number above hides it.
+
+_Caveat: while the `_delivered` predicate discards the `callback` stamp, `reconciler` is a MIXTURE (fast primary deliveries + slow recoveries share the label), so these are not yet the true envelope classes._
+On the 900s wall [870,920]: **4** of 146
 
 ## 3. Route mix (24h)
 
-`minimal` 59 · `none` 56 · `minimal_speech_uncut` 41
+`none` 67 · `minimal` 50 · `minimal_speech_uncut` 29
 
-**PREMIUM ROUTES EXTINCT — 0 of 156 completions.** Every quality number in this window is off the fallback path and must NOT be compared to pre-outage baselines.
+**PREMIUM ROUTES EXTINCT — 0 of 146 completions.** Every quality number in this window is off the fallback path and must NOT be compared to pre-outage baselines.
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=15 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=185 terminal)
 
-`NULL` 6 · `reconciler` 9
+`reconciler` 143 · `NULL` 37 · `repair` 5
 
-_180 terminal rows in the 24h window predate the column and are excluded — they cannot carry a value._
-
-**NOT YET READABLE** — n=15 < 100. No verdict on a thin sample (48h verdict due 2026-08-13T19:50Z).
+fallback_timer share **0.0%** — PASS bar met (~0).
 
 ## 5. Fulfillment — honor **49.6%** (target ≥70%) · dropped-silently **36.7%** (target <5%)
 
@@ -53,6 +60,6 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1620** → started **164** (10.1%) → paid **3** (1.8% of starters)
-purchase_failed n=357, self-cancelled at the sheet **350** (98.0%) — the leak is the OFFER, not the funnel.
+wall_viewed **1564** → started **125** (8.0%) → paid **2** (1.6% of starters)
+purchase_failed n=264, self-cancelled at the sheet **260** (98.5%) — the leak is the OFFER, not the funnel.
 
