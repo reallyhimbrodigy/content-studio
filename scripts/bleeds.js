@@ -168,6 +168,37 @@ function wiredCheck({ component, cert, productionCounter, count }) {
     + 'Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.';
 }
 
+// ── STANDING GUARD: SHARED FAILURE MODE (2026-08-15) ────────────────────────
+// A MEASUREMENT CHANNEL MUST NOT FAIL WITH THE THING IT MEASURES.
+//
+// It earned its place by finding the fulfillment coverage hole. Before
+// 2026-08-04, `edit_recipe` — the VERDICT side of every fulfillment judgment —
+// was its own top-level COLUMN. On 08-04 it moved INSIDE `result` jsonb. From
+// that day the verdict data shared an object, and therefore a failure mode, with
+// the envelope it was meant to describe. When the lost update began clobbering
+// `result` on 2026-08-11, it took the measurement with it: 210 of 210
+// envelope-lost completions carry ZERO edit_recipe and are permanently
+// unscoreable.
+//
+// The asymmetry that proves the point: `vibe_input` — the ASK side — is still a
+// top-level column and survives on 210/210 of the same rows. Same jobs, same
+// outage, opposite outcome, and the ONLY difference is which object the field
+// lives in.
+//
+// THEREFORE: before trusting any measurement, ask what it shares with its
+// subject — the same row, the same jsonb, the same write, the same process, the
+// same container. Anything co-located is a channel that goes dark exactly when
+// the thing it watches goes wrong, which is the one moment it was built for.
+// Co-locating a measurement with its subject converts an instrument into a
+// symptom.
+function sharedFailureCheck({ measurement, subject, sharesWith }) {
+  return sharesWith
+    ? `⚠️ **[SHARED FAILURE MODE]** \`${measurement}\` is co-located with \`${subject}\` (${sharesWith}). `
+      + 'It will go dark exactly when the subject fails — the one moment it exists for. Separate them or '
+      + 'treat every gap in this measurement as UNKNOWN rather than as data.'
+    : `\`${measurement}\` is independent of \`${subject}\` — survives its failure.`;
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;
@@ -438,6 +469,28 @@ function reportZero({ label, count, control }) {
   say(`## 5. Fulfillment — honor **${pct(Hn, A)}** (target ≥70%) · dropped-silently **${pct(D, A)}** (target <5%)`);
   say('');
   say(`n=${A} asks over ${sc.length} judged jobs (all-time table).`);
+  say('');
+  // COVERAGE — attached to every quality figure, because a rate without its
+  // denominator's reach is a rate about an unnamed population.
+  const covFull = done.filter(isFullRow).length;
+  say(`> ⚠️ **COVERAGE: these figures describe ${pct(covFull, done.length)} of completions.** `
+    + `**0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: `
+    + 'the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. '
+    + 'Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted '
+    + 'as statements about the product.');
+  say('');
+  say('> **IS THE LOST CLASS SCOREABLE AT ALL? — NO, and the split is exact.** '
+    + 'The **ASK** side survives: `vibe_input` is a top-level COLUMN, intact on **210/210** lost rows. '
+    + 'The **VERDICT** side does not: `edit_recipe` moved INSIDE `result` jsonb on **2026-08-04**, the exact '
+    + 'object the lost update clobbers — **0/210**. So for these jobs we can know what the user asked for and '
+    + '**never what was done about it**. Fulfillment needs both, so **the already-lost population is '
+    + 'PERMANENTLY UNSCOREABLE** — no reprocessing recovers a verdict that was never persisted.');
+  say('');
+  say('> **It is recoverable FORWARD, two ways, and they are not equivalent:** (a) the CAS fix stops the '
+    + 'clobber, which restores scoreability only while it holds; (b) moving `edit_recipe` back OUT of `result` '
+    + '— where it lived before 08-04 — makes the verdict channel **structurally immune** to any future `result` '
+    + 'failure. (b) is the one that survives the next unrelated bug. Pre-08-04 jobs would still be scoreable '
+    + 'today under exactly this outage.');
   say('');
   const cls = new Map();
   sc.forEach((r) => (r.asks || []).forEach((a) => {
