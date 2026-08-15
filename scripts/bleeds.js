@@ -254,6 +254,41 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
   say(`purchase_failed n=${pf.length}, self-cancelled at the sheet **${selfCancel}** (${pct(selfCancel, pf.length)}) — the leak is the OFFER, not the funnel.`);
   say('');
 
+  // ── LUMEN CAMPAIGN BASELINE — First Light, VERIFIED 2026-08-15 ───────────
+  // The campaign's first cost/latency baseline. Constants, not queries: there
+  // are still ZERO Lumen renders in video_jobs, so this comes from the
+  // harness's in-run ledger (golden/first-light/first_light_ledger.json),
+  // recomputed field-by-field by JUDGE. Replace with live queries the moment a
+  // Lumen render lands — until then the "no live data" line stays visible so
+  // this is never mistaken for production measurement.
+  say('## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]');
+  say('');
+  say('| envelope | value | note |');
+  say('|---|---|---|');
+  say('| $/scene | **$0.14** | verified against raw call records |');
+  say('| s/scene | **18.7s** (18.3s true median) | serial |');
+  say('| scene failure rate | **0.0%** over 10 | credible: failure detector fired in-run (alpha 2/2 failed) |');
+  say('| hero/alpha failure rate | **100%** (0 of 2) | **LAW 4 VIOLATION — BLOCKED from default path**; cost UNMEASURED |');
+  say('| run total | $1.96 of a $2.00 ceiling | ceiling held |');
+  say('');
+  say('**QUOTA CEILING — ~4 scenes.** Vertex image quota binds below **3.4 req/min**, serial. '
+    + 'A 4-scene edit needs ~71s of quota time and ~75s wall in scene generation alone — **~60% of the 120s law**. '
+    + 'It is a QUOTA ceiling, not a spend ceiling: the lever is a quota-increase approval, not a spend decision.');
+  say('**Every Phase 2 number is quoted at n ≤ 4 scenes**; above that is [ABOVE-QUOTA-CEILING] and hypothetical until the approval lands.');
+  say('');
+  say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
+  say('|---:|---:|---:|---:|---:|');
+  [[1, 0.14], [3, 0.42], [4, 0.56], [6, 0.84]].forEach((row) => {
+    const n = row[0], c = row[1];
+    say(`| ${n}${n === 4 ? ' **(ceiling)**' : ''} | $${c.toFixed(2)} | ${(c / 0.10).toFixed(1)}x | ${(n * 18.7).toFixed(0)}s | ${((n * 18.7) / 120).toFixed(1)}x |`);
+  });
+  say('');
+  say('**The $0.10/job cost law breaks at ONE scene** ($0.14 = 1.4x) before any render/transcribe/plan cost — '
+    + 'a pricing decision required at n=1, not a scaling problem deferred to n=6.');
+  say('_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not '
+    + 'production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._');
+  say('');
+
   const out = path.join(__dirname, '..', 'reports', 'WHERE_IT_BLEEDS.md');
   fs.writeFileSync(out, L.join('\n') + '\n');
   console.error(`\n[bleeds] wrote ${out}`);

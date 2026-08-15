@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T01:20:12.053Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T01:29:29.891Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 26 users / 37 jobs (24h)
 
@@ -74,6 +74,29 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1555** → started **124** (8.0%) → paid **2** (1.6% of starters)
+wall_viewed **1553** → started **124** (8.0%) → paid **2** (1.6% of starters)
 purchase_failed n=258, self-cancelled at the sheet **254** (98.4%) — the leak is the OFFER, not the funnel.
+
+## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]
+
+| envelope | value | note |
+|---|---|---|
+| $/scene | **$0.14** | verified against raw call records |
+| s/scene | **18.7s** (18.3s true median) | serial |
+| scene failure rate | **0.0%** over 10 | credible: failure detector fired in-run (alpha 2/2 failed) |
+| hero/alpha failure rate | **100%** (0 of 2) | **LAW 4 VIOLATION — BLOCKED from default path**; cost UNMEASURED |
+| run total | $1.96 of a $2.00 ceiling | ceiling held |
+
+**QUOTA CEILING — ~4 scenes.** Vertex image quota binds below **3.4 req/min**, serial. A 4-scene edit needs ~71s of quota time and ~75s wall in scene generation alone — **~60% of the 120s law**. It is a QUOTA ceiling, not a spend ceiling: the lever is a quota-increase approval, not a spend decision.
+**Every Phase 2 number is quoted at n ≤ 4 scenes**; above that is [ABOVE-QUOTA-CEILING] and hypothetical until the approval lands.
+
+| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |
+|---:|---:|---:|---:|---:|
+| 1 | $0.14 | 1.4x | 19s | 0.2x |
+| 3 | $0.42 | 4.2x | 56s | 0.5x |
+| 4 **(ceiling)** | $0.56 | 5.6x | 75s | 0.6x |
+| 6 | $0.84 | 8.4x | 112s | 0.9x |
+
+**The $0.10/job cost law breaks at ONE scene** ($0.14 = 1.4x) before any render/transcribe/plan cost — a pricing decision required at n=1, not a scaling problem deferred to n=6.
+_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._
 
