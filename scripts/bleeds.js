@@ -131,6 +131,7 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
   // 43.1% of jobs wait >30s before a worker even picks them up. `started_at`
   // is NOT usable for this — it stamps the dispatch ATTEMPT (p50 0.3s, which
   // measures our own HTTP call); `worker_started_at` is true worker pickup.
+  const isFullRow = (j) => ((((j.result || {}).stage_timings || {}).total) != null);
   const qw = done.filter((j) => j.worker_started_at && j.completed_at);
   if (qw.length) {
     const Q = qw.map((j) => (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000).sort((a, b) => a - b);
@@ -140,12 +141,23 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say('| term | p50 | p90 | p99 | max |');
     say('|---|---:|---:|---:|---:|');
     say(`| **QUEUE** (create→worker pickup) | ${q(Q, 0.5).toFixed(1)}s | ${q(Q, 0.9).toFixed(1)}s | ${q(Q, 0.99).toFixed(1)}s | ${Q[Q.length - 1].toFixed(1)}s |`);
-    say(`| **WORK** (pickup→complete) | ${q(W, 0.5).toFixed(1)}s | ${q(W, 0.9).toFixed(1)}s | ${q(W, 0.99).toFixed(1)}s | ${W[W.length - 1].toFixed(1)}s |`);
+    // WORK IS REPORTED FOR envelope-FULL ONLY (withdrawn cross-class 2026-08-15).
+    // For lost-envelope rows `completed_at` marks DISCOVERY, not work: the repair
+    // class's Q+W pins to a ~constant (stdev 53.7s) while W alone ranges
+    // 278-846s — Q and W trade off against a fixed total — and the reconciler
+    // class has a 0.22s MINIMUM, which no render can achieve. Cross-class WORK
+    // measured how long recovery took to notice. QUEUE stays valid cross-class:
+    // worker_started_at is stamped by the worker at pickup, independent of
+    // whichever path later discovers the completion.
+    const Wf = qw.filter(isFullRow).map((j) => (new Date(j.completed_at) - new Date(j.worker_started_at)) / 1000).sort((a, b) => a - b);
+    if (Wf.length) {
+      say(`| **WORK** (pickup→complete) *envelope-FULL only* | ${q(Wf, 0.5).toFixed(1)}s | ${q(Wf, 0.9).toFixed(1)}s | ${q(Wf, 0.99).toFixed(1)}s | ${Wf[Wf.length - 1].toFixed(1)}s |`);
+    }
     const over30 = Q.filter((x) => x > 30).length;
     say(`\nQueue is **${(100 * q(Q, 0.5) / Math.max(1, P(0.5))).toFixed(0)}%** of e2e at p50; **${pct(over30, Q.length)}** of jobs wait >30s before any work begins.`);
     // THRESHOLD, NOT CORRELATION — computed live so the claim can never go stale.
     const qOf = (j) => (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000;
-    const isFull = (j) => ((((j.result || {}).stage_timings || {}).total) != null);
+    const isFull = isFullRow;
     const lo = qw.filter((j) => qOf(j) < 30), hi = qw.filter((j) => qOf(j) >= 30);
     const loFull = lo.filter(isFull).length, hiLost = hi.filter((j) => !isFull(j)).length;
     const fullAll = qw.filter(isFull);
@@ -156,6 +168,7 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
         + `**${pct(hiLost, hi.length)}** lost it. **${pct(fullAll.filter((j) => qOf(j) < 30).length, fullAll.length)}** of envelope-FULL jobs `
         + `queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.`);
       say('_Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._');
+      say('_WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_');
       say('_Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._');
     }
     say('_Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._');
@@ -283,8 +296,24 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say(`| ${n}${n === 4 ? ' **(ceiling)**' : ''} | $${c.toFixed(2)} | ${(c / 0.10).toFixed(1)}x | ${(n * 18.7).toFixed(0)}s | ${((n * 18.7) / 120).toFixed(1)}x |`);
   });
   say('');
-  say('**The $0.10/job cost law breaks at ONE scene** ($0.14 = 1.4x) before any render/transcribe/plan cost — '
-    + 'a pricing decision required at n=1, not a scaling problem deferred to n=6.');
+  say('**Filed against §2.1\'s ≤$1/render PREMIUM budget** — NOT the $0.10 standard-tier law, which does not '
+    + 'govern Lumen. Scene spend stays inside the premium budget through **7 scenes** ($0.98); at the registered '
+    + '4-scene quota ceiling it is **$0.56 = 56% of budget — comfortably inside**. My earlier "$0.10 law breaks at '
+    + 'one scene" headline was MISFILED against the wrong tier and is withdrawn.');
+  say('');
+  say('**BREAK-EVEN RENDER QUOTA — the number the pricing ruling now needs.** At $45/mo net of Apple\'s 30% = **$31.50**, '
+    + 'against premium Modal cost $0.481/render [RECON C-9]:');
+  say('');
+  say('| scenes/render | $/render | renders/mo at break-even |');
+  say('|---:|---:|---:|');
+  [0, 1, 2, 4].forEach((n) => {
+    const t = n * 0.14 + 0.481;
+    say(`| ${n} | $${t.toFixed(2)} | **${(31.50 / t).toFixed(0)}** |`);
+  });
+  say('');
+  say('A $45 subscriber breaks even at **~65 renders/month with no generative scenes**, falling to **~30/month at the '
+    + '4-scene ceiling**. Sensitivity: on the $0.257 blended-with-burst Modal figure instead, those become ~123 and ~39. '
+    + '_The quota ruling should be made against this curve, not against a single average._');
   say('_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not '
     + 'production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._');
   say('');

@@ -62,29 +62,55 @@ cost line is unmeasured, so it also fails my per-component merge gate on two
 counts, not one. n=2 is thin — but the correct reading of 0-for-2 is
 *"unproven and blocked"*, never *"probably fine."*
 
-## THE COST LAW BREAKS AT ONE SCENE
+## COST — RE-FILED against §2.1's premium budget (my first headline was misfiled)
 
-Forecast from the verified envelope ($0.14/scene, 18.7s/scene serial, quota
-binding below 3.4 req/min):
+**WITHDRAWN:** I headlined this as *"the $0.10/job cost law breaks at one
+scene."* That filed Lumen against the **standard-tier** law. Lumen is the
+**premium** product and §2.1 sets its budget at **≤$1/render**. Against the
+correct budget the picture inverts:
 
-| scenes | $/edit | vs $0.10 law | scene seconds | quota wait | vs 120s law |
-|---:|---:|---:|---:|---:|---:|
-| 1 | $0.14 | **1.4x** | 19s | 18s | 0.2x |
-| 3 | $0.42 | 4.2x | 56s | 53s | 0.5x |
-| **4** | **$0.56** | **5.6x** | **75s** | **71s** | **0.6x** |
-| 6 | $0.84 | 8.4x | 112s | 106s | 0.9x |
-| 10 | $1.40 | 14.0x | 187s | 176s | 1.6x |
+| scenes | scene $ | vs §2.1 ≤$1 budget | + premium Modal $0.481 | total/render |
+|---:|---:|---:|---:|---:|
+| 1 | $0.14 | 14% | $0.48 | $0.62 |
+| 3 | $0.42 | 42% | $0.48 | $0.90 |
+| **4 (quota ceiling)** | **$0.56** | **56%** | $0.48 | **$1.04** |
+| 6 | $0.84 | 84% | $0.48 | $1.32 |
+| 7 | $0.98 | 98% | $0.48 | $1.46 |
 
-**A single scene is already 1.4x the $0.10/job cost law — before any render,
-transcribe, plan or Modal cost is added.** This is not a scaling problem to be
-solved at 6 scenes; it is a pricing decision required at 1.
+**Scene spend stays inside the premium budget through 7 scenes** ($0.98; n=8
+breaks it at $1.12). At the registered 4-scene quota ceiling it is **56% of
+budget — comfortably inside.** The quota ceiling binds well before the budget
+does, which reverses my earlier framing: **cost is not the binding constraint
+on scene count; quota is.**
 
-Monthly, scene-generation spend alone (Vertex image only, Modal excluded):
+## BREAK-EVEN RENDER QUOTA — the number the pricing ruling now needs
 
-| volume | 1 scene | 4 scenes |
-|---|---:|---:|
-| 600 signups/day | $2,520/mo | **$10,080/mo** |
-| 100 paid × 3/day | $1,260/mo | $5,040/mo |
+At **$45/mo**, net of Apple's 30% = **$31.50** of margin, against premium Modal
+cost **$0.481/render** [RECON C-9 MEASURED]:
+
+| scenes/render | $/render | renders/month at break-even |
+|---:|---:|---:|
+| 0 | $0.48 | **65** |
+| 1 | $0.62 | 51 |
+| 2 | $0.76 | 41 |
+| 4 (ceiling) | $1.04 | **30** |
+
+**A $45 subscriber breaks even at ~65 renders/month with no generative scenes,
+falling to ~30/month at the 4-scene ceiling.** Every scene added costs ~35% of
+the remaining quota headroom at n=1 and less thereafter.
+
+**Sensitivity, stated because the Modal figure drives the answer more than the
+scene figure does:** on the $0.257 blended-with-burst Modal cost instead of the
+$0.481 premium mean, the same curve reads ~123/month (no scenes) and ~39/month
+(4 scenes). **The ruling should be made against the curve, not a single
+average**, and the Modal input should be pinned first — it moves the answer
+roughly twice as much as scene count does.
+
+This also connects to §2.1's own pre-registered go/no-go gate, which requires
+the p90 generative ask to fit inside one month's margin at $45 **at the
+measured acceptance rate, not the sticker rate**. The acceptance rate is not
+yet measured, so that gate remains OPEN — these figures size the envelope, they
+do not close the gate.
 
 ## REGISTERED: the ~4-scene quota ceiling — the constraint every Phase 2 number is measured against
 

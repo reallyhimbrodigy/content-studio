@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T01:29:29.891Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T01:38:37.760Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 26 users / 37 jobs (24h)
 
@@ -29,12 +29,13 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | term | p50 | p90 | p99 | max |
 |---|---:|---:|---:|---:|
 | **QUEUE** (create→worker pickup) | 51.0s | 349.6s | 757.4s | 824.3s |
-| **WORK** (pickup→complete) | 84.0s | 305.7s | 697.9s | 801.7s |
+| **WORK** (pickup→complete) *envelope-FULL only* | 40.3s | 87.1s | 184.4s | 184.4s |
 
 Queue is **33%** of e2e at p50; **50.7%** of jobs wait >30s before any work begins.
 
 **Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 73 lost it); of jobs queuing ≥30s, **92.0%** lost it. **92.4%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
+_WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
 On the 900s wall [870,920]: **5** of 148
@@ -74,8 +75,8 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1553** → started **124** (8.0%) → paid **2** (1.6% of starters)
-purchase_failed n=258, self-cancelled at the sheet **254** (98.4%) — the leak is the OFFER, not the funnel.
+wall_viewed **1549** → started **124** (8.0%) → paid **2** (1.6% of starters)
+purchase_failed n=255, self-cancelled at the sheet **251** (98.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]
 
@@ -97,6 +98,17 @@ purchase_failed n=258, self-cancelled at the sheet **254** (98.4%) — the leak 
 | 4 **(ceiling)** | $0.56 | 5.6x | 75s | 0.6x |
 | 6 | $0.84 | 8.4x | 112s | 0.9x |
 
-**The $0.10/job cost law breaks at ONE scene** ($0.14 = 1.4x) before any render/transcribe/plan cost — a pricing decision required at n=1, not a scaling problem deferred to n=6.
+**Filed against §2.1's ≤$1/render PREMIUM budget** — NOT the $0.10 standard-tier law, which does not govern Lumen. Scene spend stays inside the premium budget through **7 scenes** ($0.98); at the registered 4-scene quota ceiling it is **$0.56 = 56% of budget — comfortably inside**. My earlier "$0.10 law breaks at one scene" headline was MISFILED against the wrong tier and is withdrawn.
+
+**BREAK-EVEN RENDER QUOTA — the number the pricing ruling now needs.** At $45/mo net of Apple's 30% = **$31.50**, against premium Modal cost $0.481/render [RECON C-9]:
+
+| scenes/render | $/render | renders/mo at break-even |
+|---:|---:|---:|
+| 0 | $0.48 | **65** |
+| 1 | $0.62 | **51** |
+| 2 | $0.76 | **41** |
+| 4 | $1.04 | **30** |
+
+A $45 subscriber breaks even at **~65 renders/month with no generative scenes**, falling to **~30/month at the 4-scene ceiling**. Sensitivity: on the $0.257 blended-with-burst Modal figure instead, those become ~123 and ~39. _The quota ruling should be made against this curve, not against a single average._
 _NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._
 
