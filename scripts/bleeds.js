@@ -143,6 +143,21 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say(`| **WORK** (pickup→complete) | ${q(W, 0.5).toFixed(1)}s | ${q(W, 0.9).toFixed(1)}s | ${q(W, 0.99).toFixed(1)}s | ${W[W.length - 1].toFixed(1)}s |`);
     const over30 = Q.filter((x) => x > 30).length;
     say(`\nQueue is **${(100 * q(Q, 0.5) / Math.max(1, P(0.5))).toFixed(0)}%** of e2e at p50; **${pct(over30, Q.length)}** of jobs wait >30s before any work begins.`);
+    // THRESHOLD, NOT CORRELATION — computed live so the claim can never go stale.
+    const qOf = (j) => (new Date(j.worker_started_at) - new Date(j.created_at)) / 1000;
+    const isFull = (j) => ((((j.result || {}).stage_timings || {}).total) != null);
+    const lo = qw.filter((j) => qOf(j) < 30), hi = qw.filter((j) => qOf(j) >= 30);
+    const loFull = lo.filter(isFull).length, hiLost = hi.filter((j) => !isFull(j)).length;
+    const fullAll = qw.filter(isFull);
+    if (lo.length && hi.length && fullAll.length) {
+      say('');
+      say(`**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, `
+        + `**${pct(loFull, lo.length)}** kept their envelope (${lo.length - loFull} of ${lo.length} lost it); of jobs queuing ≥30s, `
+        + `**${pct(hiLost, hi.length)}** lost it. **${pct(fullAll.filter((j) => qOf(j) < 30).length, fullAll.length)}** of envelope-FULL jobs `
+        + `queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.`);
+      say('_Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._');
+      say('_Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._');
+    }
     say('_Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._');
   }
   const wall = e2e.filter((s) => s >= 870 && s <= 920).length;

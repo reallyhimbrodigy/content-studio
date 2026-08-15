@@ -50,10 +50,40 @@ the dispatch ATTEMPT and reads p50 0.3s, i.e. it measures our own HTTP call:
 | A envelope FULL | **10.0s** | 16.8s | 37.3s |
 | B/C envelope LOST | **148.9s** | 325.8s | 174.8s |
 
-The lost class is slow in BOTH terms — **15x** on queue, 4.7x on work. That is a
-coherent common-cause shape (under contention, jobs queue longer AND concurrent
-writers collide more often, making the lost update more likely), but it is a
-HYPOTHESIS, not a finding.
+The lost class is slow in BOTH terms — **15x** on queue, 4.7x on work.
+
+### It is a THRESHOLD relationship, not a correlation — language matters here
+
+Full 2×2 over the frozen window (n=462):
+
+| | envelope FULL | envelope LOST |
+|---|---:|---:|
+| queue **<30s** | **262** | **1** |
+| queue **≥30s** | 18 | **181** |
+
+- **P(FULL \| queue<30s) = 99.6%** — exactly **one** job in 263 lost its
+  envelope below the knee.
+- **P(LOST \| queue≥30s) = 91.0%**; **P(queue≥30s \| LOST) = 99.5%**.
+- **93.6% of envelope-FULL jobs queued under 30s** (the overlap figure).
+- Overall agreement **95.9%**. The step is sharpest between **15s and 30s**
+  (queue<15s → 99.6% FULL; queue≥15s → 15.8% FULL).
+
+"Correlates with" understates this and should not be used. Below the knee,
+envelope loss is **near-absent**; above it, **near-certain**. Any candidate
+mechanism must explain a *switch* at ~15–30s of queue, not a gradient.
+
+**Direction remains open** — queueing may cause the loss, or one upstream
+condition (contention) may cause both. The step shape constrains the mechanism
+without resolving the arrow.
+
+### RULED OUT — do not re-litigate workload
+
+- **Source duration**: median **10.7s** (FULL) vs **13.3s** (LOST) — a **1.24x**
+  difference, against a **15.0x** queue difference. Workload cannot carry a 15x
+  effect on a 1.24x input.
+- **Client version**: **identical** — 96% on `1.3.6 (224)` in *both* classes.
+
+Neither explains the split. These are closed questions.
 
 ### [UNFALSIFIABLE] — the queue instrument has no pre-Aug-11 history
 
