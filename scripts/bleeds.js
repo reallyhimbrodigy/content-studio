@@ -185,12 +185,22 @@ function wiredCheck({ component, cert, productionCounter, count }) {
 // outage, opposite outcome, and the ONLY difference is which object the field
 // lives in.
 //
-// THEREFORE: before trusting any measurement, ask what it shares with its
-// subject — the same row, the same jsonb, the same write, the same process, the
-// same container. Anything co-located is a channel that goes dark exactly when
-// the thing it watches goes wrong, which is the one moment it was built for.
+// SHARPENED 2026-08-15 by the fix that did NOT work. edit_recipe was moved out
+// of `result` into its own top-level column — and coverage did not move one row:
+// envelope-LOST rows carry the new column 0/21, column-filled == envelope-
+// survived on 43/43, with filled and unfilled interleaved in the same hours so
+// timing is excluded. The coupling was never the JSONB. It is the WRITE: the
+// column is populated by the same UPDATE that carries the envelope, so a lost
+// write takes both. **Schema separation is not failure separation.**
+//
+// THEREFORE, corrected: two channels are independent only when they can FAIL
+// independently — which needs a DIFFERENT WRITE, ideally from a different code
+// path at a different time. Ask "what single failure takes both?", never "do
+// they share an object?". The proof of the frame is `vibe_input`: same jobs,
+// same outage, survives 210/210 because it is written at job CREATION by a
+// different write at a different time. That is what independence looks like.
 // Co-locating a measurement with its subject converts an instrument into a
-// symptom.
+// symptom — and co-location is about the write, not the schema.
 function sharedFailureCheck({ measurement, subject, sharesWith }) {
   return sharesWith
     ? `⚠️ **[SHARED FAILURE MODE]** \`${measurement}\` is co-located with \`${subject}\` (${sharesWith}). `
