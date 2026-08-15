@@ -72,11 +72,29 @@ predicate is stopping four of them from ever being observed.
    reconstructed the completion from the rendered artifact in S3.
 
 So the answer to "why does the write still miss": for these 23 the worker
-produced a render but **no result envelope ever landed in Postgres**, which
-matches the worker-side hang class (a wedged `write_job_status` under the job
-lock leaves exactly this signature: artifact in S3, row untouched, no timings).
-The 15s postgrest timeout + terminal-write receipts shipped for that class are
-the relevant fix; this cohort is its user-visible tail.
+produced a render but **no result envelope is present in Postgres**.
+
+**MECHANISM RETIRED TO [UNCONFIRMED] (2026-08-14).** I previously wrote that
+this "matches the worker-side hang class." That was an inference stated with
+more confidence than the evidence carries, and I withdraw it. An absent
+envelope is equally consistent with two mechanisms I cannot yet distinguish:
+
+  NEVER-ARRIVED  the worker's write never reached Postgres (the hang class), or
+  OVERWRITTEN    the envelope landed and was then CLOBBERED by a later
+                 read-modify-write on the same `result` jsonb (the lifecycle-push
+                 claim marker does exactly such a merge).
+
+Both leave an identical row. The distinguishing evidence would be a worker-side
+terminal-write receipt (which logs `matched=` for the write) timestamped against
+the row's `updated_at` — if the receipt says the write landed and the envelope
+is gone, it was overwritten. **The symptom is [MEASURED]; the mechanism is
+[UNCONFIRMED] and must not be quoted as settled.**
+
+Note the dating pressure on the hang hypothesis: envelope loss was **0.0% for
+eight consecutive days (08-04..08-11, 2,108 completions)** and switched on at
+**2026-08-11T23Z**. A latent hang class does not usually keep that schedule; a
+regression introduced by a change does. That is a reason to doubt my original
+framing, not yet a reason to assert the other one.
 
 ## CORRECTION to my own 48h verdict
 

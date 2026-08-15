@@ -93,9 +93,18 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
   // multi-modal population hides the defect that matters: repair-class users
   // wait ~904s while the pooled p50 reads 86s — an 11.5x spread the single
   // number erases. A pooled p50 is reported ONLY beside the per-class split.
+  // ENVELOPE PRESENCE is the primary discriminator (owner, 2026-08-14). It needs
+  // NO predicate fix: `result.stage_timings.total` is either there or it is not,
+  // and that single fact splits the population cleanly into the three modes the
+  // pooled median hides. completion_delivery only sub-divides the lost side.
+  const envClass = (j) => {
+    const full = (((j.result || {}).stage_timings || {}).total) != null;
+    if (full) return 'A envelope FULL';
+    return j.completion_delivery === 'repair' ? 'C envelope LOST + repair' : 'B envelope LOST';
+  };
   const byCls = new Map();
   done.forEach((j) => {
-    const k = j.completion_delivery || 'NULL';
+    const k = envClass(j);
     if (!byCls.has(k)) byCls.set(k, []);
     byCls.get(k).push((new Date(j.completed_at) - new Date(j.created_at)) / 1000);
   });
@@ -106,12 +115,16 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
     say('|---|---:|---:|---:|---:|---:|');
     [...byCls.entries()].sort((a, b) => med(b[1]) - med(a[1])).forEach(([k, xs]) => {
       const s = [...xs].sort((a, b) => a - b);
-      const us = uniq(done.filter((j) => (j.completion_delivery || 'NULL') === k), 'user_id');
+      const us = uniq(done.filter((j) => envClass(j) === k), 'user_id');
       say(`| \`${k}\` | ${s.length} | ${us} | **${med(s).toFixed(0)}s** | ${s[Math.floor(0.9 * s.length)].toFixed(0)}s | ${s[s.length - 1].toFixed(0)}s |`);
     });
     const meds = [...byCls.values()].map(med).filter((x) => x > 0);
     if (meds.length > 1) say(`\nWorst/best class p50 spread: **${(Math.max(...meds) / Math.min(...meds)).toFixed(1)}x** — the pooled number above hides it.`);
-    say('\n_Caveat: while the `_delivered` predicate discards the `callback` stamp, `reconciler` is a MIXTURE (fast primary deliveries + slow recoveries share the label), so these are not yet the true envelope classes._');
+    const lost = done.filter((j) => envClass(j) !== 'A envelope FULL');
+    say(`\n**ENVELOPE LOSS: ${pct(lost.length, done.length)} of completions (${lost.length}/${done.length}), ${uniq(lost, 'user_id')} users.** `
+      + `Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). `
+      + `The pooled p50 above sits between classes and describes NO actual user.`);
+    say('_Mechanism [UNCONFIRMED]: overwrite-vs-never-arrived is not settled. The symptom is measured; the cause is not._');
   }
   const wall = e2e.filter((s) => s >= 870 && s <= 920).length;
   say(`On the 900s wall [870,920]: **${wall}** of ${e2e.length}`);
