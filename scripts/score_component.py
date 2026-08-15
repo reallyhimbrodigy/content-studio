@@ -81,17 +81,53 @@ APPLIES = {
     "insert_scenes":    {"canvas", "motion", "palette"},
     "music_bed":        {"audio"},
     "text_behind":      {"canvas", "palette"},
-    "keyword_captions": {"canvas", "motion"},
+    "keyword_captions": {"canvas", "motion", "caption_placement"},
     "end_cards":        {"canvas", "palette"},
     "name_plate":       {"canvas", "palette"},
     "landscape_canvas": {"canvas"},
     "full_edit":        {"canvas", "motion", "palette", "audio"},
 }
 
+# ── CAPTION PLACEMENT — PARTIALLY calibrated 2026-08-15 ──────────────────────
+# The owner named two signatures: REF-1 lower-third keyword accents, REF-2
+# centre-frame hero numbers. I measured both references by two independent
+# methods before scoring anything.
+#
+#   method 1, band temporal-change energy (4Hz frame-difference per third):
+#       REF-1  upper 29.8 / middle 34.8 / LOWER 35.4   -> lower by 0.6pt = a TIE
+#       REF-2  upper 19.6 / MIDDLE 43.7 / lower 36.7   -> middle by 7.0pt
+#   method 2, edge density (edgedetect per third — text-isolating):
+#       REF-1  upper 28.7 / MIDDLE 38.0 / lower 33.4   -> MIDDLE by 4.6pt
+#       REF-2  upper 12.1 / MIDDLE 65.5 / lower 22.4   -> middle by 43.1pt
+#
+# REF-2's centre-frame signature is CONFIRMED and strong (43.1pt separation,
+# same direction under both methods). REF-1's lower-third signature is NOT: one
+# method calls it a 0.6pt tie, the other puts the dominant band at MIDDLE. Two
+# readings, neither supporting the claim.
+#
+# I cannot separate "REF-1 has no lower-third dominance" from "whole-frame band
+# methods cannot isolate a lower-third caption from a landscape composition
+# whose speaker and b-roll fill the middle." Both are live explanations, so the
+# REF-1 bar is UNCONFIRMED and must not be scored. Scoring it would grade our
+# captions against a bar I could not reproduce from the reference itself.
+CAPTION_PLACEMENT = {
+    "ref2_centre_frame_numbers": {"band": "middle", "confirmed": True,
+                                  "separation_pt": 43.1, "methods_agreeing": 2},
+    "ref1_lower_third_accents": {"band": "lower", "confirmed": False,
+                                 "note": "2 methods, neither confirms; m1 tie 0.6pt, m2 says middle"},
+}
+
 TASTE_UNCALIBRATED = [
     "scene presence at claims/numbers",
-    "caption-mode correctness (keyword emphasis, number glorification)",
+    "caption-mode: KEYWORD CHOICE (which word is emphasised) — taste, needs the blind sheet",
     "brand / end-card presence",
+]
+
+# Measurable-but-unconfirmed, listed apart from taste so the two are never conflated:
+PLACEMENT_UNCONFIRMED = [
+    "REF-1 lower-third keyword accent placement — measurable in principle, "
+    "NOT reproducible from the reference by either method tried; needs a text-mask "
+    "(caption bounding boxes from our own recipe) before it can be a bar",
 ]
 
 
@@ -163,6 +199,28 @@ def score(component, path, applies_override=None):
     else:
         out["na"].append("motion")
 
+    if "caption_placement" in ap:
+        # ONLY the confirmed bar is scored: REF-2 centre-frame concentration.
+        import subprocess as _sp, re as _re
+        def _edge(y0, y1):
+            cmd = (f'ffmpeg -hide_banner -i "{path}" -vf '
+                   f'"crop=iw:ih*{y1 - y0}:0:ih*{y0},fps=2,scale=320:-2,'
+                   f'edgedetect=low=0.25:high=0.4,signalstats,'
+                   f'metadata=print:key=lavfi.signalstats.YAVG" -frames:v 120 -an -f null - 2>&1')
+            o = _sp.run(["sh", "-c", cmd], capture_output=True, text=True).stdout
+            v = [float(x) for x in _re.findall(r"YAVG=([\d.]+)", o)]
+            return sum(v) / len(v) if v else 0.0
+        u, m, l = _edge(0, .33), _edge(.33, .66), _edge(.66, 1.0)
+        tot = (u + m + l) or 1
+        out["dimensions"]["caption_placement"] = {
+            "upper_pct": round(100 * u / tot, 1), "middle_pct": round(100 * m / tot, 1),
+            "lower_pct": round(100 * l / tot, 1)}
+        if c["h"] > c["w"]:   # vertical -> REF-2's confirmed centre-frame bar applies
+            out["checks"].append(("hero numbers centre-frame (REF-2 confirmed bar: middle dominant)",
+                                  m >= u and m >= l))
+        else:
+            out["na"].append("caption_placement (landscape: REF-1 bar UNCONFIRMED, not scored)")
+
     if "palette" in ap:
         p = palette(path)
         out["dimensions"]["palette"] = p
@@ -190,8 +248,11 @@ def report(o):
         if not ok:
             failed += 1
     print(f"\n  {len(o['checks']) - failed}/{len(o['checks'])} applicable checks passed")
-    print("  [UNCALIBRATED — pending the owner's blind sheet, NOT scored here]:")
+    print("  [UNCALIBRATED — taste, pending the owner's blind sheet, NOT scored]:")
     for t in TASTE_UNCALIBRATED:
+        print(f"    · {t}")
+    print("  [MEASURABLE BUT UNCONFIRMED — not taste; the bar itself is unreproduced]:")
+    for t in PLACEMENT_UNCONFIRMED:
         print(f"    · {t}")
     return failed
 
