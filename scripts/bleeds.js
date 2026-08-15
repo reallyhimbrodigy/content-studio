@@ -157,7 +157,54 @@ function reportZero({ label, count, control }) {
   // ── latency + routes ──────────────────────────────────────────────────────
   const e2e = done.map((j) => (new Date(j.completed_at) - new Date(j.created_at)) / 1000).sort((a, b) => a - b);
   const P = (p) => (e2e.length ? e2e[Math.min(e2e.length - 1, Math.floor(p * e2e.length))] : NaN);
-  say(`## 2. Latency — n=${e2e.length} completed (${HOURS}h)`);
+  // ── FAILED-JOB SECONDS — a first-class board term (owner, 2026-08-15) ──────
+  // Job-lifetime seconds spent on jobs that never delivered. Reported in TWO
+  // quantities that must never be blended: USER-time (all failed seconds) and
+  // MODAL-time (only jobs that actually reached a worker). They differ ~10x.
+  // Computed over a FIXED 7-DAY window, not the board's --hours window: this is a
+  // spend/loss term whose whole point is the accumulated total, and a 24h slice of
+  // it (n=1 on a quiet day) says nothing. The window is stated in the header so it
+  // is never confused with the latency section's window.
+  const lifeOf = (j) => (new Date(j.completed_at || j.updated_at) - new Date(j.created_at)) / 1000;
+  const SINCE_FAIL = new Date(Date.now() - 7 * 86400e3).toISOString();
+  const jobs7 = await pageAll(`video_jobs?select=id,user_id,status,created_at,updated_at,completed_at,worker_started_at,modal_call_id,result&created_at=gte.${SINCE_FAIL}&status=in.(completed,failed)`);
+  const fails7 = jobs7.filter((j) => j.status === 'failed');
+  const done7 = jobs7.filter((j) => j.status === 'completed');
+  const failLive = fails7.filter((j) => j.completed_at || j.updated_at);
+  if (failLive.length && done7.length) {
+    const fSec = failLive.reduce((a, j) => a + lifeOf(j), 0);
+    const cSec = done7.filter((j) => j.completed_at || j.updated_at).reduce((a, j) => a + lifeOf(j), 0);
+    const onModal = failLive.filter((j) => j.worker_started_at);
+    const onSec = onModal.reduce((a, j) => a + lifeOf(j), 0);
+    const fl = failLive.map(lifeOf).sort((a, b) => a - b);
+    say(`## 2. FAILED-JOB SECONDS — ${pct(fSec, fSec + cSec)} of all job-lifetime seconds [7-DAY WINDOW]`);
+    say('');
+    say(`**${failLive.length} failed jobs / ${uniq(failLive, 'user_id')} users** over **7 days**, `
+      + `p50 lifetime **${fl[Math.floor(fl.length / 2)].toFixed(0)}s**, `
+      + `**${(failLive.length / 7).toFixed(0)}/day**. Total **${fSec.toLocaleString(undefined, { maximumFractionDigits: 0 })}s** `
+      + 'of user time spent on jobs that never delivered.');
+    say('');
+    say(`| quantity | jobs | seconds | share |`);
+    say('|---|---:|---:|---:|');
+    say(`| reached a worker (**Modal-billable**) | ${onModal.length} | ${onSec.toFixed(0)} | ${pct(onSec, fSec)} |`);
+    say(`| never reached one (**$0 Modal, pure user wait**) | ${failLive.length - onModal.length} | ${(fSec - onSec).toFixed(0)} | ${pct(fSec - onSec, fSec)} |`);
+    say('');
+    say('**USER-time and MODAL-time are different quantities and must not be blended.** A job with no '
+      + '`worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole '
+      + `wait and costs us **$0**. Here only **${pct(onSec, fSec)}** of failed seconds were Modal-billable `
+      + '(~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.');
+    say('');
+    say('> **UNS does NOT move onto the cost board — the conditional FAILS.** [MEASURED] Of 263 '
+      + '`UPLOAD_NEVER_STARTED` jobs, **0 have `worker_started_at` and 0 have `modal_call_id`.** The ~601s wait '
+      + 'is entirely client/server-side; nothing was ever dispatched. UNS is the **largest user-time loss on '
+      + 'the board** (263 jobs × ~601s) at **zero Modal spend**, so it stays a **DELIVERY/product lever, not a '
+      + 'cost lever.** Filing it beside orchestration would aim spend work at a class that spends nothing.');
+    say('');
+    say('_The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, '
+      + '19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._');
+    say('');
+  }
+  say(`## 2b. Latency — n=${e2e.length} completed (${HOURS}h)`);
   say('');
   say(`p50 **${P(0.5).toFixed(0)}s** (law 90) · p90 ${P(0.9).toFixed(0)}s · p99 **${P(0.99).toFixed(0)}s** (law 180) · max ${(e2e[e2e.length - 1] || 0).toFixed(0)}s`);
   // BY ENVELOPE CLASS, NEVER POOLED (owner, 2026-08-14). One median over a
@@ -519,6 +566,10 @@ function reportZero({ label, count, control }) {
   if (vols.length > 1) {
     const ordered = Object.keys(dayCounts).sort().map((d) => dayCounts[d]);
     say(`_Denominator guard — ${windowGuard('completed renders/day', ordered, '/day')}_`);
+    say('_**Denominator basis:** the completion denominator behind cost-per-render figures is a **7-DAY MEAN** '
+      + '(~233/day over 08-08→08-15), **not the current regime** (~150/day since 08-11). Cost-per-render on the '
+      + '7-day mean understates the current per-render figure by ~1.55x for exactly the reason the cycle-average '
+      + 'understates the recent slice. State which basis any per-render number uses._');
     say('');
   }
   say('### Agent / harness spend — counted like user jobs [Rule 6]');
