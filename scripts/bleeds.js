@@ -321,27 +321,53 @@ function reportZero({ label, count, control }) {
   say('| alpha *attempts* (**delivered level**) | 2 | **0** | **0.0%** | **$0.56 spent, 0 delivered** |');
   say('| ALL | 14 | 10 | **71.4%** | **$0.196 = 1.40x sticker** |');
   say('');
+  say('');
+  say('**Per MODEL** — required alongside per-family once flash enters, because effective cost = sticker ÷ '
+    + 'acceptance and the two models will not share an acceptance rate:');
+  say('');
+  say('| model | billed | delivered | acceptance | sticker | **effective $/delivered** |');
+  say('|---|---:|---:|---:|---:|---:|');
+  say('| `gemini-3-pro-image` | 14 | 10 | 71.4% | $0.14 | **$0.196** |');
+  say('| `flash` (not yet run) | — | — | [UNMEASURED] | — | [UNMEASURED] |');
+  say('');
+  say('_Today per-model and per-family are the same cut: 14 of 14 First Light calls were `gemini-3-pro-image`. '
+    + 'The dimension exists now so the flash comparison is never made on sticker price. **A cheaper sticker with '
+    + 'worse acceptance can cost MORE per delivered artifact** — flash at $0.04 with 30% acceptance is $0.133 '
+    + 'effective, barely under pro\'s $0.196; at 20% it is $0.20 and LOSES. The comparison is only valid '
+    + 'acceptance-adjusted, and per family, since acceptance already differs 100% vs 0% ACROSS families on one model._');
+  say('');
   say('**The alpha family bills at LEG level but delivers at ATTEMPT level.** A 50% leg-acceptance reads harmless; '
     + 'the attempt-acceptance it produces is **0%**. Acceptance must always be measured at the level the USER '
     + 'receives, never the level we are billed — §2.1\'s gate is written against the *measured* rate, not the sticker rate.');
   say('_Effective cost = sticker ÷ acceptance. At 71.4% the run\'s true unit cost is 1.40x its sticker price._');
   say('');
-  say('### Break-even — MODAL COST as the sensitivity axis');
+  say('### Break-even — MODAL COST as the sensitivity axis  ⚠️ **AXIS HELD OPEN**');
   say('');
-  say('Modal cost moves this answer ~2x more than scene count does, so it is the axis, not a footnote. '
-    + 'Renders/month at break-even on $31.50 net ($45 less Apple 30%):');
+  say('> **HELD pending invoice reconciliation (2026-08-15).** Every row below rests on a BOTTOM-UP per-job '
+    + 'figure that the invoice cannot currently reproduce. RECON C-9 states ~**$87/day** of NON-JOB '
+    + 'idle/warmup spend which **no per-job row contains**; amortised over the measured **232 completed '
+    + 'renders/day** that is **$0.376/render** of unattributed cost — **0.8x the premium per-job mean itself**. '
+    + 'So the numbers below are a LOWER BOUND, and it is the AXIS that is unreconciled, not merely the choice '
+    + 'of row. **No pricing ruling should be closed on this table until the invoice lands.**');
   say('');
-  say('| Modal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |');
-  say('|---|---:|---:|---:|---:|');
+  say('Renders/month at break-even on $31.50 net ($45 less Apple 30%) — bottom-up, and beside it the same row '
+    + 'with the non-job term amortised in:');
+  say('');
+  say('| Modal $/render (bottom-up) | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) | 4 scenes **+ non-job $0.376** |');
+  say('|---|---:|---:|---:|---:|---:|');
   [['$0.257 (blended + burst)', 0.257], ['$0.35 (midpoint)', 0.35], ['**$0.481 (premium mean, RECON C-9)**', 0.481], ['$0.60 (if burst widens)', 0.60]].forEach((row) => {
     const lbl = row[0], m = row[1];
     const cells = [0, 1, 2, 4].map((n) => (31.50 / (m + n * 0.14)).toFixed(0));
-    say(`| ${lbl} | ${cells[0]} | ${cells[1]} | ${cells[2]} | **${cells[3]}** |`);
+    const recon = (31.50 / (m + 0.376 + 4 * 0.14)).toFixed(0);
+    say(`| ${lbl} | ${cells[0]} | ${cells[1]} | ${cells[2]} | **${cells[3]}** | ${recon} |`);
   });
   say('');
   say('_Read the ROW first: pinning the Modal figure narrows the answer more than any scene decision. '
-    + 'Across the plausible Modal range a 4-scene edit breaks even somewhere between **27 and 39 renders/month** — '
-    + 'the scene axis moves it far less than the Modal axis does._');
+    + 'Bottom-up, a 4-scene edit breaks even between **27 and 39 renders/month**; with the non-job term '
+    + 'amortised in it FALLS to **21–26** — adding unattributed cost lowers the quota, it does not raise it. '
+    + 'That last column is itself provisional. The gap between those two columns IS the reconciliation, and it '
+    + 'is larger than the entire scene axis: the unattributed term ($0.376) exceeds the whole 4-scene bill ($0.56) '
+    + 'at three of the four Modal rows._');
   say('');
   say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
   say('|---:|---:|---:|---:|---:|');
