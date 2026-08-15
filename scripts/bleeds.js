@@ -341,33 +341,50 @@ function reportZero({ label, count, control }) {
     + 'receives, never the level we are billed — §2.1\'s gate is written against the *measured* rate, not the sticker rate.');
   say('_Effective cost = sticker ÷ acceptance. At 71.4% the run\'s true unit cost is 1.40x its sticker price._');
   say('');
-  say('### Break-even — MODAL COST as the sensitivity axis  ⚠️ **AXIS HELD OPEN**');
+  say('### Break-even — FIXED and MARGINAL, separated  ⚠️ **Modal axis HELD**');
   say('');
-  say('> **HELD pending invoice reconciliation (2026-08-15).** Every row below rests on a BOTTOM-UP per-job '
-    + 'figure that the invoice cannot currently reproduce. RECON C-9 states ~**$87/day** of NON-JOB '
-    + 'idle/warmup spend which **no per-job row contains**; amortised over the measured **232 completed '
-    + 'renders/day** that is **$0.376/render** of unattributed cost — **0.8x the premium per-job mean itself**. '
-    + 'So the numbers below are a LOWER BOUND, and it is the AXIS that is unreconciled, not merely the choice '
-    + 'of row. **No pricing ruling should be closed on this table until the invoice lands.**');
+  say('> **HELD pending invoice reconciliation.** Every marginal figure below is BOTTOM-UP and the invoice '
+    + 'cannot currently reproduce it. No pricing ruling should close on this table until the invoice lands.');
   say('');
-  say('Renders/month at break-even on $31.50 net ($45 less Apple 30%) — bottom-up, and beside it the same row '
-    + 'with the non-job term amortised in:');
+  say('**They answer different questions and must never be blended.** My earlier board amortised the fixed '
+    + 'term into a per-render row — that was wrong: it invents a "unit cost" that moves when volume moves '
+    + 'while nothing about the system changed. Corrected below.');
   say('');
-  say('| Modal $/render (bottom-up) | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) | 4 scenes **+ non-job $0.376** |');
-  say('|---|---:|---:|---:|---:|---:|');
-  [['$0.257 (blended + burst)', 0.257], ['$0.35 (midpoint)', 0.35], ['**$0.481 (premium mean, RECON C-9)**', 0.481], ['$0.60 (if burst widens)', 0.60]].forEach((row) => {
-    const lbl = row[0], m = row[1];
-    const cells = [0, 1, 2, 4].map((n) => (31.50 / (m + n * 0.14)).toFixed(0));
-    const recon = (31.50 / (m + 0.376 + 4 * 0.14)).toFixed(0);
-    say(`| ${lbl} | ${cells[0]} | ${cells[1]} | ${cells[2]} | **${cells[3]}** | ${recon} |`);
+  say('#### FIXED — covered by subscriber COUNT, not by render volume');
+  say('');
+  say('~**$87/day = $2,610/month** of non-job idle/warmup [RECON C-9].');
+  say('');
+  say('> **SUBSCRIBERS NEEDED TO COVER FIXED: ~83** ($2,610 ÷ $31.50 net per $45 sub).');
+  say('> Independent of how many renders each one runs — that is the point of the split.');
+  say('');
+  say('#### MARGINAL — renders/month that ONE subscriber\'s margin buys');
+  say('');
+  say('| marginal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |');
+  say('|---|---:|---:|---:|---:|');
+  [0.257, 0.35, 0.481, 0.60].forEach((m) => {
+    const c = [0, 1, 2, 4].map((n) => (31.50 / (m + n * 0.14)).toFixed(0));
+    const lbl = m === 0.481 ? `**$${m.toFixed(3)} (premium mean)**` : `$${m.toFixed(3)}`;
+    say(`| ${lbl} | ${c[0]} | ${c[1]} | ${c[2]} | **${c[3]}** |`);
   });
   say('');
-  say('_Read the ROW first: pinning the Modal figure narrows the answer more than any scene decision. '
-    + 'Bottom-up, a 4-scene edit breaks even between **27 and 39 renders/month**; with the non-job term '
-    + 'amortised in it FALLS to **21–26** — adding unattributed cost lowers the quota, it does not raise it. '
-    + 'That last column is itself provisional. The gap between those two columns IS the reconciliation, and it '
-    + 'is larger than the entire scene axis: the unattributed term ($0.376) exceeds the whole 4-scene bill ($0.56) '
-    + 'at three of the four Modal rows._');
+  say('_These are unaffected by the fixed term — a subscriber\'s marginal headroom is theirs alone._');
+  say('');
+  say('#### The per-render idle figure is NOT a constant — it moves INVERSELY with volume');
+  say('');
+  say('| renders/day | idle $/render | vs marginal $0.481 |');
+  say('|---:|---:|---:|');
+  [100, 150, 250, 400, 600, 1000].forEach((v) => {
+    const i = 87.0 / v;
+    say(`| ${v}${v === 150 ? ' **(today)**' : ''} | $${i.toFixed(3)} | ${(i / 0.481).toFixed(2)}x |`);
+  });
+  say('');
+  say('At today\'s **~150 renders/day** the idle term is **$0.580/render — larger than the marginal cost itself**. '
+    + 'At 600/day it is $0.145, under a third of it. **Same system, same spend, 4x different "unit cost."** '
+    + 'That inverse relationship is precisely why it is reported as FIXED and never folded into a per-render row — '
+    + 'and why a fixed-cost problem is solved by subscriber growth or by cutting idle, never by pricing renders.');
+  say('');
+  say('_Denominator corrected 2026-08-15 to ~150/day (median of the last 5 days: 131, 147, 157, 176, 131). '
+    + 'My earlier 232/day was inflated by the 08-07/08-08 spike (461, 455) — two anomalous days in a 7-day mean._');
   say('');
   say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
   say('|---:|---:|---:|---:|---:|');

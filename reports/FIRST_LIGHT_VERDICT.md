@@ -122,20 +122,45 @@ cost **$0.481/render** [RECON C-9 MEASURED]:
 falling to ~30/month at the 4-scene ceiling.** Every scene added costs ~35% of
 the remaining quota headroom at n=1 and less thereafter.
 
-**Published with MODAL COST AS THE SENSITIVITY AXIS**, because that is the
-number that actually moves the answer — the ruling should be read row-first:
+**RE-PUBLISHED 2026-08-15 with FIXED and MARGINAL SEPARATED.** My previous
+version amortised the ~$87/day non-job term into a per-render row. That was a
+methodology error: it invents a "unit cost" that moves whenever volume moves
+while nothing about the system has changed. The two answer different questions.
 
-| Modal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |
+**FIXED — covered by subscriber COUNT, not render volume.** ~$87/day =
+**$2,610/month** of non-job idle/warmup.
+
+> **Subscribers needed to cover fixed: ~83** ($2,610 ÷ $31.50 net per $45 sub),
+> independent of how many renders each runs.
+
+**MARGINAL — renders/month one subscriber's margin buys** (Modal axis still
+HELD; all bottom-up):
+
+| marginal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |
 |---|---:|---:|---:|---:|
-| $0.257 (blended + burst) | 123 | 79 | 59 | **39** |
-| $0.35 (midpoint) | 90 | 64 | 50 | **35** |
-| **$0.481 (premium mean, RECON C-9)** | 65 | 51 | 41 | **30** |
-| $0.60 (if burst widens) | 53 | 43 | 36 | **27** |
+| $0.257 | 123 | 79 | 59 | **39** |
+| $0.350 | 90 | 64 | 50 | **35** |
+| **$0.481 (premium mean)** | 65 | 51 | 41 | **30** |
+| $0.600 | 53 | 43 | 36 | **27** |
 
-Across the plausible Modal range a 4-scene edit breaks even between **27 and 39
-renders/month**; across the whole scene range at a fixed Modal figure it moves
-far less. **Pin the Modal cost before ruling on the scene count** — one input
-narrows the answer, the other barely does.
+**The per-render idle figure is NOT a constant — it moves inversely with
+volume**, which is the reason the split matters:
+
+| renders/day | idle $/render | vs marginal $0.481 |
+|---:|---:|---:|
+| 100 | $0.870 | 1.81x |
+| **150 (today)** | **$0.580** | **1.21x** |
+| 250 | $0.348 | 0.72x |
+| 600 | $0.145 | 0.30x |
+
+At today's ~150/day the idle term is **larger than the marginal cost itself**;
+at 600/day it is under a third of it. Same system, same spend, 4x different
+"unit cost." **A fixed-cost problem is solved by subscriber growth or by cutting
+idle — never by pricing renders.**
+
+**Denominator corrected:** ~150/day (median of the last five days: 131, 147,
+157, 176, 131). My earlier 232/day was inflated by the 08-07/08-08 spike
+(461, 455) — two anomalous days inside a seven-day mean.
 
 This also connects to §2.1's own pre-registered go/no-go gate, which requires
 the p90 generative ask to fit inside one month's margin at $45 **at the
