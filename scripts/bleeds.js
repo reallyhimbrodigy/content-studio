@@ -201,6 +201,30 @@ function wiredCheck({ component, cert, productionCounter, count }) {
 // different write at a different time. That is what independence looks like.
 // Co-locating a measurement with its subject converts an instrument into a
 // symptom — and co-location is about the write, not the schema.
+//
+// THE GENERAL FORM — PLAN-TIME PERSISTENCE (2026-08-15):
+//
+//   PERSIST A MEASUREMENT AT THE EARLIEST POINT IT IS KNOWABLE, ON ITS OWN
+//   WRITE — never at the point the subject completes.
+//
+// This is the prescriptive half of the guard, and it follows directly from the
+// two observations above. `vibe_input` survives every failure this project has
+// produced because it is committed at job CREATION: by the time anything can go
+// wrong downstream, it is already durable. `edit_recipe` fails with the render
+// because it waits for the terminal write, and a terminal write is precisely
+// the thing that gets lost.
+//
+// The rule generalises past this bug: a measurement written at completion can
+// only ever describe jobs that completed successfully, which is the population
+// that needed measuring least. The verdict is KNOWN at plan time — the plan IS
+// the verdict — so waiting until terminal buys nothing and forfeits the whole
+// failed/slow cohort. Anything knowable earlier should be written earlier, on
+// its own leg, because every stage between knowing and writing is a stage that
+// can take it.
+//
+// Applied here: persisting `edit_recipe` from the PLANNING path, before the
+// render terminal exists, closes the coverage hole in a way no schema change
+// can — and it is the standing recommendation attached to this guard.
 function sharedFailureCheck({ measurement, subject, sharesWith }) {
   return sharesWith
     ? `⚠️ **[SHARED FAILURE MODE]** \`${measurement}\` is co-located with \`${subject}\` (${sharesWith}). `
