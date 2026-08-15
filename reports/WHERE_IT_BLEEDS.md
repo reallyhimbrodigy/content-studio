@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-15T02:43:25.318Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-15T02:54:24.087Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 26 users / 37 jobs (24h)
 
@@ -75,7 +75,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **1525** → started **123** (8.1%) → paid **2** (1.6% of starters)
+wall_viewed **1523** → started **123** (8.1%) → paid **2** (1.6% of starters)
 purchase_failed n=255, self-cancelled at the sheet **251** (98.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]
@@ -120,7 +120,7 @@ _Effective cost = sticker ÷ acceptance. At 71.4% the run's true unit cost is 1.
 
 > **PROVENANCE [OWNER-SUPPLIED]:** the ~$0.21 all-in and the $0.37/day agent line come from the owner's invoice reconciliation. I could not locate the reconciliation document in either repo, so these are NOT [MEASURED-BY-ME] — the closest repo figure is RECON's bottom-up `$0.214 (orch-only)`, which is a model rather than an invoice and agrees only by coincidence of magnitude. **To upgrade to [MEASURED]: commit the invoice split (per-app, per-resource, with its cycle window) and I will re-derive both.**
 
-#### THE ANCHOR — per-function split of the invoice ($597.99 / 14 days)
+#### THE ANCHOR — per-function split, **CYCLE-TO-DATE** (Aug 1–15, $597.99 / 14 days)
 
 | function | share | $ cycle | $/day | $/render (cycle) |
 |---|---:|---:|---:|---:|
@@ -130,13 +130,19 @@ _Effective cost = sticker ÷ acceptance. At 71.4% the run's true unit cost is 1.
 | prewarm | **9.0%** | $53.82 | $3.84 | $0.0136 |
 | TOTAL | 100.0% | $597.99 | $42.71 | $0.1507 |
 
-**Orchestration is 72.3% — 7.5x the next largest slice.** This is now the cost board's anchor: every cost claim is filed against a named function share, not against a blended per-render figure.
+**Orchestration is 72.3% — 7.5x the next largest slice.** This is the cost board's anchor: every cost claim files against a named function share, not a blended per-render figure.
+_Shares and dollars above are **CYCLE-TO-DATE**, not a run rate. The cycle spans the volume regime change, so its $/day is a historical average; the current window runs lower (orchestration **$25.94/day** vs the cycle's $30.88/day, 84% of it — consistent with volume down ~47%)._
 
 #### L1/L2 — the campaign's LARGEST CONFIRMED LEVER
 
 L1 (cpu=4 while waiting) and L2 (no burst double-pay) act on **orchestration** — the 72.3% slice. Re-filed against the invoice rather than the marginal model:
 
-> **Prize: $203–$255 per cycle** ($14.51–$18.22/day, **$5,283–$6,632/year**), from the prior 47–59% job-compute cut applied to orchestration's $432.35.
+| basis | orchestration $/day | prize $/day | prize per 14d | **prize $/year** |
+|---|---:|---:|---:|---:|
+| cycle-to-date (Aug 1–15) | $30.88 | $14.51–$18.22 | $203–$255 | $5,297–$6,650 |
+| **CURRENT WINDOW** | **$25.94** | **$12.19–$15.30** | $171–$214 | **$4,450–$5,586** |
+
+Both shown because they answer different questions: **the current window is the forecast** ($4,450–$5,586/yr is what the lever is worth going forward), **the cycle figure reconciles the invoice.** Same rule as $0.21 recent-slice vs $0.151 cycle-average — and the lever is the campaign's largest on either basis.
 
 **My retired framing called L1/L2 "~4% of the bill."** Against the invoice it is **34–43%** — I was off by **8–11x**, and that error came from the unreproducible $87/day figure, exactly as its own source warned. Scale check: **eliminating any ONE other function entirely** — all of rendering, or all of validator, or all of prewarm — **saves only 26–28% of even the LOW L1/L2 estimate.** There is no second lever of comparable size on this board.
 

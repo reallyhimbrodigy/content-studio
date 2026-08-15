@@ -81,6 +81,29 @@ function windowGuard(label, series, unit = '') {
       + `${ratio.toFixed(2)}x — window is homogeneous)`;
 }
 
+// ── STANDING GUARD: BOTTOM-UP MODELS RUN LOW (2026-08-15) ────────────────────
+// Four instances this campaign, all one direction, zero exceptions:
+//
+//   naive model missing container lifetime      $0.0104 vs $0.0222   2.1x low
+//   bottom-up marginal vs invoice all-in        $0.0222 vs $0.21     9.5x low
+//   bottom-up daily total vs invoice            $12.04  vs $42.71    3.5x low
+//   L1/L2 prize as share of bill                 ~4%    vs 34-43%    9.6x low
+//
+// THE MECHANISM, which is why this is a rule and not a run of luck: a bottom-up
+// model sums the surfaces you REMEMBERED to enumerate. Every surface you forgot
+// is simply absent from the sum, and there is no term that can over-count. The
+// error is ONE-DIRECTIONAL BY CONSTRUCTION — omissions can only subtract.
+//
+// THEREFORE: a bottom-up figure is a LOWER BOUND, never an estimate, and never
+// a basis for ranking levers. Ranking on one has now misdirected this campaign
+// twice (L1/L2 called both "the biggest lever" and "~4% of the bill", from two
+// different unverified anchors). Label bottom-up numbers [LOWER-BOUND] and defer
+// every ranking to the invoice.
+function bottomUpCaveat(label, value) {
+  return `${label}: $${value} **[LOWER-BOUND — bottom-up]**. Bottom-up has run low 4/4 this campaign `
+    + `(2.1x, 3.5x, 9.5x, 9.6x); omissions can only subtract, so treat as a floor and rank on the invoice.`;
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;
@@ -384,7 +407,7 @@ function reportZero({ label, count, control }) {
     + 'model rather than an invoice and agrees only by coincidence of magnitude. **To upgrade to [MEASURED]: '
     + 'commit the invoice split (per-app, per-resource, with its cycle window) and I will re-derive both.**');
   say('');
-  say('#### THE ANCHOR — per-function split of the invoice ($597.99 / 14 days)');
+  say('#### THE ANCHOR — per-function split, **CYCLE-TO-DATE** (Aug 1–15, $597.99 / 14 days)');
   say('');
   say('| function | share | $ cycle | $/day | $/render (cycle) |');
   say('|---|---:|---:|---:|---:|');
@@ -394,16 +417,26 @@ function reportZero({ label, count, control }) {
   });
   say('| TOTAL | 100.0% | $597.99 | $42.71 | $0.1507 |');
   say('');
-  say('**Orchestration is 72.3% — 7.5x the next largest slice.** This is now the cost board\'s anchor: '
-    + 'every cost claim is filed against a named function share, not against a blended per-render figure.');
+  say('**Orchestration is 72.3% — 7.5x the next largest slice.** This is the cost board\'s anchor: every cost '
+    + 'claim files against a named function share, not a blended per-render figure.');
+  say('_Shares and dollars above are **CYCLE-TO-DATE**, not a run rate. The cycle spans the volume regime '
+    + 'change, so its $/day is a historical average; the current window runs lower (orchestration **$25.94/day** '
+    + 'vs the cycle\'s $30.88/day, 84% of it — consistent with volume down ~47%)._');
   say('');
   say('#### L1/L2 — the campaign\'s LARGEST CONFIRMED LEVER');
   say('');
   say('L1 (cpu=4 while waiting) and L2 (no burst double-pay) act on **orchestration** — the 72.3% slice. '
     + 'Re-filed against the invoice rather than the marginal model:');
   say('');
-  say('> **Prize: $203–$255 per cycle** ($14.51–$18.22/day, **$5,283–$6,632/year**), from the prior '
-    + '47–59% job-compute cut applied to orchestration\'s $432.35.');
+  say('| basis | orchestration $/day | prize $/day | prize per 14d | **prize $/year** |');
+  say('|---|---:|---:|---:|---:|');
+  say('| cycle-to-date (Aug 1–15) | $30.88 | $14.51–$18.22 | $203–$255 | $5,297–$6,650 |');
+  say('| **CURRENT WINDOW** | **$25.94** | **$12.19–$15.30** | $171–$214 | **$4,450–$5,586** |');
+  say('');
+  say('Both shown because they answer different questions: **the current window is the forecast** '
+    + '($4,450–$5,586/yr is what the lever is worth going forward), **the cycle figure reconciles the invoice.** '
+    + 'Same rule as $0.21 recent-slice vs $0.151 cycle-average — and the lever is the campaign\'s largest on '
+    + 'either basis.');
   say('');
   say('**My retired framing called L1/L2 "~4% of the bill."** Against the invoice it is **34–43%** — I was off '
     + 'by **8–11x**, and that error came from the unreproducible $87/day figure, exactly as its own source '
