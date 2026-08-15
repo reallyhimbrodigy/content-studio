@@ -370,43 +370,53 @@ function reportZero({ label, count, control }) {
     + 'receives, never the level we are billed — §2.1\'s gate is written against the *measured* rate, not the sticker rate.');
   say('_Effective cost = sticker ÷ acceptance. At 71.4% the run\'s true unit cost is 1.40x its sticker price._');
   say('');
-  say('### Break-even — FIXED and MARGINAL, on the Aug-3 decomposition');
+  say('### Break-even — on the measured ALL-IN cost  ✅ **hold RELEASED**');
   say('');
-  say('> **ANCHOR CORRECTED 2026-08-15.** My previous board used **$87/day fixed** and **$0.481/render '
-    + 'marginal**. Both are superseded by the bottom-up decomposition in `MODAL_FIXED_VS_MARGINAL.md`, which '
-    + 'sums every warm surface at its *measured* up-fraction: **fixed $5.74/day (15x overstated)** and '
-    + '**marginal $0.0222/render (22x overstated)**. The $87/day figure **cannot be reproduced** — every warm '
-    + 'surface at its 24/7 ceiling is only $8.28/day — and per its own source it "must not be used to justify '
-    + 'a cut."');
+  say('**Modal axis hold is LIFTED.** Invoice reconciliation landed: measured all-in **~$0.21/render**. '
+    + 'That supersedes both of my earlier anchors — it is **9.5x the bottom-up job-compute term** ($0.0222, '
+    + 'which never contained the non-job surface) and **2.3x BELOW** the $0.481 premium figure my first board '
+    + 'used. The bottom-up model was wrong in both directions depending on which term you read; only the '
+    + 'invoice settles it.');
   say('');
-  say('⚠️ **CONFIG-CHANGE CAVEAT — this anchor is valid only for TODAY\'s configuration.** It is measured at '
-    + 'cpu=16 / 12GiB with `min_containers=1` removed and the scaledown windows as they now stand. **Any change '
-    + 'to cpu, memory, scaledown_window or warm-surface count invalidates both terms and they must be '
-    + 're-derived** — that is precisely how the $87/day figure went stale (it predates the cpu 64→16 cut, the '
-    + 'memory cuts and the min_containers removal). An anchor without its configuration is not a number.');
+  say('> **PROVENANCE [OWNER-SUPPLIED]:** the ~$0.21 all-in and the $0.37/day agent line come from the owner\'s '
+    + 'invoice reconciliation. I could not locate the reconciliation document in either repo, so these are '
+    + 'NOT [MEASURED-BY-ME] — the closest repo figure is RECON\'s bottom-up `$0.214 (orch-only)`, which is a '
+    + 'model rather than an invoice and agrees only by coincidence of magnitude. **To upgrade to [MEASURED]: '
+    + 'commit the invoice split (per-app, per-resource, with its cycle window) and I will re-derive both.**');
   say('');
-  say('#### FIXED — covered by subscriber COUNT');
+  say('#### CYCLE-AVERAGE vs RECENT-SLICE — state which one, always');
   say('');
-  say('**$5.74/day (~$172/mo)** today, against a hard 24/7 ceiling of **$8.28/day (~$248/mo)** — a warm surface '
-    + 'cannot cost more than being up continuously, so the ceiling is structural, not an estimate.');
+  say('The billing cycle spans a **config change** (cpu 64→16, memory cuts, `min_containers` removal) AND a '
+    + '**volume regime change** (~250-460/day before ~08-11, ~150/day since). By the homogeneity rule above, '
+    + 'a cycle-average over that window is not one population:');
   say('');
-  say('> **SUBSCRIBERS NEEDED TO COVER FIXED: ~6** ($172 ÷ $31.50), or **~8** at the ceiling.');
-  say('> _My previous board said 83. That was the unreproducible $87 figure, off by 15x._');
+  say('- **Cycle-average $/render** — what was actually billed across the whole cycle. Correct for '
+    + '*reconciling the invoice*, and the only figure that ties to a statement.');
+  say('- **Recent-slice $/render** — the same measure over the current config and current volume. Correct for '
+    + '*forecasting and pricing*, because it is the only one that describes what the next render will cost.');
   say('');
-  say('#### MARGINAL — renders/month one subscriber\'s margin buys');
+  say('**~$0.21 is used below as the recent-slice figure.** A pricing ruling takes the recent slice; an invoice '
+    + 'check takes the cycle average; quoting one where the other belongs is the same error as averaging across '
+    + 'the regime change in the first place.');
   say('');
-  say('| scenes | scene $ | + compute $0.0222 | $/render | renders/mo | **scene share of cost** |');
+  say('#### Renders/month one subscriber\'s margin buys, at $31.50 net');
+  say('');
+  say('| scenes | scene $ | + all-in $0.21 | $/render | **renders/mo** | scene share |');
   say('|---:|---:|---:|---:|---:|---:|');
   [0, 1, 2, 4].forEach((n) => {
-    const sc = n * 0.14, t = sc + 0.0222;
-    say(`| ${n}${n === 4 ? ' (ceiling)' : ''} | $${sc.toFixed(3)} | $0.0222 | $${t.toFixed(4)} | **${(31.50 / t).toFixed(0)}** | ${(100 * sc / t).toFixed(0)}% |`);
+    const sc = n * 0.14, t = sc + 0.21;
+    say(`| ${n}${n === 4 ? ' (ceiling)' : ''} | $${sc.toFixed(2)} | $0.21 | $${t.toFixed(2)} | **${(31.50 / t).toFixed(0)}** | ${(100 * sc / t).toFixed(0)}% |`);
   });
   say('');
-  say('**THE RANKING REVERSES — I had it backwards.** I previously wrote that the Modal figure "moves the answer '
-    + '~2x more than scene count does." That was built on the inflated $0.481 and is **wrong**. At the corrected '
-    + 'anchor the scene bill is **6x** render compute at 1 scene and **25x** at 4; across the plausible compute '
-    + 'range a 4-scene edit moves only 54→52 renders/mo, while across the scene range it moves 1,419→54. '
-    + '**Scene count is the cost decision; compute is a rounding error beside it.**');
+  say('**Scene count still leads at n≥1 — but far less than my last board claimed.** At 1 scene the scene bill '
+    + 'is **0.67x** the all-in render cost (not the 6x the bottom-up figure implied); at 4 scenes it is 73% of '
+    + 'total. Both terms now matter, which is the honest shape: **compute is no longer a rounding error, and '
+    + 'scenes are no longer the whole answer.**');
+  say('');
+  say('#### FIXED — still covered by subscriber COUNT, not volume');
+  say('');
+  say('$5.74/day today (~$172/mo), 24/7 ceiling $8.28/day (~$248/mo) → **~6 subscribers to cover fixed** '
+    + '(~8 at ceiling). Unchanged: fixed is a subscriber-count problem, never a per-render pricing problem.');
   say('');
   say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
   say('|---:|---:|---:|---:|---:|');
@@ -453,11 +463,14 @@ function reportZero({ label, count, control }) {
   say('| First Light (10 scenes + 2 hero attempts) | **$1.96** | of a $2.00 ceiling; 14 billed image calls |');
   say('| worker deploy image rebuild (08-03) | ~$0.10 | build compute, logged not assumed free |');
   say('| JUDGE lane, all sessions to date | **$0.00** | every measurement DB-read or local ffmpeg |');
+  say('| **agent / ephemeral, ongoing** | **$0.37/day** ($11.10/mo) | **standing line** — 1.2% of a ~150-render day today |');
   say('| **campaign total to date** | **~$2.06** | |');
   say('');
-  say('_Rule 6: harnesses count exactly like user jobs and land in the same ledger. At ~$2.06 the campaign\'s '
-    + 'agent spend is ~0.4 subscriber-months — immaterial against fixed ($172/mo), and stated so it stays that way. '
-    + 'Source: `MODAL_SPEND_LEDGER.md` + the First Light ledger._');
+  say('_Rule 6: harnesses count exactly like user jobs and land in the same ledger._');
+  say('_**Why the $0.37/day agent line stays on the board even at 1.2%:** it was **17% of the bill eleven days '
+    + 'ago**. A line that was material once can be material again, and a figure only removed from the board when '
+    + 'it looks small is a figure nobody is watching when it grows. Standing lines catch returns; ad-hoc checks '
+    + 'do not. ($11.10/mo ≈ 0.35 subscriber-months.)_');
   say('');
 
   const out = path.join(__dirname, '..', 'reports', 'WHERE_IT_BLEEDS.md');
