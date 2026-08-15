@@ -465,7 +465,16 @@ function reportZero({ label, count, control }) {
   // recomputed field-by-field by JUDGE. Replace with live queries the moment a
   // Lumen render lands — until then the "no live data" line stays visible so
   // this is never mistaken for production measurement.
-  say('## 7. LUMEN campaign baseline — First Light [VERIFIED 2026-08-15]');
+  say('## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**');
+  say('');
+  say('> **COST BOARD FROZEN.** The campaign has pivoted to quality. Every figure and guard below is held '
+    + 'as-is: the per-function anchor (orchestration 72.3%), L1/L2 at $4,450–$5,586/yr current-window, the '
+    + 'all-in $0.21 recent-slice vs $0.151 cycle-average split, the ~4-scene quota ceiling, acceptance-adjusted '
+    + 'effective cost, the agent/ephemeral standing line, and the [OWNER-SUPPLIED] provenance tag. '
+    + '**Guards remain armed** — bottom-up-runs-low, vestigial-column, window-homogeneity, verified-zero, '
+    + 'cycle-vs-slice — so the board keeps self-checking while frozen. Unfreeze only on a new invoice or a '
+    + 'config change, which invalidates the anchor by the config caveat already attached to it.');
+  say('');
   say('');
   say('| envelope | value | note |');
   say('|---|---|---|');
