@@ -52,6 +52,35 @@ const uniq = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
 //
 // EVERY zero printed by this board goes through this function. A zero WITHOUT a
 // live same-run control is labelled [UNVERIFIED-ZERO] and is NOT a result.
+// ── THE CONTAMINATED-WINDOW TRAP IS NOT DOMAIN-SPECIFIC (owner, 2026-08-15) ──
+// Rule 5 was written for RATES; I applied it to rates for months and then walked
+// straight into it on a COST figure — a 7-day mean render volume of 232/day
+// against a true recent ~150. The trap is indifferent to what is averaged.
+//
+// FIRST ATTEMPT AT THIS GUARD FAILED, and the failure is instructive. I checked
+// mean-vs-median: on the very series that burned me that ratio is 1.05, far
+// under any sane threshold. The contamination was NOT a spike — it was a REGIME
+// CHANGE (volume stepped down ~08-11 and stayed down). A median is perfectly
+// happy to sit in the middle of two different regimes.
+//
+// So the correct generic check is HOMOGENEITY: split the window in half and
+// compare. If the halves disagree, no single aggregate over the whole window
+// describes anything real, and the recent half is the honest number.
+function windowGuard(label, series, unit = '') {
+  if (series.length < 4) return `${label}: n=${series.length} — too short to test homogeneity`;
+  const mid = Math.floor(series.length / 2);
+  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const early = avg(series.slice(0, mid)), late = avg(series.slice(mid));
+  const ratio = late > 0 ? early / late : 1;
+  const shifted = ratio > 1.4 || ratio < 0.71;
+  return shifted
+    ? `${label}: ⚠️ **[REGIME CHANGE — window is NOT homogeneous]** first half ${early.toFixed(1)}${unit} vs `
+      + `second half ${late.toFixed(1)}${unit} (${ratio.toFixed(2)}x). No single aggregate over this window is `
+      + `meaningful; **use the recent half: ${late.toFixed(1)}${unit}**.`
+    : `${label}: ${avg(series).toFixed(1)}${unit} (halves ${early.toFixed(1)} / ${late.toFixed(1)}, `
+      + `${ratio.toFixed(2)}x — window is homogeneous)`;
+}
+
 function reportZero({ label, count, control }) {
   if (count > 0) return `${label}: **${count}**`;
   const live = control && control.count > 0;
@@ -341,50 +370,43 @@ function reportZero({ label, count, control }) {
     + 'receives, never the level we are billed — §2.1\'s gate is written against the *measured* rate, not the sticker rate.');
   say('_Effective cost = sticker ÷ acceptance. At 71.4% the run\'s true unit cost is 1.40x its sticker price._');
   say('');
-  say('### Break-even — FIXED and MARGINAL, separated  ⚠️ **Modal axis HELD**');
+  say('### Break-even — FIXED and MARGINAL, on the Aug-3 decomposition');
   say('');
-  say('> **HELD pending invoice reconciliation.** Every marginal figure below is BOTTOM-UP and the invoice '
-    + 'cannot currently reproduce it. No pricing ruling should close on this table until the invoice lands.');
+  say('> **ANCHOR CORRECTED 2026-08-15.** My previous board used **$87/day fixed** and **$0.481/render '
+    + 'marginal**. Both are superseded by the bottom-up decomposition in `MODAL_FIXED_VS_MARGINAL.md`, which '
+    + 'sums every warm surface at its *measured* up-fraction: **fixed $5.74/day (15x overstated)** and '
+    + '**marginal $0.0222/render (22x overstated)**. The $87/day figure **cannot be reproduced** — every warm '
+    + 'surface at its 24/7 ceiling is only $8.28/day — and per its own source it "must not be used to justify '
+    + 'a cut."');
   say('');
-  say('**They answer different questions and must never be blended.** My earlier board amortised the fixed '
-    + 'term into a per-render row — that was wrong: it invents a "unit cost" that moves when volume moves '
-    + 'while nothing about the system changed. Corrected below.');
+  say('⚠️ **CONFIG-CHANGE CAVEAT — this anchor is valid only for TODAY\'s configuration.** It is measured at '
+    + 'cpu=16 / 12GiB with `min_containers=1` removed and the scaledown windows as they now stand. **Any change '
+    + 'to cpu, memory, scaledown_window or warm-surface count invalidates both terms and they must be '
+    + 're-derived** — that is precisely how the $87/day figure went stale (it predates the cpu 64→16 cut, the '
+    + 'memory cuts and the min_containers removal). An anchor without its configuration is not a number.');
   say('');
-  say('#### FIXED — covered by subscriber COUNT, not by render volume');
+  say('#### FIXED — covered by subscriber COUNT');
   say('');
-  say('~**$87/day = $2,610/month** of non-job idle/warmup [RECON C-9].');
+  say('**$5.74/day (~$172/mo)** today, against a hard 24/7 ceiling of **$8.28/day (~$248/mo)** — a warm surface '
+    + 'cannot cost more than being up continuously, so the ceiling is structural, not an estimate.');
   say('');
-  say('> **SUBSCRIBERS NEEDED TO COVER FIXED: ~83** ($2,610 ÷ $31.50 net per $45 sub).');
-  say('> Independent of how many renders each one runs — that is the point of the split.');
+  say('> **SUBSCRIBERS NEEDED TO COVER FIXED: ~6** ($172 ÷ $31.50), or **~8** at the ceiling.');
+  say('> _My previous board said 83. That was the unreproducible $87 figure, off by 15x._');
   say('');
-  say('#### MARGINAL — renders/month that ONE subscriber\'s margin buys');
+  say('#### MARGINAL — renders/month one subscriber\'s margin buys');
   say('');
-  say('| marginal $/render | 0 scenes | 1 scene | 2 scenes | 4 scenes (ceiling) |');
-  say('|---|---:|---:|---:|---:|');
-  [0.257, 0.35, 0.481, 0.60].forEach((m) => {
-    const c = [0, 1, 2, 4].map((n) => (31.50 / (m + n * 0.14)).toFixed(0));
-    const lbl = m === 0.481 ? `**$${m.toFixed(3)} (premium mean)**` : `$${m.toFixed(3)}`;
-    say(`| ${lbl} | ${c[0]} | ${c[1]} | ${c[2]} | **${c[3]}** |`);
+  say('| scenes | scene $ | + compute $0.0222 | $/render | renders/mo | **scene share of cost** |');
+  say('|---:|---:|---:|---:|---:|---:|');
+  [0, 1, 2, 4].forEach((n) => {
+    const sc = n * 0.14, t = sc + 0.0222;
+    say(`| ${n}${n === 4 ? ' (ceiling)' : ''} | $${sc.toFixed(3)} | $0.0222 | $${t.toFixed(4)} | **${(31.50 / t).toFixed(0)}** | ${(100 * sc / t).toFixed(0)}% |`);
   });
   say('');
-  say('_These are unaffected by the fixed term — a subscriber\'s marginal headroom is theirs alone._');
-  say('');
-  say('#### The per-render idle figure is NOT a constant — it moves INVERSELY with volume');
-  say('');
-  say('| renders/day | idle $/render | vs marginal $0.481 |');
-  say('|---:|---:|---:|');
-  [100, 150, 250, 400, 600, 1000].forEach((v) => {
-    const i = 87.0 / v;
-    say(`| ${v}${v === 150 ? ' **(today)**' : ''} | $${i.toFixed(3)} | ${(i / 0.481).toFixed(2)}x |`);
-  });
-  say('');
-  say('At today\'s **~150 renders/day** the idle term is **$0.580/render — larger than the marginal cost itself**. '
-    + 'At 600/day it is $0.145, under a third of it. **Same system, same spend, 4x different "unit cost."** '
-    + 'That inverse relationship is precisely why it is reported as FIXED and never folded into a per-render row — '
-    + 'and why a fixed-cost problem is solved by subscriber growth or by cutting idle, never by pricing renders.');
-  say('');
-  say('_Denominator corrected 2026-08-15 to ~150/day (median of the last 5 days: 131, 147, 157, 176, 131). '
-    + 'My earlier 232/day was inflated by the 08-07/08-08 spike (461, 455) — two anomalous days in a 7-day mean._');
+  say('**THE RANKING REVERSES — I had it backwards.** I previously wrote that the Modal figure "moves the answer '
+    + '~2x more than scene count does." That was built on the inflated $0.481 and is **wrong**. At the corrected '
+    + 'anchor the scene bill is **6x** render compute at 1 scene and **25x** at 4; across the plausible compute '
+    + 'range a 4-scene edit moves only 54→52 renders/mo, while across the scene range it moves 1,419→54. '
+    + '**Scene count is the cost decision; compute is a rounding error beside it.**');
   say('');
   say('| scenes | $/edit | vs $0.10 law | scene secs | vs 120s law |');
   say('|---:|---:|---:|---:|---:|');
@@ -413,6 +435,29 @@ function reportZero({ label, count, control }) {
     + '_The quota ruling should be made against this curve, not against a single average._');
   say('_NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not '
     + 'production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._');
+  say('');
+
+  // The exact figure that burned me, now guarded automatically.
+  const dayCounts = {};
+  done.forEach((j) => { const d = j.created_at.slice(0, 10); dayCounts[d] = (dayCounts[d] || 0) + 1; });
+  const vols = Object.values(dayCounts);
+  if (vols.length > 1) {
+    const ordered = Object.keys(dayCounts).sort().map((d) => dayCounts[d]);
+    say(`_Denominator guard — ${windowGuard('completed renders/day', ordered, '/day')}_`);
+    say('');
+  }
+  say('### Agent / harness spend — counted like user jobs [Rule 6]');
+  say('');
+  say('| run | $ | note |');
+  say('|---|---:|---|');
+  say('| First Light (10 scenes + 2 hero attempts) | **$1.96** | of a $2.00 ceiling; 14 billed image calls |');
+  say('| worker deploy image rebuild (08-03) | ~$0.10 | build compute, logged not assumed free |');
+  say('| JUDGE lane, all sessions to date | **$0.00** | every measurement DB-read or local ffmpeg |');
+  say('| **campaign total to date** | **~$2.06** | |');
+  say('');
+  say('_Rule 6: harnesses count exactly like user jobs and land in the same ledger. At ~$2.06 the campaign\'s '
+    + 'agent spend is ~0.4 subscriber-months — immaterial against fixed ($172/mo), and stated so it stays that way. '
+    + 'Source: `MODAL_SPEND_LEDGER.md` + the First Light ledger._');
   say('');
 
   const out = path.join(__dirname, '..', 'reports', 'WHERE_IT_BLEEDS.md');
