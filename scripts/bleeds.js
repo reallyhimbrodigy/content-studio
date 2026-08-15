@@ -785,6 +785,26 @@ function reportZero({ label, count, control }) {
   const cbLive = done.filter((j) => j.completion_delivery === 'callback').length;
   say(`- ${wiredCheck({ component: 'Lumen scene vocabulary', cert: 'green (First Light 10/10)', productionCounter: 'completions carrying scene telemetry', count: scenesLive })}`);
   say(`- ${wiredCheck({ component: '`callback` delivery stamp', cert: 'green', productionCounter: 'completion_delivery=callback rows', count: cbLive })}`);
+  // Phase-1 components with an ARMED scorecard and no traffic to score.
+  const blob = (j) => JSON.stringify({ e: j.edit_recipe, r: j.result }).toLowerCase();
+  const npLive = done.filter((j) => /nameplate|name_plate/.test(blob(j))).length;
+  const ecLive = done.filter((j) => /endcard|end_card|end-card/.test(blob(j))).length;
+  say(`- ${wiredCheck({ component: 'NamePlate (component D)', cert: 'built + renderer-registered', productionCounter: 'completions carrying a name-plate', count: npLive })}`);
+  say(`- ${wiredCheck({ component: 'EndCard (component F)', cert: 'built + renderer-registered', productionCounter: 'completions carrying an end-card', count: ecLive })}`);
+  if (!npLive && !ecLive) {
+    say('');
+    say('> **The scorecard for these two is ARMED and cannot fire — and the reason is structural, not a wait.** '
+      + 'Both are built and EXPORTED from the Remotion registry (`motion-graphics/index.ts:67-70`), so the '
+      + 'renderer can draw them. But `handler.py` references `NamePlate` and `EndCard` **once each — and it is '
+      + 'the same comment line** (`handler.py:20367`). They are absent from the prompt and the response schema, '
+      + 'so **nothing can ask for one.** The production counter is not 0 because traffic has not reached them '
+      + 'yet; it is 0 because it structurally cannot be anything else.');
+    say('');
+    say('_This is instance six of the built-not-wired class, and the same shape as generated scenes '
+      + '("defined but INERT", 0 of 3,949). The gap is one hop wide: renderer-registered, schema-absent. '
+      + 'The moment either appears in the response schema, the scorecard scores it on canvas + palette against '
+      + 'both references with no further work._');
+  }
   say('');
   say('_The `callback` line is the class resolving in real time: it was [BUILT-NOT-WIRED] for 432+ completions '
     + 'and is now wired — the predicate fix connected a stamp that had always been written and always discarded. '
