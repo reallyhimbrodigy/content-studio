@@ -1,15 +1,27 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-16T11:02:51.885Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-16T11:20:03.097Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
-## 1. Failures — 69 users / 87 jobs (24h)
+## 1. Failures — 68 users / 86 jobs (24h)
 
 | class | users | jobs | share of failing users |
 |---|---:|---:|---:|
-| DISPATCH_UNREACHABLE · reached-then-died | 36 | 51 | 52.2% |
-| PLATFORM_TIMEOUT | 20 | 21 | 29.0% |
-| UPLOAD_NEVER_STARTED | 14 | 14 | 20.3% |
-| JOB_STALLED | 1 | 1 | 1.4% |
+| DISPATCH_UNREACHABLE · reached-then-died | 36 | 51 | 52.9% |
+| PLATFORM_TIMEOUT | 19 | 20 | 27.9% |
+| UPLOAD_NEVER_STARTED | 14 | 14 | 20.6% |
+| JOB_STALLED | 1 | 1 | 1.5% |
+
+**Inside reached-then-died — the stage cut:**
+
+| stage at death | jobs | users | progress p50 | worker lifetime p50 |
+|---|---:|---:|---:|---:|
+| `plan` | 48 | 33 | 38 | 895s |
+| `render` | 2 | 2 | 95 | 893s |
+| `analyze` | 1 | 1 | 7 | 892s |
+
+**Progress differs by stage; WORKER LIFETIME DOES NOT.** Over 7d: `plan` 895s, `render` 895s, `analyze` 895s, `face_detect` 895s — every stage clusters in 884–901s, a 1.21x spread driven only by `complete` (742s). **So the stage says WHERE a job was when the clock ran out; the ~900s says WHAT killed it.** A single time-based killer is firing regardless of stage, which is a different fix from a stage-specific bug.
+
+_But the two classes are real in ORIGIN: before 08-16 this class was mostly `render` (3/day) with a trickle of `analyze`/`face_detect`; **08-16 is 48 `plan` and 1 `render`** — and `plan` was ZERO on every prior day. The pre-existing trickle and today's spike die the same way at the same time, in different places. Consistent with jobs stalling at the editorial call and being reaped at the timeout; stated as consistent-with, not proven._
 
 _`DISPATCH_UNREACHABLE` is SPLIT because it carried two mechanisms. **reached-then-died** has `worker_started_at` set and a `modal_call_id` (71/71 over 7d) — a worker started and then died, so "unreachable" is a misnomer: dispatch reached fine. **never-dispatched** is the original class and is EXTINCT — 8 jobs, all on 08-11, none since. Only reached-then-died is live, and it ran 3–6/day for five days before hitting **49 on 08-16**. Under one label the spike reads as "we cannot reach Modal"; split, it says workers start and then die._
 
@@ -30,19 +42,19 @@ _**13 row(s) exceeded the 3600s cap and were capped, not dropped.** Their raw `u
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=91 completed (24h)
+## 2b. Latency — n=92 completed (24h)
 
-p50 **89s** (law 90) · p90 526s · p99 **904s** (law 180) · max 904s
+p50 **88s** (law 90) · p90 526s · p99 **904s** (law 180) · max 904s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
 | `C envelope LOST + repair` | 3 | 3 | **901s** | 904s | 904s |
-| `B envelope LOST` | 15 | 15 | **453s** | 754s | 828s |
-| `A envelope FULL` | 73 | 72 | **67s** | 175s | 547s |
+| `B envelope LOST` | 14 | 14 | **454s** | 754s | 828s |
+| `A envelope FULL` | 75 | 74 | **67s** | 175s | 547s |
 
 Worst/best class p50 spread: **13.4x** — the pooled number above hides it.
 
-**ENVELOPE LOSS: 19.8% of completions (18/91), 18 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 18.5% of completions (17/92), 17 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._
 
 | term | p50 | p90 | p99 | max |
@@ -50,24 +62,24 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | **QUEUE** (create→worker pickup) | 10.5s | 223.1s | 2215.2s | 2215.2s |
 | **WORK** (pickup→complete) *envelope-FULL only* | 58.1s | 162.5s | 262.6s | 262.6s |
 
-Queue is **12%** of e2e at p50; **20.9%** of jobs wait >30s before any work begins.
+Queue is **12%** of e2e at p50; **19.6%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.6%** kept their envelope (1 of 72 lost it); of jobs queuing ≥30s, **89.5%** lost it. **97.3%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.6%** kept their envelope (1 of 74 lost it); of jobs queuing ≥30s, **88.9%** lost it. **97.3%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **2** of 91
+On the 900s wall [870,920] — count: **2** of 92
 
 ## 3. Route mix (24h)
 
-`minimal` 34 · `moodreel` 19 · `minimal_speech_uncut` 18 · `none` 18 · `hype` 2
+`minimal` 35 · `moodreel` 19 · `minimal_speech_uncut` 19 · `none` 17 · `hype` 2
 
-Premium share: **23.1%** (21/91).
+Premium share: **22.8%** (21/92).
 
 ## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=178 terminal)
 
-`callback` 73 · `NULL` 66 · `repair` 24 · `durable_poll` 15
+`callback` 75 · `NULL` 66 · `repair` 23 · `durable_poll` 14
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -75,7 +87,7 @@ fallback_timer share **0.0%** — PASS bar met (~0).
 
 n=8818 asks over 4115 judged jobs (all-time table).
 
-> ⚠️ **COVERAGE: these figures describe 80.2% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
+> ⚠️ **COVERAGE: these figures describe 81.5% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
 
 > **IS THE LOST CLASS SCOREABLE AT ALL? — NO, and the split is exact.** The **ASK** side survives: `vibe_input` is a top-level COLUMN, intact on **210/210** lost rows. The **VERDICT** side does not: `edit_recipe` moved INSIDE `result` jsonb on **2026-08-04**, the exact object the lost update clobbers — **0/210**. So for these jobs we can know what the user asked for and **never what was done about it**. Fulfillment needs both, so **the already-lost population is PERMANENTLY UNSCOREABLE** — no reprocessing recovers a verdict that was never persisted.
 
@@ -100,7 +112,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **965** → started **83** (8.6%) → paid **1** (1.2% of starters)
+wall_viewed **964** → started **83** (8.6%) → paid **1** (1.2% of starters)
 purchase_failed n=162, self-cancelled at the sheet **161** (99.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -213,7 +225,7 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 ### Built-not-wired check — production counters, not certs
 
 - Lumen scene vocabulary: ⚠️ **[BUILT-NOT-WIRED]** — cert green (First Light 10/10), but completions carrying scene telemetry = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
-- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 73 on real traffic.
+- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 75 on real traffic.
 - NamePlate (component D): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying a name-plate = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 - EndCard (component F): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying an end-card = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 
@@ -238,8 +250,9 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 **BUSY — push BLOCKED**
 
 ```
-QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
-    processing  aa70d791-b057-43bc-814c-ea537715fd43  2026-08-16T11:02:48.517155+00:00  stale=3s
+QUIET-WINDOW: BUSY — 2 in-flight user job(s). Deploying now orphans live user work.
+    processing  ecd80bb1-3594-4827-acef-4cf4f6d522b3  2026-08-16T11:09:05.319879+00:00  stale=577s
+    processing  5d28e41c-f4ea-48c4-a321-8f7ffa2179c7  2026-08-16T11:18:40.462143+00:00  stale=2s
   Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 

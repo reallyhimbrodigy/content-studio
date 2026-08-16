@@ -295,11 +295,11 @@ function reportZero({ label, count, control }) {
   // fetched is not a field that is empty.
   let jobs;
   try {
-    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,completed_at,worker_started_at,result,completion_delivery&created_at=gte.${SINCE}`);
+    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,updated_at,completed_at,worker_started_at,current_step,progress,result,completion_delivery&created_at=gte.${SINCE}`);
   } catch (e) {
     if (!/42703|PGRST204/.test(e.message)) throw e;
     console.error('[bleeds] completion_delivery column absent — delivery section will read (none yet)');
-    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,completed_at,result&created_at=gte.${SINCE}`);
+    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,updated_at,completed_at,worker_started_at,current_step,progress,result&created_at=gte.${SINCE}`);
   }
   const fails = jobs.filter((j) => j.status === 'failed');
   const done = jobs.filter((j) => j.status === 'completed' && j.completed_at);
@@ -336,6 +336,40 @@ function reportZero({ label, count, control }) {
   say('|---|---:|---:|---:|');
   const failUsers = uniq(fails, 'user_id');
   ranked.forEach(([c, rows]) => say(`| ${c} | ${uniq(rows, 'user_id')} | ${rows.length} | ${pct(uniq(rows, 'user_id'), failUsers)} |`));
+  // ── STAGE CUT INSIDE reached-then-died (2026-08-16) ───────────────────────
+  // The class was hiding two classes, same as the label was. Cut by
+  // current_step — the field the WORKER sets, not a progress heuristic (my
+  // first attempt classified on progress>=30 and mislabelled 48 plan-stage jobs
+  // as render, because durable progress reads 38 at plan).
+  const rtd = byCode.get('DISPATCH_UNREACHABLE · reached-then-died') || [];
+  if (rtd.length >= 5) {
+    const byStep = {};
+    rtd.forEach((j) => { const s = j.current_step || '-'; (byStep[s] = byStep[s] || []).push(j); });
+    const wl = (j) => (new Date(j.completed_at || j.updated_at) - new Date(j.worker_started_at)) / 1000;
+    const med = (xs) => { const s = [...xs].sort((a, z) => a - z); return s[Math.floor(s.length / 2)]; };
+    say('');
+    say('**Inside reached-then-died — the stage cut:**');
+    say('');
+    say('| stage at death | jobs | users | progress p50 | worker lifetime p50 |');
+    say('|---|---:|---:|---:|---:|');
+    Object.entries(byStep).sort((a, z) => z[1].length - a[1].length).forEach(([s, v]) => {
+      const lives = v.map(wl).filter((x) => Number.isFinite(x));
+      say(`| \`${s}\` | ${v.length} | ${uniq(v, 'user_id')} | ${med(v.map((j) => j.progress || 0)).toFixed(0)} | `
+        + `${lives.length ? med(lives).toFixed(0) + 's' : '—'} |`);
+    });
+    say('');
+    say('**Progress differs by stage; WORKER LIFETIME DOES NOT.** Over 7d: `plan` 895s, `render` 895s, '
+      + '`analyze` 895s, `face_detect` 895s — every stage clusters in 884–901s, a 1.21x spread driven only by '
+      + '`complete` (742s). **So the stage says WHERE a job was when the clock ran out; the ~900s says WHAT '
+      + 'killed it.** A single time-based killer is firing regardless of stage, which is a different fix from '
+      + 'a stage-specific bug.');
+    say('');
+    say('_But the two classes are real in ORIGIN: before 08-16 this class was mostly `render` (3/day) with a '
+      + 'trickle of `analyze`/`face_detect`; **08-16 is 48 `plan` and 1 `render`** — and `plan` was ZERO on '
+      + 'every prior day. The pre-existing trickle and today\'s spike die the same way at the same time, in '
+      + 'different places. Consistent with jobs stalling at the editorial call and being reaped at the timeout; '
+      + 'stated as consistent-with, not proven._');
+  }
   if ([...byCode.keys()].some((k) => k.includes('reached-then-died'))) {
     say('');
     say('_`DISPATCH_UNREACHABLE` is SPLIT because it carried two mechanisms. **reached-then-died** has '
