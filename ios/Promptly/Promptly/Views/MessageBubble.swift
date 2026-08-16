@@ -1111,6 +1111,7 @@ final class VideoExporter: ObservableObject {
     let jobId: String?
 
     @Published var saveState: ActionState = .idle
+    @Published var shareState: ActionState = .idle
 
     private var cachedLocalUrl: URL?
     private var cachedAssetId: String?
@@ -1146,14 +1147,16 @@ final class VideoExporter: ObservableObject {
 
     // MARK: - Private helpers
 
-    /// 225 item 3: resolve which URL the save downloads from. With a jobId the
-    /// export gate rules (a signed private/watermarked asset on 200; the public
-    /// URL only when the gate says legacy-save is correct — 404 no_private_asset
-    /// or 501/route-dark; a 402 throws .gatedPaywall so we NEVER silent-public-save
-    /// a walled export). Without a jobId (LibraryView / pre-gate items) the public
-    /// URL — those predate the gate. Network errors propagate → retry, never public save.
+    /// Resolve which URL the save/share downloads from — ALWAYS through the export
+    /// gate. 200 → a signed private/watermarked asset; the public URL only when the
+    /// gate ITSELF says legacy-save is correct (404 no_private_asset / 501 route-dark);
+    /// 402 → .gatedPaywall so we NEVER silent-public-save a walled export. Network
+    /// errors propagate → retry, never a public save. A missing jobId now THROWS: the
+    /// Library was the only jobId-less exporter and it is gone, so no path reaches the
+    /// OS without first passing the gate (the old `jobId == nil → raw public URL`
+    /// branch was the ungated leak this change closes).
     private func resolveSaveSourceUrl() async throws -> String {
-        guard let jobId else { return videoUrlStr }
+        guard let jobId else { throw ExportError.invalidUrl }
         switch try await APIService.shared.exportJob(jobId: jobId) {
         case .gated(let url, _):   return url.absoluteString
         case .legacyPublicSaveOK:  return videoUrlStr
@@ -1175,6 +1178,17 @@ final class VideoExporter: ObservableObject {
         return finalUrl
     }
 
+    /// THE single path a finished render takes to reach the OS. Both Save-to-Photos
+    /// and Share go through here — there is NO other way a file is handed out. It
+    /// resolves the source through the export gate (`resolveSaveSourceUrl`: 402 →
+    /// `.gatedPaywall`, NEVER a silent public save) and then downloads it to a local
+    /// file. Collapsing every exit onto this one path is what closes the public-save
+    /// leak the ungated share/library paths used to open.
+    private func prepareGatedLocalFile() async throws -> URL {
+        let sourceUrl = try await resolveSaveSourceUrl()
+        return try await ensureLocalFile(from: sourceUrl)
+    }
+
     private func ensureSavedToPhotos() async throws -> String {
         if let cached = cachedAssetId { return cached }
 
@@ -1183,10 +1197,9 @@ final class VideoExporter: ObservableObject {
             throw ExportError.photosDenied
         }
 
-        // 225 item 3: the gate decides the source (throws .gatedPaywall on 402,
-        // URLError on network — caller handles both, never a silent public save).
-        let sourceUrl = try await resolveSaveSourceUrl()
-        let localFile = try await ensureLocalFile(from: sourceUrl)
+        // The single gated path (throws .gatedPaywall on 402, URLError on network —
+        // caller handles both, never a silent public save).
+        let localFile = try await prepareGatedLocalFile()
 
         var placeholderId: String?
         try await PHPhotoLibrary.shared().performChanges {
@@ -1230,6 +1243,53 @@ final class VideoExporter: ObservableObject {
                 if case .error = saveState { saveState = .idle }
             }
         }
+    }
+
+    /// Share the finished render OUT of the app — the only exit besides camera roll.
+    /// Goes through the SAME single gated path as Save (`prepareGatedLocalFile`:
+    /// resolve via the export gate, then download) and hands the FILE — not a raw
+    /// signed URL — to the OS share sheet. 402 → paywall, never a public-URL leak.
+    /// This replaces the old ungated `ShareLink(item: rawUrl)`.
+    func share() {
+        Task {
+            shareState = .loading
+            do {
+                let localFile = try await prepareGatedLocalFile()
+                var shareProps: [String: Any] = ["method": "share"]
+                if let jobId { shareProps["job_id"] = jobId }
+                Analytics.track("export_completed", props: shareProps)
+                await MainActor.run {
+                    shareState = .idle
+                    Self.presentShareSheet(fileUrl: localFile)
+                }
+            } catch ExportError.gatedPaywall {
+                shareState = .idle
+                await MainActor.run { AppState.shared.presentPaywall(.manual) }
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                shareState = .error(error.localizedDescription)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if case .error = shareState { shareState = .idle }
+            }
+        }
+    }
+
+    @MainActor
+    private static func presentShareSheet(fileUrl: URL) {
+        let scenes = UIApplication.shared.connectedScenes
+        guard let windowScene = (scenes.first(where: { $0.activationState == .foregroundActive })
+                                 ?? scenes.first) as? UIWindowScene,
+              let root = (windowScene.windows.first(where: { $0.isKeyWindow })
+                          ?? windowScene.windows.first)?.rootViewController else { return }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        let activity = UIActivityViewController(activityItems: [fileUrl], applicationActivities: nil)
+        if let pop = activity.popoverPresentationController {   // iPad anchor
+            pop.sourceView = top.view
+            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+            pop.permittedArrowDirections = []
+        }
+        top.present(activity, animated: true)
     }
 
 }
@@ -1483,35 +1543,40 @@ struct VideoActionRow: View {
         }
     }
 
+    private var isSharing: Bool {
+        if case .loading = exporter.shareState { return true } else { return false }
+    }
+
     /// Share promoted to the primary CTA — a full-width filled button, not one
-    /// of four equal circle pills. This is the §6 "Share as hero" change.
+    /// of four equal circle pills (§6 "Share as hero"). GATED: routes through
+    /// `exporter.share()` — the single export-gated file path — so a free user who is
+    /// out of free exports hits the paywall instead of leaking the clean public URL.
+    /// This replaced the old ungated `ShareLink(item: rawUrl)`.
     @ViewBuilder
     private var shareHeroButton: some View {
-        if let url = URL(string: videoUrlStr) {
-            ShareLink(item: url) {
-                HStack(spacing: 8) {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            exporter.share()
+        } label: {
+            HStack(spacing: 8) {
+                if isSharing {
+                    ProgressView().tint(.black)
+                } else {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("Share")
-                        .font(.system(size: 16, weight: .semibold))
                 }
-                .foregroundColor(.black)
-                .frame(maxWidth: 300)
-                .padding(.vertical, 13)
-                .background(Capsule().fill(Color.white))
+                Text(isSharing ? "Preparing…" : "Share")
+                    .font(.system(size: 16, weight: .semibold))
             }
-            .accessibilityLabel("Share your video")
-            .accessibilityAddTraits(.isButton)
-            .simultaneousGesture(TapGesture().onEnded {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                // EXPORT funnel: ShareLink exposes NO completion callback, so
-                // "share" is counted on INITIATION (intent-to-share) when the
-                // user taps the hero share pill — not on delivery confirmation.
-                var exportProps: [String: Any] = ["method": "share"]
-                if let jobId { exportProps["job_id"] = jobId }
-                Analytics.track("export_completed", props: exportProps)
-            })
+            .foregroundColor(.black)
+            .frame(maxWidth: 300)
+            .padding(.vertical, 13)
+            .background(Capsule().fill(Color.white))
         }
+        .buttonStyle(.plain)
+        .disabled(isSharing)
+        .accessibilityLabel("Share your video")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -1727,34 +1792,11 @@ struct CompletedVideoView: View {
                     PlayerAssetPrewarm.shared.warm(local)
                 }
             }
-            .contextMenu {
-                if isPlayable, let url = URL(string: videoUrlStr) {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    // EXPORT funnel: ShareLink has no completion callback, so
-                    // "share" counts INITIATION (intent-to-share) on tap of the
-                    // context-menu share item. jobId is in scope here
-                    // (CompletedVideoView property). Fires best-effort — taps
-                    // inside a system context menu aren't guaranteed to deliver
-                    // a gesture, so the hero share pill is the primary signal.
-                    .simultaneousGesture(TapGesture().onEnded {
-                        var exportProps: [String: Any] = ["method": "share"]
-                        if let jobId { exportProps["job_id"] = jobId }
-                        Analytics.track("export_completed", props: exportProps)
-                    })
-                    Button {
-                        UIApplication.shared.open(url)
-                    } label: {
-                        Label("Open in Safari", systemImage: "safari")
-                    }
-                    Button {
-                        UIPasteboard.general.string = videoUrlStr
-                    } label: {
-                        Label("Copy Link", systemImage: "link")
-                    }
-                }
-            }
+            // Library-merge exit collapse: the thumbnail's context menu (ungated
+            // ShareLink + Open-in-Safari + Copy-Link) is removed. All three handed
+            // the raw signed public URL straight to the OS, bypassing the export
+            // gate — the exact public-URL leak this change closes. Sharing now goes
+            // ONLY through the gated hero Share button in VideoActionRow below.
             } // end if !videoSurfaceHidden
 
             // §6 payoff: posting-ready copy under the video — the hook, the

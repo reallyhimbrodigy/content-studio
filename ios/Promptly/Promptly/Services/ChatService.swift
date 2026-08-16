@@ -87,6 +87,31 @@ final class ChatService {
         return chat
     }
 
+    /// Library-merge migration: create a chat with pre-built message dicts inline
+    /// (camelCase keys, matching the stored JSONB shape). Used to reconstruct a chat
+    /// for a completed video that predates the chat model, so no Library video is
+    /// stranded when the Library is deleted. `createdAt` preserves the original render
+    /// date so the reconstructed chat sorts into its real place in history (the touch
+    /// trigger only fires on UPDATE, so an INSERT's created_at/updated_at stick).
+    func createChatWithMessages(title: String, messages: [[String: Any]], createdAt: String?) async throws {
+        guard let userId = AuthService.shared.currentUser?.id else { throw APIError.notAuthenticated }
+        guard var req = await authedRequest(path: "/rest/v1/chats", method: "POST") else {
+            throw APIError.notAuthenticated
+        }
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        var body: [String: Any] = ["user_id": userId, "title": title, "messages": messages]
+        if let createdAt, !createdAt.isEmpty {
+            body["created_at"] = createdAt
+            body["updated_at"] = createdAt
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let b = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.jobCreationFailed("createChatWithMessages \((resp as? HTTPURLResponse)?.statusCode ?? -1): \(b)")
+        }
+    }
+
     /// Persist the latest message list + auto-derived title for a chat.
     /// Server's BEFORE UPDATE trigger refreshes updated_at automatically.
     func updateChat(id: String, messages: [SerializedMessage], title: String?) async throws {
