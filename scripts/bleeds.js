@@ -336,6 +336,38 @@ function reportZero({ label, count, control }) {
     + ` ${HOURS}h; funnel + fulfillment windows stated per section. Every line [MEASURED].`);
   say('');
 
+  // ── DAILY ACTIVE VIDEO-MAKERS — THE HEADLINE ABOVE THE FAILURE RATE ───────
+  // Owner directive 2026-08-16: a failure rate on a shrinking denominator
+  // flatters itself. 10% of 110 users is a better-looking number and a worse
+  // product than 10% of 330, so the denominator goes ABOVE the rate.
+  const davRows = await pageAll('video_jobs?select=user_id,created_at&created_at=gte.2026-07-26');
+  const davDay = {};
+  davRows.forEach((j) => {
+    const d = j.created_at.slice(0, 10);
+    (davDay[d] = davDay[d] || new Set()).add(j.user_id);
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const fullDays = Object.keys(davDay).sort().filter((d) => d < today);   // exclude partial today
+  if (fullDays.length >= 14) {
+    const avg = (ds) => ds.reduce((a, d) => a + davDay[d].size, 0) / ds.length;
+    const w1 = avg(fullDays.slice(-7)), w2 = avg(fullDays.slice(-14, -7));
+    const peakD = fullDays.reduce((m, d) => (davDay[d].size > davDay[m].size ? d : m), fullDays[0]);
+    const lastD = fullDays[fullDays.length - 1];
+    say(`# 📉 DAILY ACTIVE VIDEO-MAKERS — **${w1.toFixed(0)}/day**, **${(100 * w1 / w2 - 100).toFixed(0)}%** week-over-week`);
+    say('');
+    say(`| last 7d | prior 7d | change | peak (${peakD}) | last full day (${lastD}) | peak → now |`);
+    say('|---:|---:|---:|---:|---:|---:|');
+    say(`| **${w1.toFixed(0)}/day** | ${w2.toFixed(0)}/day | **${(100 * w1 / w2 - 100).toFixed(0)}%** | `
+      + `${davDay[peakD].size} | **${davDay[lastD].size}** | **${(100 * davDay[lastD].size / davDay[peakD].size - 100).toFixed(0)}%** |`);
+    say('');
+    say('**This sits above the failure rate because a rate on a shrinking denominator flatters itself.** '
+      + `A 10% failure rate over ${davDay[lastD].size} makers is a worse product than 10% over `
+      + `${davDay[peakD].size}, and only this line can tell them apart. Today is excluded as a partial day.`);
+    say('');
+    say('---');
+    say('');
+  }
+
   // ── HOURLY FAILURE RATE — PINNED TO THE TOP UNTIL IT IS UNDER 10% ─────────
   // Owner directive 2026-08-16. This is the number that decides whether anything
   // else on this board matters: a quality figure computed while half of all jobs
