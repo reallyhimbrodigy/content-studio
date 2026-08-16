@@ -336,6 +336,50 @@ function reportZero({ label, count, control }) {
     + ` ${HOURS}h; funnel + fulfillment windows stated per section. Every line [MEASURED].`);
   say('');
 
+  // ── HOURLY FAILURE RATE — PINNED TO THE TOP UNTIL IT IS UNDER 10% ─────────
+  // Owner directive 2026-08-16. This is the number that decides whether anything
+  // else on this board matters: a quality figure computed while half of all jobs
+  // fail is a statement about the surviving half. It stays at the top, computed
+  // live, and RETIRES ITSELF the moment the 6h rate drops under 10%.
+  const HOURS_PIN = 12;
+  const pinRows = await pageAll('video_jobs?select=id,status,created_at'
+    + `&created_at=gte.${new Date(Date.now() - HOURS_PIN * 3600e3).toISOString()}&status=in.(completed,failed)`);
+  const byHour = {};
+  pinRows.forEach((j) => {
+    const k = j.created_at.slice(0, 13);
+    byHour[k] = byHour[k] || { n: 0, f: 0 };
+    byHour[k].n++;
+    if (j.status === 'failed') byHour[k].f++;
+  });
+  const hourKeys = Object.keys(byHour).sort();
+  const last6 = hourKeys.slice(-6);
+  const n6 = last6.reduce((a, k) => a + byHour[k].n, 0);
+  const f6 = last6.reduce((a, k) => a + byHour[k].f, 0);
+  const rate6 = n6 ? (100 * f6 / n6) : 0;
+  if (rate6 >= 10) {
+    say(`# 🔴 FAILURE RATE — **${rate6.toFixed(1)}%** of jobs failed in the last 6h (${f6}/${n6})`);
+    say('');
+    say('**This is pinned to the top of the board until it is under 10%.** Every other number below is '
+      + 'computed over the jobs that survived this — honor, latency and coverage are all statements about '
+      + `the **${(100 - rate6).toFixed(0)}%** that did not fail, and none of them can be read as a statement `
+      + 'about the product while this number stands.');
+    say('');
+    say('| hour | jobs | failed | rate |');
+    say('|---|---:|---:|---:|');
+    hourKeys.slice(-12).forEach((k) => {
+      const v = byHour[k];
+      const r = 100 * v.f / v.n;
+      say(`| ${k}Z | ${v.n} | ${v.f} | ${r >= 50 ? '**' + r.toFixed(0) + '%**' : r.toFixed(0) + '%'} |`);
+    });
+    say('');
+    say(`_${HOURS_PIN}h total: ${pinRows.filter((j) => j.status === 'failed').length}/${pinRows.length} = `
+      + `${(100 * pinRows.filter((j) => j.status === 'failed').length / Math.max(1, pinRows.length)).toFixed(1)}%. `
+      + 'Retires itself when the 6h rate goes under 10%._');
+    say('');
+    say('---');
+    say('');
+  }
+
   // ── failures by class, BY USER ────────────────────────────────────────────
   // completion_delivery is selected EXPLICITLY — it was omitted from this
   // select while §4 read `j.completion_delivery`, so every row scored `NULL`
