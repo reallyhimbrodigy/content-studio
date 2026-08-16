@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-16T13:33:16.041Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-16T13:37:18.622Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 # 📉 DAILY ACTIVE VIDEO-MAKERS — **213/day**, **-50%** week-over-week
 
@@ -31,7 +31,7 @@
 | 2026-08-16T12Z | 5 | 2 | 40% |
 | 2026-08-16T13Z | 3 | 1 | 33% |
 
-_12h total: 67/117 = 57.3%. Retires itself when the 6h rate goes under 10%._
+_12h total: 66/116 = 56.9%. Retires itself when the 6h rate goes under 10%._
 
 ---
 
@@ -76,7 +76,7 @@ _**11 row(s) exceeded the 3600s cap and were capped, not dropped.** Their raw `u
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=105 completed (24h)
+## 2b. Latency — n=104 completed (24h)
 
 p50 **98s** (law 90) · p90 901s · p99 **909s** (law 180) · max 1189s
 
@@ -84,11 +84,11 @@ p50 **98s** (law 90) · p90 901s · p99 **909s** (law 180) · max 1189s
 |---|---:|---:|---:|---:|---:|
 | `C envelope LOST + repair` | 3 | 3 | **901s** | 904s | 904s |
 | `B envelope LOST` | 25 | 25 | **754s** | 907s | 1189s |
-| `A envelope FULL` | 77 | 76 | **68s** | 175s | 547s |
+| `A envelope FULL` | 76 | 75 | **68s** | 175s | 547s |
 
 Worst/best class p50 spread: **13.2x** — the pooled number above hides it.
 
-**ENVELOPE LOSS: 26.7% of completions (28/105), 28 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 26.9% of completions (28/104), 28 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 
 **STANDING DECOMPOSITION — this class is BIMODAL, not one mechanism.**
 
@@ -108,24 +108,24 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | **QUEUE** (create→worker pickup) | 11.6s | 2366.5s | 5022.2s | 6008.0s |
 | **WORK** (pickup→complete) *envelope-FULL only* | 58.1s | 162.5s | 444.6s | 444.6s |
 
-Queue is **12%** of e2e at p50; **27.6%** of jobs wait >30s before any work begins.
+Queue is **12%** of e2e at p50; **27.9%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.7%** kept their envelope (1 of 76 lost it); of jobs queuing ≥30s, **93.1%** lost it. **97.4%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.7%** kept their envelope (1 of 75 lost it); of jobs queuing ≥30s, **93.1%** lost it. **97.4%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **12** of 105
+On the 900s wall [870,920] — count: **12** of 104
 
 ## 3. Route mix (24h)
 
-`minimal` 37 · `none` 28 · `minimal_speech_uncut` 20 · `moodreel` 18 · `hype` 2
+`minimal` 37 · `none` 28 · `minimal_speech_uncut` 20 · `moodreel` 17 · `hype` 2
 
-Premium share: **19.0%** (20/105).
+Premium share: **18.3%** (19/104).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=182 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=181 terminal)
 
-`callback` 77 · `NULL` 76 · `reconciler` 1 · `invariant_heal` 15 · `durable_poll` 10 · `repair` 3
+`callback` 76 · `NULL` 76 · `reconciler` 1 · `invariant_heal` 15 · `durable_poll` 10 · `repair` 3
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -133,7 +133,7 @@ fallback_timer share **0.0%** — PASS bar met (~0).
 
 n=8818 asks over 4115 judged jobs (all-time table).
 
-> ⚠️ **COVERAGE: these figures describe 73.3% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
+> ⚠️ **COVERAGE: these figures describe 73.1% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
 
 > **IS THE LOST CLASS SCOREABLE AT ALL? — NO, and the split is exact.** The **ASK** side survives: `vibe_input` is a top-level COLUMN, intact on **210/210** lost rows. The **VERDICT** side does not: `edit_recipe` moved INSIDE `result` jsonb on **2026-08-04**, the exact object the lost update clobbers — **0/210**. So for these jobs we can know what the user asked for and **never what was done about it**. Fulfillment needs both, so **the already-lost population is PERMANENTLY UNSCOREABLE** — no reprocessing recovers a verdict that was never persisted.
 
@@ -158,7 +158,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **951** → started **82** (8.6%) → paid **1** (1.2% of starters)
+wall_viewed **953** → started **82** (8.6%) → paid **1** (1.2% of starters)
 purchase_failed n=164, self-cancelled at the sheet **163** (99.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -271,12 +271,22 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 ### Built-not-wired check — production counters, not certs
 
 - Lumen scene vocabulary: ⚠️ **[BUILT-NOT-WIRED]** — cert green (First Light 10/10), but completions carrying scene telemetry = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
-- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 77 on real traffic.
+- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 76 on real traffic.
 - NamePlate (component D): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying a name-plate = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 - EndCard (component F): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying an end-card = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 
 > **WHY THEY ARE ZERO — answered exactly, by the worker's own liveness counter.** `brand_components_built` has fired **11** times (first 2026-08-16T10:44:29Z). **had_design_system: 11/11** — the palette works every time. **name-plate built 0/11, end-card built 0/11.** Reason on every one: **`no_copy_in_plan`**.
 
+
+> ✅ **ADJUDICATED ON RECORD (2026-08-16) — pre-registered branch 2 HIT.** Both build-lane runs, editorial gate OPEN: **REF-2 scene_count 0** (wall 216.8s), **REF-1 scene_count 0** (wall 108.0s). **Strip gates walked and EXONERATED** — the drop path logs `[two-pass] Dropping generated_scene:` and that line appears in NEITHER run, so nothing was stripped. That makes it **0 of 779, not 0 of 778**: the model was offered the beat and **declined** it.
+
+_This relocates the scene question from PLUMBING to the PLANNER. Every gate is open, nothing strips, and the capability is reachable — the model simply does not ask. A flag flip cannot fix a decline._
+
+> **AND IT RESOLVES STATE (2) vs (4) — for the build lane only.** `brand_specs {name_plate: false, end_card: false}` on BOTH runs, including REF-1 **where a name IS spoken**. `brand_copy` never appears in `plan_keys`, and it **survives `_LEAN_DROP_FIELDS` / `_apply_lean_schema` / `_apply_why_diet`** — so the field reached the model intact and was declined. In the build lane that is **state (2), not (4)**: same shape as `generated_scenes`. Production's 11/11 remains undetermined between (2) and (4), because it ran on a different worker build — **the `build_sha` remedy is still required to settle it there.**
+
+_Independently confirms my own finding: **NO ARTIFACT EXISTS.** `lumen_first_edit` calls no render path — these runs produced PLANS. There is no mp4 to score until the render leg lands, and the scorecard stays idle for that named reason._
+
+_Spend: the ledger states its $ figures are **ESTIMATES, not measurements** (container seconds + one editorial call each, zero image generations because zero scenes were emitted), with `modal billing report --csv` named as the only truth. Quoted here as estimates for that reason._
 
 > ⚠️ **FOURTH STATE — WORKER CODE PROVENANCE IS [UNKNOWN], and the counter cannot see it.** `brand_components_built` is emitted BY the worker, so it cannot report on code the worker does not contain. `reason: no_copy_in_plan` is therefore AMBIGUOUS between **(2) the deployed planner had the capability and did not use it** and **(4) the deployed worker lacks the capability entirely** — both emit the identical event. Today the local branch is **7 commits ahead of origin** and `brand_copy`, the field the model fills to request these, has **zero hits on `origin/zero-reject-routing`** — so state (4) is the likelier reading, and the counter cannot say so.
 
@@ -303,10 +313,13 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ### Deploy quiet-window — the GATE's own verdict
 
-**QUIET — safe to push**
+**BUSY — push BLOCKED**
 
 ```
-QUIET-WINDOW: OK — 0 in-flight user jobs (probe live: sees 5 recent row(s)). Modal task/container count is NOT the gate and must not be used as one.
+QUIET-WINDOW: BUSY — 2 in-flight user job(s). Deploying now orphans live user work.
+    processing  a925d5dc-db06-4b57-a008-da3e21bb50c5  2026-08-16T13:36:07.521863+00:00  stale=21s
+    processing  3d65b26e-098f-4f75-8edc-7e71c0dfc5aa  2026-08-16T13:36:20.113861+00:00  stale=20s
+  Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 
 **No wedged rows surfaced.**

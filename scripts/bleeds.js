@@ -1022,6 +1022,31 @@ function reportZero({ label, count, control }) {
       // vestigial-column class one level up: an instrument reporting on its own
       // absent feature reports the feature's absence as the subject's silence.
       say('');
+      say('> ✅ **ADJUDICATED ON RECORD (2026-08-16) — pre-registered branch 2 HIT.** Both build-lane runs, '
+        + 'editorial gate OPEN: **REF-2 scene_count 0** (wall 216.8s), **REF-1 scene_count 0** (wall 108.0s). '
+        + '**Strip gates walked and EXONERATED** — the drop path logs `[two-pass] Dropping generated_scene:` '
+        + 'and that line appears in NEITHER run, so nothing was stripped. That makes it **0 of 779, not 0 of '
+        + '778**: the model was offered the beat and **declined** it.');
+      say('');
+      say('_This relocates the scene question from PLUMBING to the PLANNER. Every gate is open, nothing strips, '
+        + 'and the capability is reachable — the model simply does not ask. A flag flip cannot fix a decline._');
+      say('');
+      say('> **AND IT RESOLVES STATE (2) vs (4) — for the build lane only.** `brand_specs {name_plate: false, '
+        + 'end_card: false}` on BOTH runs, including REF-1 **where a name IS spoken**. `brand_copy` never '
+        + 'appears in `plan_keys`, and it **survives `_LEAN_DROP_FIELDS` / `_apply_lean_schema` / '
+        + '`_apply_why_diet`** — so the field reached the model intact and was declined. In the build lane that '
+        + 'is **state (2), not (4)**: same shape as `generated_scenes`. Production\'s 11/11 remains '
+        + 'undetermined between (2) and (4), because it ran on a different worker build — **the `build_sha` '
+        + 'remedy is still required to settle it there.**');
+      say('');
+      say('_Independently confirms my own finding: **NO ARTIFACT EXISTS.** `lumen_first_edit` calls no render '
+        + 'path — these runs produced PLANS. There is no mp4 to score until the render leg lands, and the '
+        + 'scorecard stays idle for that named reason._');
+      say('');
+      say('_Spend: the ledger states its $ figures are **ESTIMATES, not measurements** (container seconds + one '
+        + 'editorial call each, zero image generations because zero scenes were emitted), with '
+        + '`modal billing report --csv` named as the only truth. Quoted here as estimates for that reason._');
+      say('');
       say('> ⚠️ **FOURTH STATE — WORKER CODE PROVENANCE IS [UNKNOWN], and the counter cannot see it.** '
         + '`brand_components_built` is emitted BY the worker, so it cannot report on code the worker does not '
         + 'contain. `reason: no_copy_in_plan` is therefore AMBIGUOUS between **(2) the deployed planner had the '
