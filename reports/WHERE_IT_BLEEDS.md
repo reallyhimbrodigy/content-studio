@@ -1,28 +1,30 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-16T10:56:52.797Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-16T11:02:51.885Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
-## 1. Failures — 69 users / 86 jobs (24h)
+## 1. Failures — 69 users / 87 jobs (24h)
 
 | class | users | jobs | share of failing users |
 |---|---:|---:|---:|
-| DISPATCH_UNREACHABLE | 35 | 50 | 50.7% |
+| DISPATCH_UNREACHABLE · reached-then-died | 36 | 51 | 52.2% |
 | PLATFORM_TIMEOUT | 20 | 21 | 29.0% |
 | UPLOAD_NEVER_STARTED | 14 | 14 | 20.3% |
 | JOB_STALLED | 1 | 1 | 1.4% |
 
-## 2. FAILED-JOB SECONDS — 57.7% of all job-lifetime seconds [7-DAY WINDOW]
+_`DISPATCH_UNREACHABLE` is SPLIT because it carried two mechanisms. **reached-then-died** has `worker_started_at` set and a `modal_call_id` (71/71 over 7d) — a worker started and then died, so "unreachable" is a misnomer: dispatch reached fine. **never-dispatched** is the original class and is EXTINCT — 8 jobs, all on 08-11, none since. Only reached-then-died is live, and it ran 3–6/day for five days before hitting **49 on 08-16**. Under one label the spike reads as "we cannot reach Modal"; split, it says workers start and then die._
 
-**311 failed jobs / 264 users** over **7 days**, p50 lifetime **601s**, **44/day**. Total **261,227s** of user time spent on jobs that never delivered.
+## 2. FAILED-JOB SECONDS — 57.8% of all job-lifetime seconds [7-DAY WINDOW]
+
+**312 failed jobs / 264 users** over **7 days**, p50 lifetime **601s**, **45/day**. Total **262,138s** of user time spent on jobs that never delivered.
 
 _**13 row(s) exceeded the 3600s cap and were capped, not dropped.** Their raw `updated_at` age reflects a late reap or backfill touching the row days after the fact — time no user waited. Uncapped, five such rows contributed 25% of the whole sum. A sum this shape is reporting sweep timing, not user experience._
 
 | quantity | jobs | seconds | share |
 |---|---:|---:|---:|
-| reached a worker (**Modal-billable**) | 106 | 96545 | 37.0% |
-| never reached one (**$0 Modal, pure user wait**) | 205 | 164683 | 63.0% |
+| reached a worker (**Modal-billable**) | 107 | 97455 | 37.2% |
+| never reached one (**$0 Modal, pure user wait**) | 205 | 164683 | 62.8% |
 
-**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **37.0%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
+**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **37.2%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
 
 > **UNS does NOT move onto the cost board — the conditional FAILS.** [MEASURED] Of 263 `UPLOAD_NEVER_STARTED` jobs, **0 have `worker_started_at` and 0 have `modal_call_id`.** The ~601s wait is entirely client/server-side; nothing was ever dispatched. UNS is the **largest user-time loss on the board** (263 jobs × ~601s) at **zero Modal spend**, so it stays a **DELIVERY/product lever, not a cost lever.** Filing it beside orchestration would aim spend work at a class that spends nothing.
 
@@ -63,9 +65,9 @@ On the 900s wall [870,920] — count: **2** of 91
 
 Premium share: **23.1%** (21/91).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=177 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=178 terminal)
 
-`callback` 73 · `NULL` 65 · `repair` 24 · `durable_poll` 15
+`callback` 73 · `NULL` 66 · `repair` 24 · `durable_poll` 15
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -98,7 +100,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **966** → started **83** (8.6%) → paid **1** (1.2% of starters)
+wall_viewed **965** → started **83** (8.6%) → paid **1** (1.2% of starters)
 purchase_failed n=162, self-cancelled at the sheet **161** (99.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -237,7 +239,7 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ```
 QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
-    processing  6c6ed346-2978-4781-81d0-a8543099e97b  2026-08-16T10:43:42.228619+00:00  stale=694s
+    processing  aa70d791-b057-43bc-814c-ea537715fd43  2026-08-16T11:02:48.517155+00:00  stale=3s
   Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 

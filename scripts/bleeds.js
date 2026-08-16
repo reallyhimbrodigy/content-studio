@@ -310,6 +310,25 @@ function reportZero({ label, count, control }) {
     if (!byCode.has(c)) byCode.set(c, []);
     byCode.get(c).push(j);
   });
+  // ── SPLIT DISPATCH_UNREACHABLE BY worker_started_at (2026-08-16) ──────────
+  // One label, two mechanisms, and only one of them is live:
+  //   reached-then-died  worker_started_at SET — a worker DID start and then
+  //                      died. "Unreachable" is a misnomer: dispatch reached
+  //                      fine. 71 jobs/54 users over 7d, and 71/71 carry a
+  //                      modal_call_id.
+  //   never-dispatched   no worker_started_at — 8 jobs, ALL on 08-11, zero since.
+  // Splitting matters because the daily shape is opposite: reached-then-died ran
+  // 3-6/day for five days and hit 49 on 08-16, while never-dispatched is extinct.
+  // Reported as one label, the spike reads as "we cannot reach Modal" when the
+  // measurement says workers start and then die.
+  byCode.forEach((rows_, c) => {
+    if (c !== 'DISPATCH_UNREACHABLE') return;
+    byCode.delete(c);
+    const reached = rows_.filter((j) => j.worker_started_at);
+    const never = rows_.filter((j) => !j.worker_started_at);
+    if (reached.length) byCode.set('DISPATCH_UNREACHABLE · reached-then-died', reached);
+    if (never.length) byCode.set('DISPATCH_UNREACHABLE · never-dispatched', never);
+  });
   const ranked = [...byCode.entries()].sort((a, b) => uniq(b[1], 'user_id') - uniq(a[1], 'user_id'));
   say(`## 1. Failures — ${uniq(fails, 'user_id')} users / ${fails.length} jobs (${HOURS}h)`);
   say('');
@@ -317,6 +336,15 @@ function reportZero({ label, count, control }) {
   say('|---|---:|---:|---:|');
   const failUsers = uniq(fails, 'user_id');
   ranked.forEach(([c, rows]) => say(`| ${c} | ${uniq(rows, 'user_id')} | ${rows.length} | ${pct(uniq(rows, 'user_id'), failUsers)} |`));
+  if ([...byCode.keys()].some((k) => k.includes('reached-then-died'))) {
+    say('');
+    say('_`DISPATCH_UNREACHABLE` is SPLIT because it carried two mechanisms. **reached-then-died** has '
+      + '`worker_started_at` set and a `modal_call_id` (71/71 over 7d) — a worker started and then died, so '
+      + '"unreachable" is a misnomer: dispatch reached fine. **never-dispatched** is the original class and is '
+      + 'EXTINCT — 8 jobs, all on 08-11, none since. Only reached-then-died is live, and it ran 3–6/day for '
+      + 'five days before hitting **49 on 08-16**. Under one label the spike reads as "we cannot reach Modal"; '
+      + 'split, it says workers start and then die._');
+  }
   say('');
 
   // ── latency + routes ──────────────────────────────────────────────────────
