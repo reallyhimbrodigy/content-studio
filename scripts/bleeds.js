@@ -1013,7 +1013,33 @@ function reportZero({ label, count, control }) {
         + `works every time. **name-plate built 0/${brandEv.length}, end-card built 0/${brandEv.length}.** `
         + `Reason on every one: **\`${Object.keys(brandReasons)[0]}\`**.`);
       say('');
-      say('_So the chain is: renderer ✅ → spec builder ✅ → design system ✅ → **the plan carries no copy** ❌. '
+      // ── WORKER CODE PROVENANCE — the FOURTH state (2026-08-16) ──────────
+      // The counter is emitted BY the worker, so it cannot report on code the
+      // worker does not contain. `reason: no_copy_in_plan` is AMBIGUOUS between:
+      //   (2) the deployed planner HAD the capability and did not use it
+      //   (4) the deployed worker LACKS the capability entirely
+      // Both emit the identical event. This is the same shape as the
+      // vestigial-column class one level up: an instrument reporting on its own
+      // absent feature reports the feature's absence as the subject's silence.
+      say('');
+      say('> ⚠️ **FOURTH STATE — WORKER CODE PROVENANCE IS [UNKNOWN], and the counter cannot see it.** '
+        + '`brand_components_built` is emitted BY the worker, so it cannot report on code the worker does not '
+        + 'contain. `reason: no_copy_in_plan` is therefore AMBIGUOUS between **(2) the deployed planner had the '
+        + 'capability and did not use it** and **(4) the deployed worker lacks the capability entirely** — both '
+        + 'emit the identical event. Today the local branch is **7 commits ahead of origin** and `brand_copy`, '
+        + 'the field the model fills to request these, has **zero hits on `origin/zero-reject-routing`** — so '
+        + 'state (4) is the likelier reading, and the counter cannot say so.');
+      say('');
+      say('_`PROMPTLY_BUILD_SHA` exists in the worker but rides only an S3 plan-capture path — it is not on any '
+        + 'DB-readable event, and `modal app history` is not reachable from this lane. **So "is this component '
+        + 'live?" is currently unanswerable by any instrument I own**, which is exactly the state a register of '
+        + 'built-not-wired entries must not silently collapse into "not wired".'
+        + ' **ASK TO THE BUILDER — one field, on an event you already emit:** add `build_sha` to '
+        + '`brand_components_built` props. That single addition splits state (2) from state (4) permanently and '
+        + 'makes every future zero on this register self-dating._');
+      say('');
+      say('_So the chain is: renderer ✅ → spec builder ✅ → design system ✅ → **the plan carries no copy** ❌ '
+        + '— with the caveat above that the last link may be the deployed code rather than the plan. '
         + 'The components are not broken and the palette is not failing — **no plan has ever produced the name '
         + 'or the end-card line**, so the spec builder has nothing to build from. That is one hop UPSTREAM of '
         + 'where I placed it (I said "schema-absent, nothing can ask"); the counter says the ask never arrives '

@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-16T13:12:09.009Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-16T13:33:16.041Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 # 📉 DAILY ACTIVE VIDEO-MAKERS — **213/day**, **-50%** week-over-week
 
@@ -12,13 +12,12 @@
 
 ---
 
-# 🔴 FAILURE RATE — **56.1%** of jobs failed in the last 6h (37/66)
+# 🔴 FAILURE RATE — **55.9%** of jobs failed in the last 6h (33/59)
 
 **This is pinned to the top of the board until it is under 10%.** Every other number below is computed over the jobs that survived this — honor, latency and coverage are all statements about the **44%** that did not fail, and none of them can be read as a statement about the product while this number stands.
 
 | hour | jobs | failed | rate |
 |---|---:|---:|---:|
-| 2026-08-16T01Z | 3 | 3 | **100%** |
 | 2026-08-16T02Z | 8 | 5 | **63%** |
 | 2026-08-16T03Z | 7 | 3 | 43% |
 | 2026-08-16T04Z | 14 | 10 | **71%** |
@@ -30,20 +29,21 @@
 | 2026-08-16T10Z | 8 | 6 | **75%** |
 | 2026-08-16T11Z | 15 | 9 | **60%** |
 | 2026-08-16T12Z | 5 | 2 | 40% |
+| 2026-08-16T13Z | 3 | 1 | 33% |
 
-_12h total: 66/114 = 57.9%. Retires itself when the 6h rate goes under 10%._
+_12h total: 67/117 = 57.3%. Retires itself when the 6h rate goes under 10%._
 
 ---
 
-## 1. Failures — 57 users / 76 jobs (24h)
+## 1. Failures — 58 users / 77 jobs (24h)
 
 | class | users | jobs | share of failing users |
 |---|---:|---:|---:|
-| DISPATCH_UNREACHABLE · reached-then-died | 41 | 57 | 71.9% |
-| UPLOAD_NEVER_STARTED | 14 | 14 | 24.6% |
-| JOB_STALLED | 3 | 3 | 5.3% |
-| PLATFORM_TIMEOUT | 1 | 1 | 1.8% |
-| WORKER_DIED | 1 | 1 | 1.8% |
+| DISPATCH_UNREACHABLE · reached-then-died | 41 | 57 | 70.7% |
+| UPLOAD_NEVER_STARTED | 15 | 15 | 25.9% |
+| JOB_STALLED | 3 | 3 | 5.2% |
+| PLATFORM_TIMEOUT | 1 | 1 | 1.7% |
+| WORKER_DIED | 1 | 1 | 1.7% |
 
 **Inside reached-then-died — the stage cut:**
 
@@ -59,43 +59,43 @@ _But the two classes are real in ORIGIN: before 08-16 this class was mostly `ren
 
 _`DISPATCH_UNREACHABLE` is SPLIT because it carried two mechanisms. **reached-then-died** has `worker_started_at` set and a `modal_call_id` (71/71 over 7d) — a worker started and then died, so "unreachable" is a misnomer: dispatch reached fine. **never-dispatched** is the original class and is EXTINCT — 8 jobs, all on 08-11, none since. Only reached-then-died is live, and it ran 3–6/day for five days before hitting **49 on 08-16**. Under one label the spike reads as "we cannot reach Modal"; split, it says workers start and then die._
 
-## 2. FAILED-JOB SECONDS — 52.5% of all job-lifetime seconds [7-DAY WINDOW]
+## 2. FAILED-JOB SECONDS — 52.3% of all job-lifetime seconds [7-DAY WINDOW]
 
-**285 failed jobs / 243 users** over **7 days**, p50 lifetime **601s**, **41/day**. Total **240,951s** of user time spent on jobs that never delivered.
+**283 failed jobs / 242 users** over **7 days**, p50 lifetime **601s**, **40/day**. Total **239,750s** of user time spent on jobs that never delivered.
 
 _**11 row(s) exceeded the 3600s cap and were capped, not dropped.** Their raw `updated_at` age reflects a late reap or backfill touching the row days after the fact — time no user waited. Uncapped, five such rows contributed 25% of the whole sum. A sum this shape is reporting sweep timing, not user experience._
 
 | quantity | jobs | seconds | share |
 |---|---:|---:|---:|
-| reached a worker (**Modal-billable**) | 83 | 84069 | 34.9% |
-| never reached one (**$0 Modal, pure user wait**) | 202 | 156882 | 65.1% |
+| reached a worker (**Modal-billable**) | 83 | 84069 | 35.1% |
+| never reached one (**$0 Modal, pure user wait**) | 200 | 155681 | 64.9% |
 
-**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **34.9%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
+**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **35.1%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
 
 > **UNS does NOT move onto the cost board — the conditional FAILS.** [MEASURED] Of 263 `UPLOAD_NEVER_STARTED` jobs, **0 have `worker_started_at` and 0 have `modal_call_id`.** The ~601s wait is entirely client/server-side; nothing was ever dispatched. UNS is the **largest user-time loss on the board** (263 jobs × ~601s) at **zero Modal spend**, so it stays a **DELIVERY/product lever, not a cost lever.** Filing it beside orchestration would aim spend work at a class that spends nothing.
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=106 completed (24h)
+## 2b. Latency — n=105 completed (24h)
 
-p50 **98s** (law 90) · p90 904s · p99 **909s** (law 180) · max 1189s
+p50 **98s** (law 90) · p90 901s · p99 **909s** (law 180) · max 1189s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
 | `C envelope LOST + repair` | 3 | 3 | **901s** | 904s | 904s |
-| `B envelope LOST` | 27 | 27 | **754s** | 907s | 1189s |
-| `A envelope FULL` | 76 | 75 | **68s** | 175s | 547s |
+| `B envelope LOST` | 25 | 25 | **754s** | 907s | 1189s |
+| `A envelope FULL` | 77 | 76 | **68s** | 175s | 547s |
 
 Worst/best class p50 spread: **13.2x** — the pooled number above hides it.
 
-**ENVELOPE LOSS: 28.3% of completions (30/106), 30 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 26.7% of completions (28/105), 28 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 
 **STANDING DECOMPOSITION — this class is BIMODAL, not one mechanism.**
 
 | cluster | n | share of affected | settlement path | queue p50 | envelope-absent |
 |---|---:|---:|---|---:|---:|
-| **180–240s** | 3 | 10.0% | `durable_poll` 3/3 | 110s | 3/3 |
-| **870–930s** | 13 | 43.3% | `invariant_heal` 11/13 | 2367s | 13/13 |
+| **180–240s** | 2 | 7.1% | `durable_poll` 2/2 | 112s | 2/2 |
+| **870–930s** | 12 | 42.9% | `invariant_heal` 10/12 | 2738s | 12/12 |
 
 Both clusters are ~100% envelope-absent, so **envelope loss is COMMON to both and is therefore NOT the discriminator** — they lose the envelope alike but settle by different paths at different times. The pre-registered hang test (`reports/HANG_TEST_RESULT.md`) REFUTED the single-mechanism reading: the ~900s band held only 13.7% of affected jobs while the largest mode sat at 180–240s. **Do not file one lever against this class until the two clusters are separated.**
 
@@ -108,24 +108,24 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | **QUEUE** (create→worker pickup) | 11.6s | 2366.5s | 5022.2s | 6008.0s |
 | **WORK** (pickup→complete) *envelope-FULL only* | 58.1s | 162.5s | 444.6s | 444.6s |
 
-Queue is **12%** of e2e at p50; **29.2%** of jobs wait >30s before any work begins.
+Queue is **12%** of e2e at p50; **27.6%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.7%** kept their envelope (1 of 75 lost it); of jobs queuing ≥30s, **93.5%** lost it. **97.4%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **98.7%** kept their envelope (1 of 76 lost it); of jobs queuing ≥30s, **93.1%** lost it. **97.4%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **13** of 106
+On the 900s wall [870,920] — count: **12** of 105
 
 ## 3. Route mix (24h)
 
-`minimal` 37 · `none` 30 · `minimal_speech_uncut` 20 · `moodreel` 17 · `hype` 2
+`minimal` 37 · `none` 28 · `minimal_speech_uncut` 20 · `moodreel` 18 · `hype` 2
 
-Premium share: **17.9%** (19/106).
+Premium share: **19.0%** (20/105).
 
 ## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=182 terminal)
 
-`callback` 76 · `NULL` 75 · `reconciler` 1 · `invariant_heal` 16 · `durable_poll` 11 · `repair` 3
+`callback` 77 · `NULL` 76 · `reconciler` 1 · `invariant_heal` 15 · `durable_poll` 10 · `repair` 3
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -133,7 +133,7 @@ fallback_timer share **0.0%** — PASS bar met (~0).
 
 n=8818 asks over 4115 judged jobs (all-time table).
 
-> ⚠️ **COVERAGE: these figures describe 71.7% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
+> ⚠️ **COVERAGE: these figures describe 73.3% of completions.** **0% of envelope-absent completions have ever been scored** — not a sampling choice, a structural one: the judge hard-filters on `edit_recipe`, and **210 of 210** envelope-lost completions carry none. Honor and dropped-silently are statements about the **healthy ~61%** only, and must never be quoted as statements about the product.
 
 > **IS THE LOST CLASS SCOREABLE AT ALL? — NO, and the split is exact.** The **ASK** side survives: `vibe_input` is a top-level COLUMN, intact on **210/210** lost rows. The **VERDICT** side does not: `edit_recipe` moved INSIDE `result` jsonb on **2026-08-04**, the exact object the lost update clobbers — **0/210**. So for these jobs we can know what the user asked for and **never what was done about it**. Fulfillment needs both, so **the already-lost population is PERMANENTLY UNSCOREABLE** — no reprocessing recovers a verdict that was never persisted.
 
@@ -158,8 +158,8 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **965** → started **84** (8.7%) → paid **1** (1.2% of starters)
-purchase_failed n=167, self-cancelled at the sheet **166** (99.4%) — the leak is the OFFER, not the funnel.
+wall_viewed **951** → started **82** (8.6%) → paid **1** (1.2% of starters)
+purchase_failed n=164, self-cancelled at the sheet **163** (99.4%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
 
@@ -271,13 +271,18 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 ### Built-not-wired check — production counters, not certs
 
 - Lumen scene vocabulary: ⚠️ **[BUILT-NOT-WIRED]** — cert green (First Light 10/10), but completions carrying scene telemetry = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
-- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 76 on real traffic.
+- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 77 on real traffic.
 - NamePlate (component D): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying a name-plate = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 - EndCard (component F): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying an end-card = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 
 > **WHY THEY ARE ZERO — answered exactly, by the worker's own liveness counter.** `brand_components_built` has fired **11** times (first 2026-08-16T10:44:29Z). **had_design_system: 11/11** — the palette works every time. **name-plate built 0/11, end-card built 0/11.** Reason on every one: **`no_copy_in_plan`**.
 
-_So the chain is: renderer ✅ → spec builder ✅ → design system ✅ → **the plan carries no copy** ❌. The components are not broken and the palette is not failing — **no plan has ever produced the name or the end-card line**, so the spec builder has nothing to build from. That is one hop UPSTREAM of where I placed it (I said "schema-absent, nothing can ask"); the counter says the ask never arrives because the plan never writes the copy. Credit to the builder's instrument — it was built so that "0 name-plates" could not mean three different things, and it earned that on its first read._
+
+> ⚠️ **FOURTH STATE — WORKER CODE PROVENANCE IS [UNKNOWN], and the counter cannot see it.** `brand_components_built` is emitted BY the worker, so it cannot report on code the worker does not contain. `reason: no_copy_in_plan` is therefore AMBIGUOUS between **(2) the deployed planner had the capability and did not use it** and **(4) the deployed worker lacks the capability entirely** — both emit the identical event. Today the local branch is **7 commits ahead of origin** and `brand_copy`, the field the model fills to request these, has **zero hits on `origin/zero-reject-routing`** — so state (4) is the likelier reading, and the counter cannot say so.
+
+_`PROMPTLY_BUILD_SHA` exists in the worker but rides only an S3 plan-capture path — it is not on any DB-readable event, and `modal app history` is not reachable from this lane. **So "is this component live?" is currently unanswerable by any instrument I own**, which is exactly the state a register of built-not-wired entries must not silently collapse into "not wired". **ASK TO THE BUILDER — one field, on an event you already emit:** add `build_sha` to `brand_components_built` props. That single addition splits state (2) from state (4) permanently and makes every future zero on this register self-dating._
+
+_So the chain is: renderer ✅ → spec builder ✅ → design system ✅ → **the plan carries no copy** ❌ — with the caveat above that the last link may be the deployed code rather than the plan. The components are not broken and the palette is not failing — **no plan has ever produced the name or the end-card line**, so the spec builder has nothing to build from. That is one hop UPSTREAM of where I placed it (I said "schema-absent, nothing can ask"); the counter says the ask never arrives because the plan never writes the copy. Credit to the builder's instrument — it was built so that "0 name-plates" could not mean three different things, and it earned that on its first read._
 
 > **The scorecard is ARMED and cannot fire — for the reason above, not for want of traffic.** It scores canvas + palette against both references the moment a plan carries the copy; no further work is needed on my side.
 
@@ -298,12 +303,10 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ### Deploy quiet-window — the GATE's own verdict
 
-**BUSY — push BLOCKED**
+**QUIET — safe to push**
 
 ```
-QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
-    queued  9d1bb42e-90c5-4ea7-85cc-e9c5402ba14e  2026-08-16T13:09:35.681065+00:00  stale=156s
-  Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
+QUIET-WINDOW: OK — 0 in-flight user jobs (probe live: sees 5 recent row(s)). Modal task/container count is NOT the gate and must not be used as one.
 ```
 
 **No wedged rows surfaced.**
