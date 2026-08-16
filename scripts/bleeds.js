@@ -982,6 +982,56 @@ function reportZero({ label, count, control }) {
     + '— built on the retired $0.481 bottom-up premium figure — is REMOVED rather than left to contradict it: '
     + 'two break-even tables on one board is how a stale number gets quoted._');
   say('');
+  // ── OPTIONAL-COMPONENT DECLINE RATE — one term for one pattern ────────────
+  // Owner directive 2026-08-16: measure the directive pattern AS a pattern
+  // rather than four separate times. Per family: of plans where the component's
+  // key appears at all, how often does it carry anything?
+  //
+  // TWO HONEST LIMITS, stated because they bound what this number can claim:
+  //  · KEY-PRESENCE IS NOT "OFFERED". A model response contains the keys it
+  //    filled; a declined optional field may be absent rather than present-and-
+  //    empty. So the denominator is "plans where the key appears", not "plans
+  //    where the field was offered" — a floor on decline, not a measurement of it.
+  //  · NOT POOLED. A single blended number would hide the counter-example below,
+  //    which is the most informative row in the table.
+  const planOf = (j) => {
+    const er = j.edit_recipe || ((j.result || {}).edit_recipe) || {};
+    if (typeof er !== 'object' || er === null) return null;
+    const p = er.plan;
+    return (p && typeof p === 'object') ? p : er;
+  };
+  const plans = done.map(planOf).filter(Boolean);
+  if (plans.length >= 20) {
+    say('### Optional-component decline rate');
+    say('');
+    say('| component | plans w/ key | carries content | **decline** |');
+    say('|---|---:|---:|---:|');
+    [['motion_graphics', 'motion_graphics'], ['generated scenes', 'generated_scenes'],
+     ['brand copy', 'brand_copy'], ['transitions', 'transitions'], ['outro', 'outro']].forEach((row) => {
+      const [label, key] = row;
+      const present = plans.filter((p) => key in p);
+      const used = present.filter((p) => {
+        const v = p[key];
+        return !(v === null || v === undefined || v === '' || v === false
+          || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length));
+      });
+      say(present.length
+        ? `| ${label} | ${present.length} | ${used.length} | **${(100 * (1 - used.length / present.length)).toFixed(1)}%** |`
+        : `| ${label} | **0 — key never appears** | — | _absent, not declined_ |`);
+    });
+    say('');
+    say('**The pattern is NARROWER than "the model declines optional components", and `outro` is why.** '
+      + 'Outro carries content on **every** plan — 0% decline — while `motion_graphics` and `generated_scenes` '
+      + 'are declined at ~100%. A pooled number would have averaged those into one figure and hidden the '
+      + 'counter-example that constrains the diagnosis: the model is not indifferent to optional components in '
+      + 'general, it declines *specific* ones. Whatever explains scenes and MG must also explain why outro is '
+      + 'always taken.');
+    say('');
+    say('_`brand_copy` never appears as a key in any production plan — that is **absent, not declined**, and it '
+      + 'is the production-side reading of state (4). The build-lane runs showed the field reaching the model '
+      + 'and being declined on the NEW code; production plans do not carry it at all._');
+    say('');
+  }
   say('### Built-not-wired check — production counters, not certs');
   say('');
   const scenesLive = done.filter((j) => Object.keys((j.result || {})).some((k) => /scene|canvas|lumen/i.test(k))).length;
