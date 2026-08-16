@@ -408,6 +408,17 @@ struct EditorView: View {
         }
     }
 
+    /// Persist AND immediately flush to the server, bypassing the 600ms debounce.
+    /// Used at render-dispatch success so the jobId reaches the chat the MOMENT the
+    /// render starts — not 600ms later, and not lost if the app suspends before the
+    /// debounce fires. This is the belt-and-suspenders half of the stranded-video fix
+    /// (the other half is the flush-on-background in PromptlyApp): a durable video_job
+    /// must never end up in no chat.
+    private func persistMessagesAndFlush() {
+        persistMessages()
+        Task { @MainActor in await chatStore.flushNow() }
+    }
+
     /// Lazily create a chat on first send. Returns the chat id we're now
     /// targeting (the existing active chat, or a freshly-created one).
     /// Returns nil only on auth/network failure during creation.
@@ -1981,7 +1992,7 @@ struct EditorView: View {
                 messages[i].jobId = jobId
                 startSSE(jobId: jobId, messageId: messageId)
                 scheduleStuckDetector(messageId: messageId, jobId: jobId)
-                persistMessages()
+                persistMessagesAndFlush()   // land the jobId now, not in 600ms
                 print("[retry] re-dispatched job=\(jobId)")
             } catch let APIError.structuredFailure(_, userMessage, retryable, _, _) {
                 // Re-failure — same cached values stay attached so the
@@ -2384,7 +2395,7 @@ struct EditorView: View {
                     appState.presentPaywall(.dailyChats(used: lim, limit: lim))
                 }
             }
-            persistMessages()
+            persistMessagesAndFlush()   // render_dispatched lands a jobId here — land it now
             if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = false }
             isChatStreaming = false
         }
@@ -2729,7 +2740,7 @@ struct EditorView: View {
                                 messages[i].cachedProxyUrl = video.proxyUploadedUrl
                                 messages[i].cachedVibe = vibe
                                 startSSE(jobId: jobId, messageId: msgId)
-                                persistMessages()
+                                persistMessagesAndFlush()   // land the jobId now, not in 600ms
                                 // (Build 222: the notification soft-prompt moved from
                                 // HERE — dispatch — to first COMPLETION, so we only ask
                                 // once the user has SEEN the payoff. The old timing asked

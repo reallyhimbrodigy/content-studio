@@ -83,10 +83,6 @@ final class ChatStore: ObservableObject {
             // active user's recent history; serialized inside VideoCache
             // so it doesn't burst the network.
             prefetchUncachedVideos(limit: 50)
-            // Library-merge migration: recover any completed video that predates the
-            // chat model into a reconstructed chat, so deleting the Library never
-            // strands a user's video. Flag-gated (once per user), fire-and-forget.
-            Task { await self.migrateStrandedLibraryVideos() }
         } catch {
             self.loadError = error.localizedDescription
             isLoading = false
@@ -94,66 +90,12 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// One-time-per-user backfill for the Library deletion. The Library listed
-    /// `video_jobs` directly; some completed videos (measured ~10%, mostly pre-chat)
-    /// have no chat referencing their jobId and would vanish when the Library is gone.
-    /// Here we fetch the user's edits and reconstruct a chat (request + finished
-    /// video) for each one not already in a chat, so every Library video survives in
-    /// a conversation. Idempotent: a re-run re-checks against the current chats, so a
-    /// partial failure just retries the remainder next launch (never a duplicate).
-    func migrateStrandedLibraryVideos() async {
-        guard let userId = AuthService.shared.currentUser?.id else { return }
-        let flagKey = "promptly.libraryMerge.migrated.\(userId)"
-        if UserDefaults.standard.bool(forKey: flagKey) { return }
-
-        let inChats = Set(chats.flatMap { $0.messages.compactMap { $0.jobId } })
-        let edits: [VideoJob]
-        do { edits = try await APIService.shared.getUserEdits() }
-        catch { return }   // network — leave the flag unset so the next launch retries
-
-        let stranded = edits.filter { job in
-            job.status == "completed"
-                && (job.rendered_video_url?.isEmpty == false)
-                && !inChats.contains(job.id)
-        }
-        if stranded.isEmpty { UserDefaults.standard.set(true, forKey: flagKey); return }
-        print("[libraryMerge] reconstructing \(stranded.count) stranded video(s) into chats")
-
-        var failures = 0
-        for job in stranded {
-            let vibe = (job.vibe_input?.isEmpty == false) ? job.vibe_input! : "Your video"
-            // camelCase keys — the exact JSONB shape SerializedMessage persists.
-            let userMsg: [String: Any] = [
-                "id": UUID().uuidString, "role": "user", "content": vibe,
-            ]
-            var assistantMsg: [String: Any] = [
-                "id": UUID().uuidString, "role": "assistant", "content": "",
-                "jobId": job.id, "jobStatus": "completed", "originalVibe": vibe,
-            ]
-            if let v = job.rendered_video_url { assistantMsg["renderedVideoUrl"] = v }
-            if let h = job.hls_manifest_url { assistantMsg["hlsManifestUrl"] = h }
-            if let t = job.thumbnail_url { assistantMsg["thumbnailUrl"] = t }
-            do {
-                try await ChatService.shared.createChatWithMessages(
-                    title: String(vibe.prefix(60)),
-                    messages: [userMsg, assistantMsg],
-                    createdAt: job.created_at
-                )
-            } catch {
-                failures += 1
-                print("[libraryMerge] reconstruct failed for job \(job.id): \(error.localizedDescription)")
-            }
-        }
-
-        // Re-fetch directly (NOT loadChats — avoids re-triggering this migration) so
-        // the reconstructed chats appear immediately.
-        if let refreshed = try? await ChatService.shared.listChats() {
-            self.chats = refreshed
-        }
-        // Only mark done when every reconstruction succeeded; otherwise retry the
-        // remainder next launch (already-created chats are skipped via `inChats`).
-        if failures == 0 { UserDefaults.standard.set(true, forKey: flagKey) }
-    }
+    // The one-time client backfill for stranded (chat-less) videos was REMOVED per
+    // the owner's ruling: it's a server-side migration (owner-run, verified to zero
+    // before ship) — a fire-and-forget client backfill on the INVISIBLE-video cohort
+    // is a silent failure by construction (no way to see it didn't run). See the
+    // server migration SQL (IOS_LIBRARY_MERGE_MIGRATION.sql) + the live-leak fix
+    // (flush-on-background + persistMessagesAndFlush) that stops NEW stranding.
 
     private func prefetchUncachedVideos(limit: Int) {
         struct Candidate { let jobId: String; let url: String }
@@ -245,6 +187,11 @@ final class ChatStore: ObservableObject {
         guard let mIdx = msgs.firstIndex(where: { $0.id == messageId }) else { return }
         transform(&msgs[mIdx])
         scheduleSave(chatId: chatId, messages: msgs)
+        // Live-leak fix: this path lands a jobId on an OFF-SCREEN bubble (the user
+        // switched chats mid-upload). Flush immediately so that jobId reaches the
+        // server even if the user never returns to that chat — the debounce alone
+        // would drop it on suspend and strand the durable video_job in no chat.
+        Task { [weak self] in await self?.flushNow() }
     }
 
     private func flushPending() async {
