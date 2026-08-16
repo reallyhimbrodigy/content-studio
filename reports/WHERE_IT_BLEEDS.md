@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-16T11:20:03.097Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-16T11:22:39.404Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 ## 1. Failures — 68 users / 86 jobs (24h)
 
@@ -251,8 +251,8 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ```
 QUIET-WINDOW: BUSY — 2 in-flight user job(s). Deploying now orphans live user work.
-    processing  ecd80bb1-3594-4827-acef-4cf4f6d522b3  2026-08-16T11:09:05.319879+00:00  stale=577s
-    processing  5d28e41c-f4ea-48c4-a321-8f7ffa2179c7  2026-08-16T11:18:40.462143+00:00  stale=2s
+    processing  ecd80bb1-3594-4827-acef-4cf4f6d522b3  2026-08-16T11:09:05.319879+00:00  stale=733s
+    processing  5d28e41c-f4ea-48c4-a321-8f7ffa2179c7  2026-08-16T11:18:40.462143+00:00  stale=114s
   Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 
@@ -276,4 +276,8 @@ _Why the count still belongs on the board: the gate deliberately surfaces wedged
 
 _Rule 6: harnesses count exactly like user jobs and land in the same ledger._
 _**Why the $0.37/day agent line stays on the board even at 1.2%:** it was **17% of the bill eleven days ago**. A line that was material once can be material again, and a figure only removed from the board when it looks small is a figure nobody is watching when it grows. Standing lines catch returns; ad-hoc checks do not. ($11.10/mo ≈ 0.35 subscriber-months.)_
+
+### Instrument self-check
+
+✅ **FETCH/READ PARITY: clean** — every field read was fetched.
 

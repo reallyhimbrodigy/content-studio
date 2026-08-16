@@ -28,17 +28,65 @@ const HOURS = hIx >= 0 ? Number(process.argv[hIx + 1]) : 24;
 const SINCE = new Date(Date.now() - HOURS * 3600e3).toISOString();
 const SINCE_7D = new Date(Date.now() - 7 * 86400e3).toISOString();
 
+// ── FETCH/READ PARITY — MECHANIZED (2026-08-16) ─────────────────────────────
+// A field you never fetched is not a field that is empty. PostgREST returns ONLY
+// the selected columns, so reading an unselected key yields `undefined` in
+// silence — which reads on the board as "no data" rather than "wrong query".
+// This has now bitten me THREE times: completion_delivery scored every row NULL;
+// current_step/progress rendered the stage cut as `-` for all 51 rows; and
+// updated_at was read for lifetimes it was never fetched for.
+//
+// Remembering to keep SELECT and read in sync is exactly the kind of discipline
+// that fails on the fourth instance, so it is now a trap rather than a habit:
+// every row is wrapped in a Proxy that records any key READ but not FETCHED, and
+// the board prints the violations. It cannot be silently wrong again.
+const _PARITY = new Map();   // "select-signature" -> Set(keys read but not fetched)
+const _JS_INTERNAL = new Set(['then', 'toJSON', 'constructor', 'inspect', 'valueOf',
+  'toString', 'length', 'nodeType', 'hasOwnProperty', 'Symbol(nodejs.util.inspect.custom)']);
+
+function _selectedKeys(q) {
+  const m = /select=([^&]+)/.exec(q);
+  if (!m) return null;
+  return new Set(decodeURIComponent(m[1]).split(',').map((f) => {
+    const alias = f.includes(':') ? f.split(':')[0] : f;   // alias:expr -> alias
+    return alias.replace(/\(.*$/, '').trim();
+  }));
+}
+
+function _guard(row, sel, tag) {
+  if (!sel) return row;
+  return new Proxy(row, {
+    get(target, prop) {
+      if (typeof prop === 'string' && !_JS_INTERNAL.has(prop) && !(prop in target) && !sel.has(prop)) {
+        if (!_PARITY.has(tag)) _PARITY.set(tag, new Set());
+        _PARITY.get(tag).add(prop);
+      }
+      return target[prop];
+    },
+  });
+}
+
 async function pageAll(q) {
   const out = [];
+  const sel = _selectedKeys(q);
+  const tag = q.split('?')[0] + ' [' + (sel ? [...sel].slice(0, 4).join(',') + '…' : 'no-select') + ']';
   for (let off = 0; ; off += 1000) {
     const r = await fetch(`${URL_}/rest/v1/${q}&limit=1000&offset=${off}`, { headers: H });
     if (!r.ok) throw new Error(`${q.slice(0, 40)}: ${r.status} ${(await r.text()).slice(0, 120)}`);
     const b = await r.json();
     if (!Array.isArray(b) || !b.length) break;
-    out.push(...b);
+    out.push(...b.map((row) => _guard(row, sel, tag)));
     if (b.length < 1000) break;
   }
   return out;
+}
+
+function parityReport() {
+  const bad = [..._PARITY.entries()].filter(([, s]) => s.size);
+  if (!bad.length) return '✅ **FETCH/READ PARITY: clean** — every field read was fetched.';
+  return '⚠️ **[FETCH/READ PARITY VIOLATION]** — these fields were READ but never SELECTed, so they '
+    + 'returned `undefined` and any number derived from them is wrong:\n\n'
+    + bad.map(([tag, s]) => `- \`${tag}\` → read-but-not-fetched: **${[...s].join(', ')}**`).join('\n');
 }
 const pct = (a, b) => `${(100 * a / Math.max(1, b)).toFixed(1)}%`;
 // Envelope presence — the primary discriminator. Module scope because several
@@ -295,7 +343,7 @@ function reportZero({ label, count, control }) {
   // fetched is not a field that is empty.
   let jobs;
   try {
-    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,updated_at,completed_at,worker_started_at,current_step,progress,result,completion_delivery&created_at=gte.${SINCE}`);
+    jobs = await pageAll(`video_jobs?select=id,user_id,status,created_at,updated_at,completed_at,worker_started_at,current_step,progress,result,edit_recipe,completion_delivery&created_at=gte.${SINCE}`);
   } catch (e) {
     if (!/42703|PGRST204/.test(e.message)) throw e;
     console.error('[bleeds] completion_delivery column absent — delivery section will read (none yet)');
@@ -994,6 +1042,11 @@ function reportZero({ label, count, control }) {
     + 'ago**. A line that was material once can be material again, and a figure only removed from the board when '
     + 'it looks small is a figure nobody is watching when it grows. Standing lines catch returns; ad-hoc checks '
     + 'do not. ($11.10/mo ≈ 0.35 subscriber-months.)_');
+  say('');
+
+  say('### Instrument self-check');
+  say('');
+  say(parityReport());
   say('');
 
   const out = path.join(__dirname, '..', 'reports', 'WHERE_IT_BLEEDS.md');
