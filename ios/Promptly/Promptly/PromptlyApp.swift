@@ -138,10 +138,13 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         let type = userInfo["type"] as? String
         Task { @MainActor in
-            if type == "render-complete" || type == "render-failed" {
-                // Sidebar-restructure: Library is a sheet now. Open it — the just-
-                // finished video is the newest entry at the top of the grid.
-                AppState.shared.showLibrary = true
+            // The Library was DELETED — a finished render lives permanently in its own
+            // chat, reachable from the thumbnail-first chat list. Tapping the
+            // notification just opens the app; the "Your video is ready" banner
+            // (ReadyStateStore, refreshed on foreground) surfaces the just-finished
+            // video. Kick a refresh so the banner is ready immediately.
+            if type == "render-complete" {
+                await ReadyStateStore.shared.refresh()
             }
             completionHandler()
         }

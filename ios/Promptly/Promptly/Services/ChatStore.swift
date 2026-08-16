@@ -83,11 +83,76 @@ final class ChatStore: ObservableObject {
             // active user's recent history; serialized inside VideoCache
             // so it doesn't burst the network.
             prefetchUncachedVideos(limit: 50)
+            // Library-merge migration: recover any completed video that predates the
+            // chat model into a reconstructed chat, so deleting the Library never
+            // strands a user's video. Flag-gated (once per user), fire-and-forget.
+            Task { await self.migrateStrandedLibraryVideos() }
         } catch {
             self.loadError = error.localizedDescription
             isLoading = false
             print("[chats] loadChats failed: \(error.localizedDescription)")
         }
+    }
+
+    /// One-time-per-user backfill for the Library deletion. The Library listed
+    /// `video_jobs` directly; some completed videos (measured ~10%, mostly pre-chat)
+    /// have no chat referencing their jobId and would vanish when the Library is gone.
+    /// Here we fetch the user's edits and reconstruct a chat (request + finished
+    /// video) for each one not already in a chat, so every Library video survives in
+    /// a conversation. Idempotent: a re-run re-checks against the current chats, so a
+    /// partial failure just retries the remainder next launch (never a duplicate).
+    func migrateStrandedLibraryVideos() async {
+        guard let userId = AuthService.shared.currentUser?.id else { return }
+        let flagKey = "promptly.libraryMerge.migrated.\(userId)"
+        if UserDefaults.standard.bool(forKey: flagKey) { return }
+
+        let inChats = Set(chats.flatMap { $0.messages.compactMap { $0.jobId } })
+        let edits: [VideoJob]
+        do { edits = try await APIService.shared.getUserEdits() }
+        catch { return }   // network — leave the flag unset so the next launch retries
+
+        let stranded = edits.filter { job in
+            job.status == "completed"
+                && (job.rendered_video_url?.isEmpty == false)
+                && !inChats.contains(job.id)
+        }
+        if stranded.isEmpty { UserDefaults.standard.set(true, forKey: flagKey); return }
+        print("[libraryMerge] reconstructing \(stranded.count) stranded video(s) into chats")
+
+        var failures = 0
+        for job in stranded {
+            let vibe = (job.vibe_input?.isEmpty == false) ? job.vibe_input! : "Your video"
+            // camelCase keys — the exact JSONB shape SerializedMessage persists.
+            let userMsg: [String: Any] = [
+                "id": UUID().uuidString, "role": "user", "content": vibe,
+            ]
+            var assistantMsg: [String: Any] = [
+                "id": UUID().uuidString, "role": "assistant", "content": "",
+                "jobId": job.id, "jobStatus": "completed", "originalVibe": vibe,
+            ]
+            if let v = job.rendered_video_url { assistantMsg["renderedVideoUrl"] = v }
+            if let h = job.hls_manifest_url { assistantMsg["hlsManifestUrl"] = h }
+            if let t = job.thumbnail_url { assistantMsg["thumbnailUrl"] = t }
+            do {
+                try await ChatService.shared.createChatWithMessages(
+                    title: String(vibe.prefix(60)),
+                    messages: [userMsg, assistantMsg],
+                    createdAt: job.created_at
+                )
+            } catch {
+                failures += 1
+                print("[libraryMerge] reconstruct failed for job \(job.id): \(error.localizedDescription)")
+            }
+        }
+
+        // Re-fetch directly (NOT loadChats — avoids re-triggering this migration) so
+        // the reconstructed chats appear immediately.
+        if let refreshed = try? await ChatService.shared.listChats() {
+            self.chats = refreshed
+        }
+        // Only mark done when every reconstruction succeeded; otherwise retry the
+        // remainder next launch (already-created chats are skipped via `inChats`).
+        if failures == 0 { UserDefaults.standard.set(true, forKey: flagKey) }
     }
 
     private func prefetchUncachedVideos(limit: Int) {
