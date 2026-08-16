@@ -337,10 +337,20 @@ function reportZero({ label, count, control }) {
   const done7 = jobs7.filter((j) => j.status === 'completed');
   const failLive = fails7.filter((j) => j.completed_at || j.updated_at);
   if (failLive.length && done7.length) {
-    const fSec = failLive.reduce((a, j) => a + lifeOf(j), 0);
+    // LATE-SWEEP CAP (2026-08-16). `updated_at` is NOT an end-of-wait timestamp:
+    // a reaper or backfill that touches a row days later inflates its "lifetime"
+    // into something no user ever experienced. Measured: 5 rows created 08-09 and
+    // updated 08-15 contributed 2.93M seconds — 25% of the entire sum — at ~6.8
+    // days each, and the mean ran 57x the median. That is my own
+    // window-homogeneity signature on an aggregate I had never wired the guard
+    // into. Contributions are capped at the reaper's own bound; capped rows are
+    // COUNTED and reported, never silently dropped.
+    const WAIT_CAP_S = 3600;
+    const capped = failLive.filter((j) => lifeOf(j) > WAIT_CAP_S).length;
+    const fSec = failLive.reduce((a, j) => a + Math.min(lifeOf(j), WAIT_CAP_S), 0);
     const cSec = done7.filter((j) => j.completed_at || j.updated_at).reduce((a, j) => a + lifeOf(j), 0);
     const onModal = failLive.filter((j) => j.worker_started_at);
-    const onSec = onModal.reduce((a, j) => a + lifeOf(j), 0);
+    const onSec = onModal.reduce((a, j) => a + Math.min(lifeOf(j), WAIT_CAP_S), 0);
     const fl = failLive.map(lifeOf).sort((a, b) => a - b);
     say(`## 2. FAILED-JOB SECONDS — ${pct(fSec, fSec + cSec)} of all job-lifetime seconds [7-DAY WINDOW]`);
     say('');
@@ -348,6 +358,13 @@ function reportZero({ label, count, control }) {
       + `p50 lifetime **${fl[Math.floor(fl.length / 2)].toFixed(0)}s**, `
       + `**${(failLive.length / 7).toFixed(0)}/day**. Total **${fSec.toLocaleString(undefined, { maximumFractionDigits: 0 })}s** `
       + 'of user time spent on jobs that never delivered.');
+    if (capped) {
+      say('');
+      say(`_**${capped} row(s) exceeded the ${WAIT_CAP_S}s cap and were capped, not dropped.** `
+        + 'Their raw `updated_at` age reflects a late reap or backfill touching the row days after the fact — '
+        + 'time no user waited. Uncapped, five such rows contributed 25% of the whole sum. A sum this shape is '
+        + 'reporting sweep timing, not user experience._');
+    }
     say('');
     say(`| quantity | jobs | seconds | share |`);
     say('|---|---:|---:|---:|');
