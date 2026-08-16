@@ -64,7 +64,11 @@ def main():
     row, payload = hits[-1]
     print(f"\n*** FIRST LUMEN OUTPUT: {row['id']} at {row['created_at']} ***")
     print(f"    scene payload key(s): {list(payload)} n={len(list(payload.values())[0])}")
-    print(f"\nBUILT-NOT-WIRED CROSSING RECORDED:")
+    # The crossing is recorded ONLY from a production row. This watcher reads
+    # video_jobs, so every hit here IS production by construction — but the label
+    # is printed explicitly because a build-lane artifact scored elsewhere must
+    # never be mistaken for this event.
+    print(f"\nBUILT-NOT-WIRED CROSSING RECORDED  [PRODUCTION — video_jobs row, not a harness render]:")
     print(f"    Lumen scene vocabulary: BUILT-NOT-WIRED -> **WIRED**")
     print(f"    crossed at {row['created_at']} by job {row['id']}")
     print(f"    production counter: completions carrying scene telemetry = {len(hits)}")
@@ -82,7 +86,7 @@ def main():
     print(f"  scoring against BOTH references as full_edit…\n")
     subprocess.run([sys.executable,
                     os.path.join(os.path.dirname(os.path.abspath(__file__)), "score_component.py"),
-                    "full_edit", dest])
+                    "full_edit", dest, "--production"])
     return 0
 
 

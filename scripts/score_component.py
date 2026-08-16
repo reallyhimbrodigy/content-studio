@@ -161,7 +161,7 @@ def assert_judge_owned(supplied=None):
             "to pass at score time.")
 
 
-def score(component, path, applies_override=None):
+def score(component, path, applies_override=None, provenance="build-lane"):
     assert_judge_owned(applies_override)
     if component not in APPLIES:
         raise SystemExit(f"unknown component '{component}'. Known: {', '.join(sorted(APPLIES))}")
@@ -175,6 +175,7 @@ def score(component, path, applies_override=None):
         print(f"  ⚠️  MAP-DRIFT: '{component}' is mapped audio-N/A but this artifact HAS audible audio "
               f"({probe_a['mean_db']}dB). The map may be stale — JUDGE re-derives it before this scores.")
     out = {"component": component, "artifact": os.path.basename(path),
+           "provenance": provenance,
            "applies": sorted(ap), "dimensions": {}, "na": [], "checks": []}
 
     c = canvas(path)
@@ -252,7 +253,12 @@ def score(component, path, applies_override=None):
 
 
 def report(o):
+    prov = o.get("provenance", "UNSPECIFIED")
     print(f"\n=== COMPONENT SCORECARD — {o['component']} · {o['artifact']} ===")
+    print(f"  PROVENANCE: {prov}")
+    if prov != "production":
+        print("  ⚠️  NOT PRODUCTION — this scores QUALITY only. It is NOT evidence of reach and does NOT")
+        print("      close a [BUILT-NOT-WIRED] entry. Only a production counter does that.")
     print(f"  applies: {', '.join(o['applies'])}")
     if o["na"]:
         print(f"  N/A (not scored, NOT a pass): {', '.join(o['na'])}")
@@ -281,7 +287,8 @@ if __name__ == "__main__":
         sys.exit(0)
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    o = score(sys.argv[1], sys.argv[2])
+    _prov = "production" if "--production" in sys.argv else "build-lane (harness)"
+    o = score(sys.argv[1], sys.argv[2], provenance=_prov)
     f = report(o)
     if "--json" in sys.argv:
         dest = sys.argv[sys.argv.index("--json") + 1]

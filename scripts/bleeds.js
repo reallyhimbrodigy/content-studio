@@ -800,6 +800,19 @@ function reportZero({ label, count, control }) {
       + 'so **nothing can ask for one.** The production counter is not 0 because traffic has not reached them '
       + 'yet; it is 0 because it structurally cannot be anything else.');
     say('');
+    say('');
+    say('> **A BUILD-LANE ARTIFACT IS NOT A CROSSING.** A harness render proves the renderer can draw a '
+      + 'scene; it proves nothing about whether a real job can ask for one. The two are different claims and '
+      + 'this board keeps them apart: **QUALITY is scoreable from any artifact** — the references do not care '
+      + 'where the pixels came from — but **REACH is only ever a production counter.** So a scored harness '
+      + 'artifact may appear on the quality board while these entries stay **[BUILT-NOT-WIRED]**, and that is '
+      + 'not a contradiction: it is the whole distinction the guard exists to hold.');
+    say('');
+    say('_These entries close ONLY when a real user job emits scenes — `completions carrying scene telemetry > 0` '
+      + 'on production traffic, key-based, never a substring match. Until then a harness render is capability '
+      + 'evidence and is labelled as such wherever it is reported. This project has six instances of a green '
+      + 'cert being read as reach; a harness artifact is the easiest seventh._');
+    say('');
     say('_This is instance six of the built-not-wired class, and the same shape as generated scenes '
       + '("defined but INERT", 0 of 3,949). The gap is one hop wide: renderer-registered, schema-absent. '
       + 'The moment either appears in the response schema, the scorecard scores it on canvas + palette against '
