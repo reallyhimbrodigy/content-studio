@@ -314,17 +314,34 @@ struct PromptlyApp: App {
                 else { AppState.shared.clearNavForSignOut() }
             }
             .onChange(of: scenePhase) { previous, phase in
-                guard phase == .active else { return }
-                if !didStartSession || previous == .background {
-                    didStartSession = true
-                    Analytics.track("session_started")
+                if phase == .active {
+                    if !didStartSession || previous == .background {
+                        didStartSession = true
+                        Analytics.track("session_started")
+                    }
+                    // 226 item 7b: on every foreground (and cold launch), touch the
+                    // multipart uploader so its background session reconnects, then
+                    // reconcile + resume in-flight uploads and abort any that expired.
+                    // Abandoned parts bill forever, so the sweep must NEVER wait for the
+                    // user to revisit a screen.
+                    Task { @MainActor in ResumableMultipartUploader.shared.resumeAndSweepOnForeground() }
+                } else if phase == .background {
+                    // LIVE-LEAK FIX: force-flush the 600ms-debounced chat saves the
+                    // MOMENT the app resigns, so a just-dispatched render's jobId reaches
+                    // the server before suspension instead of being lost in the debounce.
+                    // The video_job is durable server-side but the chat write was
+                    // best-effort — the gap that stranded ~10% of completed videos from
+                    // any chat. `ChatStore.flushNow()` existed but had ZERO callers; this
+                    // wires it. A background task gives the flush time to finish.
+                    var bgTask = UIBackgroundTaskIdentifier.invalid
+                    bgTask = UIApplication.shared.beginBackgroundTask {
+                        if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask); bgTask = .invalid }
+                    }
+                    Task { @MainActor in
+                        await ChatStore.shared.flushNow()
+                        if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask); bgTask = .invalid }
+                    }
                 }
-                // 226 item 7b: on every foreground (and cold launch), touch the
-                // multipart uploader so its background session reconnects, then
-                // reconcile + resume in-flight uploads and abort any that expired.
-                // Abandoned parts bill forever, so the sweep must NEVER wait for the
-                // user to revisit a screen.
-                Task { @MainActor in ResumableMultipartUploader.shared.resumeAndSweepOnForeground() }
             }
             .environmentObject(appState)
             // Apply the onboarding language choice app-wide this session (the
