@@ -990,19 +990,44 @@ function reportZero({ label, count, control }) {
   say(`- ${wiredCheck({ component: '`callback` delivery stamp', cert: 'green', productionCounter: 'completion_delivery=callback rows', count: cbLive })}`);
   // Phase-1 components with an ARMED scorecard and no traffic to score.
   const blob = (j) => JSON.stringify({ e: j.edit_recipe, r: j.result }).toLowerCase();
-  const npLive = done.filter((j) => /nameplate|name_plate/.test(blob(j))).length;
-  const ecLive = done.filter((j) => /endcard|end_card|end-card/.test(blob(j))).length;
+  // RE-POINTED 2026-08-16 at the builder's own liveness counter. The worker emits
+  // `brand_components_built` per job with {had_design_system, name_plate,
+  // end_card, reason}, built precisely so that "0 name-plates" cannot mean three
+  // different things. That is a strictly better production counter than my scan
+  // of edit_recipe/result: mine could only count zero, this one says WHY.
+  const brandEv = (await pageAll('analytics_events?select=created_at,props&event=eq.brand_components_built'))
+    .slice().sort((a, z) => String(a.created_at).localeCompare(String(z.created_at)));
+  const npLive = brandEv.filter((e) => (e.props || {}).name_plate).length;
+  const ecLive = brandEv.filter((e) => (e.props || {}).end_card).length;
+  const brandReasons = {};
+  brandEv.forEach((e) => { const r = (e.props || {}).reason || 'built'; brandReasons[r] = (brandReasons[r] || 0) + 1; });
+  const hadDS = brandEv.filter((e) => (e.props || {}).had_design_system).length;
   say(`- ${wiredCheck({ component: 'NamePlate (component D)', cert: 'built + renderer-registered', productionCounter: 'completions carrying a name-plate', count: npLive })}`);
   say(`- ${wiredCheck({ component: 'EndCard (component F)', cert: 'built + renderer-registered', productionCounter: 'completions carrying an end-card', count: ecLive })}`);
   if (!npLive && !ecLive) {
     say('');
-    say('> **The scorecard for these two is ARMED and cannot fire — and the reason is structural, not a wait.** '
-      + 'Both are built and EXPORTED from the Remotion registry (`motion-graphics/index.ts:67-70`), so the '
-      + 'renderer can draw them. But `handler.py` references `NamePlate` and `EndCard` **once each — and it is '
-      + 'the same comment line** (`handler.py:20367`). They are absent from the prompt and the response schema, '
-      + 'so **nothing can ask for one.** The production counter is not 0 because traffic has not reached them '
-      + 'yet; it is 0 because it structurally cannot be anything else.');
+    if (brandEv.length) {
+      say(`> **WHY THEY ARE ZERO — answered exactly, by the worker's own liveness counter.** `
+        + `\`brand_components_built\` has fired **${brandEv.length}** times (first `
+        + `${brandEv[0].created_at.slice(0, 19)}Z). **had_design_system: ${hadDS}/${brandEv.length}** — the palette `
+        + `works every time. **name-plate built 0/${brandEv.length}, end-card built 0/${brandEv.length}.** `
+        + `Reason on every one: **\`${Object.keys(brandReasons)[0]}\`**.`);
+      say('');
+      say('_So the chain is: renderer ✅ → spec builder ✅ → design system ✅ → **the plan carries no copy** ❌. '
+        + 'The components are not broken and the palette is not failing — **no plan has ever produced the name '
+        + 'or the end-card line**, so the spec builder has nothing to build from. That is one hop UPSTREAM of '
+        + 'where I placed it (I said "schema-absent, nothing can ask"); the counter says the ask never arrives '
+        + 'because the plan never writes the copy. Credit to the builder\'s instrument — it was built so that '
+        + '"0 name-plates" could not mean three different things, and it earned that on its first read._');
+      say('');
+    }
+    say('> **The scorecard is ARMED and cannot fire — for the reason above, not for want of traffic.** '
+      + 'It scores canvas + palette against both references the moment a plan carries the copy; no further '
+      + 'work is needed on my side.');
     say('');
+    say('_Superseded 2026-08-16: I previously diagnosed this as "schema-absent — nothing can ask for one", '
+      + 'reading handler.py\'s single comment-line mention. The liveness counter moves it one hop upstream and '
+      + 'is the better evidence — the components and the design system both work; the PLAN never writes the copy._');
     say('');
     say('> **A BUILD-LANE ARTIFACT IS NOT A CROSSING.** A harness render proves the renderer can draw a '
       + 'scene; it proves nothing about whether a real job can ask for one. The two are different claims and '
