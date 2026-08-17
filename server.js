@@ -225,7 +225,7 @@ const CHAT_RETRY_DELAY_MS = Number(process.env.CHAT_RETRY_DELAY_MS || 450);
 const CHAT_RETRY_MAX_MS = 1200;   // hard ceiling on added interactive latency
 
 async function fetchGeminiWithTransientRetry(url, init, { route, model, userId }) {
-  const { parseQuotaFailure } = require('./lib/quota-failure');
+  const { parseQuotaFailure, recordRetryOutcome } = require('./lib/quota-failure');
   let res = await fetch(url, init);
   if (res.ok) return { res, retried: false, absorbed: false };
 
@@ -251,10 +251,13 @@ async function fetchGeminiWithTransientRetry(url, init, { route, model, userId }
   console.log(`[chat-retry] ${route} transient 429 on ${model} — one retry in ${waitMs}ms`);
   await new Promise((r) => setTimeout(r, waitMs));
   const res2 = await fetch(url, init);
-  if (res2.ok) {
-    console.log(`[chat-retry] ${route} ABSORBED — retry succeeded, no 502 for the user`);
-    return { res: res2, retried: true, absorbed: true };
-  }
+  // BOTH outcomes are persisted. An absorbed retry writes no failure row, so
+  // without this the fix's own effect is invisible and "429s continue" cannot be
+  // told apart from "the retry never ran".
+  await recordRetryOutcome(supabaseAdmin, {
+    route, model, absorbed: res2.ok, waitMs, userId,
+  }).catch(() => {});
+  if (res2.ok) return { res: res2, retried: true, absorbed: true };
   const secondBody = await res2.text().catch(() => '');
   return { res: res2, firstBody: secondBody, retried: true, absorbed: false };
 }
