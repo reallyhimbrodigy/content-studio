@@ -232,8 +232,25 @@ async function fetchGeminiWithTransientRetry(url, init, { route, model, userId }
   // Read the body ONCE — a Response body cannot be consumed twice, and the
   // classifier needs it to decide whether a retry is even appropriate.
   const firstBody = await res.text().catch(() => '');
-  if (res.status !== 429) return { res, firstBody, retried: false, absorbed: false };
 
+  // GATE ON CLASSIFICATION, NEVER ON STATUS CODE.
+  //
+  // This read `if (res.status !== 429) return` and returned BEFORE consulting the
+  // classifier — so it never retried anything. MEASURED: 21 consecutive overload
+  // responses carried classification=transient_capacity and http_status=503.
+  // Google returns 503 UNAVAILABLE for model overload; 429 is the quota/billing
+  // shape. The retry was keyed on a code the condition does not use.
+  //
+  // Worse, I called them "429s" all night — in reports, in commit messages, and
+  // in the watcher, which PRINTED a hardcoded "429" label rather than the row's
+  // actual http_status. The value was in the row the whole time. Same defect as
+  // the thinking-budget log: a display asserting a constant while the data says
+  // otherwise.
+  //
+  // The classifier already answers the only question that matters — is this
+  // condition transient — and it answers it from the MESSAGE, which is why it got
+  // this right when the status check did not. An overloaded upstream is retryable
+  // whether it says 429, 503, or whatever appears next.
   const q = parseQuotaFailure(firstBody);
   if (!q || q.classification !== 'transient_capacity') {
     return { res, firstBody, retried: false, absorbed: false };
