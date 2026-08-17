@@ -182,6 +182,7 @@ const { validateFeedback } = require('./lib/feedback');
 const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
 const { isJobCancellable } = require('./lib/cancel');
 const { isTrivialMessage, TRIVIAL_REPLY, isStatusQuestion, statusAnswerFromJob, jobContextLine } = require('./lib/chat-router');
+const { recordQuotaFailure } = require('./lib/quota-failure');
 
 // [restored dep]
 function normalizePlanLabel(value) {
@@ -3496,6 +3497,15 @@ const server = http.createServer((req, res) => {
         if (!geminiRes.ok) {
           const errText = await geminiRes.text().catch(() => '');
           console.error('[Chat] Gemini error:', geminiRes.status, errText);
+          // PERSIST THE QUOTA STORY, don't just log it. The ledger recorded
+          // `{code:502}` and nothing else, so "which quota, at what limit"
+          // required catching a Render log line before it scrolled. The 429
+          // body carries a structured QuotaFailure; throwing it away is what
+          // made this take a day.
+          await recordQuotaFailure(supabaseAdmin, {
+            route: '/api/chat', httpStatus: geminiRes.status, bodyText: errText,
+            userId: authUser && authUser.id, model: 'gemini-flash-latest',
+          }).catch(() => {});
           return sendJson(res, 502, { error: 'AI service error' });
         }
 
@@ -3657,6 +3667,12 @@ const server = http.createServer((req, res) => {
         if (!geminiRes.ok || !geminiRes.body) {
           const errText = await geminiRes.text().catch(() => '');
           console.error('[ChatStream] Gemini error:', geminiRes.status, errText);
+          // Same persistence as /api/chat — BOTH surfaces 429 at 100%, so
+          // instrumenting only one would leave half the evidence in a log.
+          await recordQuotaFailure(supabaseAdmin, {
+            route: '/api/chat/stream', httpStatus: geminiRes.status, bodyText: errText,
+            userId: streamUser && streamUser.id, model: 'gemini-flash-latest',
+          }).catch(() => {});
           res.write(`data: ${JSON.stringify({ error: 'AI service error' })}\n\n`);
           res.write('data: [DONE]\n\n');
           return res.end();
