@@ -412,6 +412,49 @@ function reportZero({ label, count, control }) {
     say('');
   }
 
+  // ── CHAT EVENTS/DAY — PERMANENT, beside the failure rate ──────────────────
+  // Chat is a whole product surface that can die without producing a single
+  // error: logUsageEvent fires only on a SUCCESSFUL reply, so a broken chat
+  // emits no row, no code, no alert — it just goes quiet. It therefore needs a
+  // POSITIVE counter on the board permanently, not an alert that fires on
+  // absence. The render column is the control: chat=0 while renders>0 is dark,
+  // chat=0 with renders=0 is merely a quiet night.
+  const chatDays = await pageAll('usage_events?select=id,kind,created_at'
+    + `&kind=in.(chat,render)&created_at=gte.${new Date(Date.now() - 10 * 86400e3).toISOString()}`);
+  const cd = {};
+  chatDays.forEach((e) => {
+    const d = e.created_at.slice(0, 10);
+    cd[d] = cd[d] || { chat: 0, render: 0 };
+    cd[d][e.kind === 'chat' ? 'chat' : 'render']++;
+  });
+  const cdKeys = Object.keys(cd).sort();
+  if (cdKeys.length) {
+    const darkDays = cdKeys.filter((d) => cd[d].chat === 0 && cd[d].render > 0);
+    const todayChat = cd[cdKeys[cdKeys.length - 1]] || { chat: 0, render: 0 };
+    say(`# 💬 CHAT EVENTS/DAY — **${todayChat.chat}** today, **${darkDays.length}** of the last `
+      + `${cdKeys.length} days DARK (chat 0 with renders > 0)`);
+    say('');
+    say('| day | chat | render (control) | |');
+    say('|---|---:|---:|---|');
+    cdKeys.forEach((d) => {
+      const v = cd[d];
+      const dark = v.chat === 0 && v.render > 0;
+      say(`| ${d} | ${dark ? '**0**' : v.chat} | ${v.render} | ${dark ? '**DARK**' : (v.chat ? '' : 'no control')} |`);
+    });
+    say('');
+    say('**Chat can die without producing a single error.** `logUsageEvent(userId,\'chat\')` fires only on a '
+      + 'SUCCESSFUL reply, so a broken chat emits no row, no error_code and no alert — it goes quiet, and quiet '
+      + 'looks like a slow day. That is why this is a **permanent positive counter** on the board rather than an '
+      + 'alarm that fires on absence: an alarm that depends on the broken thing to speak cannot fire.');
+    say('');
+    say('_It died on **2026-08-08**: 1,173 events on 08-07, then **1**. It has not recovered in the nine days '
+      + 'since. For scale, 08-07 carried those 1,173 chats against 555 job-creating users — chat was not a '
+      + 'side feature on that day, and its absence has cost nine days of whatever it was contributing._');
+    say('');
+    say('---');
+    say('');
+  }
+
   // ── failures by class, BY USER ────────────────────────────────────────────
   // completion_delivery is selected EXPLICITLY — it was omitted from this
   // select while §4 read `j.completion_delivery`, so every row scored `NULL`
@@ -1247,6 +1290,38 @@ function reportZero({ label, count, control }) {
   say('');
 
   say('### Instrument self-check');
+  say('');
+  // ── THE STANDING QUESTION (owner, 2026-08-16) ────────────────────────────
+  // WHAT DOES THIS INSTRUMENT REPORT WHEN IT ITSELF BREAKS?
+  // Every instrument must answer it, in writing, before it is trusted. The
+  // answer is not a nicety: this campaign has three instruments that answered
+  // "healthy" when they broke — the lumen watch exited 0 on a network reset, the
+  // chat sentinel exited 0 when it could not measure, and the delivery verdict
+  // printed no verdict at all on a failed curl. Each was silent in exactly the
+  // direction that looks like good news.
+  say('**The standing question — what does each instrument report when IT breaks?**');
+  say('');
+  say('| instrument | on its own failure | safe direction? |');
+  say('|---|---|---|');
+  [['this board (`bleeds.js`)', 'throws FATAL, exits 1, writes no report', '✅ loud'],
+   ['fetch/read parity', 'prints the violating fields by name', '✅ loud'],
+   ['`lumen_first_output_watch`', 'exit 2 = no-hit, other = ERROR (never 0)', '✅ fixed 08-16'],
+   ['`lumen_watch.sh`', 'retries; 5 consecutive errors = exit 1 LOUD', '✅ fixed 08-16'],
+   ['`chat-liveness-alert`', 'exit 2 = UNKNOWN, never 0', '✅ fixed 08-16'],
+   ['`delivery-48h-verdict`', 'exit 2 = NOT-READABLE/ERROR', '✅ fixed 08-16'],
+   ['`score_component`', 'throws on unreadable artifact; exit ≠ 0', '✅ loud'],
+   ['`preflight_quiet_window`', 'exit 2 = UNKNOWN → BLOCKS the push', '✅ fail-closed'],
+   ['chat events/day (above)', 'a positive counter — cannot go quiet undetected', '✅ by design'],
+   ['`brand_components_built`', 'emitted BY the worker — silent if the worker lacks the code', '⚠️ **state (4) blind spot**'],
+   ['fulfillment judge', 'skips rows without `edit_recipe` — coverage hole, not an error', '⚠️ **silent narrowing**']].forEach((r) => {
+    say(`| ${r[0]} | ${r[1]} | ${r[2]} |`);
+  });
+  say('');
+  say('**The two ⚠️ rows are the honest ones:** both fail by reporting LESS rather than by reporting wrong, '
+    + 'and reporting less looks like a quiet day. `brand_components_built` cannot see code the worker does not '
+    + 'contain (the state-(4) blind spot, remedy: add `build_sha`). The fulfillment judge silently narrows its '
+    + 'denominator to rows carrying a recipe — which is why the coverage line is attached to every quality '
+    + 'figure rather than mentioned once.');
   say('');
   say(parityReport());
   say('');
