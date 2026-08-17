@@ -202,6 +202,63 @@ const { recordQuotaFailure } = require('./lib/quota-failure');
 // Rate Limit page names a model with confirmed quota — no deploy needed. The
 // DEFAULT must always be an explicit version; validate_deploy fails on an alias,
 // and startup logs loudly if the override reintroduces one.
+
+// ── TRANSIENT-429 BACKOFF (2026-08-17) ──────────────────────────────────────
+// MEASURED, 35-minute window: 28 upstream 429s, 100% of them the message "This
+// model is currently experiencing high demand. Spikes in demand are usually
+// temporary." — and 11 of them reached a USER as a 502 on a feature that had just
+// come back from nine days dead. Meanwhile 7 requests SUCCEEDED for 4 users in
+// the same window, which is the fact that justifies retrying: the contention is
+// INTERMITTENT, not total, so a second attempt lands often enough to matter.
+//
+// BOUNDED ON PURPOSE. Chat is interactive. A user waiting through an exponential
+// ladder feels worse than a fast honest error, so this is ONE extra attempt with
+// a short fixed delay and a hard ceiling — not a generic retry policy. If the
+// upstream is genuinely saturated the user still gets an answer quickly, just an
+// unhappy one.
+//
+// IT RETRIES ONLY `transient_capacity`. A billing 429 is permanent until a human
+// tops up an account: retrying it burns latency to reach the same wall, and it is
+// exactly the case the classifier exists to separate. quota_exceeded and any
+// unclassified shape also fall through untouched — when in doubt, do not retry.
+const CHAT_RETRY_DELAY_MS = Number(process.env.CHAT_RETRY_DELAY_MS || 450);
+const CHAT_RETRY_MAX_MS = 1200;   // hard ceiling on added interactive latency
+
+async function fetchGeminiWithTransientRetry(url, init, { route, model, userId }) {
+  const { parseQuotaFailure } = require('./lib/quota-failure');
+  let res = await fetch(url, init);
+  if (res.ok) return { res, retried: false, absorbed: false };
+
+  // Read the body ONCE — a Response body cannot be consumed twice, and the
+  // classifier needs it to decide whether a retry is even appropriate.
+  const firstBody = await res.text().catch(() => '');
+  if (res.status !== 429) return { res, firstBody, retried: false, absorbed: false };
+
+  const q = parseQuotaFailure(firstBody);
+  if (!q || q.classification !== 'transient_capacity') {
+    return { res, firstBody, retried: false, absorbed: false };
+  }
+
+  // Honour the upstream's own retryDelay when it gives one, clamped to the
+  // ceiling. Guessing longer than the server asked for is not politeness, it is
+  // latency the user pays for nothing.
+  let waitMs = CHAT_RETRY_DELAY_MS;
+  const rd = String((q && q.retry_delay) || '');
+  const m = rd.match(/^(\d+(?:\.\d+)?)s$/);
+  if (m) waitMs = Math.min(CHAT_RETRY_MAX_MS, Math.round(Number(m[1]) * 1000));
+  waitMs = Math.min(waitMs, CHAT_RETRY_MAX_MS);
+
+  console.log(`[chat-retry] ${route} transient 429 on ${model} — one retry in ${waitMs}ms`);
+  await new Promise((r) => setTimeout(r, waitMs));
+  const res2 = await fetch(url, init);
+  if (res2.ok) {
+    console.log(`[chat-retry] ${route} ABSORBED — retry succeeded, no 502 for the user`);
+    return { res: res2, retried: true, absorbed: true };
+  }
+  const secondBody = await res2.text().catch(() => '');
+  return { res: res2, firstBody: secondBody, retried: true, absorbed: false };
+}
+
 const CHAT_MODEL = (process.env.CHAT_MODEL || 'gemini-3.6-flash').trim();
 if (/-latest$|^gemini-(flash|pro)-latest$/.test(CHAT_MODEL)) {
   console.error(`[chat-model] !! CHAT_MODEL="${CHAT_MODEL}" is an ALIAS. Aliases `
@@ -3495,12 +3552,11 @@ const server = http.createServer((req, res) => {
         // unacceptable for an in-app chat where the value of an AI reply
         // is its instant feel. 2.5-flash returns in ~500-1500ms with
         // identical helpfulness for short mobile-chat answers.
-        const geminiRes = await fetch(
-          // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
-          // and MUST travel in the x-goog-api-key header. Never send both — a
-          // query key + header triggers "Multiple authentication credentials".
-          `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:generateContent`,
-          {
+        const _chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:generateContent`;
+        // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
+        // and MUST travel in the x-goog-api-key header. Never send both — a
+        // query key + header triggers "Multiple authentication credentials".
+        const _chatInit = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
             body: JSON.stringify({
@@ -3519,11 +3575,13 @@ const server = http.createServer((req, res) => {
                 temperature: 0.8,
               },
             }),
-          }
-        );
+          };
+        const _rr = await fetchGeminiWithTransientRetry(_chatUrl, _chatInit,
+          { route: '/api/chat', model: CHAT_MODEL, userId: authUser && authUser.id });
+        const geminiRes = _rr.res;
 
         if (!geminiRes.ok) {
-          const errText = await geminiRes.text().catch(() => '');
+          const errText = _rr.firstBody || '';
           console.error('[Chat] Gemini error:', geminiRes.status, errText);
           // PERSIST THE QUOTA STORY, don't just log it. The ledger recorded
           // `{code:502}` and nothing else, so "which quota, at what limit"
@@ -3674,7 +3732,7 @@ const server = http.createServer((req, res) => {
         // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
         // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:streamGenerateContent?alt=sse`;
-        const geminiRes = await fetch(geminiUrl, {
+        const _streamInit = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({
@@ -3690,10 +3748,18 @@ const server = http.createServer((req, res) => {
               // (INVALID_ARGUMENT). Default thinking is fine here.
             },
           }),
-        });
+        };
+
+        // RETRY BEFORE ANY DATA FRAME. `: stream-open` has been written, but no
+        // token frame has — so a retried upstream is invisible to the client.
+        // Once a token is emitted this would no longer be safe.
+        const _sr = await fetchGeminiWithTransientRetry(geminiUrl, _streamInit,
+          { route: '/api/chat/stream', model: CHAT_MODEL,
+            userId: streamUser && streamUser.id });
+        const geminiRes = _sr.res;
 
         if (!geminiRes.ok || !geminiRes.body) {
-          const errText = await geminiRes.text().catch(() => '');
+          const errText = _sr.firstBody || '';
           console.error('[ChatStream] Gemini error:', geminiRes.status, errText);
           // Same persistence as /api/chat — BOTH surfaces 429 at 100%, so
           // instrumenting only one would leave half the evidence in a log.
