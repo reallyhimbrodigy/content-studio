@@ -184,6 +184,34 @@ const { isJobCancellable } = require('./lib/cancel');
 const { isTrivialMessage, TRIVIAL_REPLY, isStatusQuestion, statusAnswerFromJob, jobContextLine } = require('./lib/chat-router');
 const { recordQuotaFailure } = require('./lib/quota-failure');
 
+// ── CHAT MODEL: PINNED, NEVER AN ALIAS (2026-08-17) ─────────────────────────
+// `gemini-flash-latest` is an ALIAS and it ROTATED UNDER US. The AI Studio usage
+// panel shows 1.87K 429s on Aug 8 with ZERO of every other error class, and the
+// per-model request curve runs 3.6 Flash -> 3.7 Flash -> ZERO. That is the
+// signature of the alias moving onto a model with NO PROVISIONED QUOTA on this
+// project: the limit is zero, so volume is irrelevant — chat runs ~0.3 req/min
+// against paid-tier limits in the thousands and still 429s on 100% of requests.
+//
+// A pin is not a preference here, it is the difference between a model we have
+// quota for and whichever model Google promoted this week. This is the same
+// lesson as `supabase==2.7.4`: a floating reference resolved to something nobody
+// chose, and the damage landed far from the change. The difference is that pin
+// was too tight on the wrong axis; this one is tight on the right one.
+//
+// ENV-OVERRIDABLE so the owner can move it from the dashboard the moment the
+// Rate Limit page names a model with confirmed quota — no deploy needed. The
+// DEFAULT must always be an explicit version; validate_deploy fails on an alias,
+// and startup logs loudly if the override reintroduces one.
+const CHAT_MODEL = (process.env.CHAT_MODEL || 'gemini-3.6-flash').trim();
+if (/-latest$|^gemini-(flash|pro)-latest$/.test(CHAT_MODEL)) {
+  console.error(`[chat-model] !! CHAT_MODEL="${CHAT_MODEL}" is an ALIAS. Aliases `
+    + 'rotate onto models with no provisioned quota — that is what took chat to '
+    + '100% 429 with zero other error classes. Pin an explicit version.');
+}
+console.log(`[chat-model] pinned: ${CHAT_MODEL}`);
+
+
+
 // [restored dep]
 function normalizePlanLabel(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -3471,7 +3499,7 @@ const server = http.createServer((req, res) => {
           // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
           // and MUST travel in the x-goog-api-key header. Never send both — a
           // query key + header triggers "Multiple authentication credentials".
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:generateContent`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
@@ -3504,7 +3532,7 @@ const server = http.createServer((req, res) => {
           // made this take a day.
           await recordQuotaFailure(supabaseAdmin, {
             route: '/api/chat', httpStatus: geminiRes.status, bodyText: errText,
-            userId: authUser && authUser.id, model: 'gemini-flash-latest',
+            userId: authUser && authUser.id, model: CHAT_MODEL,
           }).catch(() => {});
           return sendJson(res, 502, { error: 'AI service error' });
         }
@@ -3645,7 +3673,7 @@ const server = http.createServer((req, res) => {
         // a JSON array we'd have to buffer.
         // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
         // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:streamGenerateContent?alt=sse`;
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
@@ -3671,7 +3699,7 @@ const server = http.createServer((req, res) => {
           // instrumenting only one would leave half the evidence in a log.
           await recordQuotaFailure(supabaseAdmin, {
             route: '/api/chat/stream', httpStatus: geminiRes.status, bodyText: errText,
-            userId: streamUser && streamUser.id, model: 'gemini-flash-latest',
+            userId: streamUser && streamUser.id, model: CHAT_MODEL,
           }).catch(() => {});
           res.write(`data: ${JSON.stringify({ error: 'AI service error' })}\n\n`);
           res.write('data: [DONE]\n\n');
