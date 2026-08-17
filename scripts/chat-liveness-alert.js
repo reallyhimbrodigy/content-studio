@@ -34,18 +34,41 @@ async function count(kind, sinceIso) {
 }
 
 (async () => {
+  // EXIT-CODE CONTRACT (2026-08-16): 0 = HEALTHY · 1 = DARK · 2 = UNKNOWN.
+  // This previously exited 0 ("no false alarm") when it could not measure — but
+  // exit 0 MEANS healthy to every caller, so a misconfiguration reported the
+  // same code as a working chat. A sentinel whose job is to catch silence must
+  // never answer silence with a pass. Unmeasurable is now 2, and a caller that
+  // treats 2 as healthy is making that choice explicitly.
   if (!supabaseAdmin) {
-    console.error('[chat-liveness] supabaseAdmin not configured — cannot judge. exit 0 (no false alarm).');
-    process.exit(0);
+    console.error('[chat-liveness] ⚠️ UNKNOWN — supabaseAdmin not configured; cannot judge. '
+      + 'exit 2 (NOT healthy — an unmeasurable window is not a quiet one).');
+    process.exit(2);
   }
   const since = new Date(Date.now() - WINDOW_H * 3600e3).toISOString();
-  const chat = await count('chat', since);
-  const render = await count('render', since);
+  let chat, render;
+  try {
+    chat = await count('chat', since);
+    render = await count('render', since);
+  } catch (e) {
+    // A failed READ is not a healthy chat. Same rule as above.
+    console.error(`[chat-liveness] ⚠️ UNKNOWN — count query failed (${e && e.message}). exit 2.`);
+    process.exit(2);
+  }
   const dark = chat === 0 && render > 0;
 
   console.log(`[chat-liveness] window=${WINDOW_H}h  chat=${chat}  render(control)=${render}  → ${
     dark ? 'DARK ❌' : chat > 0 ? 'HEALTHY ✅' : 'INCONCLUSIVE (no render traffic to judge against)'
   }`);
+
+  // HEARTBEAT: record that this ran, so a silent sentinel is distinguishable
+  // from a healthy one. Absence of an alert must never be the only evidence.
+  try {
+    await supabaseAdmin.from('analytics_events').insert({
+      event: 'sentinel_heartbeat', platform: 'server', app_version: 'chat-liveness',
+      props: { window_h: WINDOW_H, chat, render, verdict: dark ? 'DARK' : (chat > 0 ? 'HEALTHY' : 'INCONCLUSIVE') },
+    });
+  } catch (_) { /* heartbeat is evidence, never a gate */ }
 
   if (!dark) process.exit(0);
 

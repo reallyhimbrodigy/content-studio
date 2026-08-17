@@ -30,3 +30,10 @@ elif fb/tot < 0.02 and e and e[int(.99*len(e))] < 870:
 else:
     print('VERDICT: FAIL — see numbers above')
 "
+"
+rc=$?
+# EXIT-CODE CONTRACT (2026-08-16): 0 = PASS · 1 = FAIL · 2 = NOT-YET-READABLE/ERROR.
+# Previously this printed a verdict as TEXT ONLY, so any caller had to grep — and
+# a curl failure or a python traceback produced output that grepped as neither
+# PASS nor FAIL, i.e. silently nothing. The verdict is now the exit code.
+exit $rc
