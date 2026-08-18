@@ -65,11 +65,6 @@ struct ChatMessage: Identifiable {
     /// the AI's tone.
     var isOnboarding: Bool = false
 
-    /// §4 sample-clip demo: this bubble is the pre-hosted first-run demo render
-    /// (dispatched with no upload, quota-exempt), not a user's own clip. Used to
-    /// guard against double-firing the demo while one is in flight.
-    var isSampleDemo: Bool = false
-
     // MARK: - Retry cache (structured-failure recovery)
     //
     // When a render fails with the backend's structured envelope and

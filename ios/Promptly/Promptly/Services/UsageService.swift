@@ -33,21 +33,9 @@ final class UsageService: ObservableObject {
         let used: Int?
         let limit: Int?
         let resets_at: String?
-        // Sample-clip demo (1.3.3 §4, server-gated, all optional → OFF on any
-        // server that omits them). When enabled AND a source URL is present, the
-        // empty-state hero leads with "Watch Promptly edit this": a pre-hosted
-        // clip dispatched through the REAL pipeline with no upload, so a first-run
-        // user feels a finished render before risking their own footage. The
-        // server must ALSO exempt the demo job from the daily free-render quota
-        // (a `demo` flag on createVideoJob) — until it does, this stays off so the
-        // demo never burns the user's one free render.
-        let sample_demo_enabled: Bool?
-        let sample_demo_mode: String?          // "cached" (default) | "live"
-        let sample_demo_source_url: String?    // live: the clip to render
-        let sample_demo_proxy_url: String?
-        let sample_demo_vibe: String?
-        let sample_demo_result_url: String?    // cached: the pre-rendered edit to play
-        let sample_demo_thumbnail_url: String?
+        // (The first-run sample-clip demo — sample_demo_* — was removed. The server
+        // SAMPLE_DEMO_* keys can now be retired; unknown JSON keys decode fine, so
+        // dropping these fields is safe against production as it is today.)
         // §5 progressive playback: start playing the render as segments land (HLS)
         // instead of waiting for the final mux. Server-gated, OFF by default; the
         // client player plumbing is wired behind this flag before it flips.
@@ -81,25 +69,6 @@ final class UsageService: ObservableObject {
     var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (rendersLeft.map { $0 <= 0 } ?? false) }
     var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (chatsLeft.map { $0 <= 0 } ?? false) }
 
-    // Sample-clip demo gate (§4). Available only when the server flips it ON *and*
-    // ships a hosted source URL — the hero can't offer a demo it has no clip for.
-    // Defaults false/nil so build 219 ships the demo dark until the backend hosts
-    // the clip and exempts it from the daily quota.
-    // Available when enabled AND the mode's required asset is present: cached needs
-    // a pre-rendered result to play; live needs a source to dispatch.
-    var sampleDemoAvailable: Bool {
-        guard snapshot?.sample_demo_enabled == true else { return false }
-        return sampleDemoMode == "live" ? (sampleDemoSourceUrl != nil) : (sampleDemoResultUrl != nil)
-    }
-    /// "cached" (default — play a pre-rendered before→after reveal) or "live"
-    /// (dispatch the source through the real pipeline). Cost/reliability favors
-    /// cached; see the demo-economics memo.
-    var sampleDemoMode: String { (snapshot?.sample_demo_mode ?? "cached") == "live" ? "live" : "cached" }
-    var sampleDemoSourceUrl: String? { snapshot?.sample_demo_source_url }
-    var sampleDemoProxyUrl: String? { snapshot?.sample_demo_proxy_url }
-    var sampleDemoVibe: String { snapshot?.sample_demo_vibe ?? "clean" }
-    var sampleDemoResultUrl: String? { snapshot?.sample_demo_result_url }
-    var sampleDemoThumbnailUrl: String? { snapshot?.sample_demo_thumbnail_url }
     // §5 progressive playback gate (default off until the HLS player path ships).
     var progressivePlaybackEnabled: Bool { snapshot?.progressive_playback_enabled ?? false }
 

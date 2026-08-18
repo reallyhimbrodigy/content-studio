@@ -177,7 +177,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, demo: Bool = false, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
@@ -195,20 +195,12 @@ class APIService {
             // inserts under this id; a double-submit replays the existing
             // job (one job, one charge) instead of minting a duplicate.
             let client_job_id: String?
-            // §4 sample-clip demo: a first-run demo render on a pre-hosted clip.
-            // The server MUST treat a `demo` job as free — NOT decrementing the
-            // daily render quota — so watching the demo never costs the user their
-            // one free render. Omitted (nil) for every real render; only the demo
-            // path sends true. Harmless on a server that doesn't read it yet, which
-            // is why the demo hero stays gated OFF until the server honors it.
-            let demo: Bool?
             // §5 progressive playback CAPABILITY. This 1.3.3 build can consume a
             // partial HLS preview (start playing mid-render, swap to the final MP4),
             // so it advertises the capability PER DISPATCH. The worker publishes a
             // preview ONLY for jobs that carry this flag — so the 1.3.2 majority (no
             // flag) never pays a preview encode. The global progressive_playback_enabled
             // stays as the kill switch ON TOP (worker + client both gate on it).
-            // Omitted for demos (they don't need a live preview).
             let supports_progressive: Bool?
             // Instrumentation (224): source provenance for measuring the iCloud
             // reliability fix + deconfounding wait-time. Optional → omitted when nil.
@@ -222,8 +214,7 @@ class APIService {
             model: premiumPipeline ? "lumen" : "flare",
             premium_pipeline_enabled: premiumPipeline ? true : nil,
             client_job_id: clientJobId,
-            demo: demo ? true : nil,
-            supports_progressive: demo ? nil : true,
+            supports_progressive: true,
             source_type: sourceType,
             source_duration: sourceDuration
         )
