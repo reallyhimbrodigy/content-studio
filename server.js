@@ -6541,6 +6541,33 @@ if (require.main === module) {
     setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
     setInterval(runCompletionReconcile, 120 * 1000);
 
+    // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
+    // across 441 users are in NO chat — 140 in the last 7 days — because the
+    // message that references a render is a client-owned debounced PATCH that a
+    // backgrounded session drops. The inline attach in the completion tail is
+    // the immediate path; this is the guarantee, for exactly the reason
+    // completion-reconcile exists one block up: the tail lives behind an
+    // in-process await that no deploy survives, and this service auto-deploys
+    // main. Deliberately cheap — a 3h lookback and a 60-row cap, because once
+    // the inline path is landing, the expected repairs per pass are ZERO.
+    // Loud when it isn't zero; a silent self-heal is how the undelivered-
+    // completion class hid for six days.
+    const { sweepChatAttach } = require('./lib/chat-attach');
+    let chatAttachBusy = false;
+    const runChatAttachSweep = async () => {
+      if (chatAttachBusy) return;
+      chatAttachBusy = true;
+      try {
+        await sweepChatAttach(supabaseAdmin);
+      } catch (err) {
+        console.error('[chat-attach] sweep crashed:', err?.message || err);
+      } finally {
+        chatAttachBusy = false;
+      }
+    };
+    setTimeout(runChatAttachSweep, 75 * 1000); // boot pass, offset from the others
+    setInterval(runChatAttachSweep, 10 * 60 * 1000);
+
     // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
     // analytics_events once a minute. Before this, the 34 non-job routes had no
     // retained record of any kind — no APM, no log sink, stdout only — so there
