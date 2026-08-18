@@ -31,14 +31,42 @@ def rows(since):
     return json.load(urllib.request.urlopen(r, timeout=30))
 
 
+# COUNTER-SHAPED payloads that carry the scene KEY but are telemetry, not scenes.
+# `result.component_ledger.generated_scenes` is {requested, drop_reasons,
+# dropped_by_us, survived_derived} — a dict of four COUNTERS. The previous rule
+# ("key present AND len>0") read those four keys as four scenes and reported a
+# FALSE FIRST LUMEN OUTPUT on a job whose ledger says requested: 0.
+_COUNTER_KEYS = {"requested", "drop_reasons", "dropped_by_us", "survived_derived",
+                 "count", "n", "total", "emitted"}
+
+
 def scene_payload(row):
-    """Return the scene structure if this row genuinely emitted one, else None."""
+    """Return the scene structure ONLY if this row genuinely emitted scenes.
+
+    THREE REFINEMENTS, each after a false positive:
+      1. substring 'scene' matched prose in plan.notes            -> key-based
+      2. key-based + len>0 matched a COUNTER DICT (requested: 0)  -> shape-checked
+      3. shape: a real emission is a LIST of scene objects, or a dict whose
+         `requested` is > 0. A bare counter dict is never a hit.
+    """
+    def is_real(v):
+        if isinstance(v, list):
+            # a list of scene OBJECTS, not a list of numbers
+            return len(v) > 0 and any(isinstance(x, dict) for x in v)
+        if isinstance(v, dict):
+            if not v:
+                return False
+            # a counter/ledger object is telemetry ABOUT scenes, not scenes
+            if set(map(str, v.keys())) <= _COUNTER_KEYS:
+                return bool(v.get("requested") or v.get("emitted") or v.get("count"))
+            return True
+        return False
+
     def hunt(o):
         if isinstance(o, dict):
             for k, v in o.items():
-                if str(k).lower() in SCENE_KEYS and v:
-                    if isinstance(v, (list, dict)) and len(v) > 0:
-                        return {k: v}
+                if str(k).lower() in SCENE_KEYS and is_real(v):
+                    return {k: v}
                 found = hunt(v)
                 if found:
                     return found
