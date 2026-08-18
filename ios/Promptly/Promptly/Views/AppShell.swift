@@ -26,6 +26,12 @@ struct AppShell: View {
 
     private static let openSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
+    /// Width of the leading edge zone that opens the drawer. Narrow + deliberate
+    /// (iOS system-edge-swipe scale) so it never competes with horizontal content
+    /// like the composer's preset-chip scroller — a chip swipe starts mid-screen,
+    /// outside this zone, so it scrolls freely with zero drawer movement (Bug A).
+    private static let edgeSwipeZone: CGFloat = 20
+
     /// Tracks the user's in-flight swipe in points. Positive when
     /// pulling the drawer open from a closed state, negative when
     /// dragging the drawer closed from an open state. Zero when no
@@ -53,22 +59,45 @@ struct AppShell: View {
                 // clamped to [0, drawerWidth] so a fling can't overshoot
                 // or invert.
                 //
-                // .simultaneousGesture on the WHOLE main content surface
-                // gives the open-swipe ChatGPT-style reach: the user can
-                // start a right-swipe anywhere on the screen (the gesture
-                // direction-locks to horizontal so vertical scrolls keep
-                // working). Was previously a 22pt invisible edge strip,
-                // which made the rest of the screen feel non-responsive.
+                // Open-swipe lives ONLY in a narrow leading edge strip (the
+                // .overlay below), NOT the whole surface. Build 213 shipped a
+                // full-surface .simultaneousGesture for "swipe anywhere" reach,
+                // but that (a) fired on the composer's horizontal chip scroll,
+                // creeping the drawer open (Bug A), and (b) ran simultaneously
+                // with the content under the finger, so the chat panned with the
+                // drawer (Bug B). Zac's directive: open via hamburger + a
+                // deliberate leading-edge swipe only.
                 MainTabView()
                     .frame(width: geo.size.width)
                     .background(Color(.systemBackground))
-                    .allowsHitTesting(!appState.sidebarOpen)
+                    // Inert while the drawer is open AND while ANY drawer drag is
+                    // in flight (sidebarDragX != 0). The edge strip owns the
+                    // open-drag exclusively; this guarantees the content receives
+                    // nothing for that touch's whole lifecycle — no bleed-through
+                    // to the chat underneath (Bug B). Applied BEFORE the overlay,
+                    // so the strip's own gesture is unaffected by this gate.
+                    .allowsHitTesting(!appState.sidebarOpen && sidebarDragX == 0)
                     .offset(x: max(0, min(drawerWidth, (appState.sidebarOpen ? drawerWidth : 0) + sidebarDragX)))
                     .shadow(
                         color: .black.opacity(appState.sidebarOpen ? 0.35 : 0),
                         radius: 24, x: -8, y: 0
                     )
-                    .simultaneousGesture(openSwipeGesture)
+                    // Leading edge-swipe zone. Exclusive .gesture (NOT
+                    // .simultaneousGesture) so the edge drag captures the touch
+                    // and the chat never pans with it. Present only on the Edit
+                    // tab while closed; the drawer's own List owns the close drag.
+                    // Inset from the top (build 216) so it clears the custom top
+                    // bar — the hamburger's tap target is never eaten by the strip.
+                    .overlay(alignment: .leading) {
+                        if appState.selectedTab == 0 && !appState.sidebarOpen {
+                            Color.clear
+                                .frame(width: Self.edgeSwipeZone)
+                                .frame(maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                                .gesture(openSwipeGesture)
+                                .padding(.top, 104)
+                        }
+                    }
             }
             .background(Color(.systemBackground))
         }
@@ -100,6 +129,20 @@ struct AppShell: View {
             TrialWallView(context: .door) {
                 appState.dismissWall()
             }
+        }
+        // Sidebar-restructure: Library + Account are sheets opened from the drawer,
+        // replacing the removed bottom tab bar. Edit stays the full-screen surface.
+        .sheet(isPresented: Binding(
+            get: { appState.showLibrary },
+            set: { appState.showLibrary = $0 }
+        )) {
+            LibraryView()
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.showAccount },
+            set: { appState.showAccount = $0 }
+        )) {
+            AccountView()
         }
         .onChange(of: appState.sidebarOpen) { _, isOpen in
             // Keyboard always dismisses on drawer open. We dismiss on

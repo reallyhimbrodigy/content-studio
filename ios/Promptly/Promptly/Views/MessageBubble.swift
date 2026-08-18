@@ -4,6 +4,9 @@ import Photos
 
 struct MessageBubble: View {
     let message: ChatMessage
+    /// 225 item 2: drives the blinking streaming caret (toggled only while
+    /// message.isStreaming; see the assistant text block's .task).
+    @State private var caretOn = true
     /// Long-press → "Regenerate." Provided only on assistant text
     /// replies (not on the welcome message, in-flight thinking messages,
     /// or video render messages — those don't make sense to regenerate).
@@ -19,6 +22,9 @@ struct MessageBubble: View {
     /// createVideoJob with the cached values — no re-upload, no
     /// re-type, single tap.
     var onRetry: (() -> Void)? = nil
+    /// Start a fresh upload — post-render "make another" and the guided recovery
+    /// after a non-retryable rejection. Wired to the composer's picker.
+    var onMakeAnother: (() -> Void)? = nil
 
     /// Tap the red Cancel button on a processing render bubble (shown only
     /// before the edit recipe). Runs the full cancel: server cancel + daily-slot
@@ -77,8 +83,10 @@ struct MessageBubble: View {
                 Spacer(minLength: 48)
                 userContent
             } else {
+                // 225 item 2: assistant messages are FULL-WIDTH (bubbles stay for
+                // the user side only). No trailing 48pt gutter.
                 assistantContent
-                Spacer(minLength: 48)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -179,11 +187,49 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
-            // Show the progress UI ONLY while the job is not terminal. Any
-            // terminal status — completed/complete, failed/error, canceled/
-            // cancelled, needs_input/needs_clarification — stops the spinner.
-            if let status = message.jobStatus, !JobLifecycle.isTerminal(status) {
+            // §5 progressive playback: once the backend emits the HLS manifest
+            // mid-render (flag-gated capture in EditorView), play it inline as a muted
+            // PREVIEW that SWAPS in place to the final MP4 when it lands. Rendered here
+            // in ONE stable position so the AVPlayer persists from manifest-arrival
+            // through completion (seamless swap, not a teardown). The progress UI and
+            // the completed thumbnail both step aside for it. Gated by the server flag
+            // + a manifest + no error/pause. Inert until both halves flip on.
+            let showProgressive = UsageService.shared.progressivePlaybackEnabled
+                && message.hlsManifestUrl != nil
+                && message.error == nil
+                && message.jobStatus != "needs_input"
+            if showProgressive {
+                ProgressivePlayerView(
+                    manifestUrl: message.hlsManifestUrl,
+                    finalUrl: message.renderedVideoUrl,
+                    posterUrl: message.thumbnailUrl,
+                    onTapFullscreen: {
+                        VideoPlayerPresenter.present(
+                            urlString: message.renderedVideoUrl ?? message.hlsManifestUrl ?? "",
+                            hlsManifestUrl: message.hlsManifestUrl,
+                            thumbnailUrl: message.thumbnailUrl,
+                            jobId: message.jobId,
+                            title: message.originalVibe
+                        )
+                    }
+                )
+                .padding(.bottom, 6)
+            }
+
+            // Show the progress UI ONLY while the job is not terminal (and the
+            // progressive preview isn't already owning the surface). Any terminal
+            // status — completed/complete, failed/error, canceled/cancelled,
+            // needs_input/needs_clarification — stops the spinner.
+            if let status = message.jobStatus, !JobLifecycle.isTerminal(status), !showProgressive {
                 if let timeline = message.stageTimeline {
+                    // §5 plan preview: reflect the user's vibe + what Promptly is
+                    // making, so the multi-minute wait reads as a craft in progress
+                    // (not a dead spinner). Honest — these are what every edit gets.
+                    // Hidden on the ask-back pause (the AskCard owns that moment).
+                    if let vibe = message.originalVibe, status != "needs_input" {
+                        PlanPreviewCard(vibe: vibe)
+                            .padding(.bottom, 10)
+                    }
                     PipelineProgressView(
                         timeline: timeline,
                         progress: message.jobProgress ?? 0,
@@ -211,31 +257,26 @@ struct MessageBubble: View {
             }
 
             if !message.content.isEmpty {
-                bubbleText(message.content)
+                // 225 item 2: full-width assistant TEXT — no glass bubble. Plus a
+                // blinking caret at the tail while the reply streams (caretOn is
+                // toggled by the .task below only while message.isStreaming).
+                bubbleText(message.isStreaming && caretOn ? message.content + "\u{258C}" : message.content)
                     .font(.system(.body, design: .default).weight(.regular))
                     .tracking(0.2)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(
-                        // Assistant bubble: subtler glass — softer than
-                        // the user bubble so the conversation alternates
-                        // with clear visual rhythm.
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color.white.opacity(0.03))
+                    .padding(.vertical, 4)
+                    .task(id: message.isStreaming) {
+                        guard message.isStreaming else { return }
+                        while !Task.isCancelled {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            caretOn.toggle()
                         }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
                     .contextMenu {
                         if message.error == nil {
                             Button {
@@ -264,7 +305,12 @@ struct MessageBubble: View {
                     hlsManifestUrl: message.hlsManifestUrl,
                     jobId: message.jobId,
                     title: message.originalVibe,
-                    onReedit: buildReeditHandler(for: message)
+                    postPackage: message.postPackage,
+                    onReedit: buildReeditHandler(for: message),
+                    onMakeAnother: onMakeAnother,
+                    // The inline progressive player already shows the (swapped) video;
+                    // hide the redundant thumbnail but keep the re-edit/make-another row.
+                    videoSurfaceHidden: showProgressive
                 )
             }
 
@@ -273,6 +319,22 @@ struct MessageBubble: View {
                     Text(Self.displaySafeError(message.error))
                         .font(.system(size: 14))
                         .foregroundColor(.red)
+
+                    // Credit reassurance (free tier): a failed render refunds the
+                    // daily slot server-side (inline + backstop sweep), so the
+                    // user's one-a-day is never burned by our failure. Say so —
+                    // Pro has no daily limit, so it's free-tier only.
+                    if !SubscriptionService.shared.effectiveIsPro {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.green.opacity(0.85))
+                            Text("You weren't charged — this didn't use your daily render.")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(.secondaryLabel))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
 
                     // Try Again button — shown only when the backend
                     // marked this failure as retryable AND we have the
@@ -304,6 +366,30 @@ struct MessageBubble: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Try again — re-runs the render with the same video and vibe")
+                    } else if let onMakeAnother = onMakeAnother {
+                        // Rejected-user recovery: for a content rejection (no speech,
+                        // no audio, too short/long, not-talking-head), the SAME clip
+                        // can't succeed — the honest copy above already names the fix,
+                        // and this is the one-tap way to act on it. 140/198 rejected
+                        // users quit after one rejection; this is the path back in.
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onMakeAnother()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "video.badge.plus")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Upload a new video")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Upload a new video")
                     }
                 }
                 .padding(.horizontal, 14)
@@ -579,6 +665,55 @@ struct ProcessingIndicator: View {
 // The display is driven by the observable StageTimeline on the message. All
 // skip inference happens inside the timeline; this view is purely
 // presentational.
+
+/// §5 plan preview — a compact "here's what we're making" card shown atop the
+/// progress bar during a render. Reflects the user's own vibe back to them and
+/// lists what every Promptly edit delivers, so the wait feels like a craft in
+/// progress. Purely honest reassurance — no fabricated per-clip specifics.
+struct PlanPreviewCard: View {
+    let vibe: String
+    private static let gold = Color(red: 1, green: 0.82, blue: 0.5)
+    private static let deliverables: [(icon: String, label: String)] = [
+        ("captions.bubble", "Captions"),
+        ("scissors", "Cuts"),
+        ("paintpalette", "Color"),
+        ("waveform", "Pacing"),
+    ]
+    private var trimmedVibe: String { vibe.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Self.gold)
+                Text("Making your edit")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            if !trimmedVibe.isEmpty {
+                Text("“\(trimmedVibe)”")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 12) {
+                ForEach(Self.deliverables, id: \.label) { d in
+                    HStack(spacing: 4) {
+                        Image(systemName: d.icon).font(.system(size: 10, weight: .semibold))
+                        Text(d.label).font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+    }
+}
 
 struct PipelineProgressView: View {
     @ObservedObject var timeline: StageTimeline
@@ -971,6 +1106,9 @@ struct PipelineProgressView: View {
 final class VideoExporter: ObservableObject {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    /// Optional job id so the EXPORT funnel event (`export_completed`) can be
+    /// tied back to the render. nil for surfaces that don't supply one.
+    let jobId: String?
 
     @Published var saveState: ActionState = .idle
 
@@ -987,6 +1125,7 @@ final class VideoExporter: ObservableObject {
         case photosDenied
         case saveFailed(String)
         case appNotInstalled(String)
+        case gatedPaywall   // 225 item 3: 402 — sentinel routed to the paywall, never shown
 
         var errorDescription: String? {
             switch self {
@@ -994,22 +1133,39 @@ final class VideoExporter: ObservableObject {
             case .photosDenied:      return "Photos access was denied"
             case .saveFailed(let m): return "Couldn't save: \(m)"
             case .appNotInstalled(let app): return "\(app) isn't installed"
+            case .gatedPaywall:      return "Upgrade to export"
             }
         }
     }
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
+        self.jobId = jobId
     }
 
     // MARK: - Private helpers
 
-    private func ensureLocalFile() async throws -> URL {
+    /// 225 item 3: resolve which URL the save downloads from. With a jobId the
+    /// export gate rules (a signed private/watermarked asset on 200; the public
+    /// URL only when the gate says legacy-save is correct — 404 no_private_asset
+    /// or 501/route-dark; a 402 throws .gatedPaywall so we NEVER silent-public-save
+    /// a walled export). Without a jobId (LibraryView / pre-gate items) the public
+    /// URL — those predate the gate. Network errors propagate → retry, never public save.
+    private func resolveSaveSourceUrl() async throws -> String {
+        guard let jobId else { return videoUrlStr }
+        switch try await APIService.shared.exportJob(jobId: jobId) {
+        case .gated(let url, _):   return url.absoluteString
+        case .legacyPublicSaveOK:  return videoUrlStr
+        case .paymentRequired:     throw ExportError.gatedPaywall
+        }
+    }
+
+    private func ensureLocalFile(from urlStr: String) async throws -> URL {
         if let cached = cachedLocalUrl, FileManager.default.fileExists(atPath: cached.path) {
             return cached
         }
-        guard let remoteUrl = URL(string: videoUrlStr) else { throw ExportError.invalidUrl }
+        guard let remoteUrl = URL(string: urlStr) else { throw ExportError.invalidUrl }
         let (tempUrl, _) = try await URLSession.shared.download(from: remoteUrl)
         let finalUrl = FileManager.default.temporaryDirectory
             .appendingPathComponent("promptly-export-\(UUID().uuidString).mp4")
@@ -1027,7 +1183,10 @@ final class VideoExporter: ObservableObject {
             throw ExportError.photosDenied
         }
 
-        let localFile = try await ensureLocalFile()
+        // 225 item 3: the gate decides the source (throws .gatedPaywall on 402,
+        // URLError on network — caller handles both, never a silent public save).
+        let sourceUrl = try await resolveSaveSourceUrl()
+        let localFile = try await ensureLocalFile(from: sourceUrl)
 
         var placeholderId: String?
         try await PHPhotoLibrary.shared().performChanges {
@@ -1037,6 +1196,14 @@ final class VideoExporter: ObservableObject {
         }
         guard let id = placeholderId else { throw ExportError.saveFailed("no asset id") }
         cachedAssetId = id
+        // EXPORT funnel: a NEW asset was just written to the camera roll — fire
+        // once per real save (repeat taps hit the cachedAssetId early-return at
+        // the top of this method and don't re-fire). job_id is attached when the
+        // constructing surface supplied one (MessageBubble does; LibraryView
+        // builds VideoExporter without a jobId, so those saves omit it).
+        var exportProps: [String: Any] = ["method": "save"]
+        if let jobId { exportProps["job_id"] = jobId }
+        Analytics.track("export_completed", props: exportProps)
         return id
     }
 
@@ -1051,6 +1218,11 @@ final class VideoExporter: ObservableObject {
                 saveState = .success
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 if saveState == .success { saveState = .idle }
+            } catch ExportError.gatedPaywall {
+                // 225 item 3: 402 — out of free exports. Present the upgrade paywall;
+                // NEVER fall back to a public save. No error copy (this is a flow).
+                saveState = .idle
+                await MainActor.run { AppState.shared.presentPaywall(.manual) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 saveState = .error(error.localizedDescription)
@@ -1067,7 +1239,10 @@ final class VideoExporter: ObservableObject {
 struct VideoActionRow: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    /// Threaded through so the share/save EXPORT events carry job_id.
+    let jobId: String?
     let onReedit: (() -> Void)?
+    let onMakeAnother: (() -> Void)?
     @StateObject private var exporter: VideoExporter
     // Observe both signals so the Re-edit pill re-renders (gold ↔ lock)
     // the moment Pro state flips — a fresh purchase or an SQL comp on
@@ -1075,33 +1250,71 @@ struct VideoActionRow: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
+        self.jobId = jobId
         self.onReedit = onReedit
-        _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
+        self.onMakeAnother = onMakeAnother
+        _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr, jobId: jobId))
     }
 
     private var isPro: Bool { subscription.isPro || usage.isPro }
 
     var body: some View {
-        HStack(spacing: 14) {
-            if let onReedit {
-                reeditPill(action: onReedit)
+        VStack(alignment: .leading, spacing: 12) {
+            // HERO: Share — the growth action. A finished edit does nothing
+            // sitting in the app; sharing it is the point, so it leads as the
+            // one primary button instead of being one of four equal pills.
+            shareHeroButton
+
+            // Secondary actions — save, re-edit, start another.
+            HStack(spacing: 14) {
+                pill(
+                    icon: "square.and.arrow.down",
+                    label: "Save",
+                    state: exporter.saveState,
+                    action: exporter.save
+                )
+                if let onReedit {
+                    reeditPill(action: onReedit)
+                }
+                // Post-render next action: keep the momentum instead of
+                // dead-ending the win. One tap starts a fresh video.
+                if let onMakeAnother {
+                    makeAnotherPill(action: onMakeAnother)
+                }
+                Spacer(minLength: 0)
             }
-
-            pill(
-                icon: "square.and.arrow.down",
-                label: "Save",
-                state: exporter.saveState,
-                action: exporter.save
-            )
-
-            shareLinkPill
-
-            Spacer(minLength: 0)
         }
         .padding(.top, 8)
+    }
+
+    /// "New" pill — a plain circle+label action matching the row rhythm (the
+    /// stateful `pill(...)` is for export progress; this one has no state).
+    private func makeAnotherPill(action: @escaping () -> Void) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(Color(.tertiarySystemBackground))
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color(.secondaryLabel))
+                }
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                Text("New")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Make another video")
     }
 
     // MARK: - Pill subviews
@@ -1270,32 +1483,109 @@ struct VideoActionRow: View {
         }
     }
 
+    /// Share promoted to the primary CTA — a full-width filled button, not one
+    /// of four equal circle pills. This is the §6 "Share as hero" change.
     @ViewBuilder
-    private var shareLinkPill: some View {
+    private var shareHeroButton: some View {
         if let url = URL(string: videoUrlStr) {
             ShareLink(item: url) {
-                VStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 48, height: 48)
-                        .overlay {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(.white)
-                                .symbolRenderingMode(.hierarchical)
-                                .accessibilityHidden(true)
-                        }
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .semibold))
                     Text("Share")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(.secondaryLabel))
+                        .font(.system(size: 16, weight: .semibold))
                 }
+                .foregroundColor(.black)
+                .frame(maxWidth: 300)
+                .padding(.vertical, 13)
+                .background(Capsule().fill(Color.white))
             }
-            .accessibilityLabel("Share video")
+            .accessibilityLabel("Share your video")
             .accessibilityAddTraits(.isButton)
             .simultaneousGesture(TapGesture().onEnded {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                // EXPORT funnel: ShareLink exposes NO completion callback, so
+                // "share" is counted on INITIATION (intent-to-share) when the
+                // user taps the hero share pill — not on delivery confirmation.
+                var exportProps: [String: Any] = ["method": "share"]
+                if let jobId { exportProps["job_id"] = jobId }
+                Analytics.track("export_completed", props: exportProps)
             })
         }
+    }
+}
+
+// MARK: - §6 Post package (posting-ready copy under a finished video)
+
+/// The payoff block shown under a completed video: the hook as a headline, the
+/// paste-ready caption in a card with a Copy button, and the edit rationale as a
+/// quiet "why this edit" note. Each field is optional — only what's present is
+/// shown; `hasContent` gates the whole block at the call site.
+struct PostPackageView: View {
+    let package: PostPackage
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let hook = package.postHook {
+                Text(hook)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+
+            if let caption = package.postCaption {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(caption)
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(.label))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = caption
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) { copied = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                            withAnimation(.easeInOut(duration: 0.2)) { copied = false }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(copied ? "Copied" : "Copy caption")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.white.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(copied ? "Caption copied" : "Copy caption")
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                )
+            }
+
+            if let why = package.editRationale {
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(.tertiaryLabel))
+                        .padding(.top, 1)
+                    Text(why)
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(.secondaryLabel))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: 300, alignment: .leading)
     }
 }
 
@@ -1315,7 +1605,16 @@ struct CompletedVideoView: View {
     let hlsManifestUrl: String?
     let jobId: String?
     let title: String?
+    /// §6 post package — posting-ready copy (hook / caption / rationale) shown
+    /// between the video surface and the action row. nil → nothing rendered.
+    let postPackage: PostPackage?
     let onReedit: (() -> Void)?
+    let onMakeAnother: (() -> Void)?
+    /// §5 progressive: when the inline ProgressivePlayerView owns the video surface
+    /// (the preview→final swap plays inline above), hide this view's static thumbnail
+    /// tile but KEEP the action row (re-edit / make another). Default false — zero
+    /// change to the normal completed UX.
+    var videoSurfaceHidden: Bool = false
 
     /// When AsyncImage hits a 403 (signed URL expired past 7 days),
     /// we ask the server for fresh URLs and stash them here. Future
@@ -1328,6 +1627,11 @@ struct CompletedVideoView: View {
     /// Set only when the user taps play AND FeedbackManager says we're due
     /// (rare, frequency-capped). Lives per-video so only the watched one asks.
     @State private var showFeedbackPrompt = false
+
+    /// ACTIVATION funnel dedupe: `result_viewed` fires at most once per
+    /// appearance-session of this completed result, so scrolling the bubble
+    /// on/off screen doesn't spam the event.
+    @State private var didTrackViewed = false
 
     /// Drives the loading-vs-playable thumbnail state. Updates the
     /// instant `VideoCache.shared.cachedIds` flips for this jobId.
@@ -1354,6 +1658,7 @@ struct CompletedVideoView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if !videoSurfaceHidden {
             Button {
                 guard isPlayable else { return }
                 // The user is watching a finished render — the natural, earned
@@ -1427,6 +1732,17 @@ struct CompletedVideoView: View {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    // EXPORT funnel: ShareLink has no completion callback, so
+                    // "share" counts INITIATION (intent-to-share) on tap of the
+                    // context-menu share item. jobId is in scope here
+                    // (CompletedVideoView property). Fires best-effort — taps
+                    // inside a system context menu aren't guaranteed to deliver
+                    // a gesture, so the hero share pill is the primary signal.
+                    .simultaneousGesture(TapGesture().onEnded {
+                        var exportProps: [String: Any] = ["method": "share"]
+                        if let jobId { exportProps["job_id"] = jobId }
+                        Analytics.track("export_completed", props: exportProps)
+                    })
                     Button {
                         UIApplication.shared.open(url)
                     } label: {
@@ -1439,11 +1755,22 @@ struct CompletedVideoView: View {
                     }
                 }
             }
+            } // end if !videoSurfaceHidden
+
+            // §6 payoff: posting-ready copy under the video — the hook, the
+            // paste-ready caption, and the "why this edit" note. Renders only
+            // the fields that survived; absent package → nothing (no empty box).
+            if let pkg = postPackage, pkg.hasContent {
+                PostPackageView(package: pkg)
+                    .padding(.top, 10)
+            }
 
             VideoActionRow(
                 videoUrlStr: videoUrlStr,
                 thumbnailUrlStr: thumbnailUrlStr,
-                onReedit: onReedit
+                jobId: jobId,
+                onReedit: onReedit,
+                onMakeAnother: onMakeAnother
             )
             .opacity(isPlayable ? 1 : 0.4)
             .disabled(!isPlayable)
@@ -1470,6 +1797,17 @@ struct CompletedVideoView: View {
                 .padding(.top, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        }
+        .onAppear {
+            // ACTIVATION funnel: the finished render just became visible INLINE
+            // in the chat bubble — the common case the fullscreen player-present
+            // event (VideoPlayerPresenter.doPresent) misses. Dedupe so scrolling
+            // the bubble on/off screen fires it at most once per appearance.
+            guard !didTrackViewed else { return }
+            didTrackViewed = true
+            var viewedProps: [String: Any] = [:]
+            if let jobId { viewedProps["job_id"] = jobId }
+            Analytics.track("result_viewed", props: viewedProps)
         }
     }
 
@@ -1608,6 +1946,7 @@ enum VideoPlayerPresenter {
                 urlString: local.absoluteString,
                 title: title,
                 posterUrl: thumbnailUrl,
+                jobId: jobId,
                 onReedit: onReedit
             )
             return
@@ -1633,13 +1972,14 @@ enum VideoPlayerPresenter {
                 urlString: resolvedUrl,
                 title: title,
                 posterUrl: thumbnailUrl,
+                jobId: jobId,
                 onReedit: onReedit
             )
         }
     }
 
     @MainActor
-    private static func doPresent(urlString: String, title: String?, posterUrl: String?, onReedit: (() -> Void)?) {
+    private static func doPresent(urlString: String, title: String?, posterUrl: String?, jobId: String?, onReedit: (() -> Void)?) {
         guard let url = URL(string: urlString) else {
             print("[player] FAILED: invalid URL after refresh")
             return
@@ -1664,8 +2004,13 @@ enum VideoPlayerPresenter {
             print("[player] FAILED: no topmost view controller")
             return
         }
-        // ACTIVATION-funnel terminal: the finished render is being viewed.
-        Analytics.track("result_viewed")
+        // ACTIVATION-funnel terminal: the finished render is being viewed
+        // (fullscreen player present). The INLINE appearance fires its own
+        // result_viewed in CompletedVideoView.onAppear; both carry job_id so
+        // downstream can dedupe per render if needed.
+        var viewedProps: [String: Any] = [:]
+        if let jobId { viewedProps["job_id"] = jobId }
+        Analytics.track("result_viewed", props: viewedProps)
         topVC.present(host, animated: true)
     }
 

@@ -23,12 +23,35 @@ final class PushService {
 
     private let lastTokenKey = "promptly.pushService.lastDeviceToken"
     private let askedKey = "promptly.pushService.didAskForPermission"
+    private let softOfferedKey = "promptly.pushService.didOfferSoftPrompt"
 
     /// True if we've shown the system permission dialog at least once. Used
     /// to avoid asking twice (after a denial we shouldn't keep prompting —
     /// iOS would suppress it anyway, but skipping the call keeps logs clean).
     var hasAskedForPermission: Bool {
         UserDefaults.standard.bool(forKey: askedKey)
+    }
+
+    /// True once we've shown the in-app pre-permission explainer (either outcome).
+    /// Keeps the soft ask to a single, well-timed moment (the first upload) — we
+    /// never re-nag it on every upload.
+    var didOfferSoftPrompt: Bool {
+        UserDefaults.standard.bool(forKey: softOfferedKey)
+    }
+
+    /// Whether to show the pre-permission explainer now. Only if the explainer
+    /// hasn't been shown AND the system dialog is still unseen (notDetermined,
+    /// tracked via `hasAskedForPermission`). This is the guarantee we NEVER ask
+    /// cold: the caller shows the explainer, and ONLY a "Notify me" tap reaches
+    /// requestPermissionIfNeeded() and the iOS dialog. A "Not now" leaves the
+    /// system one-shot intact for a future re-offer.
+    var shouldOfferSoftPrompt: Bool {
+        !hasAskedForPermission && !didOfferSoftPrompt
+    }
+
+    /// Mark the pre-permission explainer as shown (called on either button).
+    func markSoftPromptOffered() {
+        UserDefaults.standard.set(true, forKey: softOfferedKey)
     }
 
     /// The token we last successfully registered with the server. Used to
@@ -50,11 +73,24 @@ final class PushService {
         case .authorized, .provisional, .ephemeral:
             // Already granted — ensure remote registration is current. iOS
             // gives us a fresh token roughly daily anyway.
+            Analytics.track("push_permission", props: [
+                "result": "granted",
+                "authorization_status": settings.authorizationStatus.rawValue,
+                "reason": "already_determined",
+            ])
             UIApplication.shared.registerForRemoteNotifications()
         case .notDetermined:
             UserDefaults.standard.set(true, forKey: askedKey)
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                // Capture the actual iOS system-dialog outcome. Re-fetch settings
+                // so authorization_status reflects the post-prompt state (the outer
+                // `settings` snapshot is still .notDetermined at this point).
+                let resolvedSettings = await center.notificationSettings()
+                Analytics.track("push_permission", props: [
+                    "result": granted ? "granted" : "denied",
+                    "authorization_status": resolvedSettings.authorizationStatus.rawValue,
+                ])
                 if granted {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
@@ -65,6 +101,11 @@ final class PushService {
             // iOS won't show the dialog again. User has to flip the switch
             // in Settings; that path triggers a fresh registration via
             // didRegisterForRemoteNotifications.
+            Analytics.track("push_permission", props: [
+                "result": "denied",
+                "authorization_status": settings.authorizationStatus.rawValue,
+                "reason": "already_determined",
+            ])
             break
         @unknown default:
             break

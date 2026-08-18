@@ -22,9 +22,14 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
         // Touching the singleton instantiates its background URLSession
         // with the matching identifier, which lets iOS deliver the
         // queued delegate callbacks for tasks that completed while we
-        // were terminated.
+        // were terminated. Route by identifier — the single-PUT and the
+        // 226 multipart sessions are distinct and each drains its own events.
         Task { @MainActor in
-            BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
+            if identifier == ResumableMultipartUploader.shared.sessionIdentifier {
+                ResumableMultipartUploader.shared.savedCompletionHandler = completionHandler
+            } else {
+                BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
+            }
         }
     }
 
@@ -134,7 +139,9 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let type = userInfo["type"] as? String
         Task { @MainActor in
             if type == "render-complete" || type == "render-failed" {
-                AppState.shared.selectedTab = 1  // Library
+                // Sidebar-restructure: Library is a sheet now. Open it — the just-
+                // finished video is the newest entry at the top of the grid.
+                AppState.shared.showLibrary = true
             }
             completionHandler()
         }
@@ -270,6 +277,15 @@ struct PromptlyApp: App {
                     AuthView()
                         .transition(.opacity)
                 }
+
+                #if DEBUG
+                // Snapshot harness (presentations-proven-by-presentations): when
+                // launched with -snapshotPayoff, cover the app with the real §6 /
+                // paywall views on mock data for an external screenshot capture.
+                if ProcessInfo.processInfo.arguments.contains("-snapshotPayoff") {
+                    PayoffSnapshotHarnessView()
+                }
+                #endif
             }
             #if DEBUG
             .onAppear {
@@ -287,12 +303,25 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
+            // Post-auth landing reset (build 217): every sign-in lands on chat
+            // with the composer focused; sign-out clears the nav so it can't
+            // persist a stale Account/Library sheet into the next session.
+            .onChange(of: auth.isAuthenticated) { _, authed in
+                if authed { AppState.shared.landOnChat() }
+                else { AppState.shared.clearNavForSignOut() }
+            }
             .onChange(of: scenePhase) { previous, phase in
                 guard phase == .active else { return }
                 if !didStartSession || previous == .background {
                     didStartSession = true
                     Analytics.track("session_started")
                 }
+                // 226 item 7b: on every foreground (and cold launch), touch the
+                // multipart uploader so its background session reconnects, then
+                // reconcile + resume in-flight uploads and abort any that expired.
+                // Abandoned parts bill forever, so the sweep must NEVER wait for the
+                // user to revisit a screen.
+                Task { @MainActor in ResumableMultipartUploader.shared.resumeAndSweepOnForeground() }
             }
             .environmentObject(appState)
             // Apply the onboarding language choice app-wide this session (the
@@ -511,7 +540,7 @@ enum OnboardingProofHarness {
         s.debugForceRepro()
         // Walk the beats. Signup is skipped (needs real auth); every other beat
         // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
-        let beats: [OnboardingState.Step] = [.language, .socialProof, .wall]
+        let beats: [OnboardingState.Step] = [.language, .audience, .intent, .attribution]
         Task { @MainActor in
             for beat in beats {
                 s.debugSet(beat)

@@ -24,6 +24,22 @@ final class UsageService: ObservableObject {
         /// pre-1.2.0 server response (no tier field) still decodes. The client
         /// composes this with RevenueCat's view via EntitlementTier.resolve.
         let tier: String?
+        // Freemium usage-meter contract (server /api/usage, 2026-07-23+). All
+        // optional so a pre-1.3.0 server (which omits them) still decodes — the
+        // struct has no CodingKeys and the decoder does no snake_case conversion,
+        // so these names must match the JSON keys 1:1. `used`/`limit` mirror
+        // renders_today/render_limit (limit is null for Pro → Int?); `resets_at`
+        // is the ISO8601 instant the daily quota resets (next UTC midnight).
+        let used: Int?
+        let limit: Int?
+        let resets_at: String?
+        // (The first-run sample-clip demo — sample_demo_* — was removed. The server
+        // SAMPLE_DEMO_* keys can now be retired; unknown JSON keys decode fine, so
+        // dropping these fields is safe against production as it is today.)
+        // §5 progressive playback: start playing the render as segments land (HLS)
+        // instead of waiting for the final mux. Server-gated, OFF by default; the
+        // client player plumbing is wired behind this flag before it flips.
+        let progressive_playback_enabled: Bool?
     }
 
     @Published var snapshot: Snapshot?
@@ -32,18 +48,44 @@ final class UsageService: ObservableObject {
     var isPro: Bool { snapshot?.is_pro ?? false }
     var rendersToday: Int { snapshot?.renders_today ?? 0 }
     var chatsToday: Int { snapshot?.chats_today ?? 0 }
-    var renderLimit: Int { snapshot?.render_limit ?? 3 }
-    var chatLimit: Int { snapshot?.chat_limit ?? 50 }
-    var rendersLeft: Int { max(0, renderLimit - rendersToday) }
-    var chatsLeft: Int { max(0, chatLimit - chatsToday) }
+    // STRICT: the daily caps come ONLY from the server snapshot — never a
+    // client-side fallback that could invent a wrong number. nil until the first
+    // snapshot lands (every quota surface renders nothing until then, by design).
+    // The old `?? 3` fallback is exactly the class of bug that showed a free user
+    // "2 left" (a legacy trial cap of 3 minus one render); there is no safe
+    // guessed limit, so the answer to "unknown" is nil, not a number.
+    var renderLimit: Int? { snapshot?.render_limit }
+    var chatLimit: Int? { snapshot?.chat_limit }
+    var rendersLeft: Int? { snapshot.map { max(0, $0.render_limit - $0.renders_today) } }
+    var chatsLeft: Int? { snapshot.map { max(0, $0.chat_limit - $0.chats_today) } }
     // Gate on the COMPOSITE Pro signal (RevenueCat OR server), matching the
     // contract in SubscriptionService.effectiveIsPro and the picker/re-edit
     // gates. Using the server-only `isPro` here meant a user who is Pro on
     // RevenueCat but not-yet-synced server-side would still hit these
     // paywalls while re-edit + 10-video select already worked — the exact
     // split that read as "my Pro account isn't recognized."
-    var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && rendersLeft <= 0 }
-    var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && chatsLeft <= 0 }
+    // nil-safe: an unknown (not-yet-loaded) count is NEVER "at limit" — the
+    // server is the real gate, so pre-snapshot we never preemptively paywall.
+    var atRenderLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (rendersLeft.map { $0 <= 0 } ?? false) }
+    var atChatLimit: Bool { !SubscriptionService.shared.effectiveIsPro && (chatsLeft.map { $0 <= 0 } ?? false) }
+
+    // §5 progressive playback gate (default off until the HLS player path ships).
+    var progressivePlaybackEnabled: Bool { snapshot?.progressive_playback_enabled ?? false }
+
+    /// The absolute instant the daily render quota resets (server = next UTC
+    /// midnight), for the usage-meter countdown. The server serializes with
+    /// `toISOString()`, which ALWAYS includes fractional seconds (".000Z"), so
+    /// the formatter MUST enable `.withFractionalSeconds` or the parse returns
+    /// nil; we fall back to the non-fractional form for safety. The parsed Date
+    /// is absolute (Z offset), so no local-timezone math is needed downstream.
+    var resetsAt: Date? {
+        guard let s = snapshot?.resets_at else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
 
     private init() {}
 
@@ -60,6 +102,13 @@ final class UsageService: ObservableObject {
         guard let url = URL(string: "https://usepromptly.app/api/usage") else { return }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Stamp the freemium header (X-Promptly-Freemium: 1) so /api/usage computes
+        // the limit on the SAME tier every other freemium door uses. Without it the
+        // server falls to effectiveTier('none', enforce=false) → the legacy 'trial'
+        // cap of 3, and a free user's meter reads "3" (→ "2 left" after one render).
+        // The render gate (createVideoJob) already stamps this; the display call
+        // must match it or the number lies while the server correctly enforces 1.
+        WallCapability.stamp(&request)
         request.timeoutInterval = 10
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

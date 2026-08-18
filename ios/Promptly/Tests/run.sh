@@ -51,3 +51,24 @@ swiftc "$DIR/../Promptly/Services/EntitlementTier.swift" \
        "$DIR/EntitlementTierTests.swift" \
        -o "${TMPDIR:-/tmp}/tiertest"
 "${TMPDIR:-/tmp}/tiertest"
+
+# UsageMeter — free-tier quota display never invents a limit (build-215 revenue fix).
+swiftc "$DIR/UsageMeterRegressionTests.swift" -o "${TMPDIR:-/tmp}/usagetest"
+"${TMPDIR:-/tmp}/usagetest"
+
+# ResumableUpload — item 7b contract-free machinery: part-plan split math,
+# chunk-to-file byte fidelity, and the resume ledger (skip-completed-parts +
+# persistence round-trip). Pure Foundation; the network contract and the
+# background-session resume loop are validated elsewhere (server + device).
+swiftc "$DIR/../Promptly/Services/ResumableUpload.swift" \
+       "$DIR/ResumableUploadTests.swift" \
+       -o "${TMPDIR:-/tmp}/resumabletest"
+"${TMPDIR:-/tmp}/resumabletest"
+
+# ExportGateDecision — the export gate_probe dry-run parser (allowed/gated/
+# indeterminate + fail-open wouldGate). Verifies the paywall branch today, zero
+# flips, no device (SERVER_CONTRACTS_226 confirming line). Pure Foundation.
+swiftc "$DIR/../Promptly/Services/ExportGateProbe.swift" \
+       "$DIR/ExportGateDecisionTests.swift" \
+       -o "${TMPDIR:-/tmp}/gateprobetest"
+"${TMPDIR:-/tmp}/gateprobetest"

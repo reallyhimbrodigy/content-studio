@@ -63,12 +63,18 @@ final class OnboardingState: ObservableObject {
     var locale: Locale? { preferredLanguage.map { Locale(identifier: $0) } }
 
     // ── Flow position ────────────────────────────────────────────────────────
+    // Rebuilt 2026-08-03 (Zac): the paywall + social-proof beats are GONE. The
+    // funnel proved day-1 is everything and onboarding must END AT THE PICKER —
+    // so onboarding is now three skippable questions that segment the user and
+    // preselect a vibe, then drop them straight on the importer. The paywall
+    // moved out entirely; the referral (post-first-video) replaces the trial.
     enum Step: String, Codable {
         case language       // pick the app language (kept from the quiz)
         case signup         // Sign in with Apple
-        case socialProof    // honest numbers (+ the native review prompt)
-        case wall           // the trial-timeline paywall
-        case done           // trial started or Pro purchased — into the app
+        case audience       // Q1: who are you making videos for? (segments)
+        case intent         // Q2: what do you want to make? (preselects a vibe)
+        case attribution    // Q3: how did you hear about us? (channel attribution)
+        case done           // → straight to the video picker
     }
 
     @Published var step: Step = .language {
@@ -77,6 +83,17 @@ final class OnboardingState: ObservableObject {
             Analytics.track("onboarding_step", props: ["step": step.rawValue])
         }
     }
+
+    // ── Onboarding answers ───────────────────────────────────────────────────
+    // Persisted to profile_settings (POST /api/profile/settings) + surfaced as
+    // PostHog person properties. Every future funnel cut can finally segment by
+    // audience/intent, and we get channel attribution for the first time.
+    @Published var audience: String?
+    @Published var intent: String?
+    @Published var attribution: String?
+    /// Q2 maps the chosen intent to a starting vibe so the editor opens ON A
+    /// STYLE, not a blank text field (nil = "not sure" → default composer).
+    @Published var preselectedVibe: String?
 
     /// Completed = the user has passed the wall (trial/Pro) at least once.
     /// A lapsed subscriber does NOT redo onboarding — they get the lapsed wall.
@@ -104,6 +121,29 @@ final class OnboardingState: ObservableObject {
             // completion in onAppear; this just seeds the last-known beat.
             step = s
         }
+    }
+
+    /// Persist the three answers into `profile_settings` (POST
+    /// /api/profile/settings) so every future funnel can segment by
+    /// audience/intent and we finally have channel attribution. Best-effort and
+    /// fire-and-forget: onboarding must never block on a network write. The
+    /// server merges these keys into profile_settings (additive).
+    func persistAnswersToProfile() {
+        var settings: [String: Any] = [:]
+        if let audience { settings["audience"] = audience }
+        if let intent { settings["intent"] = intent }
+        if let attribution { settings["attribution"] = attribution }
+        guard !settings.isEmpty,
+              let token = AuthService.shared.accessToken,
+              let url = URL(string: "https://usepromptly.app/api/profile/settings"),
+              let body = try? JSONSerialization.data(withJSONObject: ["profile_settings": settings]) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = body
+        req.timeoutInterval = 8
+        Task.detached { _ = try? await URLSession.shared.data(for: req) }
     }
 
     private init() {

@@ -22,18 +22,72 @@ import CoreMedia
 /// signal at a slightly higher latency.
 enum TalkingHeadPrecheck {
 
-    /// Sample 8 evenly-spaced frames; return true if ≥30% contain a
-    /// face wider than 10% of the frame. Returns true (not false) when
-    /// the asset can't be sampled at all — we'd rather upload a
-    /// borderline clip than reject something we can't analyze.
-    static func quickCheck(videoURL: URL) async -> Bool {
+    /// Minimum / maximum source length Promptly can edit. `minDurationSec` is the
+    /// <2.0s zero-reject floor — the ONLY content-duration rejection; a sub-2s clip
+    /// can't yield a watchable edit. `maxDurationSec` mirrors the server's
+    /// CLIP_TOO_LONG (the 2026-07 lockstep). BOTH are enforced at PICK TIME on
+    /// PHAsset.duration in EditorView.handlePickedVideos — before any upload and for
+    /// iCloud-only clips too — so a too-short/too-long clip never reaches the server.
+    static let minDurationSec = 2
+    static let maxDurationSec = 180
+
+    /// Deterministic audio precheck that runs BEFORE the face check and before any
+    /// upload (local clips only; iCloud skips Layer 1). Duration is gated earlier at
+    /// pick time on PHAsset.duration (see the constants above), so this only flags a
+    /// silent clip. Under 223 no-audio is advisory, not a block. Fail-open on load
+    /// error (let the backend make the call). `.ok` proceeds to the face check.
+    enum Preflight: Equatable {
+        case ok
+        case noAudio
+    }
+
+    static func preflight(videoURL: URL) async -> Preflight {
+        let asset = AVURLAsset(url: videoURL)
+        // Audio track present? Empty (successfully-loaded) audio-track list = no
+        // sound. A load error falls through to .ok (fail-open, backend catches).
+        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio), audioTracks.isEmpty {
+            return .noAudio
+        }
+        return .ok
+    }
+
+    /// The measured signal behind the talking-head verdict. `pass` is the gate
+    /// (faceRatio >= 0.30); the rest exist so a REJECTION is inspectable even
+    /// though it produces no upload/artifact to look at:
+    ///   - faceRatio:    fraction of sampled frames with a face WIDER than 10% of
+    ///                   the frame (the gated detection rate — what the bar uses).
+    ///   - anyFaceRatio: fraction of frames with ANY face detected regardless of
+    ///                   width. anyFaceRatio ≫ faceRatio ⇒ the 10%-width SIZE
+    ///                   FLOOR is doing the rejecting (a real person at medium
+    ///                   distance in a wide shot), NOT the detector — a second
+    ///                   over-rejection axis independent of Vision accuracy.
+    ///   - maxFaceWidth: largest face width seen (fraction of frame), 0 if none.
+    ///   - samples:      frames actually analysed (≤8).
+    struct FaceCheckResult {
+        let pass: Bool
+        let faceRatio: Double
+        let anyFaceRatio: Double
+        let maxFaceWidth: Double
+        let samples: Int
+        /// Fail-open sentinel (pass:true, -1 measurements) for the cases where we
+        /// couldn't analyse the clip — carried but never logged, since pass:true
+        /// emits no rejection event.
+        static let failOpen = FaceCheckResult(pass: true, faceRatio: -1, anyFaceRatio: -1, maxFaceWidth: -1, samples: 0)
+    }
+
+    /// Sample 8 evenly-spaced frames; pass if ≥30% contain a face wider than 10%
+    /// of the frame. Fail-OPEN (pass:true) when the asset can't be sampled — we'd
+    /// rather upload a borderline clip than reject something we can't analyze.
+    /// Returns the full FaceCheckResult so a rejection's faceRatio + width
+    /// distribution are logged (a precheck reject leaves no artifact to inspect).
+    static func quickCheck(videoURL: URL) async -> FaceCheckResult {
         let asset = AVURLAsset(url: videoURL)
 
         // Get duration. If asset metadata can't load (corrupt, weird
         // container), let it through and let the backend make the call.
         guard let duration = try? await asset.load(.duration),
               duration.seconds > 0 else {
-            return true
+            return .failOpen
         }
 
         let totalSeconds = duration.seconds
@@ -57,6 +111,8 @@ enum TalkingHeadPrecheck {
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
 
         var faceHits = 0
+        var anyFaceFrames = 0
+        var maxFaceWidth = 0.0
         var samples = 0
         let t0 = Date()
 
@@ -70,12 +126,20 @@ enum TalkingHeadPrecheck {
                 try handler.perform([request])
 
                 guard let results = request.results, !results.isEmpty else { continue }
-                // Largest face wins. The 10% width threshold filters out
-                // tiny background bystanders (someone walking past in a
-                // street vlog) without rejecting normal medium-shots.
+                // Largest face wins. The 10% width threshold filters out tiny
+                // background bystanders (someone walking past in a street vlog)
+                // without rejecting normal medium-shots — but it is ALSO a
+                // potential over-rejection: a real person at medium distance in a
+                // wide shot can fall under it even with an accurate detector. So we
+                // track anyFaceFrames + maxFaceWidth alongside the gated hit count
+                // to tell "no face" apart from "face present but under the floor."
                 let largest = results.max { $0.boundingBox.width < $1.boundingBox.width }
-                if let face = largest, face.boundingBox.width > 0.10 {
-                    faceHits += 1
+                if let face = largest {
+                    anyFaceFrames += 1
+                    maxFaceWidth = max(maxFaceWidth, face.boundingBox.width)
+                    if face.boundingBox.width > 0.10 {
+                        faceHits += 1
+                    }
                 }
             } catch {
                 // Skip unreadable frames silently — they don't count as
@@ -92,14 +156,16 @@ enum TalkingHeadPrecheck {
         guard samples >= 4 else {
             print(String(format: "[precheck] inconclusive (%d/8 samples) in %.2fs — letting through",
                          samples, elapsed))
-            return true
+            return .failOpen
         }
 
         let faceRatio = Double(faceHits) / Double(samples)
+        let anyFaceRatio = Double(anyFaceFrames) / Double(samples)
         let pass = faceRatio >= 0.30
-        print(String(format: "[precheck] %d/%d faces (%.0f%%) in %.2fs → %@",
-                     faceHits, samples, faceRatio * 100, elapsed,
+        print(String(format: "[precheck] %d/%d faces>10%% (anyFace %d, maxW %.2f) %.0f%% in %.2fs → %@",
+                     faceHits, samples, anyFaceFrames, maxFaceWidth, faceRatio * 100, elapsed,
                      pass ? "PASS" : "REJECT"))
-        return pass
+        return FaceCheckResult(pass: pass, faceRatio: faceRatio, anyFaceRatio: anyFaceRatio,
+                               maxFaceWidth: maxFaceWidth, samples: samples)
     }
 }

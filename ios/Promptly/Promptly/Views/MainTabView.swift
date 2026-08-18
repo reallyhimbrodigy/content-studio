@@ -1,77 +1,299 @@
 import SwiftUI
 
+/// The primary surface. Sidebar-restructure (2026-07-24): the bottom Edit/Library/
+/// Account tab bar was removed — Edit is now the sole full-screen surface, and
+/// Library + Account are sheets opened from the drawer (AppShell). The struct name
+/// is kept so AppShell's call site doesn't churn.
+///
+/// In-app ready-state (2026-07-30): a returning user who has a FINISHED video they
+/// haven't watched yet sees it here — a dismissible card pinned above the editor's
+/// top bar — instead of it being buried in the Library sheet. This recovery path
+/// works for EVERY user regardless of push tokens, permissions, or email: it reads
+/// the same completed-edit list the Library does and tracks "seen" ids locally.
 struct MainTabView: View {
-    @EnvironmentObject private var appState: AppState
+    // Singleton store, observed for the featured/dismissed state. Using the shared
+    // instance keeps the seen-set + last fetch consistent across foreground cycles.
+    @StateObject private var readyStore = ReadyStateStore.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Keep all three tab views alive via ZStack + opacity. UITabBarController
-            // does this — switching tabs preserves view state, in-flight uploads,
-            // chat history, scroll position, etc. The previous `switch` rebuilt
-            // the entire view tree on every tab change, wiping @State.
-            // `allowsHitTesting` ensures inactive tabs don't intercept touches.
-            ZStack {
-                EditorView()
-                    .opacity(appState.selectedTab == 0 ? 1 : 0)
-                    .allowsHitTesting(appState.selectedTab == 0)
-                LibraryView()
-                    .opacity(appState.selectedTab == 1 ? 1 : 0)
-                    .allowsHitTesting(appState.selectedTab == 1)
-                AccountView()
-                    .opacity(appState.selectedTab == 2 ? 1 : 0)
-                    .allowsHitTesting(appState.selectedTab == 2)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Full-width tab bar — edge to edge, no floating pill
-            HStack(spacing: 0) {
-                TabBarButton(icon: "bubble.left.fill", label: "Edit", isSelected: appState.selectedTab == 0) {
-                    appState.selectedTab = 0
-                }
-                TabBarButton(icon: "square.grid.2x2.fill", label: "Library", isSelected: appState.selectedTab == 1) {
-                    appState.selectedTab = 1
-                }
-                TabBarButton(icon: "person.fill", label: "Account", isSelected: appState.selectedTab == 2) {
-                    appState.selectedTab = 2
-                }
-            }
-            .padding(.top, 8)
-            .padding(.bottom, 2)
+        EditorView()
+            .ignoresSafeArea(.keyboard)
             .background(Color(.systemBackground))
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color(.separator))
-                    .frame(height: 0.5)
+            // The ready-state card sits ABOVE the editor's own custom top bar (which
+            // is itself a top safe-area inset). It reserves space only while a
+            // featured video exists, so navigation is untouched the rest of the time.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Group {
+                    if let job = readyStore.featured {
+                        ReadyVideoBanner(
+                            job: job,
+                            extraCount: readyStore.extraCount,
+                            onOpen: { readyStore.markSeen(job.id) },
+                            onDismiss: { readyStore.dismissFeatured() }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: readyStore.featured?.id)
             }
-        }
-        .ignoresSafeArea(.keyboard)
-        .background(Color(.systemBackground))
+            // Compute the featured unviewed video on first mount…
+            .task { await readyStore.refresh() }
+            // …and again on every foreground resume, so a render that finished while
+            // the app was backgrounded surfaces the moment the user returns.
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                Task { await readyStore.refresh() }
+            }
     }
 }
 
-struct TabBarButton: View {
-    let icon: String
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
+// MARK: - Ready-state store
+//
+// Sources completed videos from the SAME endpoint the Library uses
+// (APIService.getUserEdits) and computes "the most recent COMPLETED video the user
+// has NOT yet seen." "Seen" is a Set<String> of job ids persisted in UserDefaults —
+// a job is unviewed iff its id isn't in that set.
+//
+// Heuristic (documented per the additive-feature brief): because "seen" can only be
+// tracked from the moment this feature ships, we ALSO require the edit to be recent
+// (created within `recencyWindow`). Without it, every pre-existing completed edit in
+// a returning user's library would read as "unviewed" on the first launch after
+// update and the card would surface an ancient, already-watched video. The window
+// keeps the card honest — it fires for genuinely-just-finished renders the user
+// hasn't opened, which is exactly the recovery case — while still catching a video
+// that completed a few days ago and was never watched.
+@MainActor
+final class ReadyStateStore: ObservableObject {
+    static let shared = ReadyStateStore()
+
+    /// The most recent unviewed completed video, or nil when there's nothing to show.
+    @Published private(set) var featured: VideoJob?
+    /// How many OTHER unviewed completed videos exist beyond the featured one.
+    @Published private(set) var extraCount: Int = 0
+
+    /// UserDefaults key for the set of job ids the user has already seen (opened or
+    /// dismissed). Stored as a [String] since Set isn't a plist type.
+    private let seenKey = "promptly.readyState.seenJobIds"
+
+    /// Only feature edits completed within this window (see heuristic note above).
+    private static let recencyWindow: TimeInterval = 7 * 24 * 60 * 60  // 7 days
+
+    /// Last successful fetch, kept so markSeen/dismiss can recompute without a
+    /// network round-trip.
+    private var lastFetched: [VideoJob] = []
+
+    private init() {}
+
+    // MARK: Seen-set persistence
+
+    private var seenIds: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: seenKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: seenKey) }
+    }
+
+    /// Mark a job id as seen so its card never shows again, then recompute.
+    func markSeen(_ id: String) {
+        var s = seenIds
+        guard !s.contains(id) else { return }
+        s.insert(id)
+        seenIds = s
+        recompute()
+    }
+
+    /// Dismiss the current card without opening it — same effect as opening for the
+    /// purposes of "show once": the featured video is marked seen.
+    func dismissFeatured() {
+        guard let f = featured else { return }
+        Analytics.track("ready_banner_dismiss", props: ["jobId": f.id])
+        markSeen(f.id)
+    }
+
+    // MARK: Fetch + compute
+
+    func refresh() async {
+        do {
+            lastFetched = try await APIService.shared.getUserEdits()
+            recompute()
+        } catch {
+            // Best-effort recovery affordance: a fetch failure just means no card
+            // this pass. The Library sheet surfaces load errors to the user; the
+            // card stays silent so it never becomes a source of noise.
+            print("[readyState] refresh failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func recompute() {
+        let seen = seenIds
+        let cutoff = Date().addingTimeInterval(-Self.recencyWindow)
+
+        let candidates = lastFetched
+            .filter { job in
+                job.status == "completed"
+                    && (job.rendered_video_url?.isEmpty == false)
+                    && !seen.contains(job.id)
+                    && (Self.parseDate(job.created_at) ?? .distantPast) >= cutoff
+            }
+            .sorted {
+                (Self.parseDate($0.created_at) ?? .distantPast)
+                    > (Self.parseDate($1.created_at) ?? .distantPast)
+            }
+
+        let newFeatured = candidates.first
+        // Only reassign (and fire the "shown" event) when the featured id actually
+        // changes, so recompute() during a foreground refresh doesn't re-trigger the
+        // insertion transition or double-count the impression.
+        if featured?.id != newFeatured?.id {
+            featured = newFeatured
+            if let f = newFeatured {
+                Analytics.track("ready_banner_shown", props: ["jobId": f.id])
+            }
+        }
+        extraCount = max(0, candidates.count - 1)
+    }
+
+    /// Parses the API's ISO-8601 created_at (with or without fractional seconds).
+    /// Mirrors LibraryView's date parsing so recency math agrees across surfaces.
+    private static func parseDate(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+}
+
+// MARK: - Ready-state card
+//
+// Restrained, on-brand card: thumbnail + "Your video is ready 🎬" + a subtle
+// subtitle, gold-accented to match the app's Pro language (PromptlyGold). Tapping
+// the body opens the video through the SAME player path the Library detail sheet
+// uses (VideoPlayerPresenter.present). Tapping the ✕ dismisses. Both mark the video
+// seen so the card shows exactly once.
+private struct ReadyVideoBanner: View {
+    let job: VideoJob
+    let extraCount: Int
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
 
     var body: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            action()
-        }) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(.system(size: 10, weight: .medium))
+        HStack(spacing: 12) {
+            // Tappable open region — the thumbnail + copy. Kept as a plain
+            // contentShape + onTapGesture (not a Button) so it never competes with
+            // the dismiss Button beside it for the same touch.
+            HStack(spacing: 12) {
+                thumbnail
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your video is ready 🎬")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(Color(.secondaryLabel))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
             }
-            .foregroundColor(isSelected ? .white : .secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .contentShape(Rectangle())
+            .onTapGesture { open() }
+
+            // Dismiss.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PromptlyGold.gradient, lineWidth: 1)
+                        .opacity(0.55)
+                )
+        )
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Your video is ready. \(subtitle). Double tap to watch.")
+    }
+
+    private func open() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        onOpen()  // mark seen before presenting, so returning never re-shows it
+        Analytics.track("ready_banner_open", props: ["jobId": job.id])
+        guard let urlStr = job.rendered_video_url else { return }
+        // Reuse the exact player entry point the Library detail sheet uses — cache-,
+        // HLS-, and CDN-aware, presents its own full-screen player over the key window.
+        VideoPlayerPresenter.present(
+            urlString: urlStr,
+            hlsManifestUrl: job.hls_manifest_url,
+            thumbnailUrl: job.thumbnail_url,
+            jobId: job.id,
+            title: job.vibe_input
+        )
+    }
+
+    private var subtitle: String {
+        if extraCount > 0 {
+            return "Tap to watch · \(extraCount) more ready in Library"
+        }
+        if let v = job.vibe_input, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return v
+        }
+        return "Tap to watch your new edit"
+    }
+
+    private var thumbnail: some View {
+        RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(Color(.tertiarySystemBackground))
+            .frame(width: 46, height: 46)
+            .overlay {
+                if let t = job.thumbnail_url, let u = URL(string: t) {
+                    AsyncImage(url: u) { phase in
+                        if let img = phase.image {
+                            img.resizable().scaledToFill()
+                        } else {
+                            filmIcon
+                        }
+                    }
+                } else {
+                    filmIcon
+                }
+            }
+            // Play affordance so the thumbnail reads as tappable video.
+            .overlay {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+    }
+
+    private var filmIcon: some View {
+        Image(systemName: "film.fill")
+            .font(.system(size: 18))
+            .foregroundStyle(PromptlyGold.gradient)
     }
 }

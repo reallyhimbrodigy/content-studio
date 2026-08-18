@@ -74,20 +74,21 @@ final class JobDispatchCoordinator {
     private static let backoff: [TimeInterval] = [5, 15, 45, 90, 180, 300]
     private static let maxBackoff: TimeInterval = 300
 
-    /// Absolute give-up ceiling (stuck-jobs directive: the while(true)
-    /// zombie loop dies). 20 minutes: the stagnation detector already
-    /// tolerates slow-but-alive uploads (progress resets it), so anything
-    /// still unresolved after 20 min of wall-clock retrying is genuinely
-    /// dead — surface the failure card instead of spinning at ~11% forever.
-    private static let totalRetryCeiling: TimeInterval = 20 * 60
+    /// Absolute give-up ceiling. A PROGRESSING upload never reaches this — the
+    /// ceiling is only re-checked between retries (waitForUpload stays inside its
+    /// own loop while bytes flow), so a genuinely slow-but-alive large upload
+    /// completes normally. This bounds only a STUCK upload/dispatch: a dead socket
+    /// or a repeatedly-failing createVideoJob now surfaces an honest error in ≤4
+    /// min instead of spinning at ~11% for 20. (Was 20 min — the "frozen for ~9-20
+    /// minutes then fails" hang.)
+    private static let totalRetryCeiling: TimeInterval = 4 * 60
 
-    /// Stagnation threshold for the upload-wait phase. If neither
-    /// source nor proxy upload progress advances for this many seconds,
-    /// we treat the upload as stalled and retry. Replaces the old 240s
-    /// wall-clock deadline (which falsely failed slow but healthy
-    /// uploads on cellular). 180s tolerates a 4G→3G handoff but
-    /// catches a genuinely dead socket.
-    private static let uploadStagnationSeconds: TimeInterval = 180
+    /// Stagnation threshold for the upload-wait phase. If neither source nor proxy
+    /// upload progress advances for this many seconds, the socket is dead — a
+    /// healthy slow upload still makes SOME forward progress within 90s. Tuned down
+    /// from 180s so a dead mid-upload connection is caught fast; still tolerates a
+    /// 4G→3G handoff (brief, and it resumes progress well under 90s).
+    private static let uploadStagnationSeconds: TimeInterval = 90
 
     /// Run the full upload-wait → createVideoJob loop with infinite soft
     /// retry. Returns when we have a jobId, a hard failure, or the
@@ -109,7 +110,7 @@ final class JobDispatchCoordinator {
             if Date().timeIntervalSince(startTime) > Self.totalRetryCeiling {
                 return .hardFailure(HardFailure(
                     errorCode: "DISPATCH_CEILING",
-                    userMessage: "This upload didn't finish — your video is safe on your device. Tap to try again.",
+                    userMessage: "Upload didn't finish — the connection may be too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight.",
                     requiresNewVideo: false,
                     requiresVibeChange: false,
                     isPaymentRequired: false,
@@ -158,7 +159,9 @@ final class JobDispatchCoordinator {
                     proxyVideoUrl: pendingVideo.proxyUploadedUrl,
                     vibe: vibe,
                     premiumPipeline: premiumPipeline,
-                    clientJobId: clientJobId
+                    clientJobId: clientJobId,
+                    sourceType: pendingVideo.sourceType,
+                    sourceDuration: pendingVideo.sourceDuration
                 )
                 print("[dispatch-coord] success jobId=\(jobId) attempt=\(attempt)")
                 return .success(jobId: jobId)

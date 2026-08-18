@@ -16,56 +16,56 @@ struct ChatListView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                    .padding(.bottom, 12)
+        VStack(spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
 
-                // Search is collapsible — ChatGPT-style. Hidden by default
-                // to keep the chrome quiet; the magnifying glass in the
-                // header reveals it inline.
-                if searchActive {
-                    searchField
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                // Body
-                ZStack {
-                    if store.isLoading && store.chats.isEmpty {
-                        loadingView
-                    } else if let err = store.loadError, store.chats.isEmpty {
-                        errorState(err)
-                    } else if filtered.isEmpty {
-                        if search.isEmpty {
-                            emptyView
-                        } else {
-                            noMatchesView
-                        }
-                    } else {
-                        chatScroll
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        searchFocused = false
-                        Keyboard.dismiss()
-                    }
-                )
+            // Search is collapsible — ChatGPT-style. Hidden by default
+            // to keep the chrome quiet; the magnifying glass in the
+            // header reveals it inline.
+            if searchActive {
+                searchField
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(.systemBackground))
 
-            // Floating new-chat pill — bottom-right, ChatGPT iOS pattern.
-            // Replaces the old top-right pencil + the bottom profile chip.
-            newChatPill
-                .padding(.trailing, 18)
-                .padding(.bottom, 22)
+            // Top nav — New chat + Library, ChatGPT-style entries above history.
+            navSection
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
+
+            // Body — recent chats (the drawer's core).
+            ZStack {
+                if store.isLoading && store.chats.isEmpty {
+                    loadingView
+                } else if let err = store.loadError, store.chats.isEmpty {
+                    errorState(err)
+                } else if filtered.isEmpty {
+                    if search.isEmpty {
+                        emptyView
+                    } else {
+                        noMatchesView
+                    }
+                } else {
+                    chatScroll
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    searchFocused = false
+                    Keyboard.dismiss()
+                }
+            )
+
+            // Account entry pinned to the bottom (avatar + name → Account sheet).
+            accountBar
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
         .alert(
             "Delete chat?",
             isPresented: Binding(
@@ -123,15 +123,6 @@ struct ChatListView: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Search chats")
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    AppState.shared.selectedTab = 2
-                    onSelect()
-                } label: {
-                    ProfileAvatar(size: 36)
-                }
-                .accessibilityLabel("Account")
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
@@ -142,35 +133,99 @@ struct ChatListView: View {
         }
     }
 
-    // MARK: - New-chat pill
+    // MARK: - Top nav (New chat + Library)
 
-    private var newChatPill: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task {
-                if let chat = await store.createChat() {
-                    store.activeChatId = chat.id
-                    onSelect()
+    private var navSection: some View {
+        VStack(spacing: 2) {
+            drawerNavRow(icon: "square.and.pencil", label: "New chat") {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                Task {
+                    if let chat = await store.createChat() {
+                        store.activeChatId = chat.id
+                        onSelect()
+                    }
                 }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Chat")
-                    .font(.system(size: 15, weight: .semibold))
+            drawerNavRow(icon: "square.grid.2x2", label: "Library") {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                AppState.shared.showLibrary = true
+                onSelect()
             }
-            .foregroundColor(.black)
+        }
+    }
+
+    private func drawerNavRow(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        // Tap-only (build 217): a Button fires on touch-up-inside even after a
+        // horizontal drag that stays within its wide bounds, so swiping the
+        // drawer across "New chat" / "Library" was ACTIVATING them. .onTapGesture
+        // is a TapGesture — it cancels the moment the finger moves beyond slop,
+        // so a swipe never fires it; only a clean tap does. Standard button
+        // semantics, restored.
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(.primary)
+                .frame(width: 26)
+            Text(label)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.primary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 46)
+        .contentShape(Rectangle())
+        .onTapGesture { action() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    // MARK: - Bottom account bar
+
+    private var accountBar: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            AppState.shared.showAccount = true
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                ProfileAvatar(size: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(accountName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text(accountSubtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
-            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("New chat")
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 0.5)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Account, \(accountName), \(accountSubtitle)")
+    }
+
+    private var accountName: String {
+        let n = AuthService.shared.currentUser?.user_metadata?.full_name ?? ""
+        if !n.isEmpty { return n }
+        return AuthService.shared.currentUser?.email ?? "Account"
+    }
+
+    private var accountSubtitle: String {
+        SubscriptionService.shared.effectiveIsPro ? "Promptly Pro" : "Free plan"
     }
 
     // MARK: - Search field
@@ -377,16 +432,14 @@ struct ChatListView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                        // swipeActions only fires inside a List — that's
-                        // why we converted away from LazyVStack. Outside
-                        // List it compiles but is a no-op.
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDelete = chat
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        // Delete is LONG-PRESS only (.contextMenu below), NOT a
+                        // trailing swipe (build 217). A swipe-to-delete is the
+                        // SAME leftward gesture as swipe-to-CLOSE the drawer, so
+                        // the two can't be disambiguated — a close-swipe kept
+                        // revealing a row's Delete button. Removing swipeActions
+                        // gives the drawer sole ownership of the horizontal swipe
+                        // (close only, zero delete reveals); long-press still
+                        // deletes at rest. ChatGPT parity.
                         .contextMenu {
                             Button(role: .destructive) {
                                 pendingDelete = chat
@@ -418,11 +471,10 @@ struct ChatListView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: store.chats.map(\.id))
-        // Bottom safe-area inset so the floating "Chat" pill (44pt tall,
-        // 22pt bottom padding) doesn't cover the last chat row. Anything
-        // less than ~90pt leaves the last title peeking out under the pill.
+        // Small bottom gap so the last chat row isn't flush against the pinned
+        // account bar (which is now a flow sibling below the list, not a float).
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 84)
+            Color.clear.frame(height: 8)
         }
     }
 
@@ -471,26 +523,27 @@ private struct ChatRow: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            Text(chat.title)
-                .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isSelected
-                              ? Color.primary.opacity(0.10)
-                              : Color.clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(chat.title)
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        // Tap-only (build 217): so a close-swipe dragged across a row moves ONLY
+        // the drawer and never SELECTS the chat under the finger. A TapGesture
+        // cancels on any drag beyond slop; a clean tap still opens the chat.
+        Text(chat.title)
+            .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+            .foregroundColor(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected
+                          ? Color.primary.opacity(0.10)
+                          : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(chat.title)
+            .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }

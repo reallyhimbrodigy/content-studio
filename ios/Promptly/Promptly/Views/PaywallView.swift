@@ -57,7 +57,7 @@ struct PaywallView: View {
         case .dailyChats:   return "You're out of free chats for today"
         case .reedit:       return "Re-edit is a Pro feature"
         case .manual:       return "Unlock Promptly Pro"
-        case .lumen:        return "Lumen is a Pro model"
+        case .lumen:        return "Unlock Promptly Pro"
         case .concurrency:  return "One video at a time on Free"
         }
     }
@@ -70,9 +70,9 @@ struct PaywallView: View {
         case .reedit:
             return "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats."
         case .manual:
-            return "Unlimited renders, unlimited chats, and the re-edit feature."
+            return "Go beyond your one free video a day — everything, unlimited."
         case .lumen:
-            return "Lumen renders premium cinematic edits with generated graphics. Pro unlocks it — plus unlimited renders, chats, and re-edit."
+            return "Go beyond your one free video a day — everything, unlimited."
         case .concurrency:
             return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
         }
@@ -197,10 +197,11 @@ struct PaywallView: View {
             // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
             Analytics.track("upgrade_wall_viewed", props: ["context": reasonKey])
             await subscription.refreshOfferings()
-            // Default selection: pick the yearly package if present (better
-            // value, hint at savings) — otherwise the first available.
+            // Default selection: the offering's FIRST package (position 0).
+            // Order is owned by the RevenueCat offering (config, no build), so
+            // the client obeys whatever sequence the offering returns.
             if let pkgs = currentPackages {
-                selectedPackage = pkgs.first(where: { $0.packageType == .annual }) ?? pkgs.first
+                selectedPackage = pkgs.first
             }
         }
         .onChange(of: subscription.isPro) { _, isPro in
@@ -252,7 +253,6 @@ struct PaywallView: View {
             featureRow(icon: "square.stack.3d.up.fill", text: "Upload up to 10 videos at a time")
             featureRow(icon: "bubble.left.and.bubble.right.fill", text: "Unlimited AI chats")
             featureRow(icon: "arrow.uturn.left", text: "Re-edit any finished video")
-            featureRow(icon: "bolt.fill", text: "Priority render queue")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -360,7 +360,9 @@ struct PaywallView: View {
             default: return ""
             }
         }()
-        let savingsLabel: String? = pkg.packageType == .annual ? "BEST VALUE" : nil
+        // Badge the offering's FIRST package (position 0) — order is config-owned
+        // by the RevenueCat offering, so whatever it returns first is "BEST VALUE".
+        let savingsLabel: String? = pkg.identifier == currentPackages?.first?.identifier ? "BEST VALUE" : nil
 
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -381,9 +383,15 @@ struct PaywallView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(pkg.storeProduct.localizedTitle.isEmpty
-                             ? pkg.packageType == .annual ? "Yearly" : "Monthly"
-                             : pkg.storeProduct.localizedTitle)
+                        // Our OWN plan label — NEVER StoreKit's localizedTitle
+                        // (which can carry "(Promptly Pro)" suffixes / ASC naming
+                        // quirks). One canonical product, "Promptly Pro"; the row
+                        // just names the interval. ASC display-name edits are now
+                        // cosmetic. (build 216)
+                        Text(pkg.packageType == .annual ? "Yearly"
+                             : pkg.packageType == .monthly ? "Monthly"
+                             : pkg.packageType == .weekly ? "Weekly"
+                             : "Promptly Pro")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         if let savingsLabel {
@@ -480,55 +488,12 @@ struct PaywallView: View {
             .multilineTextAlignment(.center)
     }
 
-    /// Post-purchase confirmation — certainty over a silent dismiss. Names the
-    /// exact recurring charge and the honest renewal note (no trial).
+    /// Post-purchase confirmation — now the shared ProCelebrationView (below), so
+    /// the "You're on Promptly Pro" moment is identical here and on the upgrade
+    /// wall. Dismissing the sheet returns the user to whatever they were doing.
     private func confirmationView(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
         ZStack(alignment: .topTrailing) {
-            backdrop.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 96)
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 80, height: 80)
-                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                            .shadow(color: PromptlyGold.solid.opacity(0.4), radius: 30, y: 0)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundStyle(PromptlyGold.gradient)
-                    }
-                    .padding(.bottom, 24)
-
-                    Text(TrialCopy.confirmationTitle)
-                        .font(.system(size: 27, weight: .bold))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-
-                    Text(TrialCopy.confirmationBody(price: c.price))
-                        .font(.system(size: 15))
-                        .foregroundColor(.white.opacity(0.75))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 34)
-                        .padding(.top, 12)
-
-                    Spacer().frame(height: 36)
-
-                    Button {
-                        isPresented = false
-                    } label: {
-                        Text("Start creating")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.white)
-                            .clipShape(Capsule())
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
-                }
-            }
+            ProCelebrationView(price: c.price) { isPresented = false }
 
             Button {
                 isPresented = false
@@ -544,5 +509,113 @@ struct PaywallView: View {
             .padding(.trailing, 18)
             .padding(.top, 14)
         }
+    }
+}
+
+// MARK: - ProCelebrationView (the shared post-purchase "You're on Promptly Pro" moment)
+
+/// The single post-purchase celebration, shared by EVERY purchase surface
+/// (PaywallView sheet + TrialWallView wall) so the moment is byte-identical no
+/// matter which one triggered the buy — replaces the two divergent local
+/// confirmations ("You're Pro 🎉" gold vs "You're Pro" green). Presentation-only:
+/// the purchase, entitlement sync, and analytics already fired in
+/// SubscriptionService.purchase; this just celebrates and hands control back via
+/// `onContinue` (dismiss the sheet, or advance the onboarding/door flow).
+struct ProCelebrationView: View {
+    let price: String
+    let onContinue: () -> Void
+
+    private let unlocked: [(icon: String, text: String)] = [
+        ("infinity", "Unlimited videos, every day"),
+        ("arrow.uturn.left", "Re-edit any finished video"),
+        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
+        ("square.stack.3d.up.fill", "Upload up to 10 at once"),
+    ]
+
+    var body: some View {
+        ZStack {
+            // Dark ground with a gold-tinted top fade — the Pro visual language.
+            ZStack {
+                Color.black
+                LinearGradient(
+                    colors: [PromptlyGold.solid.opacity(0.14), .black, .black],
+                    startPoint: .top, endPoint: .bottom
+                )
+            }
+            .ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 88)
+
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 84, height: 84)
+                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
+                            .shadow(color: PromptlyGold.solid.opacity(0.45), radius: 34, y: 0)
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(PromptlyGold.gradient)
+                    }
+                    .padding(.bottom, 22)
+
+                    Text(TrialCopy.proMomentTitle)
+                        .font(.system(size: 28, weight: .heavy))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text("Everything's unlocked. No daily limit — create as much as you want.")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.72))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 36)
+                        .padding(.top, 10)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(unlocked, id: \.text) { item in
+                            HStack(spacing: 12) {
+                                Image(systemName: item.icon)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(PromptlyGold.gradient)
+                                    .frame(width: 22)
+                                Text(item.text)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                                Spacer()
+                            }
+                        }
+                    }
+                    .padding(18)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, 28)
+                    .padding(.top, 26)
+
+                    Text(TrialCopy.confirmationBody(price: price))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 36)
+                        .padding(.top, 16)
+
+                    Spacer().frame(height: 32)
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onContinue()
+                    } label: {
+                        Text("Start creating")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+        .onAppear { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     }
 }

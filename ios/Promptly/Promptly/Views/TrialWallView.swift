@@ -46,9 +46,8 @@ struct TrialWallView: View {
     private let proBenefits: [(icon: String, text: String)] = [
         ("infinity", "Unlimited videos a day"),
         ("arrow.uturn.left", "Re-edit any finished video"),
-        ("wand.and.stars", "Lumen — the cinematic AI model"),
+        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
         ("square.stack.3d.up.fill", "Upload up to 10 at once"),
-        ("bolt.fill", "Priority render queue"),
     ]
 
     var body: some View {
@@ -70,8 +69,9 @@ struct TrialWallView: View {
 
     private func selectDefaultPackage() {
         guard selectedPackage == nil else { return }
-        // Default to annual (best value) when present, else the first package.
-        selectedPackage = packages.first(where: { $0.packageType == .annual }) ?? packages.first
+        // Default to the offering's FIRST package (position 0). Order is owned by
+        // the RevenueCat offering (config, no build), so obey whatever it returns.
+        selectedPackage = packages.first
     }
 
     private var contextKey: String {
@@ -89,7 +89,7 @@ struct TrialWallView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "crown.fill")
                         .font(.system(size: 30))
-                        .foregroundColor(.yellow)
+                        .foregroundStyle(PromptlyGold.gradient)
                     Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
@@ -109,7 +109,7 @@ struct TrialWallView: View {
                         HStack(spacing: 14) {
                             Image(systemName: b.icon)
                                 .font(.system(size: 16))
-                                .foregroundColor(.yellow)
+                                .foregroundColor(PromptlyGold.solid)
                                 .frame(width: 26)
                             Text(b.text)
                                 .font(.system(size: 16, weight: .medium))
@@ -145,12 +145,12 @@ struct TrialWallView: View {
                                 Text(planTitle(pkg))
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
-                                if pkg.packageType == .annual {
+                                if pkg.identifier == packages.first?.identifier {
                                     Text("BEST VALUE")
                                         .font(.system(size: 10, weight: .heavy))
                                         .foregroundColor(.black)
                                         .padding(.horizontal, 7).padding(.vertical, 3)
-                                        .background(Color.yellow, in: Capsule())
+                                        .background(PromptlyGold.gradient, in: Capsule())
                                 }
                             }
                             // LAW: the billed amount is the big number.
@@ -166,12 +166,12 @@ struct TrialWallView: View {
                         Spacer()
                         Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                             .font(.system(size: 22))
-                            .foregroundColor(isSelected ? .yellow : .white.opacity(0.3))
+                            .foregroundColor(isSelected ? PromptlyGold.solid : .white.opacity(0.3))
                     }
                     .padding(16)
                     .background(Color.white.opacity(isSelected ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16)
-                        .stroke(isSelected ? Color.yellow.opacity(0.8) : Color.white.opacity(0.08), lineWidth: 1.5))
+                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08), lineWidth: 1.5))
                 }
             }
         }
@@ -281,45 +281,13 @@ struct TrialWallView: View {
         }
     }
 
-    // ── Post-purchase confirmation (dates + amounts) ─────────────────────────
+    // ── Post-purchase confirmation ───────────────────────────────────────────
+    // The shared ProCelebrationView (defined in PaywallView.swift), so buying
+    // from the wall lands the SAME "You're on Promptly Pro" moment as buying
+    // from the paywall sheet. onPassed() advances the flow (onboarding) or
+    // dismisses the wall (door/lapsed).
     private func confirmation(_ c: SubscriptionService.PurchaseConfirmation) -> some View {
-        VStack(spacing: 18) {
-            Spacer()
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 54))
-                .foregroundColor(.green)
-            Text("You're Pro")
-                .font(.system(size: 26, weight: .heavy))
-                .foregroundColor(.white)
-            VStack(spacing: 8) {
-                confirmationRow("Billed today", LocalizedStringKey(c.price))
-                confirmationRow("Renews", "automatically, cancel anytime")
-            }
-            .padding(18)
-            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
-            .padding(.horizontal, 24)
-            Spacer()
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onPassed()
-            } label: {
-                Text("Start creating")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity).frame(height: 56)
-                    .background(Color.white, in: Capsule())
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-        }
-    }
-
-    private func confirmationRow(_ k: LocalizedStringKey, _ v: LocalizedStringKey) -> some View {
-        HStack {
-            Text(k).font(.system(size: 14)).foregroundColor(.white.opacity(0.55))
-            Spacer()
-            Text(v).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
-        }
+        ProCelebrationView(price: c.price) { onPassed() }
     }
 
     // ── Package helpers (weekly / monthly / annual) ──────────────────────────

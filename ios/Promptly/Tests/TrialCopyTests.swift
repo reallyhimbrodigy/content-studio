@@ -56,7 +56,7 @@ check(paidBody.contains("auto-renews") && paidBody.lowercased().contains("cancel
       "confirmation uses plain renewal copy + how to cancel")
 check(!paidBody.lowercased().contains("trial"),
       "confirmation contains NO trial language")
-check(TrialCopy.confirmationTitle == "You're Pro 🎉",
+check(TrialCopy.confirmationTitle == "You're Pro",
       "confirmation title is the Pro celebration, no trial")
 
 // MARK: Fineprint — the required auto-renew disclosure, no trial

@@ -12,6 +12,9 @@ struct EditorView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
+    /// Pre-permission explainer for push notifications, shown once on the first
+    /// upload (see handlePickedVideos) — never cold at app open.
+    @State private var showPushExplainer = false
     @State private var showVoiceInput = false
     @State private var pendingVideos: [PendingVideo] = []
     @State private var isSending = false
@@ -37,6 +40,7 @@ struct EditorView: View {
     /// content stay in place, and starts a fresh conversation turn —
     /// same behavior as ChatGPT iOS.
     @State private var activeChatTask: Task<Void, Never>?
+    @State private var isChatStreaming = false   // 225 item 2: composer Stop affordance while a reply streams
     @FocusState private var isInputFocused: Bool
 
     /// Layer 1 (TalkingHeadPrecheck) rejection state. When a picked
@@ -95,51 +99,24 @@ struct EditorView: View {
                 // favor of in-bubble ghost-text rotation (see inputBar).
                 VStack(spacing: 0) {
                     reeditChip
+                    // Usage meter (freemium, staged for 1.3.1): renders left today
+                    // + reset countdown, escalating to "Get more usage" at the cap.
+                    // Hides itself for Pro. Sits directly above the composer bubble
+                    // and inherits the shared gradient below.
+                    UsageMeterStrip { appState.presentPaywall(.manual) }
                     inputBar
                 }
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0), Color.black.opacity(0.5)],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
+                // Same solid black as the content + nav — no fade scrim (it read
+                // as a band above the composer on-device).
+                .background(Color.black)
             }
-            .navigationTitle(chatStore.activeChat?.title ?? "Edit")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Self.dismissKeyboard()
-                        isInputFocused = false
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                            appState.sidebarOpen.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .tint(.white)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Show chats")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Self.dismissKeyboard()
-                        Task { await startNewChat() }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .tint(.white)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("New chat")
-                }
-            }
+            // Custom SwiftUI top bar (build 216) — the pill lives HERE, not the
+            // NavigationStack toolbar, whose UIKit host froze two animation
+            // drivers and mangled the logo across builds 214 & 215. The system
+            // toolbar bought nothing once the title was gone. Plain HStack on the
+            // unified black: hamburger · pill · new-chat.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
@@ -175,6 +152,13 @@ struct EditorView: View {
             } message: {
                 Text(layer2RejectionMessage)
             }
+            // Push opt-in — a PRE-PERMISSION explainer shown once on the first
+            // upload (never cold at app open). "Notify me" is the ONLY path to the
+            // iOS system dialog; "Not now" leaves the system one-shot intact. This
+            // recovers the completions currently lost to never-granted permission.
+            // Extracted into a ViewModifier so its closures type-check in isolation
+            // (the body's modifier chain is already at the compiler's complexity limit).
+            .modifier(PushExplainerAlert(isPresented: $showPushExplainer))
             .fullScreenCover(isPresented: $showVoiceInput) {
                 VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
                     // Append (not replace) so a user dictating a second
@@ -224,6 +208,15 @@ struct EditorView: View {
                 if let s = newSession {
                     reeditSession = s
                     appState.pendingReedit = nil
+                    isInputFocused = true
+                }
+            }
+            // Post-auth landing (build 217): landOnChat() bumps this token on
+            // every sign-in, so the composer is ALWAYS focused after auth (a
+            // short delay lets the sheet dismissals settle before the keyboard
+            // rises).
+            .onChange(of: appState.composerFocusToken) { _, _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     isInputFocused = true
                 }
             }
@@ -467,7 +460,15 @@ struct EditorView: View {
     /// otherwise a fast app-kill mid-reveal would persist a partial.
     private func injectWelcomeIfEmpty() {
         guard messages.isEmpty else { return }
-        let fullText = "Hey 👋 I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
+        // Onboarding → picker BRIDGE: seed the composer with the style the user
+        // chose in the intent question, so they land ON A VIBE, not a blank
+        // field. Consumed once (cleared) so it never re-applies to a later empty
+        // chat. This is what makes Q2's preselect actually reach the render.
+        if inputText.isEmpty, let vibe = OnboardingState.shared.preselectedVibe, !vibe.isEmpty {
+            inputText = vibe
+            OnboardingState.shared.preselectedVibe = nil
+        }
+        let fullText = "Hey, I'm Promptly. Drop a clip and tell me the vibe — viral hype, sales pitch, storytime, whatever you're going for. I'll cut it, caption it, add B-roll, and have your edit back in a couple minutes. You can also just ask me anything about editing."
         var welcome = ChatMessage(role: .assistant, content: "")
         welcome.isOnboarding = true
         let welcomeId = welcome.id
@@ -539,49 +540,19 @@ struct EditorView: View {
     // MARK: - Empty State
 
     /// Empty state. Apple HIG-shaped: thin SF Symbol in secondary color
-    /// (no decorative tinted background), a brand-name title, a single
-    /// concise subtitle, and a borderless prominent button. Avoids the
-    /// "AI startup hero" feel — no accent-color circles, no marketing
-    /// copy, no white capsule. Reads like a native iOS app.
+    /// (no decorative tinted background), a single concise subtitle, and a
+    /// borderless prominent button — upload-first, no brand-name title (the
+    /// nav title already carries it). Avoids the "AI startup hero" feel — no
+    /// accent-color circles, no marketing copy, no white capsule. Native feel.
     private var emptyState: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            Image(systemName: "video.badge.plus")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 22)
-
-            Text("Promptly")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(.primary)
-                .padding(.bottom, 6)
-
-            Text("AI editor for short-form talking head videos.\nUpload a clip, describe the vibe, and let Promptly do the rest.")
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 28)
-
-            Button {
+        // The empty-chat hero: the upload-first prompt. (The first-run sample-clip
+        // demo was removed — it was a stale pre-render and a poor first impression.)
+        FirstRunHero(
+            onUpload: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 tapAddVideo()
-            } label: {
-                Text("Upload Video")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 220, height: 48)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.white)
-            .foregroundStyle(.black)
-            .controlSize(.large)
-
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
+        )
         .onTapGesture { Self.dismissKeyboard() }
     }
 
@@ -610,6 +581,7 @@ struct EditorView: View {
                             onRegenerate: regenerateClosure(for: message),
                             onEdit: editClosure(for: message),
                             onRetry: retryClosure(for: message),
+                            onMakeAnother: { tapAddVideo() },
                             onCancel: cancelClosure(for: message),
                             onAskResolved: askResolvedClosure(for: message)
                         )
@@ -693,6 +665,10 @@ struct EditorView: View {
                 }
             }
             .onChange(of: isInputFocused) { _, focused in
+                // 225 item 4: composer-focus GPU warmup removed. The server
+                // neutered dispatch-latency warmup (funnel A/B: it does not
+                // convert) and /api/prewarm is frozen, so every focus-with-clip
+                // warmup just spun a Modal dispatcher container for pure burn.
                 guard focused, let lastId = messages.last?.id else { return }
                 // Defer past the keyboard-rise animation so the scroll
                 // position lands on the new visible bounds, not the
@@ -817,10 +793,10 @@ struct EditorView: View {
                             .clipShape(Circle())
                             .accessibilityHidden(true)
                     }
-                    .opacity(canSend ? 0 : 1)
-                    .scaleEffect(canSend ? 0.5 : 1)
+                    .opacity(canSend || isChatStreaming ? 0 : 1)
+                    .scaleEffect(canSend || isChatStreaming ? 0.5 : 1)
                     .accessibilityLabel("Voice input")
-                    .allowsHitTesting(!canSend)
+                    .allowsHitTesting(!canSend && !isChatStreaming)
 
                     // Send — surfaces the moment there's something to send.
                     Button(action: send) {
@@ -832,27 +808,45 @@ struct EditorView: View {
                             .clipShape(Circle())
                             .accessibilityHidden(true)
                     }
-                    .opacity(canSend ? 1 : 0)
-                    .scaleEffect(canSend ? 1 : 0.5)
+                    .opacity(canSend && !isChatStreaming ? 1 : 0)
+                    .scaleEffect(canSend && !isChatStreaming ? 1 : 0.5)
                     .accessibilityLabel("Send")
-                    .allowsHitTesting(canSend)
+                    .allowsHitTesting(canSend && !isChatStreaming)
                     .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
+
+                    // 225 item 2: Stop — visible while a reply streams; cancels the
+                    // task and keeps the partial text (long-press retry still works).
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        activeChatTask?.cancel()
+                        isChatStreaming = false
+                        for i in messages.indices where messages[i].isStreaming {
+                            messages[i].isStreaming = false
+                        }
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                    }
+                    .opacity(isChatStreaming ? 1 : 0)
+                    .scaleEffect(isChatStreaming ? 1 : 0.5)
+                    .accessibilityLabel("Stop")
+                    .allowsHitTesting(isChatStreaming)
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isChatStreaming)
                 .padding(.trailing, 5)
                 .padding(.bottom, 5)
             }
-
-            // Model picker pill — bottom-left of the composer (the
-            // "Opus 4.8 High" slot in the Claude reference). Sets which
-            // pipeline the next render runs; tap to switch Flare/Lumen.
-            HStack(spacing: 0) {
-                ModelPickerPill()
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 10)
-            .padding(.top, 2)
-            .padding(.bottom, 8)
+            // §7 (looks-like-a-product): the Flare/Lumen model picker was removed from
+            // the composer — users never pick a model. The render tier now follows
+            // their PLAN silently (Pro → premium pipeline, free → standard); see
+            // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
+            .padding(.bottom, 6)
         }
         .background(
             ZStack {
@@ -985,6 +979,31 @@ struct EditorView: View {
         if let suggestions {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    // §5 reduce-steps: once a clip is picked with no vibe typed, the
+                    // FIRST chip is a one-tap default — pick → tap → dispatch, zero
+                    // composing (the right floor for a first render). Styled as a
+                    // primary (filled) chip so it reads as "go", not "suggestion".
+                    // The other chips still fill the composer as editable suggestions.
+                    if !pendingVideos.isEmpty && reeditSession == nil {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            inputText = "Clean and engaging edit"
+                            send()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("Clean & engaging")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Color.white))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit now with a clean, engaging default")
+                    }
                     ForEach(suggestions, id: \.self) { vibe in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1025,26 +1044,64 @@ struct EditorView: View {
 
     // MARK: - Luxurious backdrop
     //
-    // Replaces flat `.systemBackground` with a subtle vertical gradient —
-    // soft warm-tinted white-fade-to-black at the top so the title /
-    // navigation bar reads with depth, plus a faint vignette at the
-    // bottom for the composer. Tiny but it's the difference between
-    // "default app" and "designed app."
-
+    // ONE SOLID BLACK (build 215): the nav bar, the content, and the composer
+    // all share this exact background. The previous white-tint-at-top + vignette
+    // gradient (and the composer's own fade scrim) read as visible two-tone
+    // bands on-device, so they're gone — a single uniform black, no seams.
     private var luxuryBackdrop: some View {
-        ZStack {
-            Color.black
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.05),
-                    Color.white.opacity(0.0),
-                    Color.white.opacity(0.0),
-                    Color.black.opacity(0.4)
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
+        Color.black.ignoresSafeArea()
+    }
+
+    // MARK: - Custom top bar (build 216)
+    //
+    // Replaces the NavigationStack toolbar (which froze the pill's animation and
+    // mangled its logo across two builds). A plain SwiftUI HStack on the unified
+    // black: hamburger left, the animated UpgradePill beside it, new-chat right.
+    // Attached via .safeAreaInset(.top); the nav bar is hidden. Buttons carry a
+    // 40×40 tap target so nothing here is hard to hit.
+    private var customTopBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Self.dismissKeyboard()
+                isInputFocused = false
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    appState.sidebarOpen.toggle()
+                }
+            } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show chats")
+
+            if !subscriptionService.effectiveIsPro {
+                UpgradePill { appState.presentPaywall(.manual) }
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Self.dismissKeyboard()
+                Task { await startNewChat() }
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New chat")
         }
-        .ignoresSafeArea()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
     }
 
     private var canSend: Bool {
@@ -1114,28 +1171,79 @@ struct EditorView: View {
     private func handlePickedVideos(_ videos: [PickedVideo]) {
         Task { @MainActor in
             for video in videos {
-                // LAYER 1 — on-device Vision precheck. <1s for local
-                // files, skipped for iCloud-only (Layer 2 handles those).
-                // Goal: reject obviously-incompatible clips BEFORE any
-                // upload or render cost is incurred. User sees a clear
-                // "try a different video" prompt with a "Try Anyway"
-                // escape hatch for borderline cases.
+                // DURATION GATE — enforced at PICK TIME on PHAsset.duration, which
+                // is metadata (no download), so it covers iCloud-only clips too and
+                // fires the instant they tap, before any upload. PHPickerViewController
+                // has no duration filter (it can't grey clips out), so this
+                // select-then-explain is the achievable equivalent of "not selectable."
+                // These are the ONLY hard duration rejections — under the 2.0s floor
+                // can't yield a watchable edit; over the ceiling can't render. Same
+                // wording/behaviour at both ends.
+                let seconds = video.duration
+                if seconds > 0 && seconds < Double(TalkingHeadPrecheck.minDurationSec) {
+                    Analytics.track("too_short_rejected", props: ["stage": "picker", "seconds": (seconds * 10).rounded() / 10])
+                    layer2RejectionMessage = "This clip is only \(String(format: "%.1f", seconds))s — too short to edit. Pick one at least \(TalkingHeadPrecheck.minDurationSec) seconds long."
+                    showLayer2Rejection = true
+                    continue
+                }
+                if seconds > Double(TalkingHeadPrecheck.maxDurationSec) {
+                    let mm = Int(seconds) / 60, ss = Int(seconds) % 60
+                    Analytics.track("too_long_rejected", props: ["stage": "picker", "seconds": (seconds * 10).rounded() / 10])
+                    layer2RejectionMessage = "This clip is \(String(format: "%d:%02d", mm, ss)) — longer than \(TalkingHeadPrecheck.maxDurationSec / 60) minutes. Trim it to a shorter highlight and upload again."
+                    showLayer2Rejection = true
+                    continue
+                }
+
+                // LAYER 1 — on-device Vision precheck. <1s for local files, skipped
+                // for iCloud-only (Layer 2 handles those). Advisory in 223: logs the
+                // verdict, never blocks.
                 if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
-                    let valid = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
-                    if !valid {
-                        let userWantsToProceed = await askToProceedAfterPrecheck()
-                        // ACTIVATION content-rejection: on-device precheck flagged
-                        // the clip. `proceeded` tells apart "picked another" from
-                        // "Try Anyway" (which still uploads).
+                    // Audio-only preflight now (duration is gated above, for all clips).
+                    switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
+                    case .noAudio:
+                        // 223 ZERO-REJECT: no-audio is a WORKER ROUTE now (music /
+                        // no-speech), not a rejection. Log the verdict, don't block —
+                        // dispatch and let the worker route it. blocked:false marks
+                        // the non-blocking emit vs the 222 hard block.
+                        Analytics.track("no_audio_rejected", props: ["stage": "precheck", "blocked": false])
+                        // fall through — no alert, no skip
+                    case .ok:
+                        break
+                    }
+
+                    // 223 ZERO-REJECT: the on-device Vision face check is ADVISORY
+                    // ONLY — still run it for telemetry, but never block. It rejected
+                    // valid talking-head clips whose rotation is metadata (221
+                    // VideoPicker passthrough), disagreeing with server truth; gating
+                    // dispatch on it cost real renders. Emit proceeded:true /
+                    // blocked:false so 223 non-blocking emits are distinguishable from
+                    // the 222 blocking ones. No "Try Anyway" alert, no skip.
+                    let faceCheck = await TalkingHeadPrecheck.quickCheck(videoURL: localUrl)
+                    if !faceCheck.pass {
+                        // Log the MEASURED values, not just the verdict — a precheck
+                        // reject uploads nothing, so this event is the only way to
+                        // ever verify the 0.30 bar: face_ratio ≈ 0 = genuinely
+                        // faceless; clustering 0.15–0.29 = the bar itself is
+                        // rejecting; any_face_ratio ≫ face_ratio = the 10%-width size
+                        // floor is the cause (real face, too small in a wide shot).
                         Analytics.track("not_talking_head_rejected", props: [
-                            "stage": "precheck", "proceeded": userWantsToProceed,
+                            "stage": "precheck", "proceeded": true, "blocked": false,
+                            "face_ratio": (faceCheck.faceRatio * 100).rounded() / 100,
+                            "any_face_ratio": (faceCheck.anyFaceRatio * 100).rounded() / 100,
+                            "max_face_width": (faceCheck.maxFaceWidth * 100).rounded() / 100,
+                            "samples": faceCheck.samples,
                         ])
-                        if !userWantsToProceed { continue }
                     }
                 }
 
                 addPendingVideoAndStartUpload(video)
             }
+
+            // (Notifications are offered AFTER the first successful DISPATCH, not
+            // here at upload — see the .success case in the dispatch handler. The
+            // render is actually running then, so "we'll tell you the second it's
+            // ready" is maximally concrete and never fires on a clip that fails to
+            // dispatch.)
         }
     }
 
@@ -1186,17 +1294,48 @@ struct EditorView: View {
                      validation.reason ?? "n/a"))
 
         if !validation.isTalkingHead {
-            // ACTIVATION content-rejection: server sample-validate rejected it,
-            // BEFORE any render was dispatched (distinct from the server render
-            // rejections in dispatch-to-modal, which fire at render time).
-            Analytics.track("not_talking_head_rejected", props: ["stage": "validate"])
-            let message = validation.userMessage
-                ?? "Promptly works best with videos of someone talking on camera. Pick another clip?"
-            await MainActor.run {
-                layer2RejectionMessage = message
-                showLayer2Rejection = true
+            // 223 ZERO-REJECT: server sample-validate is ADVISORY ONLY — log the
+            // verdict, never block. Modal's cv2 face detector rejects metadata-
+            // rotated talking-head clips (221 VideoPicker passthrough), so gating
+            // dispatch here rejected valid renders. Dispatch anyway and let the
+            // worker route; blocked:false marks the non-blocking emit. No alert,
+            // no sentinel throw — fall through so the upload proceeds.
+            Analytics.track("not_talking_head_rejected", props: ["stage": "validate", "blocked": false])
+        }
+    }
+
+    /// Classify an upload-path error into a coarse mechanism for the
+    /// `upload_failed` instrument (build 222). Separates user-network causes
+    /// (timeout / connection lost / offline / host unreachable) from our-side
+    /// ones (a bare uploadFailed, a job-create failure). Iterate the taxonomy in
+    /// 223 once two weeks of real mechanism×territory×bytes data exist.
+    private static func uploadFailureMechanism(_ error: Error) -> String {
+        if let urlErr = error as? URLError {
+            switch urlErr.code {
+            case .timedOut: return "timeout"
+            case .networkConnectionLost: return "network_lost"
+            case .notConnectedToInternet: return "offline"
+            case .cancelled: return "cancelled"
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed: return "host_unreachable"
+            default: return "url_error_\(urlErr.code.rawValue)"
             }
-            throw Layer2RejectionSentinel()
+        }
+        if let apiErr = error as? APIError {
+            if case .uploadFailed = apiErr { return "upload_failed" }
+            if case .jobCreationFailed = apiErr { return "job_create_failed" }
+            return "api_error"
+        }
+        return "unknown"
+    }
+
+    /// Build 222: offer the notification soft-prompt AFTER the user's first
+    /// completed video (value proven), not at dispatch. Self-gated to once via
+    /// `shouldOfferSoftPrompt`, so it's safe to call from every completion sink.
+    /// Re-timing lifts the ask out of the "before they've seen it work" window
+    /// (the old dispatch-time ask saw ~44% decline before any value was shown).
+    private func maybeOfferSoftPromptOnCompletion() {
+        if PushService.shared.shouldOfferSoftPrompt {
+            showPushExplainer = true
         }
     }
 
@@ -1206,17 +1345,8 @@ struct EditorView: View {
     private func addPendingVideoAndStartUpload(_ video: PickedVideo) {
         // ACTIVATION-funnel: an upload begins (after any talking-head precheck).
         Analytics.track("upload_started")
-        // Warm the GPU render container the instant an upload begins — the
-        // earliest possible point — so its ~15-30s cold start (heavy import +
-        // CUDA init) overlaps the entire upload + preprocessing and the render
-        // starts hot instead of stalling on container boot. Fire-and-forget:
-        // detached, never awaited, all errors swallowed inside the call, so it
-        // can't block or fail the upload. Idempotent — firing once per picked
-        // clip just keeps the container warm. (GPU-side counterpart to the
-        // prewarm call fired later once the S3 URL is known.)
-        Task.detached(priority: .utility) {
-            await APIService.shared.warmupRenderContainer()
-        }
+        // 225 item 4: pick-time GPU warmup removed (server neutered warmup;
+        // renders start cold-tolerant, so this was pure dark-period burn).
 
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
@@ -1247,6 +1377,7 @@ struct EditorView: View {
                 defer {
                     Task { @MainActor in VideoCache.shared.setUserUploadActive(false) }
                 }
+                let uploadStartedAt = Date() // hoisted so the failure catch can measure elapsed
                 do {
                     let t0 = Date()
 
@@ -1257,6 +1388,12 @@ struct EditorView: View {
                     let resolveStart = Date()
                     let strategy = await PHAssetResolver.resolveStrategy(asset: video.asset)
                     print(String(format: "[perf] strategy-probe %.2fs", Date().timeIntervalSince(resolveStart)))
+
+                    // Instrumentation (224): stamp source duration now; source
+                    // type is set per-branch below (local vs icloud). Carried on
+                    // the job so the iCloud reliability fix is measurable and
+                    // wait-time can be separated from clip length.
+                    pending.sourceDuration = video.duration
 
                     var publicUrl: String?
 
@@ -1269,6 +1406,7 @@ struct EditorView: View {
 
                     switch strategy {
                     case .local(let sourceUrl):
+                        pending.sourceType = "local"
                         print("[perf] path=local dual-upload")
                         await MainActor.run { pending.fileUrl = sourceUrl }
                         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
@@ -1289,8 +1427,11 @@ struct EditorView: View {
                             // Quality-preserving copy. ~1-2s for 80 MB
                             // on local SSD; needed so the background
                             // session can read after the app suspends.
-                            let tmp = FileManager.default.temporaryDirectory
-                                .appendingPathComponent("src-\(UUID().uuidString).mp4")
+                            // App-owned durable storage (NOT temp) so the source
+                            // survives an app-kill mid-upload and the background /
+                            // cross-launch retry always has bytes to send. Cleaned
+                            // on upload-confirm below + a launch-time orphan sweep.
+                            let tmp = UploadStorage.newFile()
                             try FileManager.default.copyItem(at: sourceUrl, to: tmp)
                             materializedSourceUrl = tmp
                             print("[perf] compress skipped (copy-only)")
@@ -1344,22 +1485,13 @@ struct EditorView: View {
                             throw APIError.uploadFailed
                         }
 
-                        // Fire prewarm with the SOURCE URL — worker polls
-                        // S3 until the source lands, then starts the
-                        // download + transcribe pipeline. Proxy is only
-                        // used by Gemini visual analysis (in the main
-                        // video-jobs path), so it doesn't need its own
-                        // prewarm.
-                        firePrewarmOnce.fire(sourcePub)
-
-                        // Publish the eventual source URL IMMEDIATELY so
-                        // send() can dispatch the job the moment the proxy
-                        // is ready — the worker polls S3 for the source
-                        // file regardless of whether bytes have arrived.
-                        // Upload progress (0→1) is tracked separately on
-                        // pending.uploadProgress so the UI still reflects
-                        // real byte movement.
-                        await MainActor.run { pending.uploadedUrl = sourcePub }
+                        // Prewarm and the URL-immediate `pending.uploadedUrl` now fire
+                        // from inside uploadSourceNeverWorse's onPublicUrlResolved, with
+                        // the RESOLVED source url — the multipart publicUrl when 7b runs,
+                        // else the single-PUT one. Firing them here (before we know which)
+                        // would prewarm/dispatch the WRONG key whenever multipart lands the
+                        // object at its own key. Both still fire the moment the url exists
+                        // (init returns it before a byte moves), so URL-immediate holds.
 
                         // Encode the Gemini proxy in parallel with the
                         // upcoming source upload. Proxy failure is NON-
@@ -1423,53 +1555,94 @@ struct EditorView: View {
                             }
                         }()
 
-                        async let sourceUpload: Void = {
-                            try await APIService.shared.uploadFileToS3(
-                                url: sourcePutUrl,
+                        async let sourceUpload: String = {
+                            // 226 item 7b: resumable multipart on a background URLSession,
+                            // with the NEVER-WORSE fallback to the single-PUT already
+                            // presigned above. onPublicUrlResolved fires prewarm + the
+                            // URL-immediate uploadedUrl with whichever url wins; the return
+                            // is the resolved publicUrl (multipart's key, or the single-PUT).
+                            let resolvedPub = try await APIService.shared.uploadSourceNeverWorse(
                                 fileUrl: materializedSourceUrl,
-                                mimeType: "video/mp4",
+                                fileName: pending.fileName,
+                                singlePutUrl: sourcePutUrl,
+                                singlePutPublicUrl: sourcePub,
                                 messageId: pending.id.uuidString,
                                 chatId: chatStore.activeChatId,
-                                publicUrl: sourcePub
-                            ) { p in
-                                Task { @MainActor in pending.uploadProgress = p }
-                            }
+                                onPublicUrlResolved: { pub in
+                                    firePrewarmOnce.fire(pub)
+                                    Task { @MainActor in pending.uploadedUrl = pub }
+                                },
+                                onProgress: { p in
+                                    Task { @MainActor in pending.uploadProgress = p }
+                                }
+                            )
                             try? FileManager.default.removeItem(at: materializedSourceUrl)
                             await MainActor.run {
                                 pending.uploadProgress = 1.0
-                                // Bytes are in S3 now — release the job
-                                // dispatcher. `uploadedUrl` was set early
-                                // (line 985) for prewarm + UI, but the
-                                // dispatcher gates on `sourceUploadCompleted`
-                                // so a slow upload can't trigger a job that
-                                // would 404 + time the worker out.
+                                // Bytes are in S3 now — release the job dispatcher. The
+                                // dispatcher gates on `sourceUploadCompleted` so a slow
+                                // upload can't trigger a job that 404s the worker.
                                 pending.sourceUploadCompleted = true
                             }
                             print("[perf] source upload complete (background)")
+                            return resolvedPub
                         }()
 
                         // proxyUpload swallows its own errors so await
                         // is non-throwing here — only the source upload
                         // can fail the whole task.
                         _ = await proxyUpload
-                        _ = try await sourceUpload
+                        let resolvedSourcePub = try await sourceUpload
                         print(String(format: "[perf] both-uploads-done %.2fs", Date().timeIntervalSince(uploadStart)))
-                        publicUrl = sourcePub
+                        publicUrl = resolvedSourcePub
 
                     case .stream(let resource, let fileSize):
-                        // iCloud-only path. Streams iCloud → S3 in parallel.
-                        // No fallback: if streaming fails, the upload fails.
-                        print(String(format: "[perf] path=stream fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
+                        // iCLOUD RELIABILITY FIX (224): the old path STREAMED the
+                        // iCloud asset straight to S3 on the FOREGROUND session,
+                        // which dies when the app is backgrounded mid-transfer —
+                        // the proven UPLOAD_NEVER_STARTED cause for slow iCloud
+                        // clips. Now: download the asset to a DURABLE local file,
+                        // then hand it to the SAME background uploader the .local
+                        // path uses (survives suspension + app-kill). The stream
+                        // speedup is traded for actually landing the bytes.
+                        pending.sourceType = "icloud"
+                        print(String(format: "[perf] path=stream→durable fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
                         let uploadStart = Date()
-                        publicUrl = try await APIService.shared.streamUploadFromICloud(
-                            resource: resource,
-                            fileSize: fileSize,
-                            fileName: pending.fileName,
-                            onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
-                        ) { progress in
-                            pending.uploadProgress = progress
+                        // 1. iCloud → durable app-owned file (download is the
+                        //    first ~half of perceived progress).
+                        let durableSource = UploadStorage.newFile()
+                        try await PHAssetResourceIO.write(resource: resource, to: durableSource) { p in
+                            Task { @MainActor in pending.uploadProgress = p * 0.5 }
                         }
-                        print(String(format: "[perf] stream-step %.2fs", Date().timeIntervalSince(uploadStart)))
+                        // 2. Presign + prewarm, then BACKGROUND-upload the file.
+                        let streamResp = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
+                        guard let streamPutUrl = streamResp.uploadUrl,
+                              let streamPub = streamResp.publicUrl else {
+                            try? FileManager.default.removeItem(at: durableSource)
+                            throw APIError.uploadFailed
+                        }
+                        // 226 item 7b: resumable multipart on a background URLSession for
+                        // the iCloud durable file too, NEVER-WORSE fallback to single-PUT.
+                        // Prewarm + URL-immediate uploadedUrl fire from onPublicUrlResolved.
+                        let streamResolvedPub = try await APIService.shared.uploadSourceNeverWorse(
+                            fileUrl: durableSource,
+                            fileName: pending.fileName,
+                            singlePutUrl: streamPutUrl,
+                            singlePutPublicUrl: streamPub,
+                            messageId: pending.id.uuidString,
+                            chatId: chatStore.activeChatId,
+                            onPublicUrlResolved: { pub in
+                                firePrewarmOnce.fire(pub)
+                                Task { @MainActor in pending.uploadedUrl = pub }
+                            },
+                            onProgress: { p in
+                                Task { @MainActor in pending.uploadProgress = 0.5 + p * 0.5 }
+                            }
+                        )
+                        try? FileManager.default.removeItem(at: durableSource)
+                        await MainActor.run { pending.sourceUploadCompleted = true }
+                        publicUrl = streamResolvedPub
+                        print(String(format: "[perf] stream→durable+bg done %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     case .none:
                         // Strategy probe couldn't resolve the asset — fail.
@@ -1517,6 +1690,21 @@ struct EditorView: View {
                     await UsageService.shared.refresh()
                 } catch {
                     print("[perf] upload task failed: \(error.localizedDescription)")
+                    // INSTRUMENT (build 222): the client was previously SILENT on
+                    // upload failure — the entire failure surface was invisible, so
+                    // the our-fault-vs-user-network split was unanswerable. Emit
+                    // upload_failed with the mechanism + context (pct/elapsed/error),
+                    // BEFORE the reset below zeroes uploadProgress. Durable (retried)
+                    // because the failure itself is usually a weak-network condition,
+                    // which is exactly when a fire-and-forget event would be lost.
+                    // territory rides the envelope automatically.
+                    let pctAtFailure = await MainActor.run { pending.uploadProgress }
+                    Analytics.track("upload_failed", props: [
+                        "mechanism": Self.uploadFailureMechanism(error),
+                        "pct_complete": pctAtFailure,
+                        "elapsed_ms": Int(Date().timeIntervalSince(uploadStartedAt) * 1000),
+                        "error_desc": String(error.localizedDescription.prefix(120)),
+                    ], durable: true)
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
                     // bytes that never arrived — that produced the
@@ -1852,7 +2040,9 @@ struct EditorView: View {
         // Reset the assistant message to thinking state and re-stream.
         messages[idx].content = ""
         messages[idx].isThinking = true
+        messages[idx].isStreaming = true   // 225 item 2: drives the tail caret
         messages[idx].error = nil
+        isChatStreaming = true             // 225 item 2: composer shows Stop
 
         activeChatTask = Task { @MainActor in
             await streamReplyWithFallback(
@@ -1860,6 +2050,13 @@ struct EditorView: View {
                 prompt: prompt,
                 context: context
             )
+            // 225 item 2: reply finished (or the stream returned after cancel) —
+            // clear streaming state so the caret stops and the composer button
+            // returns from Stop to Send.
+            if let i = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[i].isStreaming = false
+            }
+            isChatStreaming = false
         }
     }
 
@@ -2119,7 +2316,7 @@ struct EditorView: View {
         // so the user doesn't watch a thinking indicator spin only to
         // get bounced.
         if UsageService.shared.atChatLimit {
-            let lim = UsageService.shared.chatLimit
+            let lim = UsageService.shared.chatLimit ?? 5
             appState.presentPaywall(.dailyChats(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -2140,6 +2337,11 @@ struct EditorView: View {
         let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
         messages.append(thinkingMsg)
         let msgId = thinkingMsg.id
+        // 225 item 2 (fixed in 226): the caret + composer Stop must appear on the
+        // PRIMARY initial send, not only on regenerate. Set the streaming state here
+        // too; cleared after the reply returns.
+        if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = true }
+        isChatStreaming = true
 
         // History snapshot must EXCLUDE the message we just appended
         // — that's the CURRENT turn, sent as `message` separately.
@@ -2148,15 +2350,51 @@ struct EditorView: View {
         activeChatTask = Task { @MainActor in
             _ = await ensureActiveChat()
             persistMessages()
-            await streamReplyWithFallback(
-                intoMessageId: msgId,
-                prompt: text,
-                context: historySnapshot
-            )
+
+            // 226 item 1: route the turn through the server action router. Dark-safe —
+            // /api/chat/actions 404s while PROMPTLY_CHAT_ACTIONS is off, and network/
+            // other errors also map to .notFound, so we fall through to today's
+            // streaming chat (identical to 225). No client-side intent parsing.
+            let outcome = (try? await APIService.shared.chatActions(message: text)) ?? .notFound
+            switch outcome {
+            case .notFound, .converse:
+                await streamReplyWithFallback(intoMessageId: msgId, prompt: text, context: historySnapshot)
+            case .status(let m), .clarify(let m):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = m
+                }
+            case .renderDispatched(let jobId, let m), .reeditDispatched(let jobId, let m):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = m ?? "On it — starting your edit."
+                    messages[i].jobId = jobId
+                    messages[i].jobStatus = "processing"
+                }
+                if !jobId.isEmpty { startSSE(jobId: jobId, messageId: msgId) }
+            case .refusal(let status):
+                if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                    messages[i].isThinking = false
+                    messages[i].content = status == 402
+                        ? "You're at today's limit — upgrade to keep chatting."
+                        : "The service is busy right now — please try again in a moment."
+                }
+                if status == 402 {
+                    let lim = UsageService.shared.chatLimit ?? 5
+                    appState.presentPaywall(.dailyChats(used: lim, limit: lim))
+                }
+            }
+            persistMessages()
+            if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = false }
+            isChatStreaming = false
         }
     }
 
     // MARK: - Send
+
+    // 225 item 4: fireRenderWarmup() and its send-intent/dispatch call removed —
+    // dispatch-latency warmup was proven non-converting server-side and every
+    // call spun a dispatcher container for pure burn. Renders start cold-tolerant.
 
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2214,15 +2452,9 @@ struct EditorView: View {
             return
         }
 
-        // First-edit moment is the ideal time to ask for notification
-        // permission — the user is about to wait 30–90s for a render and
-        // the value of the prompt ("Get notified when your edit is ready")
-        // is felt right now, not in the abstract.
-        if !PushService.shared.hasAskedForPermission {
-            Task { @MainActor in
-                await PushService.shared.requestPermissionIfNeeded()
-            }
-        }
+        // (Push permission is now offered earlier, at the FIRST UPLOAD, behind a
+        // pre-permission explainer — see handlePickedVideos. We no longer ask a
+        // cold system dialog here at send.)
 
         // ── Re-edit path — no upload; server loads source from DB
         if reeditActive, let session = reeditSession {
@@ -2299,7 +2531,7 @@ struct EditorView: View {
         // renders from earlier today). Catches the obvious case with
         // zero latency.
         if hasVideos && UsageService.shared.atRenderLimit {
-            let lim = UsageService.shared.renderLimit
+            let lim = UsageService.shared.renderLimit ?? 1
             appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
@@ -2322,7 +2554,7 @@ struct EditorView: View {
             if hasVideos {
                 await UsageService.shared.refresh()
                 if UsageService.shared.atRenderLimit {
-                    let lim = UsageService.shared.renderLimit
+                    let lim = UsageService.shared.renderLimit ?? 1
                     appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     return
@@ -2435,49 +2667,51 @@ struct EditorView: View {
                         func indexOfProcessingMsg() -> Int? {
                             messages.firstIndex(where: { $0.id == msgId })
                         }
-                        // Hand off to the dispatch coordinator. It owns
-                        // the upload-wait + createVideoJob loop and
-                        // retries every soft failure (network blip,
-                        // worker hiccup, S3 stall, rate limit, etc.)
-                        // silently with exponential backoff. The only
-                        // outcomes that escape to the UI are:
-                        //   - success → start SSE + stuck detector
-                        //   - hardFailure → user must act (paywall, bad
-                        //     video, vibe rewrite)
-                        //   - cancelled → user explicitly cancelled
-                        let outcome = await JobDispatchCoordinator.shared.dispatch(
-                            pendingVideo: video,
-                            vibe: vibe,
-                            premiumPipeline: premiumPipeline,
-                            clientJobId: mintedJobId
-                        ) { phase in
-                            // Phase callback drives the bar's Phase 1
-                            // (iOS → S3 upload) portion. Per the new
-                            // contract: real upload progress 0…1 → bar
-                            // 0–30%. NO fake timer, NO plant-to-40 jump
-                            // on dispatch. The bar continues smoothly
-                            // from wherever upload left it (e.g. 12) and
-                            // the first /api/modal-progress event
-                            // (download=5 → bar=33.5) drives the
-                            // transition into Phase 2 without any visible
-                            // discontinuity.
-                            guard let i = indexOfProcessingMsg() else { return }
-                            switch phase {
-                            case .waitingForUpload(let progress):
-                                let mapped = Int(progress * 30)
-                                if mapped > (messages[i].jobProgress ?? 0) {
-                                    messages[i].jobProgress = mapped
+                        // Item 1 (URL-immediate): fire /api/chat/actions the moment
+                        // the presigned source URL exists — NOT the bytes; the server's
+                        // 600s source-wait absorbs the upload. If the router dispatches
+                        // the render/re-edit itself we adopt that outcome; converse /
+                        // clarify / refusal and the dark 404 / a network error fall
+                        // through to the coordinator's upload-wait + createVideoJob loop,
+                        // byte-identical to today. The HARD GUARD (attachment ⇒ video_url)
+                        // lives in the helper: no url ⇒ no video act is ever sent.
+                        let outcome: JobDispatchCoordinator.Outcome
+                        if let acted = await chatActRouterURLImmediate(video: video, vibe: vibe, msgId: msgId) {
+                            outcome = acted
+                        } else {
+                            // The coordinator owns the upload-wait + createVideoJob loop
+                            // and retries every soft failure (network blip, worker hiccup,
+                            // S3 stall, rate limit) silently with backoff. The only
+                            // outcomes that escape to the UI are success / hardFailure
+                            // (user must act) / cancelled.
+                            outcome = await JobDispatchCoordinator.shared.dispatch(
+                                pendingVideo: video,
+                                vibe: vibe,
+                                premiumPipeline: premiumPipeline,
+                                clientJobId: mintedJobId
+                            ) { phase in
+                                // Phase callback drives the bar's Phase 1 (iOS → S3
+                                // upload): real upload progress 0…1 → bar 0–30%. NO fake
+                                // timer, NO plant-to-40 on dispatch. The first
+                                // /api/modal-progress event (download=5 → bar=33.5) makes
+                                // the Phase-2 transition with no visible discontinuity.
+                                guard let i = indexOfProcessingMsg() else { return }
+                                switch phase {
+                                case .waitingForUpload(let progress):
+                                    let mapped = Int(progress * 30)
+                                    if mapped > (messages[i].jobProgress ?? 0) {
+                                        messages[i].jobProgress = mapped
+                                    }
+                                case .dispatching:
+                                    // STATUS FIDELITY: do NOT light "analyze" here — the
+                                    // job isn't on the server yet; only a real SSE/
+                                    // reconcile `analyze` token advances that stage.
+                                    messages[i].stepMessage = "Sending to the editor…"
+                                case .waitingForNetwork:
+                                    messages[i].stepMessage = "Waiting for a connection…"
+                                case .retrying:
+                                    messages[i].stepMessage = "Reconnecting…"
                                 }
-                            case .dispatching:
-                                // Light up "analyze" in the stage list
-                                // (so the active-stage row updates) but
-                                // do NOT bump the percent — the bar's
-                                // position is owned by upload progress
-                                // until the first modal-progress event
-                                // arrives.
-                                messages[i].stageTimeline?.receive(stepToken: "analyze")
-                            case .waitingForNetwork, .retrying:
-                                break
                             }
                         }
 
@@ -2486,8 +2720,21 @@ struct EditorView: View {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true
+                                // §6 retry-gap fix: stash the retry cache on SUCCESS
+                                // too. Previously only the dispatch-FAILURE path cached
+                                // source+proxy+vibe, so a render that dispatched fine but
+                                // then failed mid-way via SSE had no cache → one-tap
+                                // Try Again stayed hidden. Caching here closes that gap.
+                                messages[i].cachedSourceUrl = video.uploadedUrl
+                                messages[i].cachedProxyUrl = video.proxyUploadedUrl
+                                messages[i].cachedVibe = vibe
                                 startSSE(jobId: jobId, messageId: msgId)
                                 persistMessages()
+                                // (Build 222: the notification soft-prompt moved from
+                                // HERE — dispatch — to first COMPLETION, so we only ask
+                                // once the user has SEEN the payoff. The old timing asked
+                                // before the value was proven; ~44% declined. See
+                                // maybeOfferSoftPromptOnCompletion() at the completion sinks.)
                             } else if let cid = dispatchChatId {
                                 // User switched chats while this was uploading.
                                 // Land the jobId on the off-screen bubble's
@@ -2597,6 +2844,62 @@ struct EditorView: View {
             }
             isSending = false
             }
+        }
+    }
+
+    /// Item 1 — URL-immediate chat action router for a video send.
+    ///
+    /// Fires POST /api/chat/actions the moment the presigned source URL exists —
+    /// NOT when the bytes finish. Both upload endpoints return the URL before a
+    /// byte moves, and the server's dispatch waits up to 600s for the object with
+    /// no Modal container running (SERVER_CONTRACTS_226, Contract 1(a)), so the
+    /// client never holds the request for the upload. Returns:
+    ///   • `.success(jobId)` when the server dispatched the render/re-edit itself —
+    ///     the caller's existing `.success` handling attaches it + starts SSE;
+    ///   • `nil` to fall through to the coordinator: the dark path (404 / network)
+    ///     plus converse/clarify/refusal, which createVideoJob handles exactly like
+    ///     today (a real 402 re-surfaces through its hardFailure path).
+    ///
+    /// HARD GUARD (Contract 1(b)): a video-attached act is sent ONLY with its
+    /// `video_url`. We wait for `uploadedUrl` and return nil if the upload dies
+    /// before the URL resolves — so chatActions is NEVER called with a nil/empty
+    /// video_url on the attachment path, which the server would misclassify as a
+    /// re-edit of the user's OLD job (`reedit_dispatched` — looks like success but
+    /// edits the wrong video). That trap is structurally impossible here.
+    private func chatActRouterURLImmediate(video: PendingVideo, vibe: String, msgId: UUID) async -> JobDispatchCoordinator.Outcome? {
+        // Wait for the presigned URL (seconds — the presign, not the transfer).
+        // Bounded, so a stuck/slow presign falls through to the coordinator, which
+        // owns the full retry / ceiling / dead-upload-fast-fail logic.
+        let deadline = Date().addingTimeInterval(30)
+        while video.uploadedUrl == nil && !video.uploadFailed && !Task.isCancelled && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard let url = video.uploadedUrl, !url.isEmpty else { return nil }   // HARD GUARD
+
+        let result = (try? await APIService.shared.chatActions(
+            message: vibe, videoUrl: url, proxyVideoUrl: video.proxyUploadedUrl
+        )) ?? .notFound
+
+        switch result {
+        case .renderDispatched(let jobId, _), .reeditDispatched(let jobId, _):
+            // video_url present ⇒ act_render unconditionally, so reedit_dispatched
+            // should not occur on this path; either way it's a dispatched job.
+            guard !jobId.isEmpty else { return nil }
+            // The coordinator normally drives the Phase-1 upload bar; it isn't
+            // running on this path, so mirror client upload progress into the bar
+            // until the bytes land and SSE owns it. Monotonic, capped at 30%.
+            Task { @MainActor in
+                while !video.sourceUploadCompleted && !Task.isCancelled {
+                    if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                        let mapped = Int(video.uploadProgress * 30)
+                        if mapped > (messages[i].jobProgress ?? 0) { messages[i].jobProgress = mapped }
+                    }
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
+            return .success(jobId: jobId)
+        case .converse, .status, .clarify, .refusal, .notFound:
+            return nil
         }
     }
 
@@ -2752,7 +3055,7 @@ struct EditorView: View {
             if let code = event.errorCode,
                code == "tier_concurrency_limit" {
                 Task { @MainActor in
-                    let lim = UsageService.shared.renderLimit
+                    let lim = UsageService.shared.renderLimit ?? 1
                     appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
@@ -2764,6 +3067,22 @@ struct EditorView: View {
             // in only when no timeline exists at all.
             if let step = event.step, !step.isEmpty {
                 messages[messageIndex].stageTimeline?.receive(stepToken: step)
+            }
+
+            // §5 progressive playback: capture the HLS manifest the MOMENT the backend
+            // emits it (mid-render, on ANY event) — not only at completion — so the
+            // inline preview can start on the first segments and later swap to the
+            // final MP4. Gated by the server flag (both halves flip on the same word);
+            // inert until then. Prewarm validates the master playlist. Only sets it
+            // once and only before completion (the completed branch below still owns
+            // the terminal capture).
+            if UsageService.shared.progressivePlaybackEnabled,
+               !isCompletedEvent,
+               messages[messageIndex].hlsManifestUrl == nil,
+               let hls = event.hlsManifestUrl, !hls.isEmpty {
+                messages[messageIndex].hlsManifestUrl = hls
+                PlayerAssetPrewarm.shared.warm(hls)
+                print("[sse] progressive manifest ready mid-render: \(hls)")
             }
 
             if isCompletedEvent {
@@ -2784,6 +3103,11 @@ struct EditorView: View {
                     print("[sse] thumbnailUrl=\(thumb)")
                 } else {
                     print("[sse] WARNING: completion event missing thumbnailUrl")
+                }
+                // §6: SSE doesn't carry the post package — fetch it once now that
+                // the render landed (idempotent; no-op if we already have it).
+                if let jid = messages[messageIndex].jobId {
+                    Task { await hydratePostPackage(jobId: jid) }
                 }
                 let videoUrl = event.videoUrl
                 let hlsUrl = event.hlsManifestUrl
@@ -2845,6 +3169,7 @@ struct EditorView: View {
                         messages[idx].content = "Your video is ready!"
                         messages[idx].stageTimeline?.finish()
                         persistMessages()
+                        maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)
@@ -2891,6 +3216,7 @@ struct EditorView: View {
                         messages[revealIdx].content = "Your video is ready!"
                         messages[revealIdx].stageTimeline?.finish()
                         persistMessages()
+                        maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)
@@ -2970,6 +3296,35 @@ struct EditorView: View {
     /// (transport error, app backgrounded long enough that the server
     /// finished without us listening, etc.) and on app foreground for any
     /// message still in `processing` state.
+    /// §6 one-shot fetch of the post package for a completed job. SSE doesn't
+    /// carry it, and a completed message is never re-reconciled, so we fetch it
+    /// once on completion from whichever path got there first (`result.post_package`
+    /// preferred, flat `post_package` column as fallback). Idempotent +
+    /// best-effort: any failure just leaves the description block hidden.
+    private func hydratePostPackage(jobId: String) async {
+        guard let idx0 = messages.firstIndex(where: { $0.jobId == jobId }),
+              messages[idx0].postPackage == nil else { return }
+        guard let token = await AuthService.shared.getValidToken() else { return }
+        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
+        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=result,post_package") else { return }
+        var request = URLRequest(url: url)
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        struct PkgResult: Codable { let post_package: PostPackage? }
+        struct Row: Codable { let result: PkgResult?; let post_package: PostPackage? }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let row = (try? JSONDecoder().decode([Row].self, from: data))?.first else { return }
+        // Read order per the contract: result.post_package (durable/authoritative)
+        // then the flat video_jobs.post_package column.
+        guard let pkg = row.result?.post_package ?? row.post_package, pkg.hasContent else { return }
+        guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
+        messages[idx].postPackage = pkg
+        persistMessages()
+    }
+
     private func reconcileJobStatus(jobId: String) async {
         guard let token = await AuthService.shared.getValidToken() else {
             print("[reconcile] \(jobId) skipped — no valid token")
@@ -2979,13 +3334,17 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message,result") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
 
+        struct JobResult: Codable {
+            let error_code: String?
+            let post_package: PostPackage?   // §6 post package (result.post_package) — tolerant decode
+        }
         struct JobStatusRow: Codable {
             let status: String?
             let progress: Double?       // durable 0–100; the authoritative bar position
@@ -2996,6 +3355,7 @@ struct EditorView: View {
             let hls_manifest_url: String?
             let thumbnail_url: String?
             let error_message: String?
+            let result: JobResult?      // carries error_code (e.g. UPLOAD_STALLED)
         }
 
         do {
@@ -3037,7 +3397,7 @@ struct EditorView: View {
                 messages[idx].stepMessage = nil
                 messages[idx].error = wasProcessing
                     ? "This render expired on our side — you weren't charged. Please try again."
-                    : "This upload didn't finish — your video is safe on your device. Please send it again."
+                    : "This upload didn't finish — the connection was likely too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight."
                 persistMessages()
                 return
             }
@@ -3078,6 +3438,11 @@ struct EditorView: View {
                 if let v = row.rendered_video_url { messages[idx].renderedVideoUrl = v }
                 if let h = row.hls_manifest_url { messages[idx].hlsManifestUrl = h }
                 if let t = row.thumbnail_url { messages[idx].thumbnailUrl = t }
+                // §6: the reconcile already fetched `result` — take the post
+                // package straight from it (no extra request on this path).
+                if let pkg = row.result?.post_package, pkg.hasContent {
+                    messages[idx].postPackage = pkg
+                }
                 // Don't finalize a videoless "ready": if the DB says completed
                 // but no playable URL is populated yet, stay in-flight so the
                 // next reconcile/SSE tick fills it in. A completed message is
@@ -3115,6 +3480,27 @@ struct EditorView: View {
                 print("[reconcile] \(jobId) → finishing → completed")
                 return
             case "failed":
+                // UPLOAD_STALLED auto-recovery: the worker couldn't fetch the
+                // source in time (a stalled PUT) and coded it retryable. Silently
+                // re-run the render ONCE — a slow-but-alive upload has usually
+                // finished landing in S3 by the time this lands — BEFORE showing
+                // anything. A SECOND UPLOAD_STALLED (flag set) falls through to the
+                // honest error card, whose "Upload a new video" button (onMakeAnother)
+                // is the one-tap recovery.
+                if row.result?.error_code == "UPLOAD_STALLED",
+                   !messages[idx].didAutoRetryUploadStall,
+                   let src = messages[idx].cachedSourceUrl,
+                   let vibe = messages[idx].cachedVibe {
+                    messages[idx].didAutoRetryUploadStall = true
+                    let mid = messages[idx].id
+                    let proxy = messages[idx].cachedProxyUrl
+                    persistMessages()
+                    print("[reconcile] \(jobId) → UPLOAD_STALLED — silent auto-retry (once)")
+                    Task { @MainActor in
+                        retryFailedRender(messageId: mid, sourceUrl: src, proxyUrl: proxy, vibe: vibe)
+                    }
+                    return
+                }
                 messages[idx].jobStatus = "failed"
                 messages[idx].error = row.error_message ?? "Something went wrong."
                 messages[idx].stageTimeline?.finish()
@@ -3270,3 +3656,275 @@ struct CircularProgressRing: View {
 /// facing alert; throwing this is just the signal to bail out of
 /// the upload Task cleanly without flagging an upload error.
 private struct Layer2RejectionSentinel: Error {}
+
+
+// MARK: - Push pre-permission explainer
+
+/// The soft ask shown once on the first upload, BEFORE the iOS system dialog.
+/// Extracted into a ViewModifier so its two-button + message closures type-check
+/// on their own instead of inside EditorView.body's already-maximal modifier chain.
+private struct PushExplainerAlert: ViewModifier {
+    @Binding var isPresented: Bool
+    func body(content: Content) -> some View {
+        content.alert("Get notified when it's ready?", isPresented: $isPresented) {
+            Button("Notify me") {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                PushService.shared.markSoftPromptOffered()
+                Analytics.track("push_softprompt", props: ["choice": "accept"])
+                Task { await PushService.shared.requestPermissionIfNeeded() }
+            }
+            Button("Not now", role: .cancel) {
+                PushService.shared.markSoftPromptOffered()
+                Analytics.track("push_softprompt", props: ["choice": "decline"])
+            }
+        } message: {
+            Text("Renders take a few minutes — want us to tell you the second yours is ready?")
+        }
+    }
+}
+
+
+// MARK: - Freemium usage meter + upgrade pill (staged for 1.3.1)
+
+/// Thin usage strip that sits directly above the composer. Free users only —
+/// it removes itself for Pro (unlimited) and before the first snapshot loads.
+/// With quota it's a quiet "N free videos left today"; at the cap it escalates
+/// to a reset countdown + a gold "Get more usage" link into the paywall. This
+/// is DISPLAY ONLY — the server is the real gate (see UsageService).
+private struct UsageMeterStrip: View {
+    var onUpgrade: () -> Void
+    @ObservedObject private var usage = UsageService.shared
+    @ObservedObject private var subscription = SubscriptionService.shared
+
+    /// The daily reset shown as a LOCAL wall-clock time (e.g. "5:00 PM") — the user's
+    /// timezone + locale, so it reads as a real clock time, not a rolling duration.
+    private static let resetTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+
+    var body: some View {
+        // `rendersLeft` is non-nil ONLY once the server snapshot has loaded, so
+        // this both hides the strip for Pro and shows nothing until we have a
+        // real server number — never a guessed limit.
+        if !subscription.effectiveIsPro, let left = usage.rendersLeft {
+            HStack(spacing: 7) {
+                Image(systemName: left > 0 ? "bolt.fill" : "bolt.slash.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(left > 0 ? PromptlyGold.solid : Color.white.opacity(0.45))
+
+                Group {
+                    if left > 0 {
+                        // Automatic grammar agreement pluralizes "video" off the count.
+                        Text("^[\(left) free video](inflect: true) left today")
+                    } else if let reset = usage.resetsAt, reset > Date() {
+                        // (c) Show the reset as a LOCAL wall-clock TIME, not a bare
+                        // duration. The quota resets at a fixed instant (UTC midnight),
+                        // so "resets in 2h 25m" reads as an arbitrary rolling timer —
+                        // the honest, calm form is the actual local time it comes back
+                        // ("resets at 5:00 PM"), with a "tomorrow" hint when that lands
+                        // on the next local day. (Rolling 24h-from-use is the queued
+                        // follow-up — see the quota note.)
+                        let cal = Calendar.current
+                        let dayHint = cal.isDateInToday(reset) ? ""
+                            : (cal.isDateInTomorrow(reset) ? " tomorrow" : "")
+                        Text("No free videos left · resets at \(Self.resetTimeFormatter.string(from: reset))\(dayHint)")
+                    } else {
+                        Text("No free videos left today")
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+                Spacer(minLength: 8)
+
+                if left <= 0 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onUpgrade()
+                    } label: {
+                        Text("Get more usage")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(PromptlyGold.solid)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Space.sm)
+            .padding(.top, 2)
+            .padding(.bottom, 6)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.2), value: left)
+        }
+    }
+}
+
+// MARK: - UpgradePill (build 216)
+//
+// Rebuilt after builds 214 & 215 both failed on-device: the NavigationStack
+// toolbar's UIKit host froze TWO SwiftUI animation drivers (a TimelineView
+// subtree was dropped; a hueRotation was frozen) and mangled the logo into an
+// opaque rectangle. Two changes fix it for good:
+//   1. The pill now lives in a CUSTOM SwiftUI top bar (EditorView.customTopBar),
+//      not the toolbar — see that view. Nothing here is UIKit-hosted.
+//   2. The rotating border is driven by CORE ANIMATION (CAGradientLayer +
+//      CABasicAnimation, via RotatingConicBorder). CA runs on the render server,
+//      outside SwiftUI's transaction/display-link, so NO parent hosting can
+//      freeze it — belt-and-suspenders against a repeat.
+// The transparent Promptly mark (Assets.xcassets/PromptlyLogo.imageset/
+// promptly-logo.png, hasAlpha) renders with .original — its transparency intact
+// on black, no plate, no box. Reduce Motion → a static (non-rotating) border.
+struct UpgradePill: View {
+    var action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Promptly's own RGB spectrum, anchored by the brand gold. First == last so
+    // the conic sweep loops seamlessly with no seam at the wrap.
+    private static let uiSpectrum: [UIColor] = [
+        UIColor(Color(hex: "F4E4BC")), // cream-gold (brand anchor)
+        UIColor(Color(hex: "FF7A5C")), // coral
+        UIColor(Color(hex: "C86DD7")), // magenta
+        UIColor(Color(hex: "7A5CFF")), // violet
+        UIColor(Color(hex: "5B8CFF")), // azure
+        UIColor(Color(hex: "36D6C3")), // teal
+        UIColor(Color(hex: "F4E4BC")), // back to gold — seamless
+    ]
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                Image("PromptlyLogo")
+                    .renderingMode(.original)   // keep the mark's transparency + white
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                Text("Upgrade")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .fixedSize()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                // Subtle top-lit dark capsule — depth, not a flat chip.
+                Capsule().fill(
+                    LinearGradient(colors: [Color(hex: "20202A"), Color(hex: "0E0E12")],
+                                   startPoint: .top, endPoint: .bottom)
+                )
+            )
+            .overlay(
+                // CA-driven rotating conic border — cannot be frozen by hosting.
+                // ~8s / revolution: slow, subtle, luxurious.
+                RotatingConicBorder(colors: Self.uiSpectrum,
+                                    lineWidth: 1.5,
+                                    period: 8,
+                                    animated: !reduceMotion)
+                    .clipShape(Capsule())
+                    .allowsHitTesting(false)
+            )
+            // Soft matching glow.
+            .shadow(color: Color(hex: "C86DD7").opacity(reduceMotion ? 0.30 : 0.45), radius: 6)
+            .shadow(color: Color(hex: "5B8CFF").opacity(reduceMotion ? 0.18 : 0.30), radius: 10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Upgrade to Promptly Pro")
+    }
+}
+
+// MARK: - RotatingConicBorder (Core Animation)
+//
+// A capsule-shaped stroke filled with a conic RGB gradient that rotates forever
+// via CABasicAnimation. CA animations run on the render server, independent of
+// SwiftUI's transaction/display-link — a UIKit-hosted parent (toolbar, sheet,
+// anything) CANNOT freeze it. This is the animation path builds 214 & 215 needed.
+struct RotatingConicBorder: UIViewRepresentable {
+    var colors: [UIColor]
+    var lineWidth: CGFloat = 1.5
+    var period: Double = 8
+    var animated: Bool = true
+
+    func makeUIView(context: Context) -> ConicBorderView {
+        let v = ConicBorderView()
+        v.apply(colors: colors, lineWidth: lineWidth, period: period, animated: animated)
+        return v
+    }
+    func updateUIView(_ v: ConicBorderView, context: Context) {
+        v.apply(colors: colors, lineWidth: lineWidth, period: period, animated: animated)
+    }
+}
+
+final class ConicBorderView: UIView {
+    private let gradient = CAGradientLayer()
+    private let ringMask = CAShapeLayer()
+    private var lineWidth: CGFloat = 1.5
+    private var period: Double = 8
+    private var animated = true
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        gradient.type = .conic
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)   // center
+        gradient.endPoint = CGPoint(x: 1.0, y: 0.5)     // 0° reference for the sweep
+        layer.addSublayer(gradient)
+        // Stationary capsule-STROKE mask: only the ring shows the gradient. The
+        // ring stays put while the gradient spins underneath it.
+        ringMask.fillColor = UIColor.clear.cgColor
+        ringMask.strokeColor = UIColor.white.cgColor
+        ringMask.lineWidth = lineWidth
+        layer.mask = ringMask
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    func apply(colors: [UIColor], lineWidth: CGFloat, period: Double, animated: Bool) {
+        gradient.colors = colors.map { $0.cgColor }
+        self.lineWidth = lineWidth
+        self.period = period
+        self.animated = animated
+        ringMask.lineWidth = lineWidth
+        setNeedsLayout()
+        restartAnimation()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // Oversize the gradient so rotation never reveals empty corners.
+        let diag = hypot(bounds.width, bounds.height) * 1.4
+        gradient.bounds = CGRect(x: 0, y: 0, width: diag, height: diag)
+        gradient.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let inset = lineWidth / 2
+        let radius = max(0, (bounds.height - lineWidth) / 2)
+        ringMask.frame = bounds
+        ringMask.path = UIBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset),
+                                     cornerRadius: radius).cgPath
+        CATransaction.commit()
+    }
+
+    private func restartAnimation() {
+        gradient.removeAnimation(forKey: "spin")
+        guard animated else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0.0
+        spin.toValue = 2.0 * Double.pi
+        spin.duration = period
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        gradient.add(spin, forKey: "spin")
+    }
+
+    // CA strips animations when a layer leaves the render tree; re-arm on return.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, animated { restartAnimation() }
+    }
+}

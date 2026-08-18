@@ -14,7 +14,9 @@ struct AccountView: View {
 
     @State private var userName = ""
     @State private var userEmail = ""
+    @State private var userPhone = ""
     @State private var userInitial = "U"
+    @State private var restoreInFlight = false
     @State private var avatarUrl: String?
     @State private var tier = "free"
     @State private var isLoading = true
@@ -46,74 +48,66 @@ struct AccountView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 20)
 
                     profileRow
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 26)
 
-                    divider
-
-                    row("Name", value: userName.isEmpty ? "Not set" : userName) {
-                        newName = userName
-                        showNameEdit = true
-                    }
-                    divider
-
-                    row("Email", value: userEmail) {
-                        newEmail = userEmail
-                        showEmailEdit = true
-                    }
-                    divider
-
-                    subscriptionRow
-                    divider
-
-                    row("Change password") {
-                        showPasswordReset = true
-                    }
-                    divider
-
-                    row("Help & support") {
-                        if let url = URL(string: "https://usepromptly.app/help.html") {
-                            UIApplication.shared.open(url)
+                    // ── ACCOUNT ──
+                    settingsGroup("Account") {
+                        cardRow("Name", value: userName.isEmpty ? "Not set" : userName) {
+                            newName = userName; showNameEdit = true
                         }
-                    }
-                    divider
-
-                    row("Send feedback") {
-                        feedbackText = ""
-                        feedbackSent = false
-                        showFeedbackSheet = true
-                    }
-                    divider
-
-                    row("Privacy policy") {
-                        if let url = URL(string: "https://usepromptly.app/privacy.html") {
-                            UIApplication.shared.open(url)
+                        cardDivider
+                        cardRow("Email", value: userEmail) {
+                            newEmail = userEmail; showEmailEdit = true
                         }
-                    }
-                    divider
-
-                    row("Terms of service") {
-                        if let url = URL(string: "https://usepromptly.app/terms.html") {
-                            UIApplication.shared.open(url)
+                        if !userPhone.isEmpty {
+                            cardDivider
+                            cardRow("Phone", value: userPhone, trailing: .none, action: nil)
                         }
+                        cardDivider
+                        subscriptionCardRow
+                        cardDivider
+                        cardRow("Restore purchases", trailing: restoreInFlight ? .progress : .none) {
+                            restorePurchases()
+                        }
+                        cardDivider
+                        upgradeOrManageRow
                     }
-                    divider
 
-                    // Log out button
+                    // ── SETTINGS ──
+                    settingsGroup("Settings") {
+                        cardRow("Change password") { showPasswordReset = true }
+                        cardDivider
+                        cardRow("Notifications") { openSystemSettings() }
+                    }
+
+                    // ── GET HELP ──
+                    settingsGroup("Get help") {
+                        cardRow("Report an issue") {
+                            feedbackText = ""; feedbackSent = false; showFeedbackSheet = true
+                        }
+                        cardDivider
+                        cardRow("Help center") { openExternal("https://usepromptly.app/help.html") }
+                        cardDivider
+                        cardRow("Privacy Policy") { openExternal("https://usepromptly.app/privacy.html") }
+                        cardDivider
+                        cardRow("Terms of Service") { openExternal("https://usepromptly.app/terms.html") }
+                    }
+
+                    // ── LOG OUT ──
                     Button { AuthService.shared.signOut() } label: {
                         Text("Log out")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.white)
-                            .clipShape(Capsule())
+                            .frame(height: 52)
+                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 32)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
 
                     // Delete + version
                     VStack(spacing: 14) {
@@ -141,6 +135,22 @@ struct AccountView: View {
                 }
             }
             .background(Color(.systemBackground))
+            // Account is a sheet now (opened from the drawer) — give it a close.
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    AppState.shared.showAccount = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 14)
+                .accessibilityLabel("Close")
+            }
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
             .dismissKeyboardOnTap()
@@ -229,28 +239,21 @@ struct AccountView: View {
         }
     }
 
-    // MARK: - Subscription row
+    // MARK: - Subscription rows (card-styled)
 
-    /// Inlined (rather than going through the generic `row` helper) so
-    /// the Pro state can render the gold-gradient PROBadge — the helper
-    /// only handles plain-text badges. Tap behaviour matches the old row:
-    /// Pro → Apple's manage-subscriptions URL; free → present the paywall.
-    private var subscriptionRow: some View {
+    /// Current-plan status row: a gold PRO badge when Pro, a neutral FREE chip
+    /// otherwise. Taps to Apple's manage page (Pro) or the paywall (free).
+    private var subscriptionCardRow: some View {
         Button {
             if effectiveIsPro {
-                // Apple's standard subscription-management URL — opens
-                // straight into the user's subscriptions list in Settings.
-                // Only correct way to cancel an App Store subscription.
-                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                    UIApplication.shared.open(url)
-                }
+                openExternal("https://apps.apple.com/account/subscriptions")
             } else {
                 AppState.shared.presentPaywall(.manual)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Text("Subscription")
-                    .font(.system(size: 17))
+                    .font(.system(size: 16))
                     .foregroundColor(.white)
                 Spacer()
                 if effectiveIsPro {
@@ -258,25 +261,46 @@ struct AccountView: View {
                 } else {
                     Text("FREE")
                         .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(Color(.tertiarySystemBackground))
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08), in: Capsule())
                         .foregroundColor(.secondary)
-                        .clipShape(Capsule())
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(.tertiaryLabel))
-                    .accessibilityHidden(true)
+                chevron
             }
-            .padding(.horizontal, 20)
-            .frame(height: 56)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Subscription")
         .accessibilityValue(effectiveIsPro ? "Pro" : "Free")
+    }
+
+    /// The accent CTA row. Free/comped-out → gold "Upgrade to Promptly Pro" into
+    /// the paywall; Pro/comped → "Manage subscription" to Apple. Never both.
+    private var upgradeOrManageRow: some View {
+        Button {
+            if effectiveIsPro {
+                openExternal("https://apps.apple.com/account/subscriptions")
+            } else {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                AppState.shared.presentPaywall(.manual)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                if !effectiveIsPro {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(PromptlyGold.gradient)
+                }
+                Text(effectiveIsPro ? "Manage subscription" : "Upgrade to Promptly Pro")
+                    .font(.system(size: 16, weight: effectiveIsPro ? .regular : .semibold))
+                    .foregroundColor(effectiveIsPro ? .white : PromptlyGold.solid)
+                Spacer()
+                chevron
+            }
+            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Profile row
@@ -365,49 +389,89 @@ struct AccountView: View {
             }
     }
 
-    // MARK: - Row
+    // MARK: - Grouped card system (ChatGPT-style)
 
-    private func row(_ label: String, value: String? = nil, badge: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
+    enum CardTrailing { case chevron, progress, none }
+
+    /// A grouped section: an uppercase header label above a rounded card that
+    /// holds the rows. Mirrors the structure in iOS Settings / ChatGPT.
+    private func settingsGroup<Content: View>(_ header: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(header.uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 32)
+            VStack(spacing: 0) { content() }
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 16)
+        }
+        .padding(.bottom, 26)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Color(.tertiaryLabel))
+            .accessibilityHidden(true)
+    }
+
+    /// One row inside a card. `action == nil` renders a non-tappable display row.
+    private func cardRow(_ label: String, value: String? = nil, tint: Color = .white,
+                         trailing: CardTrailing = .chevron, action: (() -> Void)?) -> some View {
+        Button { action?() } label: {
+            HStack(spacing: 10) {
                 Text(label)
-                    .font(.system(size: 17))
-                    .foregroundColor(.white)
+                    .font(.system(size: 16))
+                    .foregroundColor(tint)
                 Spacer()
-                if let badge = badge {
-                    Text(badge)
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(badge == "PRO" ? Color.white : Color(.tertiarySystemBackground))
-                        .foregroundColor(badge == "PRO" ? .black : .secondary)
-                        .clipShape(Capsule())
-                } else if let v = value {
+                if let v = value, !v.isEmpty {
                     Text(v)
                         .font(.system(size: 15))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(.tertiaryLabel))
-                    .accessibilityHidden(true)
+                switch trailing {
+                case .chevron: chevron
+                case .progress: ProgressView().controlSize(.small).tint(.secondary)
+                case .none: EmptyView()
+                }
             }
-            .padding(.horizontal, 20)
-            .frame(height: 56)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(action == nil)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(label)
-        .accessibilityValue(badge ?? value ?? "")
+        .accessibilityValue(value ?? "")
     }
 
-    private var divider: some View {
+    /// Inset hairline between rows in a card.
+    private var cardDivider: some View {
         Rectangle()
-            .fill(Color(.separator).opacity(0.5))
+            .fill(Color.white.opacity(0.08))
             .frame(height: 0.5)
-            .padding(.horizontal, 20)
+            .padding(.leading, 16)
+    }
+
+    // MARK: - Small actions
+
+    private func openExternal(_ urlString: String) {
+        if let url = URL(string: urlString) { UIApplication.shared.open(url) }
+    }
+
+    private func openSystemSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    }
+
+    private func restorePurchases() {
+        guard !restoreInFlight else { return }
+        restoreInFlight = true
+        Task {
+            _ = await subscription.restorePurchases()
+            await UsageService.shared.refresh()
+            restoreInFlight = false
+        }
     }
 
     private var versionString: String {
@@ -422,6 +486,7 @@ struct AccountView: View {
         let auth = AuthService.shared
         userName = auth.currentUser?.user_metadata?.full_name ?? ""
         userEmail = auth.currentUser?.email ?? ""
+        userPhone = auth.currentUser?.phone ?? ""
         userInitial = String((userName.isEmpty ? userEmail : userName).prefix(1)).uppercased()
         avatarUrl = auth.currentUser?.user_metadata?.avatar_url
         tier = await auth.getUserTier()

@@ -171,20 +171,37 @@ enum PHAssetResolver {
                 if let composition = avAsset as? AVComposition {
                     let outputUrl = FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString + ".mp4")
-                    guard let exportSession = AVAssetExportSession(
-                        asset: composition,
-                        presetName: AVAssetExportPresetHighestQuality
-                    ) else {
-                        resume(.failure(NSError(domain: "PHAssetResolver", code: -1)))
-                        return
-                    }
-                    exportSession.outputURL = outputUrl
-                    exportSession.outputFileType = .mp4
-                    exportSession.exportAsynchronously {
-                        if exportSession.status == .completed {
-                            resume(.success(outputUrl))
-                        } else {
-                            resume(.failure(exportSession.error ?? NSError(domain: "PHAssetResolver", code: -2)))
+                    // Edited/slo-mo clips resolve to a composition. Prefer LOSSLESS
+                    // passthrough when the composition supports it (a simple trim
+                    // usually does) — it avoids the extra lossy generation that
+                    // HighestQuality's re-encode adds. Fall back to HighestQuality only
+                    // when passthrough can't apply (time-remapped slo-mo, filters, mixed
+                    // formats). Resolution is preserved either way. determineCompatibility
+                    // is DEFINITIVE, so we never pick passthrough for a clip it would
+                    // fail on (which would fail the upload).
+                    AVAssetExportSession.determineCompatibility(
+                        ofExportPreset: AVAssetExportPresetPassthrough,
+                        with: composition,
+                        outputFileType: .mp4
+                    ) { canPassthrough in
+                        let preset = canPassthrough
+                            ? AVAssetExportPresetPassthrough
+                            : AVAssetExportPresetHighestQuality
+                        guard let exportSession = AVAssetExportSession(
+                            asset: composition,
+                            presetName: preset
+                        ) else {
+                            resume(.failure(NSError(domain: "PHAssetResolver", code: -1)))
+                            return
+                        }
+                        exportSession.outputURL = outputUrl
+                        exportSession.outputFileType = .mp4
+                        exportSession.exportAsynchronously {
+                            if exportSession.status == .completed {
+                                resume(.success(outputUrl))
+                            } else {
+                                resume(.failure(exportSession.error ?? NSError(domain: "PHAssetResolver", code: -2)))
+                            }
                         }
                     }
                     return

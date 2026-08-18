@@ -42,8 +42,14 @@ struct ChatMessage: Identifiable {
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
+    /// §6 post package — posting-ready copy (hook / caption / rationale) shown
+    /// under the finished video. Fetched once on completion; nil until then.
+    var postPackage: PostPackage?
     var error: String?
     var isThinking: Bool = false
+    /// 225 item 2: transient (not persisted) — true while an assistant reply is
+    /// actively streaming, so the bubble can show a blinking caret at the tail.
+    var isStreaming: Bool = false
     /// Transient (not persisted): set true the moment a job truly completes,
     /// just before the processing bubble is swapped for the finished video.
     /// The progress views observe this to release the bar's cap and let it
@@ -87,6 +93,11 @@ struct ChatMessage: Identifiable {
     /// and cancelling a row that doesn't exist yet is a 404 no-op that would
     /// leave the dispatch running and the user charged after "cancelling".
     var serverRowExists: Bool = false
+    /// TRANSIENT (never persisted): set once when we silently auto-retry a
+    /// worker-coded UPLOAD_STALLED failure (a stalled source upload). Guarantees
+    /// the auto-retry fires at most once — a second UPLOAD_STALLED surfaces the
+    /// honest error + the "Upload a new video" recovery instead of looping.
+    var didAutoRetryUploadStall: Bool = false
 }
 
 enum MessageRole {
@@ -147,6 +158,12 @@ class PendingVideo: Identifiable, ObservableObject {
     @Published var uploadFailed = false
     var fileName: String = "video.mp4"
     var uploadTask: Task<Void, Never>?
+    /// Instrumentation (224): where the source came from ("local" | "icloud") and
+    /// its duration in seconds, stamped on the job so the iCloud reliability fix
+    /// is measurable (which UNS jobs were iCloud) and wait-time can be deconfounded
+    /// from clip length. Nil until the pick/strategy resolves.
+    var sourceType: String?
+    var sourceDuration: Double?
 }
 
 // MARK: - Persisted Chat Threads
@@ -190,6 +207,7 @@ struct SerializedMessage: Codable, Hashable {
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
     var thumbnailUrl: String?
+    var postPackage: PostPackage?        // §6 post package — persisted so it survives chat reload
     var attachmentThumbnailUrl: String?  // for re-edit / "you sent a video" rows
     var attachmentFileName: String?
     var error: String?
@@ -262,6 +280,7 @@ struct SerializedMessage: Codable, Hashable {
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
+        self.postPackage = message.postPackage
         self.attachmentThumbnailUrl = message.videoAttachment?.remoteThumbnailUrl
         self.attachmentFileName = message.videoAttachment?.fileName
         self.error = message.error
@@ -300,6 +319,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
+        msg.postPackage = postPackage
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false
@@ -330,7 +350,7 @@ struct SerializedMessage: Codable, Hashable {
                 // "Picking up where it left off..." corpse is not representable:
                 // it terminalizes into the failure card right here.
                 msg.jobStatus = "failed"
-                msg.error = "This upload didn't finish — your video is safe on your device. Please send it again."
+                msg.error = "This upload didn't finish — the connection was likely too slow for this clip. Your video is safe on your device. Try again on Wi-Fi, or trim it to a shorter highlight."
                 msg.stageTimeline = nil
                 msg.stepMessage = nil
             } else {
@@ -408,6 +428,7 @@ struct AuthResponse: Codable {
 struct AuthUser: Codable {
     let id: String
     let email: String?
+    let phone: String?
     let user_metadata: UserMetadata?
 }
 
@@ -450,6 +471,40 @@ final class AppState: ObservableObject {
     /// transition. Lives on AppState so any view can dismiss it without
     /// having to plumb a binding through the hierarchy.
     @Published var sidebarOpen: Bool = false
+    /// Sidebar-restructure (2026-07-24): Library + Account are now sheets opened
+    /// from the drawer instead of bottom-tab surfaces. AppShell binds a `.sheet`
+    /// to each; the drawer / deep-links set them true, the sheet's own close (or a
+    /// swipe-down) sets them false. `selectedTab` is retired to a constant 0 (Edit
+    /// is the sole full-screen surface) — kept only so legacy guards still read 0.
+    @Published var showLibrary: Bool = false
+    @Published var showAccount: Bool = false
+    /// Bumped by `landOnChat()` on every authenticated landing. EditorView
+    /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
+    /// keyboard up, ready to type a vibe (build 217).
+    @Published var composerFocusToken: Int = 0
+
+    /// The explicit post-auth navigation reset (build 217, the "ALWAYS" rule):
+    /// every successful sign-in lands on the chat surface with the composer
+    /// focused — never on a stale Account/Library sheet the previous session left
+    /// open. Dismiss all sheets, close the drawer, select the chat surface, and
+    /// signal the composer to focus. No auth path may skip this.
+    func landOnChat() {
+        showAccount = false
+        showLibrary = false
+        sidebarOpen = false
+        selectedTab = 0
+        paywallReason = nil
+        composerFocusToken &+= 1
+    }
+
+    /// Clears the drawer/sheet nav state on SIGN-OUT so it can't persist into the
+    /// next session (the bug: sign-out left showAccount=true → re-auth re-opened
+    /// the Account sheet). Paired with `landOnChat()` on sign-in.
+    func clearNavForSignOut() {
+        showAccount = false
+        showLibrary = false
+        sidebarOpen = false
+    }
     /// The paywall the root sheet (AppShell) is bound to — non-nil ⇒ presented.
     /// READ-ONLY to the rest of the app: trigger sites must go through
     /// `presentPaywall` / `deferPaywall` / `flushDeferredPaywall`, never set this
@@ -476,6 +531,33 @@ final class AppState: ObservableObject {
         paywallRouting.request(reason)
         mirrorPaywallRouting()
     }
+
+    #if DEBUG
+    /// DEBUG-only: verify the export paywall branch TODAY via the dry-run gate probe,
+    /// zero flips [SERVER_CONTRACTS_226]. Probes the gate for `jobId`; if a free user
+    /// would be gated it drives the SAME `.manual` paywall the post-flip export uses,
+    /// so the branch is proven on a real device (run once as Pro → allowed, once as
+    /// free → paywall). Returns a one-line report. DEBUG + explicit-call only → zero
+    /// effect on Release/TestFlight, and it never touches the shipping export flow
+    /// (a free user still saves publicly while the gate is dark).
+    @MainActor
+    @discardableResult
+    func debugVerifyExportPaywallBranch(jobId: String) async -> String {
+        let decision = await APIService.shared.gateProbe(jobId: jobId)
+        let report: String
+        switch decision {
+        case .allowed(let tier):
+            report = "gate_probe: allowed (tier=\(tier)) — Pro, no paywall ✓"
+        case .gated(let tier, let reason):
+            presentPaywall(.manual)   // the exact branch the post-flip 402 drives
+            report = "gate_probe: gated (tier=\(tier), reason=\(reason ?? "—")) — paywall presented ✓"
+        case .indeterminate(let status):
+            report = "gate_probe: indeterminate (status=\(status)) — fail-open, no paywall"
+        }
+        print("[gate-probe] \(report)")
+        return report
+    }
+    #endif
 
     /// UPGRADE-funnel head: a free user encountered a Pro-gated limit. Fired from
     /// the SINGLE routing chokepoint (present + defer) so every gated door counts

@@ -66,7 +66,8 @@ struct LibraryView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                // Leading: "Select All" / "Deselect All" while selecting.
+                // Leading: "Select All" / "Deselect All" while selecting; a Close
+                // button (Library is a sheet now) otherwise.
                 ToolbarItem(placement: .topBarLeading) {
                     if isSelecting {
                         Button(selectedIds.count == allSelectableIds.count ? "Deselect All" : "Select All") {
@@ -78,6 +79,16 @@ struct LibraryView: View {
                             }
                         }
                         .foregroundColor(.white)
+                    } else {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            AppState.shared.showLibrary = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .accessibilityLabel("Close")
                     }
                 }
                 // Trailing: "Select" enters mode; "Done" exits.
@@ -344,7 +355,7 @@ struct LibraryView: View {
             oldVibe: edit.vibe_input ?? "",
             thumbnailUrl: edit.thumbnail_url
         )
-        appState.selectedTab = 0  // jump to Edit tab
+        appState.showLibrary = false  // dismiss the Library sheet; EditorView picks up pendingReedit
     }
 
     private func loadEdits() async {

@@ -116,11 +116,27 @@ class APIService {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         WallCapability.stamp(&request)
+        // Build stamp on EVERY authed request (job creation included), so the
+        // server can bucket outcomes by build — the difference between "the fix
+        // works, users haven't updated" and "the fix is broken", which is
+        // otherwise unanswerable. Matches Analytics' "v (b)" format so job rows
+        // and analytics_events read the same. One header, one choke point.
+        request.setValue(Self.appVersionHeader, forHTTPHeaderField: "X-App-Version")
         if let token = await validToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
     }
+
+    /// Short version + build, e.g. "1.3.6 (224)". Same shape Analytics uses so a
+    /// job's app_version and its events line up. Falls back to "?" so a malformed
+    /// Info.plist never crashes request construction.
+    static let appVersionHeader: String = {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(v) (\(b))"
+    }()
 
     // MARK: - Validation (Layer 2)
 
@@ -161,7 +177,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
@@ -179,6 +195,17 @@ class APIService {
             // inserts under this id; a double-submit replays the existing
             // job (one job, one charge) instead of minting a duplicate.
             let client_job_id: String?
+            // §5 progressive playback CAPABILITY. This 1.3.3 build can consume a
+            // partial HLS preview (start playing mid-render, swap to the final MP4),
+            // so it advertises the capability PER DISPATCH. The worker publishes a
+            // preview ONLY for jobs that carry this flag — so the 1.3.2 majority (no
+            // flag) never pays a preview encode. The global progressive_playback_enabled
+            // stays as the kill switch ON TOP (worker + client both gate on it).
+            let supports_progressive: Bool?
+            // Instrumentation (224): source provenance for measuring the iCloud
+            // reliability fix + deconfounding wait-time. Optional → omitted when nil.
+            let source_type: String?
+            let source_duration: Double?
         }
         let body = Body(
             video_url: videoUrl,
@@ -186,7 +213,10 @@ class APIService {
             proxy_video_url: (proxyVideoUrl?.isEmpty == false) ? proxyVideoUrl : nil,
             model: premiumPipeline ? "lumen" : "flare",
             premium_pipeline_enabled: premiumPipeline ? true : nil,
-            client_job_id: clientJobId
+            client_job_id: clientJobId,
+            supports_progressive: true,
+            source_type: sourceType,
+            source_duration: sourceDuration
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -296,6 +326,122 @@ class APIService {
             print("[warmup] GPU render container warmup dispatched")
         } catch {
             print("[warmup] dispatch failed (non-fatal): \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Export gate (225 item 3)
+
+    /// The one correct action for an export attempt. Dark-safe: while the server
+    /// export gate is off it returns 501 (or the alias route 404s) → .legacyPublicSaveOK,
+    /// so 225 saves behave exactly like 224 today. When the gate flips on: 200 = a
+    /// signed, possibly-watermarked private asset; 402 = out of free exports → the
+    /// upgrade paywall, NEVER a silent public save; 404 no_private_asset = an old job
+    /// with no private asset, the ONLY case a public save is still correct.
+    enum ExportOutcome {
+        case gated(url: URL, watermarked: Bool)                             // 200
+        case legacyPublicSaveOK                                             // 404 (no_private_asset / route-dark) or 501 gate-dark
+        case paymentRequired(freeExportsUsed: Int?, freeExportLimit: Int?)  // 402
+    }
+
+    /// POST /api/jobs/{id}/export with the Supabase bearer. Throws URLError on a
+    /// network failure — the caller shows a retry, NEVER a silent public save —
+    /// and APIError on an unexpected status.
+    func exportJob(jobId: String) async throws -> ExportOutcome {
+        var request = await authorizedRequest("/api/jobs/\(jobId)/export", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.uploadFailed }
+        switch http.statusCode {
+        case 200:
+            struct R: Decodable { let url: String; let watermarked: Bool? }
+            let r = try JSONDecoder().decode(R.self, from: data)
+            guard let u = URL(string: r.url) else { throw APIError.jobCreationFailed("Bad export URL") }
+            return .gated(url: u, watermarked: r.watermarked ?? false)
+        case 402:
+            struct P: Decodable { let free_exports_used: Int?; let free_export_limit: Int? }
+            let p = try? JSONDecoder().decode(P.self, from: data)
+            return .paymentRequired(freeExportsUsed: p?.free_exports_used, freeExportLimit: p?.free_export_limit)
+        case 404, 501:
+            return .legacyPublicSaveOK
+        default:
+            throw APIError.jobCreationFailed("Export failed (\(http.statusCode))")
+        }
+    }
+
+    /// POST /api/jobs/{id}/export {"gate_probe": true} — the export gate's DRY RUN.
+    /// It is evaluated BEFORE the 501 [SERVER_CONTRACTS_226], so it answers while
+    /// `EXPORT_GATE_ENABLED` is still dark — which is what makes the paywall branch
+    /// verifiable today, zero flips. Network / any failure → `.indeterminate` so
+    /// verification never blocks. This NEVER gates a real export (see ExportGateDecision):
+    /// the shipping paywall is driven by the real 402 from `exportJob`, post-flip.
+    func gateProbe(jobId: String) async -> ExportGateDecision {
+        var request = await authorizedRequest("/api/jobs/\(jobId)/export", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{\"gate_probe\":true}".utf8)
+        guard let (data, response) = try? await requestData(request),
+              let http = response as? HTTPURLResponse else { return .indeterminate(status: -1) }
+        return ExportGateDecision.from(status: http.statusCode, body: data)
+    }
+
+    // MARK: - Chat action router (226 item 1)
+
+    /// The server's converse-vs-act decision for one chat turn. `.notFound` is the
+    /// dark-flag fallback: while PROMPTLY_CHAT_ACTIONS is off the endpoint 404s and
+    /// the caller runs TODAY's client router unchanged.
+    enum ChatActionResult {
+        case converse                                        // just talk → /api/chat/stream as today
+        case status(String)                                  // deterministic status text
+        case clarify(String)                                 // ask-back text
+        case renderDispatched(jobId: String, message: String?)
+        case reeditDispatched(jobId: String, message: String?)
+        case refusal(status: Int)                            // 402/429/503 → composer refusal
+        case notFound                                        // 404 → today's client router (dark)
+    }
+
+    /// POST /api/chat/actions — one server call decides converse vs act. The server
+    /// parses intent (never the client) and, for an act_render, self-forwards to
+    /// /api/video-jobs verbatim with the SAME `video_url` the composer uses
+    /// [SERVER_CONTRACTS_226 Contract 1].
+    ///
+    /// URL-IMMEDIATE: pass the presigned `videoUrl` the MOMENT it exists — do NOT
+    /// wait for the bytes. Both upload endpoints return the URL before a byte moves,
+    /// and dispatch waits server-side up to 600s for the object with no Modal
+    /// container running [Contract 1(a)]. Network/other errors map to `.notFound` so
+    /// the caller safely falls back to today's router.
+    ///
+    /// The caller MUST enforce: an attachment ⇒ a non-empty `videoUrl` here. A video
+    /// intent sent without its URL is misclassified as a re-edit of the user's OLD
+    /// job [Contract 1(b) trap] — that guard lives at the send site, not here.
+    func chatActions(message: String, videoUrl: String? = nil, proxyVideoUrl: String? = nil) async throws -> ChatActionResult {
+        var request = await authorizedRequest("/api/chat/actions", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["message": message]
+        if let videoUrl { body["video_url"] = videoUrl }
+        if let proxyVideoUrl { body["proxy_video_url"] = proxyVideoUrl }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse else { return .notFound }
+        switch http.statusCode {
+        case 404:                return .notFound
+        case 402, 429, 503:      return .refusal(status: http.statusCode)
+        case 200:
+            // The server lifts job_id from `job_id || id || job.id`, but the
+            // render_dispatched shape documents `job_id` as `<uuid|null>` with the
+            // real id also under `job.job_id` — so fall back to the nested field.
+            struct JobEnvelope: Decodable { let job_id: String? }
+            struct R: Decodable { let action: String; let message: String?; let job_id: String?; let job: JobEnvelope? }
+            guard let r = try? JSONDecoder().decode(R.self, from: data) else { return .converse }
+            let jid = (r.job_id?.isEmpty == false ? r.job_id : nil) ?? r.job?.job_id ?? ""
+            switch r.action {
+            case "converse":          return .converse
+            case "status":            return .status(r.message ?? "")
+            case "clarify":           return .clarify(r.message ?? "")
+            case "render_dispatched": return .renderDispatched(jobId: jid, message: r.message)
+            case "reedit_dispatched": return .reeditDispatched(jobId: jid, message: r.message)
+            default:                  return .converse   // unknown → safe default
+            }
+        default:                 throw APIError.jobCreationFailed("chat/actions \(http.statusCode)")
         }
     }
 
@@ -532,6 +678,17 @@ class APIService {
         let pub = publicUrl ?? remoteUrl.absoluteString.components(separatedBy: "?").first ?? remoteUrl.absoluteString
         let msgId = messageId ?? UUID().uuidString
 
+        // 225 item 7: emit upload_attempt at the START of the transfer — before it
+        // can die — so the failing (never-settled) population has a SIZE to band by.
+        // The event is allowlisted server-side and has had ZERO emitters, so nobody
+        // can currently answer "big files or slow networks?". size_mb + path + a
+        // join key (the source object key, which the job row also carries).
+        Analytics.track("upload_attempt", props: [
+            "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+            "path": "bg-single",
+            "src_key": URL(string: pub)?.lastPathComponent ?? "",
+        ])
+
         let uploadStart = Date()
         _ = try await BackgroundUploadManager.shared.upload(
             fileUrl: fileUrl,
@@ -545,6 +702,63 @@ class APIService {
         let elapsed = Date().timeIntervalSince(uploadStart)
         let mbps = (Double(size) / 1_048_576.0) / max(elapsed, 0.001) * 8
         print(String(format: "[perf] upload bg-single success elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
+    }
+
+    /// Source-leg upload with the NEVER-WORSE guarantee (226 item 7b). Tries the
+    /// resumable multipart transfer on a background URLSession; ANY init failure
+    /// (404 / 5xx / network / timeout, the kill switch, or a sub-threshold file) falls
+    /// to the single-PUT path — byte-for-byte the 225 upload. Multipart is only ever
+    /// ATTEMPTED behind a successful `multipartInit`, so it can only match or beat 225.
+    ///
+    /// `onPublicUrlResolved` fires the MOMENT the url is known — the multipart publicUrl
+    /// (from init, before a byte moves) or the single-PUT one — so the URL-immediate
+    /// chat/render dispatch never waits for the bytes. The single-PUT branch emits its
+    /// own `upload_attempt` (path="bg-single"); the multipart branch emits path="multipart".
+    @discardableResult
+    func uploadSourceNeverWorse(
+        fileUrl: URL,
+        fileName: String,
+        singlePutUrl: String,
+        singlePutPublicUrl: String,
+        messageId: String,
+        chatId: String?,
+        onPublicUrlResolved: @escaping (String) -> Void,
+        onProgress: @escaping (Double) -> Void
+    ) async throws -> String {
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
+
+        // Resumable multipart — only above the threshold and only if init succeeds.
+        // `multipartInit` throwing is the never-worse hinge → single-PUT below.
+        if MultipartConfig.enabled, size >= MultipartConfig.threshold {
+            // Law 3: sweep-and-abort stale uploads before every new init.
+            await ResumableMultipartUploader.shared.resumeAndSweepOnForeground()
+            let partSize = MultipartChunker.chosenPartSize(fileSize: size)
+            let partCount = MultipartChunker.partCount(fileSize: size, partSize: partSize)
+            if let initResp = try? await multipartInit(fileName: fileName, partCount: partCount) {
+                onPublicUrlResolved(initResp.publicUrl)   // URL-immediate: the multipart publicUrl
+                Analytics.track("upload_attempt", props: [
+                    "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+                    "path": "multipart",
+                    "src_key": URL(string: initResp.publicUrl)?.lastPathComponent ?? "",
+                    "parts": partCount,
+                ])
+                if (try? await ResumableMultipartUploader.shared.transfer(
+                    fileUrl: fileUrl, size: size, initResponse: initResp,
+                    messageId: messageId, chatId: chatId, onProgress: onProgress)) != nil {
+                    onProgress(1.0)
+                    return initResp.publicUrl   // multipart landed the object
+                }
+                // transfer threw (parts/complete gave up; abort already fired) → single-PUT.
+            }
+        }
+
+        // Single-PUT fallback — the 225 path, unchanged (emits its own upload_attempt).
+        onPublicUrlResolved(singlePutPublicUrl)
+        try await uploadFileToS3(
+            url: singlePutUrl, fileUrl: fileUrl, mimeType: "video/mp4",
+            messageId: messageId, chatId: chatId, publicUrl: singlePutPublicUrl,
+            onProgress: onProgress)
+        return singlePutPublicUrl
     }
 
     /// Foreground single-PUT for SMALL files (proxy uploads). The
@@ -623,6 +837,62 @@ class APIService {
     struct MultipartPart: Codable {
         let PartNumber: Int
         let ETag: String
+    }
+
+    // MARK: - Multipart networking (226 item 7b — SERVER_CONTRACTS_226 Contract 2)
+
+    /// POST /api/upload-multipart-init {fileName, partCount} → {uploadId, partUrls[],
+    /// key, publicUrl}. `partUrls[i]` is presigned for PartNumber i+1 (the number is
+    /// baked into the signature); the key is server-generated. Throws on ANY non-2xx
+    /// or malformed body — this is the NEVER-WORSE hinge: the caller treats every
+    /// throw as "fall back to the single-PUT path", so multipart can only match or
+    /// beat 225, never make an upload worse.
+    func multipartInit(fileName: String, partCount: Int) async throws -> MultipartInitResponse {
+        var request = await authorizedRequest("/api/upload-multipart-init", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["fileName": fileName, "partCount": partCount])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.uploadFailed
+        }
+        let r = try JSONDecoder().decode(MultipartInitResponse.self, from: data)
+        guard r.partUrls.count == partCount, !r.uploadId.isEmpty, !r.key.isEmpty else { throw APIError.uploadFailed }
+        return r
+    }
+
+    /// POST /api/upload-multipart-complete {key, uploadId, parts:[{PartNumber, ETag}]}
+    /// → publicUrl. ETags are sent VERBATIM (quotes included); the server sorts by
+    /// PartNumber but we send them sorted anyway. The returned publicUrl is the SAME
+    /// value single-PUT returns and is the `video_url` for the job / chat act.
+    func multipartComplete(key: String, uploadId: String, parts: [MultipartPart]) async throws -> String {
+        var request = await authorizedRequest("/api/upload-multipart-complete", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "key": key,
+            "uploadId": uploadId,
+            "parts": parts.sorted { $0.PartNumber < $1.PartNumber }
+                .map { ["PartNumber": $0.PartNumber, "ETag": $0.ETag] },
+        ])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.uploadFailed
+        }
+        return try JSONDecoder().decode(MultipartCompleteResponse.self, from: data).publicUrl
+    }
+
+    /// POST /api/upload-multipart-abort {key, uploadId} → {ok:true}. A safe no-op if
+    /// already completed / never initialised. Best-effort: abandoned parts bill
+    /// forever, so we always TRY on cancel / give-up / expiry, but a failed abort
+    /// never blocks the caller. Returns whether the server acked.
+    @discardableResult
+    func multipartAbort(key: String, uploadId: String) async -> Bool {
+        guard !key.isEmpty, !uploadId.isEmpty else { return false }
+        var request = await authorizedRequest("/api/upload-multipart-abort", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["key": key, "uploadId": uploadId])
+        guard let (_, response) = try? await requestData(request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return false }
+        return true
     }
 
     /// Upload a file using S3 multipart + Transfer Acceleration. Returns the
