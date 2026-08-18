@@ -85,6 +85,26 @@ private export bucket and the reply carries a short-TTL signed URL. Same
 discipline as `clean_export_key` — the artifact is private by default and the
 URL is the grant.
 
+**PERSIST THE KEY, RETURN THE URL — never persist the URL.** The signed URL is a
+short-TTL *grant*, not an identity. A chat history that stored the URL is a
+history whose images are dead the moment the TTL lapses, and re-opening an old
+conversation is exactly the case where that bites. So:
+
+```jsonc
+// stored on the message row
+{ "attachments": [ { "kind":"image", "mime":"image/png",
+                     "bucket":"…", "key":"chat/<user>/<msg>/0.png" } ] }
+
+// returned to the client, minted per read
+{ "attachments": [ { "kind":"image", "mime":"image/png", "url":"https://…?Expires=…" } ] }
+```
+
+The URL is derived from the key on every read, and the key never leaves the
+server. This repo has already paid for the inverse: `rendered_video_url` stored a
+PUBLIC CloudFront URL, which made the export paywall theatre because anyone with
+the link had the file. Storing a grant instead of an identity is the same
+mistake wearing different clothes.
+
 ### 1.3 The rules that keep this from becoming an incident
 
 - **Allowlist mime types** (`image/jpeg|png|webp`). Never echo a caller-supplied
@@ -152,6 +172,37 @@ tools: [{ function_declarations: [
 Three tools, matching the three things the server can actually do. **A tool that
 does not map to an existing endpoint must not be declared** — a callable the
 server cannot honour is a promise the product breaks.
+
+### 2.2a `job_id` — the model cannot guess what it was never shown
+
+`revise_edit` takes a `job_id`, and today's `/api/chat` already loads the user's
+most recent job (last 2h) purely to ground the system prompt. That read becomes
+load-bearing: **the model can only reference a job that is in its context.**
+
+- **Put a short recent-jobs list in the system prompt** — id, a few words of the
+  vibe, status, age. Three to five entries. Without it, `job_id` is a field the
+  model must hallucinate or omit, and "omit to use their most recent" quietly
+  becomes the only path that ever runs — which is a silent single-job product
+  the moment a user has two.
+- **`omit → most recent` stays**, because it is right for the common case
+  ("make it punchier" about the obvious one). It is a default, not the contract.
+
+**THE SERVER VALIDATES THE ID; IT NEVER TRUSTS IT.** A model-supplied `job_id`
+is caller-influenced input, and the caller can say anything to the model. The
+self-forward already carries the user's own `Authorization`, so the downstream
+endpoint authorises correctly — but the tool handler must ALSO refuse an id that
+does not belong to the caller, before forwarding, and ledger the attempt:
+
+```js
+// the id must resolve to a row owned by THIS user, or the tool refuses
+if (job.user_id !== authUser.id) return refuse('job_not_yours');
+```
+
+Relying on the downstream check alone would mean a wrong id produces a confusing
+downstream error rather than a clean refusal, and would leave the attempt
+uncounted. `chat_tool_refused{reason:'job_not_yours'}` should be zero forever;
+a non-zero value is either a prompt-injection attempt or a context bug, and
+both are worth seeing.
 
 ### 2.3 What is preserved VERBATIM
 
@@ -226,6 +277,24 @@ admit(surface, model) -> token
 - **Token bucket, not a sleep.** Capacity and refill per (surface, model), read
   from config so the numbers can be corrected when the console is checked
   without a code change.
+- **TWO LIMITS, NOT ONE — and Lumen is why.** A single rate cap conflates two
+  different bursts:
+
+  | limit | what it bounds | Lumen's shape |
+  |---|---|---|
+  | **intra-job concurrency** | images in flight for ONE job | REF-2 carries ~6 insert scenes; a plan asking for 6 fires 6 |
+  | **inter-job rate** | images/minute across ALL jobs on that surface | 10 concurrent jobs x 6 scenes = 60 in a minute |
+
+  A per-minute rate alone lets one job burst its whole scene set instantly and
+  then starves every other job for the rest of the window. A per-job cap alone
+  lets ten jobs each behave perfectly and blow the bucket together. **Both are
+  required**, and the intra-job cap is the one nobody thinks of, because a
+  single job looks well-behaved in isolation.
+
+  Concretely for Lumen: the per-job cap bounds one plan's scene set, and the
+  per-surface rate bounds the fleet. When scenes go from 0/779 to a real rate,
+  this is the difference between a working feature and a self-inflicted 429
+  storm on the surface that renders every user's video.
 - **Bounded wait, then a typed refusal.** A caller that cannot be admitted
   within its budget gets `IMAGE_CAPACITY` — never an unbounded block, and never
   a silent drop. Lumen degrades to a code-only scene; chat says "I can't
