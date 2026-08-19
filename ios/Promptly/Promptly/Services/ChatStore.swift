@@ -90,6 +90,13 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    // The one-time client backfill for stranded (chat-less) videos was REMOVED per
+    // the owner's ruling: it's a server-side migration (owner-run, verified to zero
+    // before ship) — a fire-and-forget client backfill on the INVISIBLE-video cohort
+    // is a silent failure by construction (no way to see it didn't run). See the
+    // server migration SQL (IOS_LIBRARY_MERGE_MIGRATION.sql) + the live-leak fix
+    // (flush-on-background + persistMessagesAndFlush) that stops NEW stranding.
+
     private func prefetchUncachedVideos(limit: Int) {
         struct Candidate { let jobId: String; let url: String }
         var queue: [Candidate] = []
@@ -180,6 +187,11 @@ final class ChatStore: ObservableObject {
         guard let mIdx = msgs.firstIndex(where: { $0.id == messageId }) else { return }
         transform(&msgs[mIdx])
         scheduleSave(chatId: chatId, messages: msgs)
+        // Live-leak fix: this path lands a jobId on an OFF-SCREEN bubble (the user
+        // switched chats mid-upload). Flush immediately so that jobId reaches the
+        // server even if the user never returns to that chat — the debounce alone
+        // would drop it on suspend and strand the durable video_job in no chat.
+        Task { [weak self] in await self?.flushNow() }
     }
 
     private func flushPending() async {

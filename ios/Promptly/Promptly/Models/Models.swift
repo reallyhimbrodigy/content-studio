@@ -193,6 +193,21 @@ struct Chat: Codable, Identifiable, Hashable {
     }
 }
 
+extension Chat {
+    /// The frame for the thumbnail-first chat-list row: the MOST RECENT completed
+    /// render's thumbnail (so a re-edited chat shows its latest video). Reads the
+    /// persisted message fields — no network fetch. nil ⇒ no finished render yet ⇒
+    /// the row shows a neutral placeholder, never a broken frame.
+    var latestRenderThumbnailUrl: String? {
+        messages.last(where: { $0.renderedVideoUrl?.isEmpty == false })?.thumbnailUrl
+    }
+
+    /// Whether this chat holds any finished video (drives frame vs placeholder).
+    var hasCompletedRender: Bool {
+        messages.contains { $0.renderedVideoUrl?.isEmpty == false }
+    }
+}
+
 struct SerializedMessage: Codable, Hashable {
     var id: String
     var role: String              // "user" | "assistant" | "system"
@@ -459,9 +474,9 @@ struct ReeditSession: Identifiable, Equatable {
     let thumbnailUrl: String?
 }
 
-/// Shared cross-tab state. Library sets `pendingReedit` + switches `selectedTab`
-/// to 0; EditorView consumes the session, shows the context chip, and clears it
-/// once the re-edit job dispatches.
+/// Shared cross-surface state. A chat's re-edit action (MessageBubble) sets
+/// `pendingReedit`; EditorView consumes the session, shows the context chip, and
+/// clears it once the re-edit job dispatches.
 final class AppState: ObservableObject {
     static let shared = AppState()
     @Published var selectedTab: Int = 0
@@ -471,12 +486,10 @@ final class AppState: ObservableObject {
     /// transition. Lives on AppState so any view can dismiss it without
     /// having to plumb a binding through the hierarchy.
     @Published var sidebarOpen: Bool = false
-    /// Sidebar-restructure (2026-07-24): Library + Account are now sheets opened
-    /// from the drawer instead of bottom-tab surfaces. AppShell binds a `.sheet`
-    /// to each; the drawer / deep-links set them true, the sheet's own close (or a
-    /// swipe-down) sets them false. `selectedTab` is retired to a constant 0 (Edit
-    /// is the sole full-screen surface) — kept only so legacy guards still read 0.
-    @Published var showLibrary: Bool = false
+    /// Sidebar-restructure: Account is a sheet opened from the drawer; AppShell binds
+    /// a `.sheet` to it. (The Library sheet was DELETED — every video lives in its
+    /// own chat now.) `selectedTab` is retired to a constant 0 (Edit is the sole
+    /// full-screen surface) — kept only so legacy guards still read 0.
     @Published var showAccount: Bool = false
     /// Bumped by `landOnChat()` on every authenticated landing. EditorView
     /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
@@ -490,7 +503,6 @@ final class AppState: ObservableObject {
     /// signal the composer to focus. No auth path may skip this.
     func landOnChat() {
         showAccount = false
-        showLibrary = false
         sidebarOpen = false
         selectedTab = 0
         paywallReason = nil
@@ -502,7 +514,6 @@ final class AppState: ObservableObject {
     /// the Account sheet). Paired with `landOnChat()` on sign-in.
     func clearNavForSignOut() {
         showAccount = false
-        showLibrary = false
         sidebarOpen = false
     }
     /// The paywall the root sheet (AppShell) is bound to — non-nil ⇒ presented.
@@ -747,7 +758,7 @@ enum PipelineCatalog {
         PipelineStage(id: "transitions",  title: "Stitching transitions",         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "encode",       title: "Final encode",                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "thumbnail",    title: "Picking your cover frame",      icon: "photo.on.rectangle",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "upload",       title: "Publishing to your library",    icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
+        PipelineStage(id: "upload",       title: "Finishing your video",          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
     ]
 
     static func stages(for mode: String) -> [PipelineStage] {

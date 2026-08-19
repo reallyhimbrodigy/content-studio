@@ -146,11 +146,8 @@ struct ChatListView: View {
                     }
                 }
             }
-            drawerNavRow(icon: "square.grid.2x2", label: "Library") {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                AppState.shared.showLibrary = true
-                onSelect()
-            }
+            // The "Library" drawer row is gone — the chat list above IS the library
+            // now (each row is a past conversation with its finished video inside).
         }
     }
 
@@ -522,28 +519,66 @@ private struct ChatRow: View {
     let isSelected: Bool
     let onTap: () -> Void
 
+    private let thumbW: CGFloat = 40
+    private let thumbH: CGFloat = 52
+
     var body: some View {
-        // Tap-only (build 217): so a close-swipe dragged across a row moves ONLY
-        // the drawer and never SELECTS the chat under the finger. A TapGesture
-        // cancels on any drag beyond slop; a clean tap still opens the chat.
-        Text(chat.title)
-            .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
-            .foregroundColor(.primary)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected
-                          ? Color.primary.opacity(0.10)
-                          : Color.clear)
+        // Thumbnail-first (Library merge): the chat's latest finished FRAME plus the
+        // REQUEST that produced it (chat.title = the first user message). The frame +
+        // the brief identify a video better than the old Library's nameless grid did.
+        // Tap-only (build 217): a close-swipe dragged across a row moves ONLY the
+        // drawer and never selects the chat; a clean tap still opens it.
+        HStack(spacing: 12) {
+            thumbnail
+            Text(chat.title)
+                .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(.primary)
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected
+                      ? Color.primary.opacity(0.10)
+                      : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(chat.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+    }
+
+    /// The chat's latest finished frame — or a neutral placeholder when there's no
+    /// completed render yet OR the stored thumbnail URL has expired. NEVER a broken
+    /// frame (property 2): loading + failure both fall through to the placeholder
+    /// beneath. Playback still re-resolves an expired URL when the chat is opened.
+    @ViewBuilder
+    private var thumbnail: some View {
+        ZStack {
+            placeholder
+            if let urlStr = chat.latestRenderThumbnailUrl, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    }
+                }
+            }
+        }
+        .frame(width: thumbW, height: thumbH)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+            .overlay(
+                Image(systemName: chat.hasCompletedRender ? "play.rectangle.fill" : "video")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary.opacity(0.6))
             )
-            .contentShape(Rectangle())
-            .onTapGesture { onTap() }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(chat.title)
-            .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }

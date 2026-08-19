@@ -583,24 +583,9 @@ class APIService {
         return result
     }
 
-    func deleteEdit(id: String) async throws {
-        guard let userId = AuthService.shared.currentUser?.id,
-              let token = await validToken() else { throw APIError.notAuthenticated }
-
-        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
-        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
-
-        let urlStr = "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(id)&user_id=eq.\(userId)"
-        var request = URLRequest(url: URL(string: urlStr)!)
-        request.httpMethod = "DELETE"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (_, response) = try await requestData(request)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 300 else {
-            throw APIError.deleteFailed
-        }
-    }
+    // `deleteEdit(id:)` was removed with the Library — it was the Library's
+    // bulk-delete call and had no other caller. A chat is the permanent home of its
+    // video now; there is no "delete this video from a grid" affordance.
 
     // MARK: - Account
 

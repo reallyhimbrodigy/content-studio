@@ -130,14 +130,9 @@ struct AppShell: View {
                 appState.dismissWall()
             }
         }
-        // Sidebar-restructure: Library + Account are sheets opened from the drawer,
-        // replacing the removed bottom tab bar. Edit stays the full-screen surface.
-        .sheet(isPresented: Binding(
-            get: { appState.showLibrary },
-            set: { appState.showLibrary = $0 }
-        )) {
-            LibraryView()
-        }
+        // Sidebar-restructure: Account is a sheet opened from the drawer. The Library
+        // was DELETED — every video now lives permanently in its own chat, so there is
+        // no separate grid to browse. Edit stays the full-screen surface.
         .sheet(isPresented: Binding(
             get: { appState.showAccount },
             set: { appState.showAccount = $0 }
