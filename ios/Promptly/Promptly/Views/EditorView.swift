@@ -253,6 +253,23 @@ struct EditorView: View {
                 // from disk and never had one, or a previous client
                 // gave up after exhausting its retry budget).
                 resumeSSEForInFlightMessages()
+                // BUILD(2b): the push-token ask used to fire only at COMPLETION, so a
+                // user who backgrounds during their FIRST render — the 88% who make
+                // exactly one — always pushed into no_tokens: the completion happened
+                // before any token existed. Returning to an in-flight render is that
+                // exact user, at higher intent than the old pre-value dispatch ask
+                // (which declined ~44%): they came back to check on it. Offer the push
+                // explainer now, while the render is still cooking, so the token can
+                // register BEFORE it finishes and the first video can push. Once-only
+                // (shouldOfferSoftPrompt); the completion sinks remain the fallback for
+                // users who watch the whole render in-app.
+                if PushService.shared.shouldOfferSoftPrompt,
+                   messages.contains(where: {
+                       $0.jobId != nil &&
+                       ($0.jobStatus == "processing" || $0.jobStatus == "queued" || $0.jobStatus == nil)
+                   }) {
+                    showPushExplainer = true
+                }
                 Task { @MainActor in
                     // includeFailed: true heals messages that got
                     // marked failed locally (e.g. by an over-eager
