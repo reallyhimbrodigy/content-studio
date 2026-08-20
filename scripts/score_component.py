@@ -181,13 +181,20 @@ def score(component, path, applies_override=None, provenance="build-lane"):
     c = canvas(path)
     out["canvas"] = c
     if "canvas" in ap:
-        # Format must MATCH one of the references, not merely be valid.
+        # ASPECT, NOT PIXELS (fixed 2026-08-20). This demanded exact w/h equality
+        # and failed all three delivered Lumen renders at 1080x1920 — whose
+        # aspect (0.5625) is EXACTLY REF-2's 720x1280. Three independent
+        # artifacts failing one check the same way, at a correct aspect, is a
+        # BROKEN DIMENSION and not three broken artifacts. Higher resolution at
+        # the same aspect is the same FORMAT and is not a defect.
         match = None
         for k, r in REFS.items():
-            if c["w"] == r["w"] and c["h"] == r["h"]:
+            if abs((c["w"] / max(c["h"], 1)) - (r["w"] / r["h"])) < 0.01:
                 match = k
         out["dimensions"]["canvas"] = {"w": c["w"], "h": c["h"], "fps": c["fps"], "matches_ref": match}
-        out["checks"].append((f"canvas matches a reference format ({match or 'NONE'})", match is not None))
+        out["checks"].append((f"canvas aspect matches a reference ({match or 'NONE'}"
+                              + (f", {c['w']}x{c['h']} vs ref {REFS[match]['w']}x{REFS[match]['h']}" if match else "")
+                              + ")", match is not None))
         out["checks"].append(("fps == 30", abs((c["fps"] or 0) - 30.0) < 0.5))
     else:
         out["na"].append("canvas")
@@ -209,6 +216,20 @@ def score(component, path, applies_override=None, provenance="build-lane"):
         gap = r.get("max_still_gap_s")
         out["checks"].append((f"stillness <= {STILL_GAP_CEILING_S}s (CEILING)",
                               gap is not None and gap <= STILL_GAP_CEILING_S))
+        # ── DID THE EDIT DO ANYTHING? (added 2026-08-20) ────────────────────
+        # Calibrated on the references FIRST, per canon:
+        #   REF-1  21 cuts (24.0/min)  mean_change 0.0864
+        #   REF-2   8 cuts (11.1/min)  mean_change 0.0596
+        # Both references CUT. A render with zero cuts and a third of the
+        # reference's frame-to-frame change is a passthrough, not an edit — the
+        # shipped-nothing class. It passed every other bar on this scorecard
+        # (density counts a talking head's own movement), which is exactly why
+        # this needs its own check rather than a tighter density threshold.
+        out["checks"].append(("edit contains cuts (both refs do: 21 and 8)", h["n_cuts"] >= 1))
+        MEAN_CHANGE_FLOOR = 0.6 * 0.0596   # 0.6x the LOWER reference
+        mc = r.get("mean_change") or 0
+        out["checks"].append((f"visual change >= 0.6x lowest ref ({MEAN_CHANGE_FLOOR:.4f})",
+                              mc >= MEAN_CHANGE_FLOOR))
         # density is a TARGET, not a ceiling — scored as a band around the refs
         ev = r.get("events_per_s") or 0
         out["checks"].append((f"motion density >= 0.6x reference ({MOTION_DENSITY_TARGET_EVPS}/s)",
