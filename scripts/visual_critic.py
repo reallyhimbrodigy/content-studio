@@ -135,12 +135,38 @@ def motion_on_beat(p):
     return {"onsets": len(ends), "on_beat": hit, "on_beat_pct": round(100 * hit / len(ends), 1)}
 
 
-NOT_SCORED = [
+# ── CAPTION-VS-SUBJECT: SELF-ACTIVATING ON COMPONENT C ──────────────────────
+# §2.2's real rule is RELATIONAL — "captions are placed in negative space,
+# OPPOSITE the subject", not at a fixed anchor. It is the property that would
+# have caught REF-1's actual rule before I got it wrong: I measured for a
+# lower-third and found none, concluded the reference had no signature, and had
+# to withdraw the whole framing. A positional test could never have found a
+# relational rule.
+#
+# It needs a subject mask. Component C (behind-layer-phase1, matting/matting_app)
+# is built and unmerged. Rather than wait to be told, this checks for the mask on
+# every run and moves the property from NOT-SCORED to SCORED the moment it lands.
+MATTING_PATHS = [
+    "/Users/zaclibman/promptly-gpu-worker/promptly-gpu-worker/matting/matting_app.py",
+    "/Users/zaclibman/promptly-gpu-worker/promptly-gpu-worker/src/remotion/src/BehindSpecimen.tsx",
+]
+
+
+def subject_mask_available():
+    return [p for p in MATTING_PATHS if os.path.exists(p)]
+
+
+_BASE_NOT_SCORED = [
     "type system consistency (needs glyph metrics, not edge density)",
     "component overlap (needs the render tree, not pixels)",
-    "caption-vs-subject placement (needs the subject mask — component C, unmerged)",
     "legibility shadow/outline (needs the text alpha layer)",
 ]
+
+_MASK = subject_mask_available()
+NOT_SCORED = _BASE_NOT_SCORED + ([] if _MASK else [
+    "caption-vs-subject placement (§2.2, the RELATIONAL rule) — BLOCKED on the "
+    "subject mask from component C (behind-layer-phase1, unmerged). This is the "
+    "property that would have caught REF-1's real rule before I got it wrong."])
 
 
 def critique(p):
@@ -161,6 +187,12 @@ def show(r, bars=None):
     print("\n  NOT SCORED — the owner's eye, and absence here is never a pass:")
     for x in NOT_SCORED:
         print(f"    · {x}")
+    if _MASK:
+        print("\n  ✅ SUBJECT MASK DETECTED (component C merged) — caption-vs-subject placement")
+        print(f"     is now UNBLOCKED. Calibrate it on BOTH references before it judges anything:")
+        print(f"     mask source: {_MASK[0]}")
+        print("     bar: caption-bbox vs subject-mask IoU == 0 on >=95% of caption frames,")
+        print("     derived from the references FIRST, per the canon rule.")
 
 
 if __name__ == "__main__":
