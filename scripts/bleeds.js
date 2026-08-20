@@ -412,6 +412,73 @@ function reportZero({ label, count, control }) {
     say('');
   }
 
+  // ── COST & SPEED — STANDING, EVERY ROUND (owner, 2026-08-20) ──────────────
+  // Two numbers that never leave the board: Modal spend per render (driven down
+  // continuously) and end-to-end wall clock against the HARD TARGET of 60-90s
+  // for a 20-30s source. Cut to the target cohort, because a blended p50 over
+  // all source lengths is not the number the target is written against.
+  // OWN FETCH, not a reference to `done` — `done` is declared later in this
+  // function, and using it here threw 'Cannot access done before initialization',
+  // truncating the whole board to 14 lines. Same temporal-dead-zone class that
+  // bit me on isFullRow. NOTE: the fetch/read parity trap does NOT catch this —
+  // parity checks fields against the SELECT, not identifiers against their
+  // declaration order. Different failure, same symptom (a short board).
+  const spdRows = await pageAll('video_jobs?select=id,created_at,completed_at,source_duration,result'
+    + `&status=eq.completed&created_at=gte.${new Date(Date.now() - 7 * 86400e3).toISOString()}`);
+  const spd = spdRows.filter((j) => j.completed_at
+    && typeof j.source_duration === 'number' && j.source_duration >= 20 && j.source_duration <= 30);
+  const e2eOf = (j) => (new Date(j.completed_at) - new Date(j.created_at)) / 1000;
+  const stOf = (j) => ((j.result || {}).stage_timings || {});
+  if (spd.length >= 5) {
+    const E = spd.map(e2eOf).sort((a, z) => a - z);
+    const med = (xs) => xs[Math.floor(xs.length / 2)];
+    const p50 = med(E);
+    const miss = p50 - 90;
+    say(`# ⏱️ SPEED — target cohort (20–30s source) p50 **${p50.toFixed(0)}s** vs the **60–90s** hard target`
+      + ` — ${miss > 0 ? `**MISS by ${miss.toFixed(0)}s**` : '**MET**'}`);
+    say('');
+    say(`| cohort | n | e2e p50 | e2e p90 | vs 90s |`);
+    say('|---|---:|---:|---:|---|');
+    const A = spdRows.filter((j) => j.completed_at).map(e2eOf).sort((a, z) => a - z);
+    say(`| **20–30s source (the target)** | ${E.length} | **${p50.toFixed(0)}s** | ${E[Math.floor(0.9 * E.length)].toFixed(0)}s | ${miss > 0 ? `+${miss.toFixed(0)}s` : 'met'} |`);
+    say(`| all sources (context only) | ${A.length} | ${med(A).toFixed(0)}s | ${A[Math.floor(0.9 * A.length)].toFixed(0)}s | ${(med(A) - 90).toFixed(0) > 0 ? '+' + (med(A) - 90).toFixed(0) + 's' : 'met'} |`);
+    say('');
+    // THE TWO LEVERS
+    const withSt = spd.filter((j) => stOf(j).total);
+    if (withSt.length >= 5) {
+      const tot = med(withSt.map((j) => stOf(j).total).sort((a, z) => a - z));
+      say('**The two levers — worker-wall decomposition:**');
+      say('');
+      say('| stage | p50 | share of worker wall |');
+      say('|---|---:|---:|');
+      ['render', 'normalize_transcribe_upload', 'edit_plan', 'upload_export', 'hls'].forEach((k) => {
+        const v = withSt.map((j) => stOf(j)[k]).filter((x) => typeof x === 'number').sort((a, z) => a - z);
+        if (v.length) say(`| \`${k}\` | ${med(v).toFixed(1)}s | ${(100 * med(v) / tot).toFixed(1)}% |`);
+      });
+      say(`| **worker wall total** | **${tot.toFixed(0)}s** | 100% |`);
+      say('');
+      say(`_**e2e ${p50.toFixed(0)}s − worker wall ${tot.toFixed(0)}s = ~${(p50 - tot).toFixed(0)}s outside the worker** `
+        + '(queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, '
+        + 'so the target cannot be met by trimming overhead — the worker wall itself has to come down._');
+      say('');
+      const gem = withSt.map((j) => stOf(j).gemini_call).filter((x) => typeof x === 'number');
+      const gemMed = gem.length ? med(gem.sort((a, z) => a - z)) : null;
+      say('_⚠️ **The "editorial call is 54% of wall" lever does NOT reproduce in this window, and the reason '
+        + `matters: \`gemini_call\` measures **${gemMed === null ? 'absent' : gemMed.toFixed(1) + 's'}** here, so the `
+        + 'editorial path is SUPPRESSED and these are deterministic plans. `edit_plan` is ~20% and `render` ~75%. '
+        + 'The 54% figure is from an editorial-LIVE regime. **Lever share is regime-dependent — state which '
+        + 'regime any share is quoted from**, or the two numbers will keep disagreeing for a reason that is not '
+        + 'a disagreement._');
+      say('');
+    }
+    say('_Modal spend per render: the cost board carries the anchor (orchestration 72.3% of the invoice) and '
+      + 'is the one place a $/render figure is quoted, with its cycle-vs-slice basis stated. Spend is not '
+      + 'restated here to avoid two figures on two bases._');
+    say('');
+    say('---');
+    say('');
+  }
+
   // ── CHAT EVENTS/DAY — PERMANENT, beside the failure rate ──────────────────
   // Chat is a whole product surface that can die without producing a single
   // error: logUsageEvent fires only on a SUCCESSFUL reply, so a broken chat
