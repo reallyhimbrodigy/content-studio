@@ -1722,7 +1722,7 @@ struct EditorView: View {
                     // the source object key (so this failure JOINS to its upload_attempt
                     // — same src_key → size_mb/path/parts — and to the video_jobs row),
                     // and the file size as a robust fallback if the attempt event was lost.
-                    let (pctAtFailure, srcKey, sizeMb) = await MainActor.run { () -> (Double, String, Double) in
+                    let (pctAtFailure, srcKey, sizeMb, lifecycle) = await MainActor.run { () -> (Double, String, Double, String) in
                         let key = URL(string: pending.uploadedUrl ?? "")?.lastPathComponent ?? ""
                         var mb = 0.0
                         if let f = pending.fileUrl,
@@ -1730,7 +1730,17 @@ struct EditorView: View {
                            let bytes = attrs[.size] as? Int64, bytes > 0 {
                             mb = (Double(bytes) / 1_048_576.0 * 10).rounded() / 10
                         }
-                        return (pending.uploadProgress, key, mb)
+                        // App state at failure. background_orphan is the dominant class,
+                        // so foreground-vs-background is the discriminating field: a
+                        // live-caller failure here is foreground or backgrounded-alive;
+                        // the terminated-then-relaunched case surfaces on the orphan path.
+                        let life: String
+                        switch UIApplication.shared.applicationState {
+                        case .active: life = "foreground"
+                        case .background: life = "background"
+                        default: life = "inactive"
+                        }
+                        return (pending.uploadProgress, key, mb, life)
                     }
                     var failProps: [String: Any] = [
                         "mechanism": Self.uploadFailureMechanism(error),
@@ -1739,6 +1749,7 @@ struct EditorView: View {
                         "error_desc": String(error.localizedDescription.prefix(120)),
                         "src_key": srcKey,
                         "conn": ReachabilityMonitor.currentConnectionType,
+                        "lifecycle": lifecycle,
                     ]
                     if sizeMb > 0 { failProps["size_mb"] = sizeMb }
                     Analytics.track("upload_failed", props: failProps, durable: true)

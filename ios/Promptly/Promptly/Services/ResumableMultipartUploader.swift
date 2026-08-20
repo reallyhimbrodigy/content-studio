@@ -249,11 +249,21 @@ final class ResumableMultipartUploader: NSObject {
         // its upload_attempt (same key → size_mb/path/parts) and to the video_jobs row
         // — the join that lets UNS band failures by size instead of leaving them keyless.
         let srcKey = ledger.map { $0.key.split(separator: "/").last.map(String.init) ?? $0.key } ?? ""
+        // @MainActor class → applicationState is directly readable. Discriminates a
+        // foreground give-up from a backgrounded-alive one; the terminated-relaunch
+        // case surfaces on the orphan path (lifecycle:"relaunched").
+        let life: String
+        switch UIApplication.shared.applicationState {
+        case .active: life = "foreground"
+        case .background: life = "background"
+        default: life = "inactive"
+        }
         Analytics.track("upload_failed", props: [
             "path": "multipart",
             "mechanism": reason,
             "src_key": srcKey,
             "conn": ReachabilityMonitor.currentConnectionType,
+            "lifecycle": life,
         ], durable: true)
         resolveTransfer(uploadId: uploadId, result: .failure(APIError.uploadFailed))
         cleanupLocalState(uploadId: uploadId)

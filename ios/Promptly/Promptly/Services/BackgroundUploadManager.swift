@@ -185,6 +185,10 @@ final class BackgroundUploadManager: NSObject {
                 // loser and was entirely keyless before this.
                 "src_key": URL(string: ctx?.publicUrl ?? "")?.lastPathComponent ?? "",
                 "conn": ReachabilityMonitor.currentConnectionType,
+                // This branch fires only when the in-memory continuation is gone — the
+                // process was terminated and relaunched to deliver the background
+                // URLSession completion. That IS the relaunched-after-termination state.
+                "lifecycle": "relaunched",
             ], durable: true)
         }
         // Notify ChatStore so it can update the message in the
