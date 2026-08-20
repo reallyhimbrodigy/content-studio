@@ -198,3 +198,70 @@ and speed rank differently, and this is the round where they diverge.**
 the degeneration tax reappears, and L1/L2's justification reverts to the stated
 one. Re-measure both then — the ranking above is the PRODUCTION regime and is
 labelled as such.
+
+---
+
+# ADDENDUM 2 — the fixed overhead, decomposed by stage
+
+**Method: each stage regressed against source duration on 760 clean rows. The
+INTERCEPT is that stage's contribution to the fixed overhead; the SLOPE is its
+contribution to the marginal.** This is the right decomposition because the
+fixed overhead is definitionally the source-independent part.
+
+| stage | class | **FIXED** | marginal /src-s | n |
+|---|---|---:|---:|---:|
+| **render** | **PIPELINE** | **45.3s** | **0.81s** | 760 |
+| normalize_transcribe_upload | PIPELINE + NETWORK | 16.0s | 0.61s | 191 |
+| edit_plan | PIPELINE (planner) | 12.4s | 0.44s | 191 |
+| queue | **MODAL** (cold start + queue) | 10.8s | 0.01s | 760 |
+| upload_export | NETWORK | 2.1s | 0.16s | 191 |
+| download | NETWORK | 0.6s | 0.02s | 191 |
+| hls | NETWORK | 0.4s | 0.11s | 569 |
+
+## Rolled up by class — this is the answer
+
+| class | fixed seconds | share |
+|---|---:|---:|
+| **PIPELINE** (render + normalize + planner) | **~73.7s** | **~90%** |
+| **MODAL** (cold start + queue) | ~10.8s | ~13% |
+| **NETWORK** (download + upload + hls) | **~3.1s** | **~4%** |
+
+**Network is not the problem — it is 3.1 seconds.** Any work aimed at
+download/upload speed buys at most 3 seconds of a 73.5s overhead. **Modal cold
+start is worth ~10.8s.** Everything else — **~90% — is pipeline**, and **render
+alone is 45.3s of fixed cost before a single second of source is considered.**
+
+**A 45.3s render intercept is the single largest fact on this board.** It is not
+render *work* (that is the 0.81s/src-second slope); it is render **startup** —
+bundling, browser/rasteriser boot, staging. It is paid in full by a 5-second
+video.
+
+## CORRECTION TO MY OWN FIGURE
+
+I previously reported the fixed overhead as **~95s**, fitted across five band
+midpoints. **The per-row regression on 760 rows puts it at 73.5s**, with a
+marginal of 1.70s/src-second. The five-point fit used band midpoints as
+x-values, which is crude and biased high. **73.5s supersedes 95s.** The
+restated target changes accordingly: the overhead needs to reach ≤45s, and it is
+73.5s, not 95s — a smaller gap than I reported, still the whole ballgame.
+
+## HONEST LIMITS ON THIS DECOMPOSITION
+
+- **The intercepts sum to 87.6s against a directly-fitted e2e intercept of
+  73.5s — a −14.0s discrepancy.** Stages overlap (work runs concurrently), so
+  the parts legitimately exceed the whole. The per-class *ranking* is safe; the
+  absolute seconds are **[LOWER-BOUND-ADJACENT]** and should not be summed to a
+  budget.
+- **The n's differ** (760 for queue/render, 191 for download/normalize/planner,
+  569 for hls) because `stage_timings` populates unevenly. The three 191-row
+  stages are fitted on a quarter of the data and are the least certain.
+- `edit_plan`'s 12.4s intercept is the **editorial-SUPPRESSED** regime. When
+  editorial returns this becomes the 103s call and the ranking changes.
+
+## WHAT THIS CHANGES ABOUT WHAT GETS BUILT
+
+1. **Render startup (45.3s fixed)** — the largest single target, and it is
+   startup, not work. Warm bundles, a persistent rasteriser, or pre-staged
+   assets attack it; making the render itself faster does not.
+2. **Modal cold start (10.8s)** — real, second-largest, and already understood.
+3. **Network (3.1s)** — **stop**. There is nothing here.
