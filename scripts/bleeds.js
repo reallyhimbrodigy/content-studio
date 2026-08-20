@@ -430,7 +430,17 @@ function reportZero({ label, count, control }) {
   const e2eOf = (j) => (new Date(j.completed_at) - new Date(j.created_at)) / 1000;
   const stOf = (j) => ((j.result || {}).stage_timings || {});
   if (spd.length >= 5) {
-    const E = spd.map(e2eOf).sort((a, z) => a - z);
+    // SWEEP-STAMPED EXCLUSION (2026-08-20). 9.3% of completed rows carry a
+    // `completed_at` stamped HOURS later by a reaper sweep — and ALL 116 of them
+    // carry a delivered video URL, so they are real deliveries with a mis-stamped
+    // completion time, not slow jobs. Including them made p95 read 71,196s (~20h).
+    // CAPPING did not help either: at 9.3% contamination p95 lands ON the cap.
+    // They are EXCLUDED from latency and COUNTED separately — a mis-stamp is a
+    // data-quality fact, never a latency outcome.
+    const REAPER_S = 3300;
+    const spdAll = spd.map(e2eOf);
+    const swept = spdAll.filter((x) => x > REAPER_S).length;
+    const E = spdAll.filter((x) => x <= REAPER_S).sort((a, z) => a - z);
     const med = (xs) => xs[Math.floor(xs.length / 2)];
     const p50 = med(E);
     const miss = p50 - 90;
@@ -439,8 +449,9 @@ function reportZero({ label, count, control }) {
     say('');
     say(`| cohort | n | e2e p50 | e2e p90 | vs 90s |`);
     say('|---|---:|---:|---:|---|');
-    const A = spdRows.filter((j) => j.completed_at).map(e2eOf).sort((a, z) => a - z);
+    const A = spdRows.filter((j) => j.completed_at).map(e2eOf).filter((x) => x <= REAPER_S).sort((a, z) => a - z);
     say(`| **20–30s source (the target)** | ${E.length} | **${p50.toFixed(0)}s** | ${E[Math.floor(0.9 * E.length)].toFixed(0)}s | ${miss > 0 ? `+${miss.toFixed(0)}s` : 'met'} |`);
+    if (swept) say(`\n_${swept} sweep-stamped row(s) excluded from this band — delivered videos whose \`completed_at\` was written hours later by a reaper. Counted, not silently dropped._`);
     say(`| all sources (context only) | ${A.length} | ${med(A).toFixed(0)}s | ${A[Math.floor(0.9 * A.length)].toFixed(0)}s | ${(med(A) - 90).toFixed(0) > 0 ? '+' + (med(A) - 90).toFixed(0) + 's' : 'met'} |`);
     say('');
     // THE TWO LEVERS

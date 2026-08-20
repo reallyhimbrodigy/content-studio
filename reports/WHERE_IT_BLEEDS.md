@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-20T23:23:09.470Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-20T23:31:22.857Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 # 📉 DAILY ACTIVE VIDEO-MAKERS — **179/day**, **-47%** week-over-week
 
@@ -12,12 +12,14 @@
 
 ---
 
-# ⏱️ SPEED — target cohort (20–30s source) p50 **141s** vs the **60–90s** hard target — **MISS by 51s**
+# ⏱️ SPEED — target cohort (20–30s source) p50 **126s** vs the **60–90s** hard target — **MISS by 36s**
 
 | cohort | n | e2e p50 | e2e p90 | vs 90s |
 |---|---:|---:|---:|---|
-| **20–30s source (the target)** | 122 | **141s** | 904s | +51s |
-| all sources (context only) | 1123 | 136s | 30926s | +46s |
+| **20–30s source (the target)** | 113 | **126s** | 374s | +36s |
+
+_9 sweep-stamped row(s) excluded from this band — delivered videos whose `completed_at` was written hours later by a reaper. Counted, not silently dropped._
+| all sources (context only) | 1007 | 121s | 455s | +31s |
 
 **The two levers — worker-wall decomposition:**
 
@@ -30,7 +32,7 @@
 | `hls` | 2.3s | 2.4% |
 | **worker wall total** | **94s** | 100% |
 
-_**e2e 141s − worker wall 94s = ~47s outside the worker** (queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, so the target cannot be met by trimming overhead — the worker wall itself has to come down._
+_**e2e 126s − worker wall 94s = ~32s outside the worker** (queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, so the target cannot be met by trimming overhead — the worker wall itself has to come down._
 
 _⚠️ **The "editorial call is 54% of wall" lever does NOT reproduce in this window, and the reason matters: `gemini_call` measures **0.0s** here, so the editorial path is SUPPRESSED and these are deterministic plans. `edit_plan` is ~20% and `render` ~75%. The 54% figure is from an editorial-LIVE regime. **Lever share is regime-dependent — state which regime any share is quoted from**, or the two numbers will keep disagreeing for a reason that is not a disagreement._
 
@@ -83,40 +85,40 @@ _It died on **2026-08-08**: 1,173 events on 08-07, then **1**. It has not recove
 
 _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs, all with a call id, 19 reaching a worker, p50 904s — and it is 1.9% of orchestration, not a rival to it._
 
-## 2b. Latency — n=178 completed (24h)
+## 2b. Latency — n=177 completed (24h)
 
 p50 **131s** (law 90) · p90 288s · p99 **704s** (law 180) · max 756s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
-| `A envelope FULL` | 178 | 170 | **131s** | 288s | 756s |
+| `A envelope FULL` | 177 | 169 | **131s** | 288s | 756s |
 
-**ENVELOPE LOSS: 0.0% of completions (0/178), 0 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
+**ENVELOPE LOSS: 0.0% of completions (0/177), 0 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._
 
 | term | p50 | p90 | p99 | max |
 |---|---:|---:|---:|---:|
 | **QUEUE** (create→worker pickup) | 10.7s | 14.7s | 133.6s | 260.9s |
-| **WORK** (pickup→complete) *envelope-FULL only* | 119.6s | 280.9s | 690.3s | 754.8s |
+| **WORK** (pickup→complete) *envelope-FULL only* | 119.8s | 280.9s | 690.3s | 754.8s |
 
 Queue is **8%** of e2e at p50; **2.8%** of jobs wait >30s before any work begins.
 
-**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 172 lost it); of jobs queuing ≥30s, **0.0%** lost it. **97.2%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
+**Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 171 lost it); of jobs queuing ≥30s, **0.0%** lost it. **97.2%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
 _WORK is shown for envelope-FULL rows ONLY. Cross-class WORK is WITHDRAWN: for lost-envelope rows `completed_at` marks DISCOVERY, not work (repair Q+W pins to a ~constant while W ranges 278–846s; reconciler W has a 0.22s minimum). **QUEUE is the only valid cross-class term.**_
 _Workload and client are RULED OUT as the split: source duration differs 1.24x by class (median 10.7s FULL vs 13.3s LOST) while queue differs 15.0x, and client version is identical (96% on 1.3.6(224) in BOTH classes). Do not re-litigate workload._
 _Queue history begins 2026-08-11T19:50Z (the `worker_started_at` migration). There is NO pre-Aug-11 queue data, so "queue delay is new/worse" is [UNFALSIFIABLE] with current data._
-On the 900s wall [870,920] — count: **0** ✅ [VERIFIED-ZERO — detector proven live in the same window: jobs >120s in the same window = 102] of 178
+On the 900s wall [870,920] — count: **0** ✅ [VERIFIED-ZERO — detector proven live in the same window: jobs >120s in the same window = 102] of 177
 
 ## 3. Route mix (24h)
 
-`none` 77 · `moodreel` 63 · `minimal_speech_uncut` 34 · `minimal` 3 · `hype` 1
+`none` 77 · `moodreel` 62 · `minimal_speech_uncut` 34 · `minimal` 3 · `hype` 1
 
-Premium share: **36.0%** (64/178).
+Premium share: **35.6%** (63/177).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=198 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=197 terminal)
 
-`callback` 175 · `NULL` 15 · `reconciler` 5 · `orphan_callback` 1 · `durable_poll` 2
+`callback` 174 · `NULL` 15 · `reconciler` 5 · `orphan_callback` 1 · `durable_poll` 2
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -263,11 +265,11 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 
 | component | plans w/ key | carries content | **decline** |
 |---|---:|---:|---:|
-| motion_graphics | 178 | 15 | **91.6%** |
+| motion_graphics | 177 | 15 | **91.5%** |
 | generated scenes | 77 | 0 | **100.0%** |
 | brand copy | **0 — key never appears** | — | _absent, not declined_ |
-| transitions | 178 | 7 | **96.1%** |
-| outro | 178 | 178 | **0.0%** |
+| transitions | 177 | 7 | **96.0%** |
+| outro | 177 | 177 | **0.0%** |
 
 **The pattern is NARROWER than "the model declines optional components", and `outro` is why.** Outro carries content on **every** plan — 0% decline — while `motion_graphics` and `generated_scenes` are declined at ~100%. A pooled number would have averaged those into one figure and hidden the counter-example that constrains the diagnosis: the model is not indifferent to optional components in general, it declines *specific* ones. Whatever explains scenes and MG must also explain why outro is always taken.
 
@@ -276,16 +278,13 @@ _`brand_copy` never appears as a key in any production plan — that is **absent
 ### Built-not-wired check — production counters, not certs
 
 - Lumen scene vocabulary: **WIRED** — completions carrying scene telemetry = 77 on real traffic.
-- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 175 on real traffic.
+- `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 174 on real traffic.
 - NamePlate (component D): **WIRED** — completions carrying a name-plate = 7 on real traffic.
 - EndCard (component F): ⚠️ **[BUILT-NOT-WIRED]** — cert built + renderer-registered, but completions carrying an end-card = 0. Cert-green proves capability, not connection. Five prior instances in this project ran exactly here.
 
 _The `callback` line is the class resolving in real time: it was [BUILT-NOT-WIRED] for 432+ completions and is now wired — the predicate fix connected a stamp that had always been written and always discarded. The scene vocabulary is still on the other side of that line._
 
 _NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._
-
-_Denominator guard — completed renders/day: n=2 — too short to test homogeneity_
-_**Denominator basis:** the completion denominator behind cost-per-render figures is a **7-DAY MEAN** (~233/day over 08-08→08-15), **not the current regime** (~150/day since 08-11). Cost-per-render on the 7-day mean understates the current per-render figure by ~1.55x for exactly the reason the cycle-average understates the recent slice. State which basis any per-render number uses._
 
 ### Deploy quiet-window — the GATE's own verdict
 

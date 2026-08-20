@@ -110,3 +110,91 @@ report --csv` is the only truth and remains unpulled from this lane. Every
 bottom-up figure is **[LOWER-BOUND]** and does not rank. Cohorts are cut since
 08-13 to sit clear of the deploy boundary. Cycle-average vs recent-slice is
 stated wherever a $/render appears.
+
+---
+
+# ADDENDUM 2026-08-20 — p95 made real, the target restated, levers re-ranked
+
+## p95 is a number now, and the fix is an exclusion rather than a cap
+
+**9.3% of completed rows (116 of 1,252) carry a `completed_at` stamped hours
+late by a reaper sweep — and ALL 116 carry a delivered video URL.** They are
+real deliveries with a mis-stamped completion time, not slow jobs. Capping at
+3,600s did not work: at 9.3% contamination **p95 lands on the cap**. They are
+now **excluded from latency and counted separately**, because a mis-stamp is a
+data-quality fact, never a latency outcome.
+
+| band | n | p50 | p90 | **p95** | excluded |
+|---|---:|---:|---:|---:|---:|
+| 0–10s | 458 | 95s | 604s | 903s | 47 |
+| 10–20s | 287 | 101s | 301s | 451s | 30 |
+| **20–30s (target)** | **125** | **122s** | 373s | **701s** | 9 |
+| 30–60s | 181 | 172s | 454s | 754s | 22 |
+| 60s+ | 85 | 193s | 526s | 601s | 8 |
+
+## THE TARGET, RESTATED AS A FUNCTION OF SOURCE DURATION
+
+Fitted across the five bands:
+
+> **e2e p50 ≈ 95s fixed overhead + 1.68s per source-second**
+
+| source | predicted p50 | flat-90 target |
+|---:|---:|---:|
+| 10s | 112s | 90s |
+| 25s | 137s | 90s |
+| 45s | 171s | 90s |
+| 90s | 247s | 90s |
+
+**A flat 60–90s target is not achievable at any source length, and the reason is
+structural: the FIXED OVERHEAD ALONE IS ~95s.** A zero-second source would take
+95 seconds. The target is not missed because long videos are slow; it is missed
+before the video is considered at all.
+
+**The honest restatement — two numbers instead of one:**
+
+1. **Fixed overhead: 95s → target ≤45s.** This is the whole ballgame and it is
+   source-independent. Until it comes down, no source length meets 90s.
+2. **Marginal: 1.68s per source-second → target ≤1.0s/s.** At a 45s overhead and
+   1.0s/s, a 25s source lands at **70s** — inside the owner's window — and a 90s
+   source at 135s, which is honest rather than pretended.
+
+**This does not soften the target; it locates it.** The owner's "multiple minutes
+is not acceptable for a 20–30 second video" is satisfied by (1) alone: 45s + 42s
+= 87s for a 25s source. **Fix the overhead and the stated goal is met.**
+
+## COST LEVERS, RE-RANKED ON THE PRODUCTION REGIME
+
+The tension to name first: **the invoice and the wall clock disagree about where
+the problem is.**
+
+| | share of INVOICE | share of WALL |
+|---|---:|---:|
+| orchestration | **72.3%** | — (it is the container that waits) |
+| render | 9.6% | **76.7%** |
+
+**Money is in orchestration; time is in render.** Optimising for one does not
+optimise the other, and a lever must say which it buys.
+
+**L1/L2 SURVIVES the regime change — but its justification must be restated.**
+It was ranked on "the 97s editorial call satisfies the 12.9s break-even."
+**In production the editorial call is 0.0s.** However, the orchestrator still
+waits: it holds cpu=16 for the **72.4s render** performed on the separate burst
+container. **The break-even is cleared by RENDER-wait, not EDITORIAL-wait** —
+same lever, different mechanism, and 72.4s clears 12.9s comfortably.
+
+| rank | lever | buys | invoice-anchored | production-regime condition |
+|---|---|---|---|---|
+| **1** | **L1/L2 orchestrator split** | **cost** | $4,450–$5,586/yr | ✅ satisfied by 72.4s render-wait (not the 0.0s editorial wait) |
+| **2** | **fixed-overhead reduction (95s)** | **speed** | not an invoice line | the only lever that can meet the owner's target |
+| 3 | render-path work | both | ≤9.6% of invoice | 76.7% of wall — cheap to bill, expensive to wait |
+| 4 | validator / prewarm | cost | ≤9.1% / ≤9.0% | unconditional, bounded |
+
+**Rank 2 is not on the invoice at all**, which is why a purely cost-anchored
+ranking missed it: the 95s overhead costs orchestration seconds (so it is inside
+rank 1's dollars) but it is the *only* lever that moves the speed target. **Cost
+and speed rank differently, and this is the round where they diverge.**
+
+**Editorial-live regime, when it returns:** the 103s call re-enters the wall,
+the degeneration tax reappears, and L1/L2's justification reverts to the stated
+one. Re-measure both then — the ranking above is the PRODUCTION regime and is
+labelled as such.
