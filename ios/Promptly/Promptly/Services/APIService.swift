@@ -672,6 +672,7 @@ class APIService {
             "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
             "path": "bg-single",
             "src_key": URL(string: pub)?.lastPathComponent ?? "",
+            "conn": ReachabilityMonitor.currentConnectionType,
         ])
 
         let uploadStart = Date()
@@ -726,6 +727,7 @@ class APIService {
                     "path": "multipart",
                     "src_key": URL(string: initResp.publicUrl)?.lastPathComponent ?? "",
                     "parts": partCount,
+                    "conn": ReachabilityMonitor.currentConnectionType,
                 ])
                 if (try? await ResumableMultipartUploader.shared.transfer(
                     fileUrl: fileUrl, size: size, initResponse: initResp,

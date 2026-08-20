@@ -1718,13 +1718,30 @@ struct EditorView: View {
                     // because the failure itself is usually a weak-network condition,
                     // which is exactly when a fire-and-forget event would be lost.
                     // territory rides the envelope automatically.
-                    let pctAtFailure = await MainActor.run { pending.uploadProgress }
-                    Analytics.track("upload_failed", props: [
+                    // Read the failure context on the main actor in one hop: progress,
+                    // the source object key (so this failure JOINS to its upload_attempt
+                    // — same src_key → size_mb/path/parts — and to the video_jobs row),
+                    // and the file size as a robust fallback if the attempt event was lost.
+                    let (pctAtFailure, srcKey, sizeMb) = await MainActor.run { () -> (Double, String, Double) in
+                        let key = URL(string: pending.uploadedUrl ?? "")?.lastPathComponent ?? ""
+                        var mb = 0.0
+                        if let f = pending.fileUrl,
+                           let attrs = try? FileManager.default.attributesOfItem(atPath: f.path),
+                           let bytes = attrs[.size] as? Int64, bytes > 0 {
+                            mb = (Double(bytes) / 1_048_576.0 * 10).rounded() / 10
+                        }
+                        return (pending.uploadProgress, key, mb)
+                    }
+                    var failProps: [String: Any] = [
                         "mechanism": Self.uploadFailureMechanism(error),
                         "pct_complete": pctAtFailure,
                         "elapsed_ms": Int(Date().timeIntervalSince(uploadStartedAt) * 1000),
                         "error_desc": String(error.localizedDescription.prefix(120)),
-                    ], durable: true)
+                        "src_key": srcKey,
+                        "conn": ReachabilityMonitor.currentConnectionType,
+                    ]
+                    if sizeMb > 0 { failProps["size_mb"] = sizeMb }
+                    Analytics.track("upload_failed", props: failProps, durable: true)
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
                     // bytes that never arrived — that produced the

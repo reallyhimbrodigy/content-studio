@@ -241,10 +241,20 @@ final class ResumableMultipartUploader: NSObject {
     /// Give up on a transfer: abort the S3 multipart (stop the billing), clear local
     /// state, and fail the alive caller (if any) so it surfaces like a failed upload.
     private func giveUp(uploadId: String, reason: String) async {
-        if let ledger = MultipartResumeLedger.load(uploadId: uploadId, in: ledgerDir) {
+        let ledger = MultipartResumeLedger.load(uploadId: uploadId, in: ledgerDir)
+        if let ledger {
             await APIService.shared.multipartAbort(key: ledger.key, uploadId: uploadId)
         }
-        Analytics.track("upload_failed", props: ["path": "multipart", "mechanism": reason], durable: true)
+        // src_key = the source object's filename, so this multipart failure joins to
+        // its upload_attempt (same key → size_mb/path/parts) and to the video_jobs row
+        // — the join that lets UNS band failures by size instead of leaving them keyless.
+        let srcKey = ledger.map { $0.key.split(separator: "/").last.map(String.init) ?? $0.key } ?? ""
+        Analytics.track("upload_failed", props: [
+            "path": "multipart",
+            "mechanism": reason,
+            "src_key": srcKey,
+            "conn": ReachabilityMonitor.currentConnectionType,
+        ], durable: true)
         resolveTransfer(uploadId: uploadId, result: .failure(APIError.uploadFailed))
         cleanupLocalState(uploadId: uploadId)
     }

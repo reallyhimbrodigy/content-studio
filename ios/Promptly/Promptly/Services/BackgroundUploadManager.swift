@@ -180,6 +180,11 @@ final class BackgroundUploadManager: NSObject {
                 "mechanism": mech,
                 "path": "background_orphan",
                 "http_status": httpStatus,
+                // src_key joins this app-killed failure to its upload_attempt (size/path)
+                // and to the video_jobs row — the orphan class was the biggest silent
+                // loser and was entirely keyless before this.
+                "src_key": URL(string: ctx?.publicUrl ?? "")?.lastPathComponent ?? "",
+                "conn": ReachabilityMonitor.currentConnectionType,
             ], durable: true)
         }
         // Notify ChatStore so it can update the message in the

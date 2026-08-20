@@ -16,16 +16,35 @@ final class ReachabilityMonitor: ObservableObject {
 
     @Published private(set) var isOnline: Bool = true
 
+    /// Best-effort snapshot of the current interface type, for SYNCHRONOUS reads at
+    /// telemetry-emit time from any actor/queue (upload_failed fires off the main
+    /// actor, so it can't await the @MainActor store). Written on the monitor queue
+    /// in the path handler; a slightly-stale read is acceptable for a tag. Values:
+    /// "wifi" | "cellular" | "wired" | "other" | "offline". Lets UNS band failures by
+    /// connection type — the "is the big-file loss cellular?" question.
+    nonisolated(unsafe) private(set) static var currentConnectionType: String = "unknown"
+    /// NWPath.isExpensive at last update (cellular / personal hotspot). Same
+    /// best-effort snapshot semantics as currentConnectionType.
+    nonisolated(unsafe) private(set) static var currentIsExpensive: Bool = false
+
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "promptly.reachability", qos: .utility)
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             let online = path.status == .satisfied
+            let type: String = !online ? "offline"
+                : path.usesInterfaceType(.wifi) ? "wifi"
+                : path.usesInterfaceType(.cellular) ? "cellular"
+                : path.usesInterfaceType(.wiredEthernet) ? "wired"
+                : "other"
+            // Written on the monitor queue (single writer); read racily at emit time.
+            ReachabilityMonitor.currentConnectionType = type
+            ReachabilityMonitor.currentIsExpensive = path.isExpensive
             Task { @MainActor in
                 guard let self else { return }
                 if self.isOnline != online {
-                    print("[reachability] \(online ? "online" : "offline")")
+                    print("[reachability] \(online ? "online" : "offline") type=\(type)")
                     self.isOnline = online
                 }
             }
