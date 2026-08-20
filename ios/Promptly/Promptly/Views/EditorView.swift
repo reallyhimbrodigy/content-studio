@@ -123,6 +123,15 @@ struct EditorView: View {
                 }
                 .ignoresSafeArea()
             }
+            .onChange(of: showVideoPicker) { _, isOpen in
+                // First-run funnel: distinguishes "never opened the picker" from
+                // "opened it and left." Fires on every present regardless of entry
+                // point (composer +, empty-state hero, or re-open after a
+                // rejection). Pairs with picker_result (raw/resolved/dropped) to
+                // split the 34% non-pickers into didn't-tap / cancelled /
+                // picked-but-dropped — the three different fixes UX-4 named.
+                if isOpen { Analytics.track("picker_opened") }
+            }
             // Layer 1 (TalkingHeadPrecheck) rejection alert. Surfaced
             // when the on-device Vision precheck doesn't find a face
             // in enough sampled frames; lets the user pick a different
