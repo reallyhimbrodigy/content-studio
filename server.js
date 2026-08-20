@@ -3318,6 +3318,15 @@ const server = http.createServer((req, res) => {
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          // Picker instrumentation (UNS/first-run BUILD(1)): picker_opened on every
+          // present; picker_result {raw,resolved,dropped} on dismissal; and a durable
+          // picker_asset_unresolved when a picked result resolves to no PHAsset (the
+          // silent activation loss where a pick vanished with zero signal). Together
+          // they split the 34% non-pickers into didn't-tap / cancelled / picked-but-
+          // dropped. Allowlisted here AHEAD of the iOS build (dark until it ships) —
+          // the __smoke_event_allowlist cert scans app-* branches, so the emitters on
+          // app-uns-instrumentation already fail the deploy gate without this.
+          'picker_opened', 'picker_result', 'picker_asset_unresolved',
           // upload_attempt (1.3.7/225): durable {size_mb, path, src_key} fired at
           // upload START so the failing (never-settled) population has a SIZE to
           // band UNS by. Emitted on app-1.3.3; allowlisted here so the SQL mirror
