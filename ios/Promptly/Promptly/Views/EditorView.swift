@@ -123,6 +123,15 @@ struct EditorView: View {
                 }
                 .ignoresSafeArea()
             }
+            .onChange(of: showVideoPicker) { _, isOpen in
+                // First-run funnel: distinguishes "never opened the picker" from
+                // "opened it and left." Fires on every present regardless of entry
+                // point (composer +, empty-state hero, or re-open after a
+                // rejection). Pairs with picker_result (raw/resolved/dropped) to
+                // split the 34% non-pickers into didn't-tap / cancelled /
+                // picked-but-dropped — the three different fixes UX-4 named.
+                if isOpen { Analytics.track("picker_opened") }
+            }
             // Layer 1 (TalkingHeadPrecheck) rejection alert. Surfaced
             // when the on-device Vision precheck doesn't find a face
             // in enough sampled frames; lets the user pick a different
@@ -244,6 +253,23 @@ struct EditorView: View {
                 // from disk and never had one, or a previous client
                 // gave up after exhausting its retry budget).
                 resumeSSEForInFlightMessages()
+                // BUILD(2b): the push-token ask used to fire only at COMPLETION, so a
+                // user who backgrounds during their FIRST render — the 88% who make
+                // exactly one — always pushed into no_tokens: the completion happened
+                // before any token existed. Returning to an in-flight render is that
+                // exact user, at higher intent than the old pre-value dispatch ask
+                // (which declined ~44%): they came back to check on it. Offer the push
+                // explainer now, while the render is still cooking, so the token can
+                // register BEFORE it finishes and the first video can push. Once-only
+                // (shouldOfferSoftPrompt); the completion sinks remain the fallback for
+                // users who watch the whole render in-app.
+                if PushService.shared.shouldOfferSoftPrompt,
+                   messages.contains(where: {
+                       $0.jobId != nil &&
+                       ($0.jobStatus == "processing" || $0.jobStatus == "queued" || $0.jobStatus == nil)
+                   }) {
+                    showPushExplainer = true
+                }
                 Task { @MainActor in
                     // includeFailed: true heals messages that got
                     // marked failed locally (e.g. by an over-eager
@@ -1709,13 +1735,41 @@ struct EditorView: View {
                     // because the failure itself is usually a weak-network condition,
                     // which is exactly when a fire-and-forget event would be lost.
                     // territory rides the envelope automatically.
-                    let pctAtFailure = await MainActor.run { pending.uploadProgress }
-                    Analytics.track("upload_failed", props: [
+                    // Read the failure context on the main actor in one hop: progress,
+                    // the source object key (so this failure JOINS to its upload_attempt
+                    // — same src_key → size_mb/path/parts — and to the video_jobs row),
+                    // and the file size as a robust fallback if the attempt event was lost.
+                    let (pctAtFailure, srcKey, sizeMb, lifecycle) = await MainActor.run { () -> (Double, String, Double, String) in
+                        let key = URL(string: pending.uploadedUrl ?? "")?.lastPathComponent ?? ""
+                        var mb = 0.0
+                        if let f = pending.fileUrl,
+                           let attrs = try? FileManager.default.attributesOfItem(atPath: f.path),
+                           let bytes = attrs[.size] as? Int64, bytes > 0 {
+                            mb = (Double(bytes) / 1_048_576.0 * 10).rounded() / 10
+                        }
+                        // App state at failure. background_orphan is the dominant class,
+                        // so foreground-vs-background is the discriminating field: a
+                        // live-caller failure here is foreground or backgrounded-alive;
+                        // the terminated-then-relaunched case surfaces on the orphan path.
+                        let life: String
+                        switch UIApplication.shared.applicationState {
+                        case .active: life = "foreground"
+                        case .background: life = "background"
+                        default: life = "inactive"
+                        }
+                        return (pending.uploadProgress, key, mb, life)
+                    }
+                    var failProps: [String: Any] = [
                         "mechanism": Self.uploadFailureMechanism(error),
                         "pct_complete": pctAtFailure,
                         "elapsed_ms": Int(Date().timeIntervalSince(uploadStartedAt) * 1000),
                         "error_desc": String(error.localizedDescription.prefix(120)),
-                    ], durable: true)
+                        "src_key": srcKey,
+                        "conn": ReachabilityMonitor.currentConnectionType,
+                        "lifecycle": lifecycle,
+                    ]
+                    if sizeMb > 0 { failProps["size_mb"] = sizeMb }
+                    Analytics.track("upload_failed", props: failProps, durable: true)
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
                     // bytes that never arrived — that produced the

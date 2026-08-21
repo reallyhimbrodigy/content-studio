@@ -81,6 +81,14 @@ final class ReadyStateStore: ObservableObject {
     /// network round-trip.
     private var lastFetched: [VideoJob] = []
 
+    /// A render-complete push tap asks us to open ONE specific job's video. On a
+    /// cold launch the tap fires before the window and the edits list exist, so we
+    /// hold the request and drain it (drainPendingOpen) after the next successful
+    /// fetch AND once a scene is foreground-active. `pendingOpenAt` expires the
+    /// request so a much-later foreground never yanks the user into a stale video.
+    private var pendingOpenJobId: String?
+    private var pendingOpenAt: Date?
+
     private init() {}
 
     // MARK: Seen-set persistence
@@ -113,12 +121,65 @@ final class ReadyStateStore: ObservableObject {
         do {
             lastFetched = try await APIService.shared.getUserEdits()
             recompute()
+            // A push tap may be waiting on this fetch to resolve its job.
+            drainPendingOpen()
         } catch {
             // Best-effort recovery affordance: a fetch failure just means no card
             // this pass. The Library sheet surfaces load errors to the user; the
             // card stays silent so it never becomes a source of noise.
             print("[readyState] refresh failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Entry point for a render-complete push tap. Before this, a tap ignored the
+    /// jobId and only refreshed the banner — landing on the home surface and, on a
+    /// re-tap of an already-seen job, on nothing at all. Now the tap lands on the
+    /// actual video: resolve the job and present the player, deferring past the
+    /// cold-launch window if the UI/edits aren't up yet. Falls back to the banner
+    /// (via refresh) when the job can't be resolved.
+    func requestOpenJob(_ jobId: String) {
+        pendingOpenJobId = jobId
+        pendingOpenAt = Date()
+        // Warm path: edits already loaded → present immediately.
+        drainPendingOpen()
+        // Still pending (cold launch, or job not in the cached list) → fetch, which
+        // drains again once it returns. MainTabView's .task/foreground refresh also
+        // drains, so a tap that arrives before the scene is active still lands.
+        if pendingOpenJobId != nil {
+            Task { await refresh() }
+        }
+    }
+
+    /// Present the pending job's video if it has resolved AND a scene is
+    /// foreground-active. Keeps the request pending (does not clear) when the job
+    /// isn't in the list yet or the window isn't up — so a later drain lands it —
+    /// but drops it once the request is older than the expiry so a stale tap never
+    /// interrupts a much-later session.
+    private func drainPendingOpen() {
+        guard let jobId = pendingOpenJobId, let at = pendingOpenAt else { return }
+        if Date().timeIntervalSince(at) > 120 {
+            pendingOpenJobId = nil
+            pendingOpenAt = nil
+            return
+        }
+        guard let job = lastFetched.first(where: { $0.id == jobId }) else { return }
+        // The player presents over the key window; on a cold launch the tap runs
+        // before any scene is foreground-active, where present() would no-op. Hold
+        // the request until the UI is up rather than losing it.
+        let active = UIApplication.shared.connectedScenes
+            .contains { $0.activationState == .foregroundActive }
+        guard active else { return }
+        pendingOpenJobId = nil
+        pendingOpenAt = nil
+        markSeen(job.id) // so the banner doesn't also surface it — one landing, not two
+        guard let urlStr = job.rendered_video_url, !urlStr.isEmpty else { return }
+        VideoPlayerPresenter.present(
+            urlString: urlStr,
+            hlsManifestUrl: job.hls_manifest_url,
+            thumbnailUrl: job.thumbnail_url,
+            jobId: job.id,
+            title: job.vibe_input
+        )
     }
 
     private func recompute() {

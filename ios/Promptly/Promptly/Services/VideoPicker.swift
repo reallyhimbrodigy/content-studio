@@ -41,14 +41,41 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
         // background while the thumbnail appears immediately.
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
-            guard !results.isEmpty else { onPick([]); return }
+            // CANCEL / empty dismissal: PHPicker calls back with zero results when
+            // the user backs out without choosing. Emitted so the first-run funnel
+            // can tell "opened the picker and left" apart from "never opened it"
+            // (picker_opened without a picker_result) and from "picked but the
+            // asset didn't resolve" (the dropped case below).
+            guard !results.isEmpty else {
+                Analytics.track("picker_result", props: ["raw": 0, "resolved": 0, "dropped": 0])
+                onPick([])
+                return
+            }
 
             var pickedVideos: [PickedVideo] = []
+            var droppedNoIdentifier = 0
+            var droppedNoAsset = 0
             for result in results {
-                guard let assetId = result.assetIdentifier else { continue }
+                guard let assetId = result.assetIdentifier else { droppedNoIdentifier += 1; continue }
                 let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
-                guard let asset = assets.firstObject else { continue }
+                guard let asset = assets.firstObject else { droppedNoAsset += 1; continue }
                 pickedVideos.append(PickedVideo(asset: asset, duration: asset.duration))
+            }
+            // A picked result that resolves to NO PHAsset used to vanish here with
+            // ZERO signal — indistinguishable in the data from "never picked." That
+            // is a real, silent activation loss (UX-4). Emit the raw→resolved split
+            // always, and when anything dropped, a durable diagnostic naming which
+            // guard failed (missing assetIdentifier vs. fetch returning nothing).
+            let dropped = droppedNoIdentifier + droppedNoAsset
+            Analytics.track("picker_result",
+                            props: ["raw": results.count, "resolved": pickedVideos.count, "dropped": dropped],
+                            durable: dropped > 0)
+            if dropped > 0 {
+                Analytics.track("picker_asset_unresolved",
+                                props: ["raw": results.count,
+                                        "no_identifier": droppedNoIdentifier,
+                                        "no_asset": droppedNoAsset],
+                                durable: true)
             }
             onPick(pickedVideos)
         }
