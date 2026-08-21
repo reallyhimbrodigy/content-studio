@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-21T22:45:10.372Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-21T22:59:52.536Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 # 📉 DAILY ACTIVE VIDEO-MAKERS — **184/day**, **-43%** week-over-week
 
@@ -16,9 +16,9 @@
 
 | date | completions | editorial-live | penetration |
 |---|---:|---:|---:|
-| 2026-08-21 | 170 | 20 | 11.8% |
+| 2026-08-21 | 171 | 21 | 12.3% |
 
-**🔴 GATE CLOSED** — need **≥100** editorial-live completions (have **20**) AND **≥3** consecutive days at ≥50% penetration (best run **0**). **Do not re-fit on partial penetration** — a ramping mix is a moving regime, and fitting across the ramp is the same error as spanning the 08-17 break.
+**🔴 GATE CLOSED** — need **≥100** editorial-live completions (have **21**) AND **≥3** consecutive days at ≥50% penetration (best run **0**). **Do not re-fit on partial penetration** — a ramping mix is a moving regime, and fitting across the ramp is the same error as spanning the 08-17 break.
 
 > **⚠️ EVERY SPEED NUMBER BELOW DESCRIBES A REGIME THAT ENDED 2026-08-21.** The following are **WITHDRAWN pending re-fit**, and must not be quoted: the **73.5s fixed overhead** (and its own 95s→73.5s correction — both fitted across the 08-17 break); the **45.3s render intercept**; the stage intercepts (normalize 16.0s, edit_plan 12.4s, queue 10.8s); and the 90%/13%/4% pipeline/Modal/network rollup. Regime-B figures (FIXED **83.3s**, marginal 1.57 s/src-s) stand only until the gate opens.
 
@@ -121,11 +121,11 @@ _The failure class that IS Modal-billable is `DISPATCH_UNREACHABLE` — 27 jobs,
 
 ## 2b. Latency — n=172 completed (24h)
 
-p50 **143s** (law 90) · p90 395s · p99 **734s** (law 180) · max 879s
+p50 **146s** (law 90) · p90 395s · p99 **734s** (law 180) · max 879s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
-| `A envelope FULL` | 172 | 164 | **143s** | 395s | 879s |
+| `A envelope FULL` | 172 | 164 | **146s** | 395s | 879s |
 
 **ENVELOPE LOSS: 0.0% of completions (0/172), 0 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._
@@ -133,9 +133,9 @@ _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then cl
 | term | p50 | p90 | p99 | max |
 |---|---:|---:|---:|---:|
 | **QUEUE** (create→worker pickup) | 10.8s | 16.9s | 276.4s | 499.2s |
-| **WORK** (pickup→complete) *envelope-FULL only* | 129.4s | 367.9s | 673.6s | 726.1s |
+| **WORK** (pickup→complete) *envelope-FULL only* | 130.6s | 367.9s | 673.6s | 726.1s |
 
-Queue is **8%** of e2e at p50; **4.1%** of jobs wait >30s before any work begins.
+Queue is **7%** of e2e at p50; **4.1%** of jobs wait >30s before any work begins.
 
 **Queue and envelope loss are NEAR-THRESHOLD, not merely correlated.** Of jobs queuing <30s, **100.0%** kept their envelope (0 of 165 lost it); of jobs queuing ≥30s, **0.0%** lost it. **95.9%** of envelope-FULL jobs queued under 30s. The relation is a step at ~15–30s, so "correlates with" understates it — below the knee loss is near-absent, above it near-certain.
 _Direction is still open: queueing may cause the loss, or one upstream condition may cause both. The STEP SHAPE constrains any mechanism to something that switches at ~15–30s of queue._
@@ -146,9 +146,9 @@ On the 900s wall [870,920] — count: **1** of 172
 
 ## 3. Route mix (24h)
 
-`none` 83 · `moodreel` 62 · `minimal_speech_uncut` 22 · `hype` 4 · `minimal` 1
+`none` 84 · `moodreel` 61 · `minimal_speech_uncut` 22 · `hype` 4 · `minimal` 1
 
-Premium share: **38.4%** (66/172).
+Premium share: **37.8%** (65/172).
 
 ## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=196 terminal)
 
@@ -185,7 +185,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **949** → started **95** (10.0%) → paid **7** (7.4% of starters)
+wall_viewed **950** → started **95** (10.0%) → paid **7** (7.4% of starters)
 purchase_failed n=174, self-cancelled at the sheet **171** (98.3%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -300,7 +300,7 @@ _Break-even now lives in the ALL-IN section above ($0.21/render measured). The s
 | component | plans w/ key | carries content | **decline** |
 |---|---:|---:|---:|
 | motion_graphics | 172 | 19 | **89.0%** |
-| generated scenes | 83 | 0 | **100.0%** |
+| generated scenes | 84 | 0 | **100.0%** |
 | brand copy | **0 — key never appears** | — | _absent, not declined_ |
 | transitions | 172 | 9 | **94.8%** |
 | outro | 172 | 172 | **0.0%** |
@@ -311,7 +311,7 @@ _`brand_copy` never appears as a key in any production plan — that is **absent
 
 ### Built-not-wired check — production counters, not certs
 
-- Lumen scene vocabulary: **WIRED** — completions carrying scene telemetry = 83 on real traffic.
+- Lumen scene vocabulary: **WIRED** — completions carrying scene telemetry = 84 on real traffic.
 - `callback` delivery stamp: **WIRED** — completion_delivery=callback rows = 170 on real traffic.
 - NamePlate (component D): **WIRED** — completions carrying a name-plate = 8 on real traffic.
 - EndCard (component F): **WIRED** — completions carrying an end-card = 1 on real traffic.
@@ -325,12 +325,10 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ### Deploy quiet-window — the GATE's own verdict
 
-**BUSY — push BLOCKED**
+**QUIET — safe to push**
 
 ```
-QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
-    processing  bc538f82-07b2-44a4-8eaf-7c88221c28e1  2026-08-21T22:43:57.431633+00:00  stale=0s
-  Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
+QUIET-WINDOW: OK — 0 in-flight user jobs (probe live: sees 5 recent row(s)). Modal task/container count is NOT the gate and must not be used as one.
 ```
 
 **No wedged rows surfaced.**
@@ -360,8 +358,8 @@ _Rule 6: harnesses count exactly like user jobs and land in the same ledger._
 | PostHog events/month | 865,000 `[OWNER]` | **$0** — 86.5% of a FREE 1M tier |
 | mobile recordings/month | 37,000 `[OWNER]` | |
 | **billable recordings** | **32,000** | **$280 → $0.00875 each** |
-| tracked+named, measured here | 280,787/mo · 35 names | $0 — **and all of it is already in Supabase** |
-| **autocapture — no name at all** | **584,213/mo (68%)** | $0 today · **58% of the free tier** |
+| tracked+named, measured here | 281,300/mo · 35 names | $0 — **and all of it is already in Supabase** |
+| **autocapture — no name at all** | **583,700/mo (67%)** | $0 today · **58% of the free tier** |
 
 _**Events cost nothing; replay is the entire bill** — so retiring events recovers **$0**. Recordings/session = **1.01**: replay records essentially EVERY session, unsampled (SDK default, never tuned). 10% sampling takes $280 → **~$28**._
 _**No reader, proven not asserted:** ZERO of this lane's reports cite a session recording — the only file mentioning replay is the one written to explain the bill. A recording is watched by a human or not at all, so replay carries none of the read-census caveat named events do._

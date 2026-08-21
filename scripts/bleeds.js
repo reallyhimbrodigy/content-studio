@@ -477,8 +477,20 @@ function reportZero({ label, count, control }) {
     say('');
     if (gateOpen) {
       say(`**🟢 GATE OPEN** — ${edTotal} editorial-live completions and ${best} consecutive days at ≥50%. `
-        + '**RE-FIT NOW**: the latency decomposition, the fixed/marginal split, the stage intercepts, '
-        + 'the cost-per-render, and the banded p95 trigger. This is the highest-value item on the board.');
+        + '**RE-FIT ALL SIX TOGETHER, not piecemeal** — they share one window, and fitting them on '
+        + 'different windows is how the 08-17 break got spanned in the first place:');
+      say('');
+      ['latency decomposition (e2e + per-stage)',
+        'fixed/marginal split',
+        'stage intercepts (render, normalize, edit_plan, queue)',
+        'cost per render',
+        'banded p95 trigger — and only then may it be ARMED',
+        'render sub-timer split (`render_remotion` / `render_composite`), against the branches locked at `30a1e62`',
+      ].forEach((x, i) => say(`  ${i + 1}. ${x}`));
+      say('');
+      say('_`windowGuard()` runs on the shared window BEFORE any of the six publishes, and its verdict '
+        + 'is quoted beside every coefficient. A window that fails homogeneity is reported per-regime '
+        + 'or not at all._');
     } else {
       say(`**🔴 GATE CLOSED** — need **≥100** editorial-live completions (have **${edTotal}**) `
         + `AND **≥3** consecutive days at ≥50% penetration (best run **${best}**). `
