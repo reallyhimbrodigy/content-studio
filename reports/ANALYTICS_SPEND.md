@@ -125,3 +125,91 @@ the shape that a closed investigation leaves behind.
 ~$9.20/day** — for comparison, agent/ephemeral spend is $0.37/day and orchestration
 is ~$25.94/day. **Analytics is currently the third-largest line on the cost board
 and the only one with no instrument behind it.**
+
+---
+
+# CONFIRMED — the owner's PostHog figures settle it. The bill is 100% session replay.
+
+**2026-08-20, second pass.** Owner-supplied from the PostHog console: **865k
+events/month**, a **step change on Jul 28**, **37k mobile recordings**. This
+converts §2 from `[INFERRED]` to `[MEASURED]` and confirms the diagnosis.
+
+## The arithmetic, and it is unambiguous
+
+| term | value | cost |
+|---|---:|---:|
+| events/month | **865,000** | **$0** |
+| PostHog free tier | 1,000,000 | — 86.5% of a FREE allowance |
+| recordings/month | **37,000** | |
+| replay free tier | 5,000 | |
+| **billable recordings** | **32,000** | **$280 → $0.00875 each** |
+
+**Events cost nothing. Session replay is the entire $280.** My first-pass
+inference was right, and the ranked event-retirement list would have recovered
+exactly zero dollars.
+
+**Recordings per session: 37,000 / 36,600 = 1.01.** Replay is recording
+**essentially every session, unsampled** — the default, never tuned.
+
+## The Jul 28 step change is an ADOPTION curve, not a config flip
+
+`sessionReplay` and `captureScreenViews` were written in **one commit,
+`8b8e3b9` on 2026-07-20**, and a `git log -S` across all branches shows **that
+config has never been modified since**. The step is therefore not a change in
+what the app does — it is **1.3.3 (builds 220/221, shipped Jul 27) reaching real
+devices on Jul 28**. Nothing was turned on that day; the code that was already
+written simply arrived.
+
+## Which names carry the volume — and 72% have no name at all
+
+| slice | events/mo | share | in Supabase? | read? |
+|---|---:|---:|---|---|
+| **autocapture** (screen views + lifecycle) | **623,237** | **72%** | **NO** | **never** |
+| tracked, named (32 names) | 241,763 | 28% | **YES — every one** | 10 of 32 |
+
+**The volume is carried by events that have no name in our registry.** The 32
+named events I could measure are the *minority* of PostHog's ingestion. The
+autocapture majority is invisible to every instrument we own, has never been
+queried, and exists because the SDK defaults to on.
+
+## The duplication cross-check — and it cuts both ways
+
+`AnalyticsService.track()` writes **both** sinks unconditionally, so:
+
+- **Every one of the 241,763 tracked events is ALREADY in Supabase**, with the
+  same name, the same props, plus `app_version`, `platform`, `territory`,
+  `storefront`, `anon_user_id` and `user_id`. **PostHog holds nothing about them
+  that `analytics_events` does not.** 28% of ingestion is byte-for-byte
+  duplicative.
+- The 72% that is **not** duplicative — autocapture and replay — is precisely
+  the part **nobody asked for and nobody reads.**
+
+**Both halves are waste, for opposite reasons.** The duplicated half is free and
+redundant; the unique half is unread and is the whole bill.
+
+## "A $280/month line with no reader" — proven, not asserted
+
+- **26 reports exist in this lane. ZERO cite a session recording.** The only
+  file in the repository that mentions session replay is *this* one, written
+  today to explain the bill.
+- **22 of 32 named events are read by zero scripts or reports here** — with the
+  §4 limit still standing: that measures our tooling, not the owner's PostHog
+  dashboards.
+- **Replay carries no such caveat.** A recording is watched by a human or it is
+  not watched at all, and no analysis in this lane has ever cited one.
+
+## The call
+
+1. **Set the replay sample rate.** At 1.01 recordings/session, 10% sampling
+   takes $280 → **~$28** and still yields ~3,700 recordings/month — far more than
+   the zero anyone has watched. One config line in `PromptlyApp.swift`.
+   `screenshotMode` stays: the code's comment says it is the supported SwiftUI
+   capture path.
+2. **Turn autocapture off** (`captureScreenViews`, `captureApplicationLifecycle
+   Events`). It is 623k events/month, unnamed, unread, and not in Supabase. It
+   costs $0 today but consumes **62% of the free tier**, which is what would push
+   the next increment of real growth over 1M into paid ingestion.
+3. **Decide whether PostHog earns its place at all.** With replay sampled and
+   autocapture off, what remains is 242k events that are **already in Supabase**.
+   The honest question is not which events to retire — it is whether the funnel
+   UI is worth a second copy of data we already own and already query.
