@@ -78,7 +78,29 @@ REFS = {
 # Each entry is justified from the build sheet's own description of the
 # component, not from what the component turns out to score well on.
 APPLIES = {
-    "insert_scenes":    {"canvas", "motion", "palette"},
+    # motion REMOVED 2026-08-21 — BROKEN DIMENSION for this family, not a broken
+    # artifact. `mean_change`'s floor is 0.6x the LOWER reference's WHOLE-VIDEO
+    # mean, and a whole-video mean averages moving footage together with held
+    # cards. Applying it to ONE held-frame cutaway tests a static-by-design
+    # segment against a bar built mostly out of motion.
+    #
+    # THE REFERENCES FAIL IT ON THEIR OWN CARDS. Sliding 1.5s windows, floor
+    # recomputed at the SAME sampling rate as the measurement:
+    #     REF-2  40/84 windows below the floor (47.6%)  min 0.0001 = 368x under
+    #     REF-1  15/102 windows below the floor (14.7%) min 0.0002 = 126x under
+    # A property the references fail is a broken property, not a broken
+    # reference — the same ruling as double-captions and tail-frozen.
+    #
+    # AND IT HAS ZERO DISCRIMINATING POWER HERE, which is the decisive part: a
+    # CORRECT designed card (§4 — tilted photo, 3 depth planes, held) and a
+    # BROKEN blank cutaway both measure ~0.0001. A dimension that returns the
+    # same answer for pass and fail is not a detector.
+    #
+    # NOTHING IS LOST. The class "a card held too long" is caught at ARTIFACT
+    # scope by the §5 stillness ceiling (3.5s), which is where a duration
+    # property belongs. mean_change remains VALID at artifact scope — that is
+    # how it was calibrated. Only the component-scope application is withdrawn.
+    "insert_scenes":    {"canvas", "palette"},
     "music_bed":        {"audio"},
     "text_behind":      {"canvas", "palette"},
     "keyword_captions": {"canvas", "motion", "caption_placement"},
