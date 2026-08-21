@@ -444,6 +444,62 @@ function reportZero({ label, count, control }) {
     const med = (xs) => xs[Math.floor(xs.length / 2)];
     const p50 = med(E);
     const miss = p50 - 90;
+    // ── REGIME WATCH — printed ABOVE every speed number, because it governs
+    // whether any of them mean anything. Editorial suppression ended 08-21;
+    // every published decomposition was fitted under it.
+    const rgRows = await pageAll('video_jobs?select=result,created_at&status=eq.completed'
+      + '&created_at=gte.2026-08-21');
+    const rgDay = new Map();
+    for (const r of rgRows) {
+      const st2 = ((r.result || {}).stage_timings) || {};
+      const d = String(r.created_at).slice(0, 10);
+      const cur = rgDay.get(d) || { n: 0, ed: 0 };
+      cur.n += 1;
+      if (typeof st2.gemini_call === 'number' && st2.gemini_call > 0) cur.ed += 1;
+      rgDay.set(d, cur);
+    }
+    const rgDays = [...rgDay.entries()].sort();
+    const edTotal = rgDays.reduce((a, [, v]) => a + v.ed, 0);
+    // ≥3 CONSECUTIVE days at ≥50% — a ramping mix is itself a moving regime, so
+    // n alone would let a fit span the ramp exactly as the 08-17 break was spanned.
+    let streak = 0, best = 0;
+    for (const [, v] of rgDays) {
+      if (v.n > 0 && v.ed / v.n >= 0.5) { streak += 1; best = Math.max(best, streak); } else streak = 0;
+    }
+    const gateOpen = edTotal >= 100 && best >= 3;
+    say('# 🔄 REGIME WATCH — editorial-live re-measurement gate');
+    say('');
+    say('| date | completions | editorial-live | penetration |');
+    say('|---|---:|---:|---:|');
+    for (const [d, v] of rgDays) {
+      say(`| ${d} | ${v.n} | ${v.ed} | ${v.n ? (100 * v.ed / v.n).toFixed(1) : '0.0'}% |`);
+    }
+    say('');
+    if (gateOpen) {
+      say(`**🟢 GATE OPEN** — ${edTotal} editorial-live completions and ${best} consecutive days at ≥50%. `
+        + '**RE-FIT NOW**: the latency decomposition, the fixed/marginal split, the stage intercepts, '
+        + 'the cost-per-render, and the banded p95 trigger. This is the highest-value item on the board.');
+    } else {
+      say(`**🔴 GATE CLOSED** — need **≥100** editorial-live completions (have **${edTotal}**) `
+        + `AND **≥3** consecutive days at ≥50% penetration (best run **${best}**). `
+        + '**Do not re-fit on partial penetration** — a ramping mix is a moving regime, and fitting '
+        + 'across the ramp is the same error as spanning the 08-17 break.');
+    }
+    say('');
+    say('> **⚠️ EVERY SPEED NUMBER BELOW DESCRIBES A REGIME THAT ENDED 2026-08-21.** The following are '
+      + '**WITHDRAWN pending re-fit**, and must not be quoted: the **73.5s fixed overhead** (and its own '
+      + '95s→73.5s correction — both fitted across the 08-17 break); the **45.3s render intercept**; the '
+      + 'stage intercepts (normalize 16.0s, edit_plan 12.4s, queue 10.8s); and the 90%/13%/4% '
+      + 'pipeline/Modal/network rollup. Regime-B figures (FIXED **83.3s**, marginal 1.57 s/src-s) stand '
+      + 'only until the gate opens.');
+    say('');
+    say('> **🔕 THE BANDED p95 TRIGGER IS REGIME-B AND UNARMED.** It is a published table, not a wired '
+      + 'alert — nothing fires on it and nothing should be wired to it until it is re-fitted under '
+      + 'editorial-live. Arming it now would alarm continuously, because editorial raises every band. '
+      + '**SURVIVES the regime change:** the render-startup bound (≤5.8s, a per-route lower envelope) and '
+      + 'the route-level throughput figures — both cut by route rather than by time.');
+    say('');
+
     say(`# ⏱️ SPEED — target cohort (20–30s source) p50 **${p50.toFixed(0)}s** vs the **60–90s** hard target`
       + ` — ${miss > 0 ? `**MISS by ${miss.toFixed(0)}s**` : '**MET**'}`);
     say('');
