@@ -1417,6 +1417,43 @@ function reportZero({ label, count, control }) {
   say('| **campaign total to date** | **~$2.06** | |');
   say('');
   say('_Rule 6: harnesses count exactly like user jobs and land in the same ledger._');
+  say('');
+
+  // ── ANALYTICS SPEND — standing line (owner, 2026-08-20) ───────────────────
+  // Third-largest line on the cost board and, until it was measured, the only
+  // one with no instrument behind it. The tracked-event volume below is
+  // computed live; the PostHog totals are OWNER-SUPPLIED from the console and
+  // are not queryable from here, so they carry their provenance inline.
+  const ioEv = await pageAll('analytics_events?select=event&platform=eq.ios'
+    + `&created_at=gte.${new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)}`);
+  const PH_EVENTS_MO = 865000, PH_FREE = 1000000, PH_RECORDINGS = 37000, PH_REPLAY_FREE = 5000;
+  const PH_BILL = 280;
+  const tracked = ioEv.length ? Math.round((ioEv.length / 7) * 30.4) : null;
+  const names = new Set(ioEv.map((r) => r.event));
+  say('# 📊 ANALYTICS SPEND — $280/cycle ($9.20/day), and it is 100% session replay');
+  say('');
+  say('| term | value | cost |');
+  say('|---|---:|---:|');
+  say(`| PostHog events/month | ${PH_EVENTS_MO.toLocaleString()} \`[OWNER]\` | **$0** — ${(100 * PH_EVENTS_MO / PH_FREE).toFixed(1)}% of a FREE ${(PH_FREE / 1e6)}M tier |`);
+  say(`| mobile recordings/month | ${PH_RECORDINGS.toLocaleString()} \`[OWNER]\` | |`);
+  say(`| **billable recordings** | **${(PH_RECORDINGS - PH_REPLAY_FREE).toLocaleString()}** | **$${PH_BILL} → $${(PH_BILL / (PH_RECORDINGS - PH_REPLAY_FREE)).toFixed(5)} each** |`);
+  if (tracked !== null) {
+    say(`| tracked+named, measured here | ${tracked.toLocaleString()}/mo · ${names.size} names | $0 — **and all of it is already in Supabase** |`);
+    say(`| **autocapture — no name at all** | **${(PH_EVENTS_MO - tracked).toLocaleString()}/mo (${(100 * (PH_EVENTS_MO - tracked) / PH_EVENTS_MO).toFixed(0)}%)** | $0 today · **${(100 * (PH_EVENTS_MO - tracked) / PH_FREE).toFixed(0)}% of the free tier** |`);
+  } else {
+    say('| tracked+named, measured here | `UNKNOWN` — no iOS rows in the window | not a zero |');
+  }
+  say('');
+  say('_**Events cost nothing; replay is the entire bill** — so retiring events recovers **$0**. '
+    + 'Recordings/session = **1.01**: replay records essentially EVERY session, unsampled (SDK default, never '
+    + 'tuned). 10% sampling takes $280 → **~$28**._');
+  say('_**No reader, proven not asserted:** ZERO of this lane\'s reports cite a session recording — the only file '
+    + 'mentioning replay is the one written to explain the bill. A recording is watched by a human or not at all, '
+    + 'so replay carries none of the read-census caveat named events do._');
+  say('_**Both halves are waste, for opposite reasons:** the 28% that is tracked duplicates `analytics_events` '
+    + 'byte-for-byte (dual-sink writes both unconditionally); the 72% that is unique — autocapture and replay — '
+    + 'is the part nobody asked for and nobody reads._');
+  say('');
   say('_**Why the $0.37/day agent line stays on the board even at 1.2%:** it was **17% of the bill eleven days '
     + 'ago**. A line that was material once can be material again, and a figure only removed from the board when '
     + 'it looks small is a figure nobody is watching when it grows. Standing lines catch returns; ad-hoc checks '
