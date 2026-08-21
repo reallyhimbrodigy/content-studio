@@ -91,9 +91,44 @@ NOT SCORED — stated so absence is never read as a pass
   component overlap (needs the render tree, not pixels)
   legibility shadow/outline (needs the text alpha layer)
 
+════════════════════════════════════════════════════════════════════════════
+LEDGER vs PIXELS — the counters CLAIM, the pixels ADJUDICATE
+════════════════════════════════════════════════════════════════════════════
+The pipeline's counters have been caught lying in BOTH directions: a ledger
+reporting components that never rendered, and my own read of
+`component_ledger.generated_scenes` as "4 scenes" when it was a four-KEY roll-up
+dict describing ZERO. A counter is the code's claim about itself. The pixels are
+the only independent witness, which makes this the most important thing here.
+
+**THE EPISTEMICS ARE ASYMMETRIC, AND THAT IS THE WHOLE DESIGN:**
+
+    PIXELS CAN REFUTE A COUNTER. PIXELS CANNOT CONFIRM ONE.
+
+If the ledger claims cuts and the frames never change, the claim is dead — no
+interpretation rescues it. If the frames DO change, that does not mean the
+claimed component rendered, or rendered correctly, or rendered where it belonged.
+Something moved; nothing more. So verdicts are REFUTED / not refuted /
+REVERSE-CONTRADICTED / UNADJUDICABLE. **There is deliberately no CONFIRMED**, and
+"not refuted" must never be quoted as "verified".
+
+  witness         calibrated on                     red-proven on
+  visual_change   refs 23 / 18 scene changes        static known-bad: 0
+  motion          refs 3.54 / 3.51 moving samples/s static known-bad: 0.00
+
+  COUNT MATCHING IS NOT A BAR — and calibration is why. REF-2 shows 18 pixel
+  scene-changes against 8 known editorial cuts (REF-1: 23 against 21). §4 insert
+  scenes change the frame without being cuts, so any tolerance band wide enough
+  to hold 8-vs-18 would detect nothing. Only the ASYMMETRIC form survived:
+  claimed>0 with pixels at ZERO is a refutation; the counts themselves are an
+  observation.
+
+  A claim with no calibrated witness is UNADJUDICABLE and is LISTED with its
+  reason — silence there would read as a pass.
+
 Usage:
   python3 visual_critic.py --references     # calibration; run this FIRST
   python3 visual_critic.py --known-bad      # the RED half of calibration
+  python3 visual_critic.py --ledger <video.mp4> <ledger.json|'{...}'>
   python3 visual_critic.py <video.mp4>
 """
 import json, os, re, subprocess, sys
@@ -283,6 +318,134 @@ def tail_frozen(p, win=1.0):
     if not ch:
         return None
     return {"frozen_frac": round(sum(1 for c in ch if c < 0.002) / len(ch), 2), "n": len(ch)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# LEDGER vs PIXELS — the counters CLAIM, the pixels ADJUDICATE
+# ══════════════════════════════════════════════════════════════════════════
+# The pipeline's own counters have been caught lying more than once, in both
+# directions: a ledger that reported components it never rendered, and my own
+# read of `component_ledger.generated_scenes` as "4 scenes" when it was a
+# four-KEY roll-up dict {requested: 0, drop_reasons, dropped_by_us,
+# survived_derived} describing zero. A counter is a claim by the code about
+# itself. The pixels are the only independent witness.
+#
+# THE EPISTEMICS, AND THEY ARE ASYMMETRIC — this is the whole design:
+#
+#     PIXELS CAN REFUTE A COUNTER. PIXELS CANNOT CONFIRM ONE.
+#
+# If the ledger claims cuts and the frames never change, the claim is dead: no
+# interpretation rescues it. But if the frames DO change, that does not mean the
+# claimed component rendered, or rendered correctly, or rendered where it was
+# supposed to — something moved, nothing more. So this reports REFUTED and
+# NOT REFUTED. It never reports CONFIRMED, and "not refuted" must never be
+# quoted as "verified".
+SCENE_TH = 0.15
+
+
+def scene_changes(p, th=SCENE_TH):
+    """Pixel-side visual-change count. NOT a cut count — see the observation in
+    adjudicate(): REF-2 shows 18 of these against 8 known editorial cuts,
+    because §4 insert scenes change the frame without being cuts."""
+    o = _sh(f'{FF} -hide_banner -i "{p}" -vf "select=\'gt(scene,{th})\',metadata=print" '
+            f'-an -f null - 2>&1')
+    return len(re.findall(r"pts_time:", o))
+
+
+def _claim_count(v):
+    """Extract a COUNT from a ledger value, or None — never an invented one.
+
+    `component_ledger.generated_scenes` is a ROLL-UP dict, not a list of scenes.
+    I once took len() of it and reported 'first Lumen output, n=4' off its four
+    KEYS while it described zero scenes. A dict is never a count unless it names
+    one."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, list):
+        return len(v)
+    if isinstance(v, dict):
+        for k in ("count", "n", "requested", "emitted", "rendered", "survived"):
+            if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
+                return int(v[k])
+        return None          # no named count -> UNADJUDICABLE, never len(dict)
+    return None
+
+
+# claim key -> (witness name, predicate on the critique dict, why)
+# Only witnesses that have been calibrated on BOTH references AND red-proven on
+# a known-bad appear here. Everything else is UNADJUDICABLE by construction.
+WITNESSES = {
+    "visual_change": (
+        lambda r: (r.get("_scenes") or 0) > 0,
+        "scene changes >0 · refs 23 / 18 · static known-bad 0"),
+    "motion": (
+        lambda r: bool(r.get("rhythm")) and r["rhythm"]["moving_per_s"] > 0,
+        "moving samples/s >0 · refs 3.54 / 3.51 · static known-bad 0.00"),
+}
+
+# Which witness adjudicates which claim. A claim with no witness is reported
+# UNADJUDICABLE and listed — silence here would read as a pass.
+CLAIM_WITNESS = {
+    "cuts": "visual_change", "n_cuts": "visual_change", "cut_count": "visual_change",
+    "scenes": "visual_change", "scene_count": "visual_change",
+    "generated_scenes": "visual_change", "transitions": "visual_change",
+    "components": "motion", "component_count": "motion",
+    "motion_graphics": "motion", "mg_count": "motion", "zooms": "motion",
+}
+
+# Named so the reason travels with the verdict rather than being folded into a
+# generic "cannot check".
+UNADJUDICABLE_REASONS = {
+    "captions": "caption/text claims need glyph-level evidence; edge density cannot "
+                "separate rendered captions from burned-in source text or from §4 "
+                "designed layering — the same confound that broke the double-caption "
+                "property",
+    "caption_count": "see captions",
+    "broll": "b-roll presence is not distinguishable from a cut in the output alone; "
+             "it needs the source to compare against",
+}
+
+
+def adjudicate(video, ledger):
+    """Adjudicate a ledger's claims against the pixels of the video it describes.
+
+    Returns (rows, n_refuted). Each row is
+    (claim, claimed, witness_or_None, verdict, note)."""
+    r = critique(video)
+    r["_scenes"] = scene_changes(video)
+    rows, refuted = [], 0
+    for k, raw in sorted(ledger.items()):
+        n = _claim_count(raw)
+        if n is None:
+            rows.append((k, raw, None, "UNADJUDICABLE",
+                         "no named count in this value — a dict is not a count"))
+            continue
+        if k in UNADJUDICABLE_REASONS:
+            rows.append((k, n, None, "UNADJUDICABLE", UNADJUDICABLE_REASONS[k]))
+            continue
+        wname = CLAIM_WITNESS.get(k)
+        if not wname:
+            rows.append((k, n, None, "UNADJUDICABLE", "no calibrated pixel witness for this claim"))
+            continue
+        pred, why = WITNESSES[wname]
+        present = pred(r)
+        if n > 0 and not present:
+            rows.append((k, n, wname, "REFUTED",
+                         f"ledger claims {n}, pixels show NONE — {why}"))
+            refuted += 1
+        elif n > 0:
+            rows.append((k, n, wname, "not refuted",
+                         f"pixels are consistent with the claim; this is NOT confirmation — {why}"))
+        elif present:
+            rows.append((k, n, wname, "REVERSE-CONTRADICTED",
+                         "ledger claims ZERO but the pixels show the witness — the counter "
+                         "is under-reporting what shipped"))
+            refuted += 1
+        else:
+            rows.append((k, n, wname, "not refuted", "ledger claims zero, pixels show none"))
+    return r, rows, refuted
 
 
 # ── CAPTION-VS-SUBJECT: SELF-ACTIVATING ON COMPONENT C ──────────────────────
@@ -489,6 +652,41 @@ if __name__ == "__main__":
                 bad += 0 if good else 1
         print(f"\nRESULT: {'PASS — every bar is proven RED on its own known-bad' if not bad else f'FAIL — {bad} problem(s)'}")
         sys.exit(1 if bad else 0)
+
+    if a[0] == "--ledger":
+        if len(a) < 3:
+            print("usage: visual_critic.py --ledger <video.mp4> <ledger.json|'{...}'>")
+            print("\nLEDGER vs PIXELS — the counters CLAIM, the pixels ADJUDICATE.")
+            print("PIXELS CAN REFUTE A COUNTER. PIXELS CANNOT CONFIRM ONE.")
+            sys.exit(2)
+        src = a[2]
+        led = json.loads(open(src).read() if os.path.exists(src) else src)
+        if not isinstance(led, dict):
+            print("ledger must be a JSON object of claim -> count"); sys.exit(2)
+        r, rows, refuted = adjudicate(a[1], led)
+        print(f"\n=== LEDGER vs PIXELS — {r['file']} ===")
+        print(f"  pixel witnesses: scene_changes={r['_scenes']}  "
+              f"moving_per_s={(r.get('rhythm') or {}).get('moving_per_s')}")
+        print()
+        print(f"  {'claim':22} {'ledger':>8}  verdict")
+        print(f"  {'-'*22} {'-'*8}  {'-'*7}")
+        for k, n, w, v, note in rows:
+            print(f"  {k[:22]:22} {str(n):>8}  {v}")
+            print(f"  {'':32}  └─ {note}")
+        n_un = sum(1 for x in rows if x[3] == "UNADJUDICABLE")
+        print()
+        if refuted:
+            print(f"  ❌ {refuted} CLAIM(S) REFUTED BY THE PIXELS — the counter and the frames")
+            print("     disagree, and the frames are the independent witness. Trust the pixels.")
+        else:
+            print("  ✅ NO CLAIM REFUTED — and the standing rule, in its ledger form:")
+            print("     THIS IS NOT \"THE COUNTERS ARE TRUE\". IT IS \"NO COUNTER WAS CAUGHT LYING\".")
+            print("     Pixels REFUTE; they never CONFIRM. An unrefuted claim is unrefuted, not")
+            print("     verified, and must never be quoted as verification.")
+        if n_un:
+            print(f"\n  ⚠️  {n_un} claim(s) UNADJUDICABLE — listed above with the reason each.")
+            print("     An unadjudicable claim is unknown, not clean.")
+        sys.exit(1 if refuted else 0)
 
     n_fail, n_unk = show(critique(a[0]))
     sys.exit(1 if (n_fail or n_unk) else 0)
