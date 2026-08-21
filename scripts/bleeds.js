@@ -468,6 +468,62 @@ function reportZero({ label, count, control }) {
       });
       say(`| **worker wall total** | **${tot.toFixed(0)}s** | 100% |`);
       say('');
+
+      // ── RENDER SPLIT — the pre-registered read, locked at 30a1e62 ─────────
+      // A pre-registration only works if it is READ when the data lands. Left to
+      // memory it rots, and reading it late is indistinguishable from fitting it
+      // to the numbers — which is the whole thing pre-registration exists to
+      // prevent. So the board evaluates it itself, against criteria written
+      // before the data existed. lane/judge-timers@feb48f8 attaches render's
+      // three timers as children of the `render` span; until that deploys,
+      // production reports `render: unaccounted == dur` on every single job.
+      const rNodes = withSt.map((j) => {
+        const tl = stOf(j).timeline;
+        if (!tl || !Array.isArray(tl.children)) return null;
+        return tl.children.find((c) => c && c.name === 'render') || null;
+      }).filter(Boolean);
+      const rsplit = rNodes.filter((r) => Array.isArray(r.children) && r.children.length);
+      say('**Render split — pre-registered read, locked at `30a1e62` BEFORE the data:**');
+      say('');
+      if (!rNodes.length) {
+        say('`UNKNOWN` — no timeline in this window carries a `render` node. Not a result.');
+      } else if (!rsplit.length) {
+        const blind = rNodes.filter((r) => (r.unaccounted || 0) >= (r.dur || 0) * 0.95).length;
+        say(`\`PENDING\` — **${blind}/${rNodes.length}** render spans are ~100% unaccounted, so the sub-timers are`
+          + ` NOT deployed. \`lane/judge-timers@feb48f8\` is filed with TRUTH (reassigned out of JUDGE's lane).`
+          + ` **No render build is decided until this reads.**`);
+      } else {
+        const kid = (k) => med(rsplit.map((r) => ((r.children.find((c) => c.name === k) || {}).dur) || 0)
+          .sort((a, z) => a - z));
+        const dur = med(rsplit.map((r) => r.dur).sort((a, z) => a - z));
+        const unacc = med(rsplit.map((r) => 100 * (r.unaccounted || 0) / Math.max(1, r.dur)).sort((a, z) => a - z));
+        const shR = 100 * kid('render_remotion') / Math.max(1, dur);
+        const shC = 100 * kid('render_composite') / Math.max(1, dur);
+        say('| child | p50 | share of render |');
+        say('|---|---:|---:|');
+        ['render_remotion', 'render_audio', 'render_composite'].forEach((k) => say(
+          `| \`${k}\` | ${kid(k).toFixed(1)}s | ${(100 * kid(k) / Math.max(1, dur)).toFixed(1)}% |`));
+        say(`| **unaccounted** | — | **${unacc.toFixed(1)}%** |`);
+        say('');
+        // The fourth branch is checked FIRST and on purpose: it is what stops the
+        // other three from being reachable by attributing a gap to a convenient stage.
+        if (unacc > 20) {
+          say(`**VERDICT — DECOMPOSITION INCOMPLETE.** unaccounted is **${unacc.toFixed(1)}%** (>20%): the three`
+            + ` timers do not cover the render span. The remainder is NOT assigned to whichever stage is`
+            + ` convenient, and **no build is picked from this read**. n=${rsplit.length}.`);
+        } else if (shR > 60) {
+          say(`**VERDICT — RASTERISATION.** \`render_remotion\` is **${shR.toFixed(1)}%** (>60%): per-frame component`
+            + ` cost is the target, and tab/concurrency work re-opens WITH a real discriminator. n=${rsplit.length}.`);
+        } else if (shC > 60) {
+          say(`**VERDICT — FFMPEG ENCODE.** \`render_composite\` is **${shC.toFixed(1)}%** (>60%): x264 settings and`
+            + ` the pinned 48-thread encode are the target. Chromium is EXONERATED. n=${rsplit.length}.`);
+        } else {
+          say(`**VERDICT — SPREAD.** neither child clears 60% (remotion ${shR.toFixed(1)}%, composite`
+            + ` ${shC.toFixed(1)}%): no single build wins. Report the split and stop proposing one.`
+            + ` n=${rsplit.length}.`);
+        }
+      }
+      say('');
       say(`_**e2e ${p50.toFixed(0)}s − worker wall ${tot.toFixed(0)}s = ~${(p50 - tot).toFixed(0)}s outside the worker** `
         + '(queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, '
         + 'so the target cannot be met by trimming overhead — the worker wall itself has to come down._');

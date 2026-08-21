@@ -1,14 +1,14 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-20T23:31:22.857Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-21T00:13:03.354Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
-# 📉 DAILY ACTIVE VIDEO-MAKERS — **179/day**, **-47%** week-over-week
+# 📉 DAILY ACTIVE VIDEO-MAKERS — **184/day**, **-43%** week-over-week
 
-| last 7d | prior 7d | change | peak (2026-08-04) | last full day (2026-08-19) | peak → now |
+| last 7d | prior 7d | change | peak (2026-08-04) | last full day (2026-08-20) | peak → now |
 |---:|---:|---:|---:|---:|---:|
-| **179/day** | 336/day | **-47%** | 861 | **196** | **-77%** |
+| **184/day** | 325/day | **-43%** | 861 | **187** | **-78%** |
 
-**This sits above the failure rate because a rate on a shrinking denominator flatters itself.** A 10% failure rate over 196 makers is a worse product than 10% over 861, and only this line can tell them apart. Today is excluded as a partial day.
+**This sits above the failure rate because a rate on a shrinking denominator flatters itself.** A 10% failure rate over 187 makers is a worse product than 10% over 861, and only this line can tell them apart. Today is excluded as a partial day.
 
 ---
 
@@ -19,7 +19,7 @@
 | **20–30s source (the target)** | 113 | **126s** | 374s | +36s |
 
 _9 sweep-stamped row(s) excluded from this band — delivered videos whose `completed_at` was written hours later by a reaper. Counted, not silently dropped._
-| all sources (context only) | 1007 | 121s | 455s | +31s |
+| all sources (context only) | 1004 | 121s | 455s | +31s |
 
 **The two levers — worker-wall decomposition:**
 
@@ -32,6 +32,10 @@ _9 sweep-stamped row(s) excluded from this band — delivered videos whose `comp
 | `hls` | 2.3s | 2.4% |
 | **worker wall total** | **94s** | 100% |
 
+**Render split — pre-registered read, locked at `30a1e62` BEFORE the data:**
+
+`PENDING` — **31/31** render spans are ~100% unaccounted, so the sub-timers are NOT deployed. `lane/judge-timers@feb48f8` is filed with TRUTH (reassigned out of JUDGE's lane). **No render build is decided until this reads.**
+
 _**e2e 126s − worker wall 94s = ~32s outside the worker** (queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, so the target cannot be met by trimming overhead — the worker wall itself has to come down._
 
 _⚠️ **The "editorial call is 54% of wall" lever does NOT reproduce in this window, and the reason matters: `gemini_call` measures **0.0s** here, so the editorial path is SUPPRESSED and these are deterministic plans. `edit_plan` is ~20% and `render` ~75%. The 54% figure is from an editorial-LIVE regime. **Lever share is regime-dependent — state which regime any share is quoted from**, or the two numbers will keep disagreeing for a reason that is not a disagreement._
@@ -40,11 +44,10 @@ _Modal spend per render: the cost board carries the anchor (orchestration 72.3% 
 
 ---
 
-# 💬 CHAT EVENTS/DAY — **345** today, **5** of the last 11 days DARK (chat 0 with renders > 0)
+# 💬 CHAT EVENTS/DAY — **2** today, **4** of the last 11 days DARK (chat 0 with renders > 0)
 
 | day | chat | render (control) | |
 |---|---:|---:|---|
-| 2026-08-10 | **0** | 1 | **DARK** |
 | 2026-08-11 | 2 | 157 |  |
 | 2026-08-12 | **0** | 176 | **DARK** |
 | 2026-08-13 | 1 | 131 |  |
@@ -54,7 +57,8 @@ _Modal spend per render: the cost board carries the anchor (orchestration 72.3% 
 | 2026-08-17 | 195 | 71 |  |
 | 2026-08-18 | 532 | 195 |  |
 | 2026-08-19 | 395 | 196 |  |
-| 2026-08-20 | 345 | 177 |  |
+| 2026-08-20 | 346 | 177 |  |
+| 2026-08-21 | 2 | 2 |  |
 
 **Chat can die without producing a single error.** `logUsageEvent(userId,'chat')` fires only on a SUCCESSFUL reply, so a broken chat emits no row, no error_code and no alert — it goes quiet, and quiet looks like a slow day. That is why this is a **permanent positive counter** on the board rather than an alarm that fires on absence: an alarm that depends on the broken thing to speak cannot fire.
 
@@ -62,24 +66,25 @@ _It died on **2026-08-08**: 1,173 events on 08-07, then **1**. It has not recove
 
 ---
 
-## 1. Failures — 19 users / 20 jobs (24h)
+## 1. Failures — 20 users / 21 jobs (24h)
 
 | class | users | jobs | share of failing users |
 |---|---:|---:|---:|
-| UPLOAD_NEVER_STARTED | 15 | 15 | 78.9% |
-| INTEGRITY_TRIP | 3 | 4 | 15.8% |
-| WORKER_DIED | 1 | 1 | 5.3% |
+| UPLOAD_NEVER_STARTED | 15 | 15 | 75.0% |
+| INTEGRITY_TRIP | 3 | 4 | 15.0% |
+| CLIP_TOO_SHORT | 1 | 1 | 5.0% |
+| WORKER_DIED | 1 | 1 | 5.0% |
 
 ## 2. FAILED-JOB SECONDS — 2.3% of all job-lifetime seconds [7-DAY WINDOW]
 
-**471 failed jobs / 255 users** over **7 days**, p50 lifetime **601s**, **67/day**. Total **218,198s** of user time spent on jobs that never delivered.
+**471 failed jobs / 255 users** over **7 days**, p50 lifetime **601s**, **67/day**. Total **217,666s** of user time spent on jobs that never delivered.
 
 | quantity | jobs | seconds | share |
 |---|---:|---:|---:|
-| reached a worker (**Modal-billable**) | 277 | 101643 | 46.6% |
-| never reached one (**$0 Modal, pure user wait**) | 194 | 116555 | 53.4% |
+| reached a worker (**Modal-billable**) | 278 | 101712 | 46.7% |
+| never reached one (**$0 Modal, pure user wait**) | 193 | 115954 | 53.3% |
 
-**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **46.6%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
+**USER-time and MODAL-time are different quantities and must not be blended.** A job with no `worker_started_at` and no `modal_call_id` never reached a container: it costs the user their whole wait and costs us **$0**. Here only **46.7%** of failed seconds were Modal-billable (~$0.49/day, **1.9%** of orchestration) — the rest is pure user loss at zero spend.
 
 > **UNS does NOT move onto the cost board — the conditional FAILS.** [MEASURED] Of 263 `UPLOAD_NEVER_STARTED` jobs, **0 have `worker_started_at` and 0 have `modal_call_id`.** The ~601s wait is entirely client/server-side; nothing was ever dispatched. UNS is the **largest user-time loss on the board** (263 jobs × ~601s) at **zero Modal spend**, so it stays a **DELIVERY/product lever, not a cost lever.** Filing it beside orchestration would aim spend work at a class that spends nothing.
 
@@ -91,7 +96,7 @@ p50 **131s** (law 90) · p90 288s · p99 **704s** (law 180) · max 756s
 
 | envelope class | n | users | p50 | p90 | max |
 |---|---:|---:|---:|---:|---:|
-| `A envelope FULL` | 177 | 169 | **131s** | 288s | 756s |
+| `A envelope FULL` | 177 | 168 | **131s** | 288s | 756s |
 
 **ENVELOPE LOSS: 0.0% of completions (0/177), 0 users.** Regression BORN 2026-08-11T23Z after 8 clean days at 0.0% (08-04..08-11). The pooled p50 above sits between classes and describes NO actual user.
 _Mechanism SETTLED 2026-08-15: a LOST UPDATE on `result` jsonb (written, then clobbered by a later read-modify-write). Fix = CAS on `updated_at`. The worker-hang framing is retired._
@@ -116,9 +121,9 @@ On the 900s wall [870,920] — count: **0** ✅ [VERIFIED-ZERO — detector prov
 
 Premium share: **35.6%** (63/177).
 
-## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=197 terminal)
+## 4. Delivery layer — since the column landed 2026-08-11T19:50:15Z (n=198 terminal)
 
-`callback` 174 · `NULL` 15 · `reconciler` 5 · `orphan_callback` 1 · `durable_poll` 2
+`callback` 174 · `NULL` 15 · `reconciler` 6 · `orphan_callback` 1 · `durable_poll` 2
 
 fallback_timer share **0.0%** — PASS bar met (~0).
 
@@ -151,7 +156,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **937** → started **89** (9.5%) → paid **6** (6.7% of starters)
+wall_viewed **935** → started **89** (9.5%) → paid **6** (6.7% of starters)
 purchase_failed n=162, self-cancelled at the sheet **159** (98.1%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -286,12 +291,17 @@ _The `callback` line is the class resolving in real time: it was [BUILT-NOT-WIRE
 
 _NO LIVE DATA: there are still ZERO Lumen renders in `video_jobs`. These are harness in-run figures, not production measurement, and were measured in-run precisely because envelope loss corrupts `result` on ~39% of completions._
 
+_Denominator guard — completed renders/day: n=2 — too short to test homogeneity_
+_**Denominator basis:** the completion denominator behind cost-per-render figures is a **7-DAY MEAN** (~233/day over 08-08→08-15), **not the current regime** (~150/day since 08-11). Cost-per-render on the 7-day mean understates the current per-render figure by ~1.55x for exactly the reason the cycle-average understates the recent slice. State which basis any per-render number uses._
+
 ### Deploy quiet-window — the GATE's own verdict
 
-**QUIET — safe to push**
+**BUSY — push BLOCKED**
 
 ```
-QUIET-WINDOW: OK — 0 in-flight user jobs (probe live: sees 5 recent row(s)). Modal task/container count is NOT the gate and must not be used as one.
+QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
+    processing  1693d5a1-4bb3-4bed-82bc-6352b78913df  2026-08-21T00:12:22.212485+00:00  stale=1s
+  Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 
 **No wedged rows surfaced.**
