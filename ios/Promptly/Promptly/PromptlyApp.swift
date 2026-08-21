@@ -210,18 +210,27 @@ struct PromptlyApp: App {
         // callbacks if a delegate is set at the time of delivery.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
 
-        // PostHog — the analytics backbone. The project key is a public
-        // client key by design (capture-only). Autocapture (screens, taps,
-        // app lifecycle) + our explicit events through Analytics.track's
-        // dual-sink. Session replay ON with masking defaults: text inputs
-        // and user images masked; static labels (paywall prices) visible.
+        // PostHog — analytics-only (capture-only public key; no feature flags or
+        // experiments are read, and every [REPORT] reads the Supabase
+        // analytics_events mirror, not PostHog). COST CUTS (2026-08-20, authorized):
+        // the SDK defaults were never priced and a receipt caught them.
+        //   • Session replay SAMPLED to 10% — was UNSAMPLED, recording ~every
+        //     session (37k recordings ≈ 36.6k sessions) = the whole ~$280/mo line,
+        //     against zero readers. 10% ≈ 3.7k/mo, ample if anyone ever looks.
+        //   • Autocapture OFF (screen views + app lifecycle) — ~623k events/mo,
+        //     $screen / $application_*, unread, absent from Supabase, 72% of
+        //     ingestion and 62% of the free-tier headroom.
+        // Explicit Analytics.track events (the ANALYSED set) are unaffected — they
+        // still dual-sink to PostHog + Supabase. Takes effect on the adoption curve,
+        // not immediately. screenshotMode + masking kept.
         let phConfig = PostHogConfig(
             apiKey: "phc_zqZcVguSoeCnasjfxH9W2PSiBna3rApecQvTQtnNeetj",
             host: "https://us.i.posthog.com"
         )
-        phConfig.captureScreenViews = true
-        phConfig.captureApplicationLifecycleEvents = true
+        phConfig.captureScreenViews = false
+        phConfig.captureApplicationLifecycleEvents = false
         phConfig.sessionReplay = true
+        phConfig.sessionReplayConfig.sampleRate = NSNumber(value: 0.1)
         phConfig.sessionReplayConfig.maskAllTextInputs = true
         phConfig.sessionReplayConfig.maskAllImages = true
         // SwiftUI renders as one layer to the replay wireframe recorder —
