@@ -523,6 +523,22 @@ function reportZero({ label, count, control }) {
             + ` n=${rsplit.length}.`);
         }
       }
+      // ── LEVER RANKING RULE — committed BEFORE the split, same reason the
+      // verdict was. A ranking invented after seeing the number is fitted to it.
+      say('');
+      say('_**Lever ranking rule, pre-committed:** rank by **measured share of the '
+        + 'duration-independent term × tractability**, and state both — a large share with no '
+        + 'tractable lever is a finding, not a build. Candidates are named in advance so the list '
+        + 'cannot be assembled to fit whichever branch fires:_');
+      say('');
+      say('| if the split says | candidate levers, in advance | disqualifier |');
+      say('|---|---|---|');
+      say('| **rasterisation** (`render_remotion`) | per-frame component cost; tab/concurrency budget; chunk parallelism | chunking is **already REFUTED** as a lever — the boundary discontinuity test failed (controls rose as much as the boundaries). It re-enters ONLY if a discriminator passes. |');
+      say('| **encode** (`render_composite`) | x264 preset/CRF; the mux/concat path; HLS + export encode | **byte-identical determinism is the cert bar** — `_X264_ENCODE_THREADS=48` is PINNED. Any lever changing encode output is disqualified before it is ranked, however large its share. |');
+      say('| **spread** (neither >60%) | none | no single build wins; ranking is suppressed by design. |');
+      say('');
+      say('_The disqualifier column is the load-bearing one: it rules levers out **before** their '
+        + 'size is known, so a big number cannot argue its way past a standing law._');
       say('');
       say(`_**e2e ${p50.toFixed(0)}s − worker wall ${tot.toFixed(0)}s = ~${(p50 - tot).toFixed(0)}s outside the worker** `
         + '(queue + delivery). Even at zero queue the worker alone sits at the TOP of the 60–90s window, '
