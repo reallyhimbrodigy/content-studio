@@ -3359,6 +3359,12 @@ const server = http.createServer((req, res) => {
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
           'referral_share', 'referral_link_opened', 'referral_claimed',
+          // Transport-error mirror (HTTPClientError diagnosis, 2026-08-22): the
+          // iOS Sentry SDK auto-captures URLSession 5xx (enableCaptureFailedRequests
+          // default-on) into a class we cannot query programmatically; this event
+          // mirrors the SAME failures (upload part/PUT retries with status+conn)
+          // into the SQL mirror where every read runs. Volume-bounded client-side.
+          'upload_http_error',
           // Onboarding question answers (Q1 audience / Q2 intent / Q3
           // attribution). FIXES a live drift: the client emitted these via
           // NON-LITERAL names (OnboardingQuestion.X.event) invisible to the
