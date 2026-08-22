@@ -214,7 +214,7 @@ function report(rows) {
 
   if (AS_JSON) { console.log(JSON.stringify({ rows, dead: dead.length, live: live.length }, null, 1)); return; }
 
-  console.log(`\n=== UPLOAD ABANDONMENT SWEEP — bucket ${BUCKET}${PREFIX ? `, prefix ${PREFIX}` : ' (ALL prefixes)'}`);
+  console.log(`\n=== UPLOAD ABANDONMENT SWEEP — bucket ${REPLAY_BUCKET || BUCKET}${PREFIX ? `, prefix ${PREFIX}` : ' (ALL prefixes)'}`);
   console.log(`  multipart uploads open: ${rows.length}   in-flight (<${ABANDONED_H}h): ${live.length}   ABANDONED (>=${ABANDONED_H}h): ${dead.length}\n`);
 
   if (!PREFIX) {
