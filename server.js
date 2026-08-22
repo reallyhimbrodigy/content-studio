@@ -3266,6 +3266,11 @@ const server = http.createServer((req, res) => {
       // a curl, for the owner and for me.
       premium_pipeline: premiumPipelineEnabled(),
       wall_enforcement: wallEnabled() ? 'on' : 'off',
+      // Conversion item 1: the FIRST-LAUNCH dismissible paywall (iOS). A
+      // SEPARATE knob from wall_enforcement (that one drives the server gates
+      // and cannot be overloaded for a UI-only wall). Env-flipped, default
+      // OFF; the client caches last-known and defaults dark on fetch failure.
+      first_launch_paywall: String(process.env.FIRST_LAUNCH_PAYWALL || '') === '1' ? 'on' : 'off',
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
       // Presence only (never the values) — the deploy-sanity readback drift-guard
       // asserts these so a "preserve current values" sweep that drops either
