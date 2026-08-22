@@ -145,7 +145,17 @@ final class BackgroundUploadManager: NSObject {
         }
 
         if let cont {
-            // Caller is still alive — resume the await.
+            // Caller is still alive — resume the await. The terminal analytics
+            // fire on the caller; the HTTP status would be DISCARDED here, so
+            // mirror it first (the HTTPClientError class Sentry captures
+            // invisibly — same signal, queryable side).
+            if !success {
+                Analytics.track("upload_http_error", props: [
+                    "path": "bg-single",
+                    "status": httpStatus,
+                    "conn": ReachabilityMonitor.currentConnectionType,
+                ])
+            }
             if let error {
                 cont.resume(throwing: error)
             } else if !success {

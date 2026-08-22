@@ -323,6 +323,17 @@ final class ResumableMultipartUploader: NSObject {
             let k = "\(ctx.uploadId)#\(ctx.partNumber)"
             let n = (partAttempts[k] ?? 0) + 1
             partAttempts[k] = n
+            // Transport-error mirror (HTTPClientError diagnosis): Sentry auto-
+            // captures these 5xx invisibly; this puts the SAME signal where our
+            // reads run. FIRST retry per part only — bounded, never a spam loop.
+            if n == 1 {
+                Analytics.track("upload_http_error", props: [
+                    "path": "multipart",
+                    "status": http?.statusCode ?? 0,
+                    "part": ctx.partNumber,
+                    "conn": ReachabilityMonitor.currentConnectionType,
+                ])
+            }
             if n >= MultipartConfig.maxPartAttempts {
                 Task { await self.giveUp(uploadId: ctx.uploadId, reason: "part \(ctx.partNumber) exhausted") }
             } else {
