@@ -56,8 +56,17 @@ class SSEClient {
 
     func disconnect() {
         isClosed = true
-        timeoutTimer?.invalidate()
-        timeoutTimer = nil
+        // TIMER LAW (EXC_BREAKPOINT fix, 941 users): a Timer must be
+        // invalidated on the run loop that scheduled it. disconnect() is
+        // called from URLSession callbacks, Tasks and main-actor view code —
+        // so ALL timer mutations serialize onto the main queue, where the
+        // timer is also scheduled. The cross-thread double-invalidate +
+        // concurrent CFRelease this raced (CFRunLoopTimerInvalidate x2 ->
+        // CFRetain over-release) is structurally gone.
+        DispatchQueue.main.async { [weak self] in
+            self?.timeoutTimer?.invalidate()
+            self?.timeoutTimer = nil
+        }
         reconnectTask?.cancel()
         reconnectTask = nil
         task?.cancel()
@@ -154,17 +163,28 @@ class SSEClient {
     }
 
     private func startTimeoutChecker() {
-        timeoutTimer?.invalidate()
-        // Check every 10s; poll the DB the moment no event has arrived for 45s.
-        // The render phase legitimately sends periodic progress, so 45s of pure
-        // silence means something went wrong (worker crashed, Modal container
-        // lost, SSE connection dropped without us noticing). Polling the DB
-        // surfaces the failure fast instead of leaving the UI frozen.
-        timeoutTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let elapsed = Date().timeIntervalSince(self.lastEventTime)
-            if elapsed > 45 {
-                Task { await self.pollJobStatus() }
+        // TIMER LAW (see disconnect()): connect() runs from the reconnect Task
+        // on a cooperative-pool thread — Timer.scheduledTimer there binds to a
+        // run loop that never spins (the timer silently never fires) AND sets
+        // up the cross-thread invalidate race. Schedule AND invalidate on the
+        // main queue only; if the client was closed before this hop ran, tear
+        // the fresh timer down immediately instead of leaking a ticker.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.timeoutTimer?.invalidate()
+            self.timeoutTimer = nil
+            guard !self.isClosed else { return }
+            // Check every 10s; poll the DB the moment no event has arrived for
+            // 45s. The render phase legitimately sends periodic progress, so
+            // 45s of pure silence means something went wrong (worker crashed,
+            // Modal container lost, SSE dropped without us noticing). Polling
+            // the DB surfaces the failure fast instead of a frozen UI.
+            self.timeoutTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let elapsed = Date().timeIntervalSince(self.lastEventTime)
+                if elapsed > 45 {
+                    Task { await self.pollJobStatus() }
+                }
             }
         }
     }
