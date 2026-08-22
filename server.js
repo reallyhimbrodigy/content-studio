@@ -145,6 +145,7 @@ function renderResultPage(data) {
   </style></head><body>${body}</body></html>`;
 }
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
+const { qualifyAndRewardReferral } = require('./lib/referral-leg');
 
 // BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11, reports/REQUEST_
 // DELIVERY_GATE_RECEIPT.md): validate_deploy.js writes .gate_receipt.json when
@@ -2438,6 +2439,24 @@ const server = http.createServer((req, res) => {
             vibe: prevState.vibe_input || null,
           }).catch((err) => {
             console.error('[push] render-complete dispatch failed:', err.message);
+          });
+        
+          // Referral qualification + reward (owner 2026-08-21). Rides the SAME
+          // won-transition guard as the push, for the same reason: the CAS
+          // update is consumed exactly once per job, so a render qualifies its
+          // referral once no matter how many progress events arrive or who
+          // races. Gating on `step === 'complete'` instead would burn the one
+          // transition on any pct>=100 event carrying a different step label —
+          // the exact bug the push comment above already documents.
+          //
+          // Fire-and-forget, deliberately: the video is ready and the SSE has
+          // already said so. A reward RPC erroring is our problem, never a
+          // reason to fail the render path.
+          qualifyAndRewardReferral(supabaseAdmin, {
+            userId: prevState.user_id,
+            jobId: job_id,
+          }).catch((err) => {
+            console.error('[referral] leg failed:', err.message);
           });
         }
 
