@@ -569,34 +569,6 @@ struct LaunchView: View {
     }
 }
 
-#if DEBUG
-/// DEBUG-only presentation proof for the 1.1.7 re-edit P0 fix.
-///
-/// The live 1.1.6 bug (RACE 1): a free user taps Re-edit inside the full-screen
-/// video player; the player is a UIKit `.fullScreen` modal, so setting the
-/// paywall while it owns the presentation context is SILENTLY DROPPED — the user
-/// is left staring at the video. The fix parks the paywall and, on the player's
-/// dismissal completion, presents it via `UIHostingController` from the topmost
-/// VC (`AppState.presentPaywallFromTop`) rather than through the root `.sheet`,
-/// which stays dropped right after a full-screen UIKit modal dismisses.
-///
-/// This harness reproduces the EXACT runtime topology in the simulator using the
-/// REAL `PromptlyPlayerHostVC`, the REAL `AppState.deferPaywall`/`flushDeferredPaywall`
-/// seam, and the REAL `PaywallView`. Launch the app with `-reproReedit` and it:
-///   1. Presents the real player as a full-screen UIKit modal (as the app does).
-///   2. After it settles, fires exactly what a free user's Re-edit tap fires
-///      (PromptlyVideoPlayer.swift:699-700 `deferPaywall(.reedit)` + the host's
-///      onClose at :963 `dismiss { flushDeferredPaywall() }`).
-///   3. If the fix holds, the real re-edit PaywallView rises. If the bug were
-///      still present, the screen would fall back to whatever is behind the
-///      dismissed player with no paywall — the exact live symptom.
-///
-/// Never compiled into Release. No effect unless the launch argument is present.
-/// DEBUG-only presentation proof for the 1.2.0 wall onboarding. Launch with
-/// `-reproOnboarding`: forces the flow on (independent of the server knob) and
-/// walks every beat (hook → quiz → building → social proof → the trial wall) on
-/// a timer, so an external capture loop records each screen. Proves the whole
-/// flow renders — the standing law (presentations proven by presentations).
 /// The forced-update cover (version awareness). Reached only when the server
 /// arms force_update AND this build is below min_supported_version — a
 /// broken-build emergency, so it is deliberately non-dismissible.
@@ -633,6 +605,35 @@ struct UpdateRequiredView: View {
     }
 }
 
+
+#if DEBUG
+/// DEBUG-only presentation proof for the 1.1.7 re-edit P0 fix.
+///
+/// The live 1.1.6 bug (RACE 1): a free user taps Re-edit inside the full-screen
+/// video player; the player is a UIKit `.fullScreen` modal, so setting the
+/// paywall while it owns the presentation context is SILENTLY DROPPED — the user
+/// is left staring at the video. The fix parks the paywall and, on the player's
+/// dismissal completion, presents it via `UIHostingController` from the topmost
+/// VC (`AppState.presentPaywallFromTop`) rather than through the root `.sheet`,
+/// which stays dropped right after a full-screen UIKit modal dismisses.
+///
+/// This harness reproduces the EXACT runtime topology in the simulator using the
+/// REAL `PromptlyPlayerHostVC`, the REAL `AppState.deferPaywall`/`flushDeferredPaywall`
+/// seam, and the REAL `PaywallView`. Launch the app with `-reproReedit` and it:
+///   1. Presents the real player as a full-screen UIKit modal (as the app does).
+///   2. After it settles, fires exactly what a free user's Re-edit tap fires
+///      (PromptlyVideoPlayer.swift:699-700 `deferPaywall(.reedit)` + the host's
+///      onClose at :963 `dismiss { flushDeferredPaywall() }`).
+///   3. If the fix holds, the real re-edit PaywallView rises. If the bug were
+///      still present, the screen would fall back to whatever is behind the
+///      dismissed player with no paywall — the exact live symptom.
+///
+/// Never compiled into Release. No effect unless the launch argument is present.
+/// DEBUG-only presentation proof for the 1.2.0 wall onboarding. Launch with
+/// `-reproOnboarding`: forces the flow on (independent of the server knob) and
+/// walks every beat (hook → quiz → building → social proof → the trial wall) on
+/// a timer, so an external capture loop records each screen. Proves the whole
+/// flow renders — the standing law (presentations proven by presentations).
 @MainActor
 enum OnboardingProofHarness {
     private static var didRun = false
