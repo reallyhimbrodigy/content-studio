@@ -186,6 +186,11 @@ struct PromptlyApp: App {
                 // off until we have a controlled test confirming it's safe.
                 options.enableAutoPerformanceTracing = false
                 options.enableNetworkTracking = false
+                // RULED 2026-08-22: the default-on failed-request capture
+                // buried the real crashes under 307 issue-groups of URLSession
+                // 5xx noise (presigned S3 URLs shatter grouping). The same
+                // signal now flows through upload_http_error in OUR sink.
+                options.enableCaptureFailedRequests = false
                 options.enableUIViewControllerTracing = false
                 options.enableAppHangTracking = true
                 options.enableWatchdogTerminationTracking = true

@@ -96,7 +96,37 @@ final class BackgroundUploadManager: NSObject {
         var req = URLRequest(url: remoteUrl)
         req.httpMethod = "PUT"
         req.setValue(mimeType, forHTTPHeaderField: "Content-Type")
-        let task = session.uploadTask(with: req, fromFile: fileUrl)
+        // P0 (PROMPTLY-IOS-2Y/2Z/31/37): uploadTask(with:fromFile:) raises an
+        // NSInvalidArgumentException — uncatchable in Swift — when the file is
+        // missing/unreadable at creation time, and that killed the app. Two
+        // fences: (1) verify the file IMMEDIATELY before creation; (2) create
+        // through the ObjC catcher so an exception can never propagate. Either
+        // failure becomes a normal upload failure with its own fingerprint.
+        let path = fileUrl.path
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        let size = (attrs?[.size] as? Int64) ?? 0
+        guard FileManager.default.isReadableFile(atPath: path), size > 0 else {
+            Analytics.track("upload_failed", props: [
+                "mechanism": "source_file_missing_precreate",
+                "path": "bg-single",
+                "size_on_disk": size,
+                "conn": ReachabilityMonitor.currentConnectionType,
+            ], durable: true)
+            throw APIError.uploadFailed
+        }
+        var createdTask: URLSessionUploadTask?
+        let exception = ObjCExceptionCatcher.catchException {
+            createdTask = self.session.uploadTask(with: req, fromFile: fileUrl)
+        }
+        guard exception == nil, let task = createdTask else {
+            Analytics.track("upload_failed", props: [
+                "mechanism": "task_create_exception",
+                "path": "bg-single",
+                "exception": String(exception?.name.rawValue ?? "unknown").prefix(60).description,
+                "conn": ReachabilityMonitor.currentConnectionType,
+            ], durable: true)
+            throw APIError.uploadFailed
+        }
         let taskId = task.taskIdentifier
         let ctx = UploadContext(
             taskId: taskId,

@@ -183,7 +183,22 @@ final class ResumableMultipartUploader: NSObject {
             }
             var req = URLRequest(url: url)
             req.httpMethod = "PUT"
-            let task = session.uploadTask(with: req, fromFile: chunkURL)
+            // P0 fence (same class as bg-single): never let a missing chunk or
+            // an NSException at task creation kill the app — skip the part and
+            // let the next reconcile re-chunk it.
+            guard FileManager.default.isReadableFile(atPath: chunkURL.path) else { continue }
+            var createdTask: URLSessionUploadTask?
+            let exception = ObjCExceptionCatcher.catchException {
+                createdTask = self.session.uploadTask(with: req, fromFile: chunkURL)
+            }
+            guard exception == nil, let task = createdTask else {
+                Analytics.track("upload_failed", props: [
+                    "mechanism": "task_create_exception",
+                    "path": "multipart",
+                    "part": pn,
+                ], durable: true)
+                continue
+            }
             partCtx[task.taskIdentifier] = PartContext(uploadId: uploadId, partNumber: pn, chunkPath: chunkURL.path)
             persistPartContexts()
             task.resume()

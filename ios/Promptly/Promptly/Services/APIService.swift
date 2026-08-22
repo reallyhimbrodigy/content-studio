@@ -616,7 +616,9 @@ class APIService {
     }
 
     func uploadToS3(url: String, data videoData: Data, mimeType: String) async throws {
-        var request = URLRequest(url: URL(string: url)!)
+        // Never force-unwrap a server-supplied URL (EXC_BREAKPOINT class).
+        guard let requestUrl = URL(string: url) else { throw APIError.uploadFailed }
+        var request = URLRequest(url: requestUrl)
         request.httpMethod = "PUT"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         request.httpBody = videoData
