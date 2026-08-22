@@ -438,6 +438,11 @@ class AuthService {
             // refresh. ChatStore.clearForSignOut() ran on sign-out so the
             // list is already empty; this re-fills it for the new account.
             await ChatStore.shared.loadChats()
+            // Referral: claim a pending ?ref= code exactly once. saveSession
+            // also fires on token refresh — once-only comes from the service
+            // CONSUMING the code (and the server's once-per-referred rule),
+            // so this call is a cheap no-op on every later pass.
+            await ReferralService.shared.claimPendingIfAny()
         }
     }
 

@@ -336,6 +336,12 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenFirstLaunchPaywall)
+            // Referral intake: a ?ref=CODE on ANY URL that reaches the app
+            // (custom scheme today; universal links when provisioned) persists
+            // pre-auth and claims at sign-in. Non-referral URLs are ignored.
+            .onOpenURL { url in
+                ReferralService.shared.handleIncomingURL(url)
+            }
             // Post-auth landing reset (build 217): every sign-in lands on chat
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.
