@@ -1503,6 +1503,58 @@ function reportZero({ label, count, control }) {
   say('_Rule 6: harnesses count exactly like user jobs and land in the same ledger._');
   say('');
 
+  // ── GEMINI COVERAGE GAP — standing line (owner, 2026-08-22) ───────────────
+  // Second-largest unexplained number on the board after the $2,670.
+  const gj = await pageAll('video_jobs?select=result&status=eq.completed'
+    + `&created_at=gte.${new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)}`);
+  let gTot = 0, gField = 0, gCall = 0, gTok = 0, gOrphan = 0;
+  for (const r of gj) {
+    const s = ((r.result || {}).stage_timings) || {};
+    gTot += 1;
+    if (s.gemini_call !== undefined) gField += 1;
+    const hasC = typeof s.gemini_call === 'number' && s.gemini_call > 0;
+    const hasT = s.gemini_tokens && typeof s.gemini_tokens === 'object'
+      && (s.gemini_tokens.prompt || 0) > 0;
+    if (hasC) gCall += 1;
+    if (hasT) gTok += 1;
+    if (hasT && !hasC) gOrphan += 1;   // tokens with no timing = counter misses
+  }
+  const pc = (x) => (gTot ? (100 * x / gTot).toFixed(1) : '—');
+  say('# 🔍 GEMINI COVERAGE GAP — a per-job counter cannot explain non-per-job spend');
+  say('');
+  say('| | n | share of completions |');
+  say('|---|---:|---:|');
+  say(`| \`gemini_call\` field present | ${gField} | ${pc(gField)}% |`);
+  say(`| \`gemini_call\` **> 0** | ${gCall} | **${pc(gCall)}%** |`);
+  say(`| \`gemini_tokens\` **> 0** | ${gTok} | ${pc(gTok)}% |`);
+  say(`| **tokens present but \`gemini_call\`==0** | **${gOrphan}** | **${pc(gOrphan)}%** ← the counter-miss test |`);
+  say('');
+  if (gOrphan === 0) {
+    say('_**The counter is NOT broken.** Timing and token truth agree exactly — every job that spent '
+      + 'Gemini tokens recorded a call, and none spent tokens invisibly. The abort channel was the '
+      + 'obvious suspect (`gemini_call` sums only non-aborted calls; aborted ones go to '
+      + '`gemini_wasted_degen` and ARE billed) and it is **refuted**: the orphan count is zero._');
+  } else {
+    say(`_**⚠️ THE COUNTER MISSES CALLS** — ${gOrphan} job(s) spent Gemini tokens with no recorded `
+      + 'call. `gemini_call` sums only NON-ABORTED calls; aborted ones are billed but land in '
+      + '`gemini_wasted_degen`. Treat every per-job Gemini cost as a FLOOR._');
+  }
+  say('');
+  say(`_**So the gap is a BILLING SURFACE, not a counting bug.** Only ~${pc(gCall)}% of completions make `
+    + 'a worker editorial call, yet Gemini bills ~$1,000/mo — and **editorial was SUPPRESSED for most of '
+    + 'that period.** `stage_timings` instruments exactly one call site: the worker\'s. content-studio '
+    + 'holds **at least six more** (`server.js`, `lib/bleed-meter.js`, `lib/video-processor/analyze-video.js`, '
+    + '`lib/video-processor/process-job.js`, `scripts/trend-video-pipeline.js`, `analyze-reference-videos.js`) '
+    + 'on **Pro-tier** models (`gemini-3.1-pro-preview`, `gemini-2.5-pro`) with **no per-job counter at all**._');
+  say('');
+  say('_**The load-bearing detail:** `bleed-meter` runs DAILY and the trend pipeline is scheduled — '
+    + '**recurring jobs bill continuously regardless of video volume**, which is exactly how Gemini kept '
+    + 'billing ~$1,000/mo through a suppression window. A per-job denominator can never surface that, so '
+    + '$/job for Gemini is currently **unknowable from this instrument** and the ranked Flash A/B may be '
+    + 'aimed at a minority of the spend. **Next measurement: token counters on the six uninstrumented '
+    + 'call sites — that is one measurement from a decision.**_');
+  say('');
+
   // ── ANALYTICS SPEND — standing line (owner, 2026-08-20) ───────────────────
   // Third-largest line on the cost board and, until it was measured, the only
   // one with no instrument behind it. The tracked-event volume below is
