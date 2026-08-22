@@ -3271,6 +3271,15 @@ const server = http.createServer((req, res) => {
       // and cannot be overloaded for a UI-only wall). Env-flipped, default
       // OFF; the client caches last-known and defaults dark on fetch failure.
       first_launch_paywall: String(process.env.FIRST_LAUNCH_PAYWALL || '') === '1' ? 'on' : 'off',
+      // Conversion item 5: the onboarding RESULTS WALL — real renders, curated
+      // server-side, swappable WITHOUT an app build (the stale-sample-demo
+      // lesson, structurally). RESULTS_WALL_JSON is a JSON array of
+      // {video_url, thumb_url}; unset/invalid → [] and the client skips the
+      // beat entirely (auto-advance, never a blank wall).
+      results_wall: (() => {
+        try { const v = JSON.parse(process.env.RESULTS_WALL_JSON || '[]'); return Array.isArray(v) ? v : []; }
+        catch { return []; }
+      })(),
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
       // Presence only (never the values) — the deploy-sanity readback drift-guard
       // asserts these so a "preserve current values" sweep that drops either
