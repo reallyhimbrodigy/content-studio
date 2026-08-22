@@ -1541,18 +1541,38 @@ function reportZero({ label, count, control }) {
   }
   say('');
   say(`_**So the gap is a BILLING SURFACE, not a counting bug.** Only ~${pc(gCall)}% of completions make `
-    + 'a worker editorial call, yet Gemini bills ~$1,000/mo — and **editorial was SUPPRESSED for most of '
-    + 'that period.** `stage_timings` instruments exactly one call site: the worker\'s. content-studio '
-    + 'holds **at least six more** (`server.js`, `lib/bleed-meter.js`, `lib/video-processor/analyze-video.js`, '
-    + '`lib/video-processor/process-job.js`, `scripts/trend-video-pipeline.js`, `analyze-reference-videos.js`) '
-    + 'on **Pro-tier** models (`gemini-3.1-pro-preview`, `gemini-2.5-pro`) with **no per-job counter at all**._');
+    + 'a worker editorial call, yet Gemini bills ~$1,000/mo. `stage_timings` instruments exactly ONE call '
+    + 'site: the worker\'s. The uninstrumented callers, verified by actual API invocation rather than by '
+    + 'the string "gemini" appearing in the file:_');
   say('');
-  say('_**The load-bearing detail:** `bleed-meter` runs DAILY and the trend pipeline is scheduled — '
-    + '**recurring jobs bill continuously regardless of video volume**, which is exactly how Gemini kept '
-    + 'billing ~$1,000/mo through a suppression window. A per-job denominator can never surface that, so '
-    + '$/job for Gemini is currently **unknowable from this instrument** and the ranked Flash A/B may be '
-    + 'aimed at a minority of the spend. **Next measurement: token counters on the six uninstrumented '
-    + 'call sites — that is one measurement from a decision.**_');
+  say('| caller | API calls | model | cadence |');
+  say('|---|---:|---|---|');
+  say('| **`lib/video-processor/analyze-video.js`** | 7 | **`gemini-2.5-flash`** | **PER JOB** — uploads the video |');
+  say('| `server.js` | 2 | `gemini-2.5-flash` | per request |');
+  say('| `scripts/trend-video-pipeline.js` | 6 | `gemini-2.5-pro-preview` | **WEEKLY** (Sun 03:00) |');
+  say('| `analyze-reference-videos.js` | 6 | `gemini-3.1-pro-preview` | **ad-hoc** — npm script, unscheduled |');
+  say('');
+  say('_**CORRECTION (2026-08-22) to what this board said yesterday.** I listed SIX callers on Pro-tier '
+    + 'and named `bleed-meter` as a DAILY Pro-tier job. **All four claims were wrong.** There are FOUR '
+    + 'callers, not six — `lib/bleed-meter.js` and `lib/video-processor/process-job.js` make **ZERO** '
+    + 'Gemini calls (bleed-meter matched a grep on the word "model" in a *Modal* cost-model comment, and '
+    + 'process-job only `require`s from analyze-video). The trend pipeline is **WEEKLY, not daily**. And '
+    + 'the two Pro-tier callers are an analysis cron and an unscheduled script — **the production path is '
+    + 'already on FLASH.**_');
+  say('');
+  say('_**What that reverses:** I said recurring jobs bill continuously regardless of video volume and '
+    + 'that this explained billing through a suppression window. **The opposite is true.** Weekly Pro '
+    + '(6 calls) plus an unscheduled script is tens of dollars a year, not $1,000/mo — so **retiring '
+    + 'bleed-meter or the trend pipeline saves essentially nothing in Gemini**, and bleed-meter cannot be '
+    + 'retired for Gemini cost it does not incur. The volume driver is `analyze-video.js`: **per-job, '
+    + 'per-video, and it scales with exactly the thing I claimed it did not.**_');
+  say('');
+  say('_**And it undercuts a ranking.** The Flash A/B was ranked #2 (~$7,000/yr) on the inference that '
+    + '$1,000/mo is only consistent with Pro pricing. **content-studio\'s production path is already '
+    + 'Flash**, so that prize applies only to the worker\'s own editorial call, not to the volume driver. '
+    + '**#2 is now CONDITIONAL, not confirmed.** Next measurement is unchanged and is the top Gemini item: '
+    + 'token counters on the four verified call sites — above all on `analyze-video.js`, which is per-job '
+    + 'and uploads video._');
   say('');
 
   // ── ANALYTICS SPEND — standing line (owner, 2026-08-20) ───────────────────

@@ -1,6 +1,6 @@
 # WHERE THE PRODUCT BLEEDS — ranked by USER
 
-**JUDGE, generated 2026-08-22T20:23:22.155Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
+**JUDGE, generated 2026-08-22T20:28:50.594Z by `scripts/bleeds.js`.** Job window 24h; funnel + fulfillment windows stated per section. Every line [MEASURED].
 
 # 📉 DAILY ACTIVE VIDEO-MAKERS — **188/day**, **-31%** week-over-week
 
@@ -31,7 +31,7 @@
 | 2026-08-22T19Z | 5 | 0 | 0% |
 | 2026-08-22T20Z | 1 | 0 | 0% |
 
-_12h total: 12/72 = 16.7%. Retires itself when the 6h rate goes under 10%._
+_12h total: 12/71 = 16.9%. Retires itself when the 6h rate goes under 10%._
 
 ---
 
@@ -111,7 +111,7 @@ _Modal spend per render: the cost board carries the anchor (orchestration 72.3% 
 | 2026-08-19 | 395 | 196 |  |
 | 2026-08-20 | 346 | 177 |  |
 | 2026-08-21 | 335 | 174 |  |
-| 2026-08-22 | 203 | 97 |  |
+| 2026-08-22 | 203 | 98 |  |
 
 **Chat can die without producing a single error.** `logUsageEvent(userId,'chat')` fires only on a SUCCESSFUL reply, so a broken chat emits no row, no error_code and no alert — it goes quiet, and quiet looks like a slow day. That is why this is a **permanent positive counter** on the board rather than an alarm that fires on absence: an alarm that depends on the broken thing to speak cannot fire.
 
@@ -210,7 +210,7 @@ _Taxonomy note: `other` holds 502 asks at 86.1% silent — a bucket that large i
 
 ## 6. Purchase funnel — BY USER (7d)
 
-wall_viewed **945** → started **91** (9.6%) → paid **7** (7.7% of starters)
+wall_viewed **944** → started **91** (9.6%) → paid **7** (7.7% of starters)
 purchase_failed n=168, self-cancelled at the sheet **163** (97.0%) — the leak is the OFFER, not the funnel.
 
 ## 7. LUMEN cost baseline — First Light  🔒 **FROZEN 2026-08-15**
@@ -350,10 +350,12 @@ _**Denominator basis:** the completion denominator behind cost-per-render figure
 
 ### Deploy quiet-window — the GATE's own verdict
 
-**QUIET — safe to push**
+**BUSY — push BLOCKED**
 
 ```
-QUIET-WINDOW: OK — 0 in-flight user jobs (probe live: sees 5 recent row(s)). Modal task/container count is NOT the gate and must not be used as one.
+QUIET-WINDOW: BUSY — 1 in-flight user job(s). Deploying now orphans live user work.
+    processing  277f6a2e-8570-433b-a4e6-4b370f3cf851  2026-08-22T20:23:35.964075+00:00  stale=1s
+  Wait for them to settle and re-run. Deliberate override: PROMPTLY_ALLOW_BUSY_DEPLOY=1 (and attribute the orphans in DEPLOY_LOG.md).
 ```
 
 **No wedged rows surfaced.**
@@ -387,9 +389,20 @@ _Rule 6: harnesses count exactly like user jobs and land in the same ledger._
 
 _**The counter is NOT broken.** Timing and token truth agree exactly — every job that spent Gemini tokens recorded a call, and none spent tokens invisibly. The abort channel was the obvious suspect (`gemini_call` sums only non-aborted calls; aborted ones go to `gemini_wasted_degen` and ARE billed) and it is **refuted**: the orphan count is zero._
 
-_**So the gap is a BILLING SURFACE, not a counting bug.** Only ~5.6% of completions make a worker editorial call, yet Gemini bills ~$1,000/mo — and **editorial was SUPPRESSED for most of that period.** `stage_timings` instruments exactly one call site: the worker's. content-studio holds **at least six more** (`server.js`, `lib/bleed-meter.js`, `lib/video-processor/analyze-video.js`, `lib/video-processor/process-job.js`, `scripts/trend-video-pipeline.js`, `analyze-reference-videos.js`) on **Pro-tier** models (`gemini-3.1-pro-preview`, `gemini-2.5-pro`) with **no per-job counter at all**._
+_**So the gap is a BILLING SURFACE, not a counting bug.** Only ~5.6% of completions make a worker editorial call, yet Gemini bills ~$1,000/mo. `stage_timings` instruments exactly ONE call site: the worker's. The uninstrumented callers, verified by actual API invocation rather than by the string "gemini" appearing in the file:_
 
-_**The load-bearing detail:** `bleed-meter` runs DAILY and the trend pipeline is scheduled — **recurring jobs bill continuously regardless of video volume**, which is exactly how Gemini kept billing ~$1,000/mo through a suppression window. A per-job denominator can never surface that, so $/job for Gemini is currently **unknowable from this instrument** and the ranked Flash A/B may be aimed at a minority of the spend. **Next measurement: token counters on the six uninstrumented call sites — that is one measurement from a decision.**_
+| caller | API calls | model | cadence |
+|---|---:|---|---|
+| **`lib/video-processor/analyze-video.js`** | 7 | **`gemini-2.5-flash`** | **PER JOB** — uploads the video |
+| `server.js` | 2 | `gemini-2.5-flash` | per request |
+| `scripts/trend-video-pipeline.js` | 6 | `gemini-2.5-pro-preview` | **WEEKLY** (Sun 03:00) |
+| `analyze-reference-videos.js` | 6 | `gemini-3.1-pro-preview` | **ad-hoc** — npm script, unscheduled |
+
+_**CORRECTION (2026-08-22) to what this board said yesterday.** I listed SIX callers on Pro-tier and named `bleed-meter` as a DAILY Pro-tier job. **All four claims were wrong.** There are FOUR callers, not six — `lib/bleed-meter.js` and `lib/video-processor/process-job.js` make **ZERO** Gemini calls (bleed-meter matched a grep on the word "model" in a *Modal* cost-model comment, and process-job only `require`s from analyze-video). The trend pipeline is **WEEKLY, not daily**. And the two Pro-tier callers are an analysis cron and an unscheduled script — **the production path is already on FLASH.**_
+
+_**What that reverses:** I said recurring jobs bill continuously regardless of video volume and that this explained billing through a suppression window. **The opposite is true.** Weekly Pro (6 calls) plus an unscheduled script is tens of dollars a year, not $1,000/mo — so **retiring bleed-meter or the trend pipeline saves essentially nothing in Gemini**, and bleed-meter cannot be retired for Gemini cost it does not incur. The volume driver is `analyze-video.js`: **per-job, per-video, and it scales with exactly the thing I claimed it did not.**_
+
+_**And it undercuts a ranking.** The Flash A/B was ranked #2 (~$7,000/yr) on the inference that $1,000/mo is only consistent with Pro pricing. **content-studio's production path is already Flash**, so that prize applies only to the worker's own editorial call, not to the volume driver. **#2 is now CONDITIONAL, not confirmed.** Next measurement is unchanged and is the top Gemini item: token counters on the four verified call sites — above all on `analyze-video.js`, which is per-job and uploads video._
 
 # 📊 ANALYTICS SPEND — $280/cycle ($9.20/day), and it is 100% session replay
 
@@ -398,8 +411,8 @@ _**The load-bearing detail:** `bleed-meter` runs DAILY and the trend pipeline is
 | PostHog events/month | 865,000 `[OWNER]` | **$0** — 86.5% of a FREE 1M tier |
 | mobile recordings/month | 37,000 `[OWNER]` | |
 | **billable recordings** | **32,000** | **$280 → $0.00875 each** |
-| tracked+named, measured here | 283,267/mo · 36 names | $0 — **and all of it is already in Supabase** |
-| **autocapture — no name at all** | **581,733/mo (67%)** | $0 today · **58% of the free tier** |
+| tracked+named, measured here | 283,293/mo · 36 names | $0 — **and all of it is already in Supabase** |
+| **autocapture — no name at all** | **581,707/mo (67%)** | $0 today · **58% of the free tier** |
 
 _**Events cost nothing; replay is the entire bill** — so retiring events recovers **$0**. Recordings/session = **1.01**: replay records essentially EVERY session, unsampled (SDK default, never tuned). 10% sampling takes $280 → **~$28**._
 _**No reader, proven not asserted:** ZERO of this lane's reports cite a session recording — the only file mentioning replay is the one written to explain the bill. A recording is watched by a human or not at all, so replay carries none of the read-census caveat named events do._
