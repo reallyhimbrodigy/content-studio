@@ -128,7 +128,10 @@ final class ReferralService: ObservableObject {
         guard let code = await getOrCreateCode() else { return }
         Analytics.track("referral_share")
         let link = Self.shareURL(code: code)
-        let text = "I edit my videos by just talking to Promptly — use my link and we both get Pro time."
+        // Honest per the schema: the reward (7 days Pro at 3 qualified friends)
+        // goes to the REFERRER — never promise the invitee something the
+        // server doesn't grant.
+        let text = "I edit my videos by just talking to Promptly. Try it with my code — when you make your first video it counts toward my free week of Pro."
         let activity = UIActivityViewController(activityItems: [text, link], applicationActivities: nil)
         guard let top = AppState.topViewController() else { return }
         if let pop = activity.popoverPresentationController {
