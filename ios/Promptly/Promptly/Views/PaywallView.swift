@@ -89,6 +89,10 @@ struct PaywallView: View {
     /// True from the moment the user taps buy, so the `isPro` auto-dismiss below
     /// doesn't race the confirmation screen out of existence.
     @State private var didPurchaseHere = false
+    /// Ported from TrialWallView (ranked 2026-08-22): 96% of the payment-step
+    /// loss is a deliberate cancel at Apple's sheet, and this surface said
+    /// NOTHING afterward. Honest recovery: no charge was made, same offer.
+    @State private var showAbandonRecovery = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -106,6 +110,7 @@ struct PaywallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.05)
 
                     Text(subtitle)
                         .font(.system(size: 16))
@@ -118,6 +123,7 @@ struct PaywallView: View {
 
                     featureList
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.12)
 
                     Spacer().frame(height: 28)
 
@@ -141,6 +147,7 @@ struct PaywallView: View {
 
                     ctaButton
                         .padding(.horizontal, 24)
+                        .entrance(delay: 0.26)
 
                     fineprint
                         .padding(.horizontal, 32)
@@ -169,6 +176,10 @@ struct PaywallView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 36)
                 }
+            }
+
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
             }
 
             Button {
@@ -234,17 +245,12 @@ struct PaywallView: View {
         }
     }
 
+    // The brand mark, not a crown (conversion workstream item 2): a paywall
+    // that doesn't carry the product's own brand reads as a system dialog,
+    // not a premium offer. Animated with the LaunchView entrance, luminous
+    // halo instead of the gold glow.
     private var proCrown: some View {
-        ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: 72, height: 72)
-                .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                .shadow(color: PromptlyGold.solid.opacity(0.4), radius: 30, y: 0)
-            Image(systemName: "crown.fill")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(PromptlyGold.gradient)
-        }
+        AnimatedPromptlyMark(size: 76, halo: true)
     }
 
     private var featureList: some View {
@@ -349,6 +355,20 @@ struct PaywallView: View {
         return nil
     }
 
+    /// Weekly anchor for the yearly plan (ruled 2026-08-21: both SKUs read in
+    /// weekly terms). RC's own localized per-week string first; ÷52 with the
+    /// product's formatter as fallback. Storefront-derived either way.
+    private func weeklyAnchor(for pkg: Package) -> String? {
+        if let perWeek = pkg.storeProduct.localizedPricePerWeek,
+           let line = TrialCopy.weeklyEquivalent(perWeekPrice: perWeek) {
+            return line
+        }
+        if let formatter = pkg.storeProduct.priceFormatter {
+            return TrialCopy.weeklyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
+        }
+        return nil
+    }
+
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -407,12 +427,15 @@ struct PaywallView: View {
                     Text("\(priceText) \(intervalText)")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
-                    // Fix 1: honest per-month divisor under the yearly sticker —
-                    // keeps the full annual number, kills the sticker shock. Both
-                    // the RC per-month string and the divide-by-12 fallback derive
-                    // currency + locale from StoreKit; no price literal in code.
-                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
-                        Text(monthly)
+                    // Honest per-WEEK divisor under the yearly sticker (ruled
+                    // 2026-08-21: both SKUs read in weekly terms — the smallest
+                    // honest unit leads). Full annual number stays; the anchor
+                    // kills the sticker shock. RC per-week string or ÷52 with the
+                    // product's formatter — currency + locale from StoreKit, no
+                    // price literal in code. (The weekly SKU's own price line is
+                    // already per-week.)
+                    if pkg.packageType == .annual, let weekly = weeklyAnchor(for: pkg) {
+                        Text(weekly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(PromptlyGold.solid)
                     }
@@ -451,6 +474,10 @@ struct PaywallView: View {
                     if let err = subscription.lastError {
                         errorMessage = err
                         showError = true
+                    } else {
+                        // User closed Apple's sheet. Honest recovery, same
+                        // offer, no new flow (the one-wall law).
+                        withAnimation { showAbandonRecovery = true }
                     }
                 }
             }
@@ -495,6 +522,10 @@ struct PaywallView: View {
         ZStack(alignment: .topTrailing) {
             ProCelebrationView(price: c.price) { isPresented = false }
 
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
+            }
+
             Button {
                 isPresented = false
             } label: {
@@ -521,6 +552,39 @@ struct PaywallView: View {
 /// the purchase, entitlement sync, and analytics already fired in
 /// SubscriptionService.purchase; this just celebrates and hands control back via
 /// `onContinue` (dismiss the sheet, or advance the onboarding/door flow).
+/// Honest transaction-abandon recovery, SHARED by both purchase surfaces:
+/// the user closed Apple's sheet — confirm no charge, same offer, no new flow.
+struct AbandonRecoveryOverlay: View {
+    let onBack: () -> Void
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 38))
+                    .foregroundColor(.green)
+                Text("No charge was made")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundColor(.white)
+                Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                Button(action: onBack) {
+                    Text("Back to Pro")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .background(Color.white, in: Capsule())
+                }
+            }
+            .padding(26)
+            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, 36)
+        }
+    }
+}
+
 struct ProCelebrationView: View {
     let price: String
     let onContinue: () -> Void
@@ -548,17 +612,9 @@ struct ProCelebrationView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 88)
 
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 84, height: 84)
-                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                            .shadow(color: PromptlyGold.solid.opacity(0.45), radius: 34, y: 0)
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(PromptlyGold.gradient)
-                    }
-                    .padding(.bottom, 22)
+                    // Brand mark, not a crown — same swap as the paywall header.
+                    AnimatedPromptlyMark(size: 88, halo: true)
+                        .padding(.bottom, 22)
 
                     Text(TrialCopy.proMomentTitle)
                         .font(.system(size: 28, weight: .heavy))

@@ -186,6 +186,11 @@ struct PromptlyApp: App {
                 // off until we have a controlled test confirming it's safe.
                 options.enableAutoPerformanceTracing = false
                 options.enableNetworkTracking = false
+                // RULED 2026-08-22: the default-on failed-request capture
+                // buried the real crashes under 307 issue-groups of URLSession
+                // 5xx noise (presigned S3 URLs shatter grouping). The same
+                // signal now flows through upload_http_error in OUR sink.
+                options.enableCaptureFailedRequests = false
                 options.enableUIViewControllerTracing = false
                 options.enableAppHangTracking = true
                 options.enableWatchdogTerminationTracking = true
@@ -248,6 +253,7 @@ struct PromptlyApp: App {
 
     @StateObject private var appState = AppState.shared
     @StateObject private var onboarding = OnboardingState.shared
+    @ObservedObject private var versionAware = VersionAwareness.shared
 
     /// RETENTION-funnel: app foreground lifecycle. Fires `session_started` on the
     /// first `.active` (cold launch) and on every real background→active resume —
@@ -269,6 +275,18 @@ struct PromptlyApp: App {
         return true
     }
 
+    /// Conversion item 1: the first-launch dismissible paywall — 100% paid-tier
+    /// exposure before signup/onboarding, shown exactly once per install.
+    /// Knob-gated (/api/health.first_launch_paywall, default OFF = dark).
+    /// Authenticated users never see it (they're past first launch by
+    /// definition — the grandfather rule the wall-onboarding branch also uses).
+    private var showFirstLaunchPaywall: Bool {
+        guard onboarding.firstLaunchPaywallEnabled == true,
+              !onboarding.hasSeenFirstLaunchPaywall,
+              !auth.isAuthenticated else { return false }
+        return true
+    }
+
     /// LaunchView must remain on screen long enough for its entrance
     /// animation to complete and the brand moment to register. Without
     /// this gate, a fast auth.checkSession() resolve (~300ms on a warm
@@ -284,6 +302,15 @@ struct PromptlyApp: App {
                 if auth.isLoading || !launchMinElapsed {
                     LaunchView()
                         .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                } else if versionAware.updateRequired {
+                    // FORCED update (broken-build emergency only): its own
+                    // server flag, default off; bundle below the supported
+                    // floor. Non-dismissible by design.
+                    UpdateRequiredView()
+                        .transition(.opacity)
+                } else if showFirstLaunchPaywall {
+                    FirstLaunchPaywallView()
+                        .transition(.opacity)
                 } else if showWallOnboarding {
                     OnboardingFlow()
                         .transition(.opacity)
@@ -320,6 +347,13 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
+            .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenFirstLaunchPaywall)
+            // Referral intake: a ?ref=CODE on ANY URL that reaches the app
+            // (custom scheme today; universal links when provisioned) persists
+            // pre-auth and claims at sign-in. Non-referral URLs are ignored.
+            .onOpenURL { url in
+                ReferralService.shared.handleIncomingURL(url)
+            }
             // Post-auth landing reset (build 217): every sign-in lands on chat
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.
@@ -535,6 +569,43 @@ struct LaunchView: View {
     }
 }
 
+/// The forced-update cover (version awareness). Reached only when the server
+/// arms force_update AND this build is below min_supported_version — a
+/// broken-build emergency, so it is deliberately non-dismissible.
+struct UpdateRequiredView: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                AnimatedPromptlyMark(size: 84, halo: true)
+                    .padding(.bottom, 20)
+                Text("Update to continue")
+                    .font(.system(size: 26, weight: .heavy))
+                    .foregroundColor(.white)
+                Text("This version has a problem we've fixed. Grab the update and you're back in seconds.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 10)
+                Button {
+                    VersionAwareness.shared.openAppStore()
+                } label: {
+                    Text("Update Promptly")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white))
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
+            }
+        }
+    }
+}
+
+
 #if DEBUG
 /// DEBUG-only presentation proof for the 1.1.7 re-edit P0 fix.
 ///
@@ -574,7 +645,11 @@ enum OnboardingProofHarness {
         s.debugForceRepro()
         // Walk the beats. Signup is skipped (needs real auth); every other beat
         // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
-        let beats: [OnboardingState.Step] = [.language, .audience, .intent, .attribution]
+        // Conversion beats included: the results wall (skips itself when
+        // /api/health.results_wall is empty — expected in the harness) and the
+        // second personalised paywall (renders on offering data; referral row
+        // shows regardless).
+        let beats: [OnboardingState.Step] = [.language, .audience, .intent, .attribution, .results, .paywall2]
         Task { @MainActor in
             for beat in beats {
                 s.debugSet(beat)

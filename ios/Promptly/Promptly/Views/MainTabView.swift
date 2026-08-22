@@ -14,6 +14,7 @@ struct MainTabView: View {
     // Singleton store, observed for the featured/dismissed state. Using the shared
     // instance keeps the seen-set + last fetch consistent across foreground cycles.
     @StateObject private var readyStore = ReadyStateStore.shared
+    @ObservedObject private var versionAware = VersionAwareness.shared
 
     var body: some View {
         EditorView()
@@ -24,6 +25,18 @@ struct MainTabView: View {
             // featured video exists, so navigation is untouched the rest of the time.
             .safeAreaInset(edge: .top, spacing: 0) {
                 Group {
+                    // SOFT update banner (version awareness): dismissible,
+                    // per-version (a new latest re-shows once), server-driven
+                    // copy. The ready-banner wins the slot when both exist —
+                    // a finished video beats an update nudge.
+                    if readyStore.featured == nil, versionAware.showBanner {
+                        UpdateBanner(
+                            notes: versionAware.notes,
+                            onUpdate: { versionAware.openAppStore() },
+                            onDismiss: { versionAware.dismissBanner() }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     if let job = readyStore.featured {
                         ReadyVideoBanner(
                             job: job,
@@ -211,7 +224,8 @@ final class ReadyStateStore: ObservableObject {
         extraCount = max(0, candidates.count - 1)
     }
 
-    /// Parses the API's ISO-8601 created_at (with or without fractional seconds).
+
+/// Parses the API's ISO-8601 created_at (with or without fractional seconds).
     /// Mirrors LibraryView's date parsing so recency math agrees across surfaces.
     private static func parseDate(_ s: String?) -> Date? {
         guard let s else { return nil }
@@ -220,6 +234,57 @@ final class ReadyStateStore: ObservableObject {
         if let d = f.date(from: s) { return d }
         f.formatOptions = [.withInternetDateTime]
         return f.date(from: s)
+    }
+}
+
+    /// Version-awareness soft banner: one line, Update, and an X that dismisses
+/// for THIS latest version (a newer one re-shows it once).
+private struct UpdateBanner: View {
+    let notes: String?
+    let onUpdate: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(PromptlyGold.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Update available")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(notes ?? "Improvements and fixes")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button(action: onUpdate) {
+                Text("Update")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white))
+            }
+            .buttonStyle(.plain)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 }
 

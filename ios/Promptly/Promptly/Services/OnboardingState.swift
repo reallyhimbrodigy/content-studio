@@ -25,10 +25,27 @@ final class OnboardingState: ObservableObject {
     /// because a config fetch failed (the wall stays a server-enforced fact).
     @Published private(set) var wallOnboardingEnabled: Bool? = nil
 
+    /// Conversion workstream item 1: the FIRST-LAUNCH dismissible paywall.
+    /// Separate knob from wall_enforcement (that one is shared with the server
+    /// gates and cannot be overloaded for a UI-only wall). Same lifecycle:
+    /// nil = not fetched, default false on failure, last-known cached.
+    @Published private(set) var firstLaunchPaywallEnabled: Bool? = nil
+
+    /// Show-once: set when the first-launch wall is dismissed or purchased
+    /// through. @Published so the root ZStack re-branches the moment it flips.
+    @Published var hasSeenFirstLaunchPaywall: Bool =
+        UserDefaults.standard.bool(forKey: "first_launch_paywall_seen") {
+        didSet {
+            UserDefaults.standard.set(hasSeenFirstLaunchPaywall,
+                                      forKey: "first_launch_paywall_seen")
+        }
+    }
+
     /// One fetch per launch, ~instant (same host as every other call). Cached
     /// result also persisted so a cold offline launch uses the last-known knob.
     func resolveExposure() async {
         let cacheKey = "wall_onboarding_enabled"
+        let flpCacheKey = "first_launch_paywall_enabled"
         do {
             var req = URLRequest(url: URL(string: "https://usepromptly.app/api/health")!)
             req.timeoutInterval = 5
@@ -37,9 +54,18 @@ final class OnboardingState: ObservableObject {
             let on = (obj?["wall_enforcement"] as? String) == "on"
             wallOnboardingEnabled = on
             UserDefaults.standard.set(on, forKey: cacheKey)
+            // Second knob rides the same fetch. Field absent (server not yet
+            // deployed) → false → the wall stays dark. Never brick on config.
+            let flp = (obj?["first_launch_paywall"] as? String) == "on"
+            firstLaunchPaywallEnabled = flp
+            UserDefaults.standard.set(flp, forKey: flpCacheKey)
+            // Version awareness rides the same fetch (latest/min-supported/
+            // force flag/notes — all server-driven).
+            VersionAwareness.shared.ingest(obj)
         } catch {
-            // Offline / server hiccup: last-known knob, default off.
+            // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
+            firstLaunchPaywallEnabled = UserDefaults.standard.bool(forKey: flpCacheKey)
         }
     }
 
@@ -71,9 +97,11 @@ final class OnboardingState: ObservableObject {
     enum Step: String, Codable {
         case language       // pick the app language (kept from the quiz)
         case signup         // Sign in with Apple
-        case audience       // Q1: who are you making videos for? (segments)
-        case intent         // Q2: what do you want to make? (preselects a vibe)
-        case attribution    // Q3: how did you hear about us? (channel attribution)
+        case audience       // Q1: who are you making videos for? (required, Skip)
+        case intent         // Q2: what do you want to make? (required, MULTI-select, Skip)
+        case attribution    // Q3: how did you hear about us? (OPTIONAL, last)
+        case results        // the results wall — real renders, right before the ask
+        case paywall2       // the second, personalised paywall (referral = 3rd option)
         case done           // → straight to the video picker
     }
 
@@ -89,7 +117,11 @@ final class OnboardingState: ObservableObject {
     // PostHog person properties. Every future funnel cut can finally segment by
     // audience/intent, and we get channel attribution for the first time.
     @Published var audience: String?
-    @Published var intent: String?
+    /// Q2 is MULTI-SELECT (ruled 2026-08-21). All picks, in tap order.
+    @Published var intents: [String] = []
+    /// Back-compat single intent = the first pick (feeds the vibe bridge and
+    /// the profile_settings key existing consumers read).
+    var intent: String? { intents.first }
     @Published var attribution: String?
     /// Q2 maps the chosen intent to a starting vibe so the editor opens ON A
     /// STYLE, not a blank text field (nil = "not sure" → default composer).
@@ -132,6 +164,7 @@ final class OnboardingState: ObservableObject {
         var settings: [String: Any] = [:]
         if let audience { settings["audience"] = audience }
         if let intent { settings["intent"] = intent }
+        if !intents.isEmpty { settings["intents"] = intents }
         if let attribution { settings["attribution"] = attribution }
         guard !settings.isEmpty,
               let token = AuthService.shared.accessToken,

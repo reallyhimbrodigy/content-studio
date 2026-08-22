@@ -34,9 +34,11 @@ struct TrialWallView: View {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"
     }
     private var billedPeriod: String { periodLabel(selectedPackage) }
-    private var monthlyEquivalent: String? {
+    /// Weekly equivalent of the selected ANNUAL plan (ruled 2026-08-21: both
+    /// SKUs read in weekly terms). RC's pricePerWeek, storefront-formatted.
+    private var weeklyEquivalent: String? {
         guard let pkg = selectedPackage, pkg.packageType == .annual,
-              let price = pkg.storeProduct.pricePerMonth else { return nil }
+              let price = pkg.storeProduct.pricePerWeek else { return nil }
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.locale = pkg.storeProduct.priceFormatter?.locale ?? .current
@@ -54,7 +56,9 @@ struct TrialWallView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let c = confirmed { confirmation(c) } else { wall }
-            if showAbandonRecovery { abandonRecovery }
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
+            }
         }
         .onAppear {
             // UPGRADE-funnel entry (after free_limit_hit).
@@ -87,9 +91,9 @@ struct TrialWallView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
                 VStack(spacing: 10) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(PromptlyGold.gradient)
+                    // Brand mark, not a crown — consistent with PaywallView's header.
+                    AnimatedPromptlyMark(size: 64, halo: true)
+                    // (Header text cascades below; the mark animates itself.)
                     Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
@@ -157,8 +161,8 @@ struct TrialWallView: View {
                             Text("\(pkg.storeProduct.localizedPriceString) / \(periodLabel(pkg))")
                                 .font(.system(size: 19, weight: .heavy))
                                 .foregroundColor(.white)
-                            if pkg.packageType == .annual, let m = monthlyEquivalent {
-                                Text("that's \(m)/mo, billed yearly")
+                            if pkg.packageType == .annual, let w = weeklyEquivalent {
+                                Text("that's \(w)/week, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
                             }
@@ -247,37 +251,6 @@ struct TrialWallView: View {
         } else if subscription.lastError == nil {
             // User closed Apple's sheet. Honest recovery, same offer, no new flow.
             withAnimation { showAbandonRecovery = true }
-        }
-    }
-
-    // ── Honest transaction-abandon recovery ──────────────────────────────────
-    private var abandonRecovery: some View {
-        ZStack {
-            Color.black.opacity(0.72).ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 38))
-                    .foregroundColor(.green)
-                Text("No charge was made")
-                    .font(.system(size: 21, weight: .bold))
-                    .foregroundColor(.white)
-                Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                Button {
-                    withAnimation { showAbandonRecovery = false }
-                } label: {
-                    Text("Back to Pro")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity).frame(height: 50)
-                        .background(Color.white, in: Capsule())
-                }
-            }
-            .padding(26)
-            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
-            .padding(.horizontal, 36)
         }
     }
 

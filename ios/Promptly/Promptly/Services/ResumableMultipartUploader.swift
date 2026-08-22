@@ -183,7 +183,22 @@ final class ResumableMultipartUploader: NSObject {
             }
             var req = URLRequest(url: url)
             req.httpMethod = "PUT"
-            let task = session.uploadTask(with: req, fromFile: chunkURL)
+            // P0 fence (same class as bg-single): never let a missing chunk or
+            // an NSException at task creation kill the app — skip the part and
+            // let the next reconcile re-chunk it.
+            guard FileManager.default.isReadableFile(atPath: chunkURL.path) else { continue }
+            var createdTask: URLSessionUploadTask?
+            let exception = ObjCExceptionCatcher.catchException {
+                createdTask = self.session.uploadTask(with: req, fromFile: chunkURL)
+            }
+            guard exception == nil, let task = createdTask else {
+                Analytics.track("upload_failed", props: [
+                    "mechanism": "task_create_exception",
+                    "path": "multipart",
+                    "part": pn,
+                ], durable: true)
+                continue
+            }
             partCtx[task.taskIdentifier] = PartContext(uploadId: uploadId, partNumber: pn, chunkPath: chunkURL.path)
             persistPartContexts()
             task.resume()
@@ -323,6 +338,17 @@ final class ResumableMultipartUploader: NSObject {
             let k = "\(ctx.uploadId)#\(ctx.partNumber)"
             let n = (partAttempts[k] ?? 0) + 1
             partAttempts[k] = n
+            // Transport-error mirror (HTTPClientError diagnosis): Sentry auto-
+            // captures these 5xx invisibly; this puts the SAME signal where our
+            // reads run. FIRST retry per part only — bounded, never a spam loop.
+            if n == 1 {
+                Analytics.track("upload_http_error", props: [
+                    "path": "multipart",
+                    "status": http?.statusCode ?? 0,
+                    "part": ctx.partNumber,
+                    "conn": ReachabilityMonitor.currentConnectionType,
+                ])
+            }
             if n >= MultipartConfig.maxPartAttempts {
                 Task { await self.giveUp(uploadId: ctx.uploadId, reason: "part \(ctx.partNumber) exhausted") }
             } else {

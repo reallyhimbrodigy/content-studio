@@ -433,7 +433,10 @@ struct AuthView: View {
             guard parts.count == 2 else { return nil }
             return (parts[0], parts[1].removingPercentEncoding ?? parts[1])
         }
-        let dict = Dictionary(uniqueKeysWithValues: pairs)
+        // Dictionary(uniqueKeysWithValues:) TRAPS on a duplicate key — a
+        // malformed/hostile callback fragment with a repeated key would crash
+        // the whole OAuth path (EXC_BREAKPOINT class). Keep the first value.
+        let dict = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
 
         if let providerError = dict["error_description"] ?? dict["error"] {
             throw AuthError.signInFailed(providerError)

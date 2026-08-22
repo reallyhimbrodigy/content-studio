@@ -49,6 +49,22 @@ check(inrLine.contains("₹") && !inrLine.contains("$"),
 check(TrialCopy.monthlyEquivalent(fromYearlyPrice: 0, using: usd) == nil,
       "zero/invalid yearly price yields no anchor")
 
+// MARK: Weekly-equivalent anchor (ruled 2026-08-21: both SKUs in weekly terms)
+
+check(TrialCopy.weeklyEquivalent(perWeekPrice: "$7.69") == "that's $7.69/week, billed yearly",
+      "weeklyEquivalent formats a valid per-week price")
+check(TrialCopy.weeklyEquivalent(perWeekPrice: "₹383") == "that's ₹383/week, billed yearly",
+      "weeklyEquivalent is currency-agnostic (RC's localized string verbatim)")
+check(TrialCopy.weeklyEquivalent(perWeekPrice: nil) == nil,
+      "weeklyEquivalent returns nil when RC gives no per-week price (no wrong line)")
+check(TrialCopy.weeklyEquivalent(perWeekPrice: "  ") == nil,
+      "weeklyEquivalent returns nil for a blank string")
+check(TrialCopy.weeklyEquivalent(fromYearlyPrice: Decimal(string: "399.99")!, using: usd)
+      == "that's $7.69/week, billed yearly",
+      "$399.99/yr divides to $7.69/week (real Promptly yearly price, ÷52)")
+check(TrialCopy.weeklyEquivalent(fromYearlyPrice: 0, using: usd) == nil,
+      "zero/invalid yearly price yields no weekly anchor")
+
 // MARK: Post-purchase confirmation (FREEMIUM — no trial)
 let paidBody = TrialCopy.confirmationBody(price: "$39.99")
 check(paidBody.contains("$39.99"), "confirmation names the exact recurring charge")
