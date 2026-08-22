@@ -72,3 +72,10 @@ swiftc "$DIR/../Promptly/Services/ExportGateProbe.swift" \
        "$DIR/ExportGateDecisionTests.swift" \
        -o "${TMPDIR:-/tmp}/gateprobetest"
 "${TMPDIR:-/tmp}/gateprobetest"
+
+# VersionMath — numeric version compare behind the update prompts ("1.3.6" <
+# "1.3.10" — the string-compare trap). Pure Foundation.
+swiftc "$DIR/../Promptly/Services/VersionMath.swift" \
+       "$DIR/VersionMathTests.swift" \
+       -o "${TMPDIR:-/tmp}/versionmathtest"
+"${TMPDIR:-/tmp}/versionmathtest"

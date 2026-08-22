@@ -59,6 +59,9 @@ final class OnboardingState: ObservableObject {
             let flp = (obj?["first_launch_paywall"] as? String) == "on"
             firstLaunchPaywallEnabled = flp
             UserDefaults.standard.set(flp, forKey: flpCacheKey)
+            // Version awareness rides the same fetch (latest/min-supported/
+            // force flag/notes — all server-driven).
+            VersionAwareness.shared.ingest(obj)
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)

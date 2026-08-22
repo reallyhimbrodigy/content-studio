@@ -9,6 +9,7 @@ struct EditorView: View {
     // entitlement changes (effectiveIsPro = subscription.isPro || usage.isPro).
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @ObservedObject private var usageService = UsageService.shared
+    @ObservedObject private var versionAware = VersionAwareness.shared
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -99,6 +100,15 @@ struct EditorView: View {
                 // favor of in-bubble ghost-text rotation (see inputBar).
                 VStack(spacing: 0) {
                     reeditChip
+                    // CONTEXTUAL update prompt (version awareness): an upload
+                    // just failed AND this build is older than what's live —
+                    // the known-fixed-failure case (1.3.6's upload defect,
+                    // fixed in 1.3.10). Shown at the exact point of the pain,
+                    // server-driven thresholds, no version literals here.
+                    if versionAware.showContextualUploadPrompt,
+                       pendingVideos.contains(where: { $0.uploadFailed }) {
+                        UpdateFixStrip()
+                    }
                     // Usage meter (freemium, staged for 1.3.1): renders left today
                     // + reset countdown, escalating to "Get more usage" at the cap.
                     // Hides itself for Pro. Sits directly above the composer bubble
@@ -3786,6 +3796,38 @@ private struct PushExplainerAlert: ViewModifier {
 /// With quota it's a quiet "N free videos left today"; at the cap it escalates
 /// to a reset countdown + a gold "Get more usage" link into the paywall. This
 /// is DISPLAY ONLY — the server is the real gate (see UsageService).
+/// Version awareness — the contextual "this failure is fixed in the update"
+/// strip. One honest line + the store button; no error language beyond what
+/// the failed tile already shows.
+private struct UpdateFixStrip: View {
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            VersionAwareness.shared.openAppStore()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PromptlyGold.gradient)
+                Text("Uploads are more reliable in the latest version")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+                Spacer(minLength: 6)
+                Text("Update")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(Color.white))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.white.opacity(0.05))
+    }
+}
+
 private struct UsageMeterStrip: View {
     var onUpgrade: () -> Void
     @ObservedObject private var usage = UsageService.shared
