@@ -102,3 +102,72 @@ lane and is the part I can build once the bucket/prefix convention is confirmed.
 storage** until aborted. If no lifecycle rule expires them, this is quietly on the
 cost board too — and it would be the first line on it that is *caused by* the
 delivery-rate defect.
+
+---
+
+# RESULT — 2026-08-22. Initiation failure dominates, and the silent bucket is the SAME mode.
+
+**Bucket `thisismybucketagainwooo`, region us-west-2 pinned. Validated against
+BUILDER's independent read: 452 vs 452–453 open uploads, prefixes 442/3/3 vs
+447/3/3 — two instruments, two lanes, agreeing within minutes of drift.**
+
+| | |
+|---|---:|
+| open multipart uploads | 452 |
+| in-flight (<6h) | 38 |
+| **abandoned (≥6h)** | **414** |
+| `sources/` · `exports/` · `renders/` | 447 · 3 · 3 |
+| abandoned parts held | 11.2 GB = **$0.25/mo**, billing since 2026-05-02 |
+| lifecycle rules | **0** — the evidence is intact |
+
+## `bytes_uploaded` — the number that names the largest loss
+
+| | |
+|---|---:|
+| **zero-byte** | **261 / 414 = 63.0%** |
+| p50 | **0.00 MB** |
+| p75 | 18.63 MB |
+| p90 | 96.00 MB |
+| max | 416.00 MB |
+
+**VERDICT — INITIATION FAILURE, per the pre-registered read (≥50% zero-byte).**
+The median dead upload **never moved a single byte.** The target is
+permissions / disk / Photos export — the `"Export failed: Disk Full"` and
+PHPhotos classes already visible in `upload_failed` — **not** network robustness
+and **not** background-transfer resilience.
+
+**It is BIMODAL and I am not flattening that.** 63% moved nothing; the top
+quartile moved 18–416 MB. **Both fixes have a real population** — but initiation
+is the majority, and it is the one nobody has worked on. Background-transfer work
+addresses roughly the top quartile.
+
+## Reported vs silent — the same-mode hypothesis, tested not assumed
+
+Cut by USER (Rule 7): **242 distinct users**, p50 **1** abandoned upload each,
+max 7 — so this is 242 lost users, not 414 failures.
+
+| | users | share |
+|---|---:|---:|
+| ever fired `upload_failed` | 26 | 10.7% |
+| **never fired it — SILENT** | **216** | **89.3%** |
+
+| profile | n | zero-byte | p50 | p90 |
+|---|---:|---:|---:|---:|
+| REPORTED | 50 | 56.0% | 0.00 MB | 148.43 MB |
+| **SILENT** | 358 | **64.2%** | 0.00 MB | 87.47 MB |
+
+**The profiles match.** Both medians are zero; zero-byte shares are 56% vs 64%.
+Per the read locked before the data: *"silent abandonments show the same
+`bytes_uploaded` profile as reported ones → one mode, one fix, and the 62% is not
+a separate problem."*
+
+**CONFIRMED: the silent majority is not a second defect.** It is the same
+initiation failure, invisible only because the app died before it could report —
+which is why no client-side event could ever have found it.
+
+## What this changes
+
+**Stop treating upload loss as a network problem.** The largest single loss in
+the product is uploads that never transfer a byte, and 89% of the users it hits
+report nothing at all. The fix is on the pre-transfer path: file export, disk
+space, Photos permissions.
