@@ -3271,6 +3271,20 @@ const server = http.createServer((req, res) => {
       // and cannot be overloaded for a UI-only wall). Env-flipped, default
       // OFF; the client caches last-known and defaults dark on fetch failure.
       first_launch_paywall: String(process.env.FIRST_LAUNCH_PAYWALL || '') === '1' ? 'on' : 'off',
+      // Version awareness (client update prompts, server-driven so copy and
+      // thresholds change WITHOUT a release):
+      //   latest_version         — what's live on the App Store (soft banner
+      //                            when the client is older; dismissible).
+      //   min_supported_version  — floor for the FORCED update cover, armed
+      //                            only when force_update='on' (broken-build
+      //                            emergencies only; default OFF).
+      //   update_notes           — one line of user-facing copy for the banner
+      //                            (optional; client has a default).
+      // All empty/off by default → the whole feature stays dark.
+      latest_version: String(process.env.LATEST_APP_VERSION || ''),
+      min_supported_version: String(process.env.MIN_SUPPORTED_APP_VERSION || ''),
+      force_update: String(process.env.FORCE_UPDATE || '') === '1' ? 'on' : 'off',
+      update_notes: String(process.env.UPDATE_NOTES || ''),
       // Conversion item 5: the onboarding RESULTS WALL — real renders, curated
       // server-side, swappable WITHOUT an app build (the stale-sample-demo
       // lesson, structurally). RESULTS_WALL_JSON is a JSON array of
