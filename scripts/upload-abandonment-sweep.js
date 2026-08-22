@@ -108,7 +108,31 @@ async function partsFor(s3, Key, UploadId) {
     console.error('S3_BUCKET_NAME unset — cannot sweep. Not a zero: UNKNOWN.');
     process.exit(2);
   }
-  const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+  // REGION IS PINNED, AND BOTH OLD FALLBACKS WERE WRONG. The bucket is
+  // us-west-2; content-studio's AWS_REGION is us-west-1 and the previous default
+  // was us-east-1 — BOTH return PermanentRedirect. A redirect swallowed as an
+  // empty list reads as "no abandoned uploads", the sweep is marked complete, a
+  // lifecycle rule aborts 448 uploads (the oldest billing since 2026-05-02), and
+  // the bytes_uploaded distribution is destroyed before it is ever measured.
+  // A wrong region must NEVER be able to look like a clean zero.
+  const REGION = process.env.S3_BUCKET_REGION || 'us-west-2';
+  const s3 = new S3Client({ region: REGION });
+
+  // REACHABILITY PROBE BEFORE INTERPRETING ANYTHING. HeadBucket surfaces
+  // PermanentRedirect as an error instead of letting it degrade into silence.
+  try {
+    const { HeadBucketCommand } = require('@aws-sdk/client-s3');
+    await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
+  } catch (e) {
+    const code = e && (e.name || e.Code || '');
+    const hinted = e && (e.$metadata?.headers?.['x-amz-bucket-region']
+      || e.BucketRegion || '');
+    console.error(`REGION UNCONFIRMED — HeadBucket(${BUCKET}) failed in ${REGION}: ${code}`);
+    if (hinted) console.error(`  S3 says the bucket lives in: ${hinted} — re-run with S3_BUCKET_REGION=${hinted}`);
+    console.error('  RESULT IS UNKNOWN, NOT ZERO. Do not mark this sweep complete and do not');
+    console.error('  let any lifecycle rule act on an unmeasured bucket.');
+    process.exit(2);
+  }
 
   const uploads = await listAllUploads(s3);
   if (!uploads.length) {
@@ -117,7 +141,9 @@ async function partsFor(s3, Key, UploadId) {
     console.log('lifecycle rule already expires abandoned parts — in which case the artifact');
     console.log('this sweep depends on is being deleted before it can be measured, and the');
     console.log('silent 62% needs a different instrument. Confirm which before reporting.');
-    process.exit(0);
+    // EXIT 2, NOT 0. An empty list is UNKNOWN until proven to mean zero — the same
+    // rigour the missing-bucket path already applied. A 0 here gets marked complete.
+    process.exit(2);
   }
 
   const now = Date.now();
