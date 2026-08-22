@@ -89,6 +89,10 @@ struct PaywallView: View {
     /// True from the moment the user taps buy, so the `isPro` auto-dismiss below
     /// doesn't race the confirmation screen out of existence.
     @State private var didPurchaseHere = false
+    /// Ported from TrialWallView (ranked 2026-08-22): 96% of the payment-step
+    /// loss is a deliberate cancel at Apple's sheet, and this surface said
+    /// NOTHING afterward. Honest recovery: no charge was made, same offer.
+    @State private var showAbandonRecovery = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -172,6 +176,10 @@ struct PaywallView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 36)
                 }
+            }
+
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
             }
 
             Button {
@@ -466,6 +474,10 @@ struct PaywallView: View {
                     if let err = subscription.lastError {
                         errorMessage = err
                         showError = true
+                    } else {
+                        // User closed Apple's sheet. Honest recovery, same
+                        // offer, no new flow (the one-wall law).
+                        withAnimation { showAbandonRecovery = true }
                     }
                 }
             }
@@ -510,6 +522,10 @@ struct PaywallView: View {
         ZStack(alignment: .topTrailing) {
             ProCelebrationView(price: c.price) { isPresented = false }
 
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
+            }
+
             Button {
                 isPresented = false
             } label: {
@@ -536,6 +552,39 @@ struct PaywallView: View {
 /// the purchase, entitlement sync, and analytics already fired in
 /// SubscriptionService.purchase; this just celebrates and hands control back via
 /// `onContinue` (dismiss the sheet, or advance the onboarding/door flow).
+/// Honest transaction-abandon recovery, SHARED by both purchase surfaces:
+/// the user closed Apple's sheet — confirm no charge, same offer, no new flow.
+struct AbandonRecoveryOverlay: View {
+    let onBack: () -> Void
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 38))
+                    .foregroundColor(.green)
+                Text("No charge was made")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundColor(.white)
+                Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                Button(action: onBack) {
+                    Text("Back to Pro")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .background(Color.white, in: Capsule())
+                }
+            }
+            .padding(26)
+            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, 36)
+        }
+    }
+}
+
 struct ProCelebrationView: View {
     let price: String
     let onContinue: () -> Void

@@ -56,7 +56,9 @@ struct TrialWallView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let c = confirmed { confirmation(c) } else { wall }
-            if showAbandonRecovery { abandonRecovery }
+            if showAbandonRecovery {
+                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
+            }
         }
         .onAppear {
             // UPGRADE-funnel entry (after free_limit_hit).
@@ -249,37 +251,6 @@ struct TrialWallView: View {
         } else if subscription.lastError == nil {
             // User closed Apple's sheet. Honest recovery, same offer, no new flow.
             withAnimation { showAbandonRecovery = true }
-        }
-    }
-
-    // ── Honest transaction-abandon recovery ──────────────────────────────────
-    private var abandonRecovery: some View {
-        ZStack {
-            Color.black.opacity(0.72).ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 38))
-                    .foregroundColor(.green)
-                Text("No charge was made")
-                    .font(.system(size: 21, weight: .bold))
-                    .foregroundColor(.white)
-                Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                Button {
-                    withAnimation { showAbandonRecovery = false }
-                } label: {
-                    Text("Back to Pro")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity).frame(height: 50)
-                        .background(Color.white, in: Capsule())
-                }
-            }
-            .padding(26)
-            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
-            .padding(.horizontal, 36)
         }
     }
 
