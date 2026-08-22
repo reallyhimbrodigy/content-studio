@@ -3332,6 +3332,17 @@ const server = http.createServer((req, res) => {
           // the __smoke_event_allowlist cert scans app-* branches, so the emitters on
           // app-uns-instrumentation already fail the deploy gate without this.
           'picker_opened', 'picker_result', 'picker_asset_unresolved',
+          // Referral program (conversion workstream; schema live 2026-08-21):
+          // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
+          // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
+          'referral_share', 'referral_link_opened', 'referral_claimed',
+          // Onboarding question answers (Q1 audience / Q2 intent / Q3
+          // attribution). FIXES a live drift: the client emitted these via
+          // NON-LITERAL names (OnboardingQuestion.X.event) invisible to the
+          // gate's regex AND absent here — the SQL mirror silently dropped
+          // them while PostHog kept them. The 3-question rework emits them as
+          // literals; allowlisted so the mirror finally keeps the answers.
+          'onboarding_audience', 'onboarding_intent', 'onboarding_attribution',
           // upload_attempt (1.3.7/225): durable {size_mb, path, src_key} fired at
           // upload START so the failing (never-settled) population has a SIZE to
           // band UNS by. Emitted on app-1.3.3; allowlisted here so the SQL mirror
