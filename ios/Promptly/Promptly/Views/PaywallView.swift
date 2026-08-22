@@ -234,17 +234,12 @@ struct PaywallView: View {
         }
     }
 
+    // The brand mark, not a crown (conversion workstream item 2): a paywall
+    // that doesn't carry the product's own brand reads as a system dialog,
+    // not a premium offer. Animated with the LaunchView entrance, luminous
+    // halo instead of the gold glow.
     private var proCrown: some View {
-        ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: 72, height: 72)
-                .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                .shadow(color: PromptlyGold.solid.opacity(0.4), radius: 30, y: 0)
-            Image(systemName: "crown.fill")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(PromptlyGold.gradient)
-        }
+        AnimatedPromptlyMark(size: 76, halo: true)
     }
 
     private var featureList: some View {
@@ -349,6 +344,20 @@ struct PaywallView: View {
         return nil
     }
 
+    /// Weekly anchor for the yearly plan (ruled 2026-08-21: both SKUs read in
+    /// weekly terms). RC's own localized per-week string first; ÷52 with the
+    /// product's formatter as fallback. Storefront-derived either way.
+    private func weeklyAnchor(for pkg: Package) -> String? {
+        if let perWeek = pkg.storeProduct.localizedPricePerWeek,
+           let line = TrialCopy.weeklyEquivalent(perWeekPrice: perWeek) {
+            return line
+        }
+        if let formatter = pkg.storeProduct.priceFormatter {
+            return TrialCopy.weeklyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
+        }
+        return nil
+    }
+
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -407,12 +416,15 @@ struct PaywallView: View {
                     Text("\(priceText) \(intervalText)")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
-                    // Fix 1: honest per-month divisor under the yearly sticker —
-                    // keeps the full annual number, kills the sticker shock. Both
-                    // the RC per-month string and the divide-by-12 fallback derive
-                    // currency + locale from StoreKit; no price literal in code.
-                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
-                        Text(monthly)
+                    // Honest per-WEEK divisor under the yearly sticker (ruled
+                    // 2026-08-21: both SKUs read in weekly terms — the smallest
+                    // honest unit leads). Full annual number stays; the anchor
+                    // kills the sticker shock. RC per-week string or ÷52 with the
+                    // product's formatter — currency + locale from StoreKit, no
+                    // price literal in code. (The weekly SKU's own price line is
+                    // already per-week.)
+                    if pkg.packageType == .annual, let weekly = weeklyAnchor(for: pkg) {
+                        Text(weekly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(PromptlyGold.solid)
                     }
@@ -548,17 +560,9 @@ struct ProCelebrationView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 88)
 
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 84, height: 84)
-                            .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                            .shadow(color: PromptlyGold.solid.opacity(0.45), radius: 34, y: 0)
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(PromptlyGold.gradient)
-                    }
-                    .padding(.bottom, 22)
+                    // Brand mark, not a crown — same swap as the paywall header.
+                    AnimatedPromptlyMark(size: 88, halo: true)
+                        .padding(.bottom, 22)
 
                     Text(TrialCopy.proMomentTitle)
                         .font(.system(size: 28, weight: .heavy))

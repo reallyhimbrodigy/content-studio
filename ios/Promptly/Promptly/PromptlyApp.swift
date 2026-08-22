@@ -269,6 +269,18 @@ struct PromptlyApp: App {
         return true
     }
 
+    /// Conversion item 1: the first-launch dismissible paywall — 100% paid-tier
+    /// exposure before signup/onboarding, shown exactly once per install.
+    /// Knob-gated (/api/health.first_launch_paywall, default OFF = dark).
+    /// Authenticated users never see it (they're past first launch by
+    /// definition — the grandfather rule the wall-onboarding branch also uses).
+    private var showFirstLaunchPaywall: Bool {
+        guard onboarding.firstLaunchPaywallEnabled == true,
+              !onboarding.hasSeenFirstLaunchPaywall,
+              !auth.isAuthenticated else { return false }
+        return true
+    }
+
     /// LaunchView must remain on screen long enough for its entrance
     /// animation to complete and the brand moment to register. Without
     /// this gate, a fast auth.checkSession() resolve (~300ms on a warm
@@ -284,6 +296,9 @@ struct PromptlyApp: App {
                 if auth.isLoading || !launchMinElapsed {
                     LaunchView()
                         .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                } else if showFirstLaunchPaywall {
+                    FirstLaunchPaywallView()
+                        .transition(.opacity)
                 } else if showWallOnboarding {
                     OnboardingFlow()
                         .transition(.opacity)
@@ -320,6 +335,7 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isLoading)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
+            .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenFirstLaunchPaywall)
             // Post-auth landing reset (build 217): every sign-in lands on chat
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.

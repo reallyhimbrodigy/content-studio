@@ -34,9 +34,11 @@ struct TrialWallView: View {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"
     }
     private var billedPeriod: String { periodLabel(selectedPackage) }
-    private var monthlyEquivalent: String? {
+    /// Weekly equivalent of the selected ANNUAL plan (ruled 2026-08-21: both
+    /// SKUs read in weekly terms). RC's pricePerWeek, storefront-formatted.
+    private var weeklyEquivalent: String? {
         guard let pkg = selectedPackage, pkg.packageType == .annual,
-              let price = pkg.storeProduct.pricePerMonth else { return nil }
+              let price = pkg.storeProduct.pricePerWeek else { return nil }
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.locale = pkg.storeProduct.priceFormatter?.locale ?? .current
@@ -87,9 +89,8 @@ struct TrialWallView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
                 VStack(spacing: 10) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(PromptlyGold.gradient)
+                    // Brand mark, not a crown — consistent with PaywallView's header.
+                    AnimatedPromptlyMark(size: 64, halo: true)
                     Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)
@@ -157,8 +158,8 @@ struct TrialWallView: View {
                             Text("\(pkg.storeProduct.localizedPriceString) / \(periodLabel(pkg))")
                                 .font(.system(size: 19, weight: .heavy))
                                 .foregroundColor(.white)
-                            if pkg.packageType == .annual, let m = monthlyEquivalent {
-                                Text("that's \(m)/mo, billed yearly")
+                            if pkg.packageType == .annual, let w = weeklyEquivalent {
+                                Text("that's \(w)/week, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
                             }

@@ -25,10 +25,27 @@ final class OnboardingState: ObservableObject {
     /// because a config fetch failed (the wall stays a server-enforced fact).
     @Published private(set) var wallOnboardingEnabled: Bool? = nil
 
+    /// Conversion workstream item 1: the FIRST-LAUNCH dismissible paywall.
+    /// Separate knob from wall_enforcement (that one is shared with the server
+    /// gates and cannot be overloaded for a UI-only wall). Same lifecycle:
+    /// nil = not fetched, default false on failure, last-known cached.
+    @Published private(set) var firstLaunchPaywallEnabled: Bool? = nil
+
+    /// Show-once: set when the first-launch wall is dismissed or purchased
+    /// through. @Published so the root ZStack re-branches the moment it flips.
+    @Published var hasSeenFirstLaunchPaywall: Bool =
+        UserDefaults.standard.bool(forKey: "first_launch_paywall_seen") {
+        didSet {
+            UserDefaults.standard.set(hasSeenFirstLaunchPaywall,
+                                      forKey: "first_launch_paywall_seen")
+        }
+    }
+
     /// One fetch per launch, ~instant (same host as every other call). Cached
     /// result also persisted so a cold offline launch uses the last-known knob.
     func resolveExposure() async {
         let cacheKey = "wall_onboarding_enabled"
+        let flpCacheKey = "first_launch_paywall_enabled"
         do {
             var req = URLRequest(url: URL(string: "https://usepromptly.app/api/health")!)
             req.timeoutInterval = 5
@@ -37,9 +54,15 @@ final class OnboardingState: ObservableObject {
             let on = (obj?["wall_enforcement"] as? String) == "on"
             wallOnboardingEnabled = on
             UserDefaults.standard.set(on, forKey: cacheKey)
+            // Second knob rides the same fetch. Field absent (server not yet
+            // deployed) → false → the wall stays dark. Never brick on config.
+            let flp = (obj?["first_launch_paywall"] as? String) == "on"
+            firstLaunchPaywallEnabled = flp
+            UserDefaults.standard.set(flp, forKey: flpCacheKey)
         } catch {
-            // Offline / server hiccup: last-known knob, default off.
+            // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
+            firstLaunchPaywallEnabled = UserDefaults.standard.bool(forKey: flpCacheKey)
         }
     }
 

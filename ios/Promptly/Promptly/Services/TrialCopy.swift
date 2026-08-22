@@ -36,6 +36,27 @@ enum TrialCopy {
         return monthlyEquivalent(perMonthPrice: formatted)
     }
 
+    // MARK: - Weekly-equivalent anchor (conversion workstream: BOTH SKUs read
+    // in weekly terms — the smallest honest unit leads; ruled 2026-08-21)
+
+    /// The secondary line under the YEARLY plan in weekly terms. `perWeekPrice`
+    /// is RevenueCat's `localizedPricePerWeek` — storefront-formatted. Same
+    /// nil-over-wrong contract as the monthly anchor.
+    static func weeklyEquivalent(perWeekPrice: String?) -> String? {
+        guard let p = perWeekPrice?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !p.isEmpty else { return nil }
+        return "that's \(p)/week, billed yearly"
+    }
+
+    /// Fallback when RC's `localizedPricePerWeek` is nil: yearly ÷ 52 with the
+    /// product's own formatter — currency + locale from StoreKit, no literals.
+    static func weeklyEquivalent(fromYearlyPrice yearly: Decimal, using formatter: NumberFormatter) -> String? {
+        guard yearly > 0 else { return nil }
+        let perWeek = yearly / 52
+        guard let formatted = formatter.string(from: perWeek as NSDecimalNumber) else { return nil }
+        return weeklyEquivalent(perWeekPrice: formatted)
+    }
+
     // MARK: - Post-purchase confirmation (replaces the silent dismiss)
 
     static let confirmationTitle = "You're Pro"
