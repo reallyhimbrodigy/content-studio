@@ -588,7 +588,11 @@ struct EditorView: View {
             onUpload: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 tapAddVideo()
-            }
+            },
+            // Item 7: greet by first name when a display name exists (Apple
+            // sign-in with name scope); email-OTP users have none → no line.
+            greetName: AuthService.shared.currentUser?.user_metadata?.full_name?
+                .split(separator: " ").first.map(String.init)
         )
         .onTapGesture { Self.dismissKeyboard() }
     }
@@ -1117,6 +1121,32 @@ struct EditorView: View {
 
             if !subscriptionService.effectiveIsPro {
                 UpgradePill { appState.presentPaywall(.manual) }
+
+                // Conversion item 6 — the persistent value header: the free
+                // tier reads as a visible, finite resource instead of an
+                // invisible one. SERVER-derived count ONLY (the UsageMeter
+                // law: nil/unknown limit → show NOTHING, never a guessed
+                // number). Tap routes to the same manual paywall as the pill.
+                if let left = usageService.rendersLeft {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        appState.presentPaywall(.manual)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "film")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("\(left) today")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.white.opacity(left == 0 ? 0.9 : 0.7))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(left) free videos left today")
+                }
             }
 
             Spacer(minLength: 8)

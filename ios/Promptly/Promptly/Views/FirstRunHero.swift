@@ -16,6 +16,10 @@ import SwiftUI
 struct FirstRunHero: View {
     /// Open the picker to upload the user's own clip.
     let onUpload: () -> Void
+    /// Conversion item 7 — "Hey [name]," one line, real warmth, costs nothing.
+    /// nil (no display name — email-OTP users often have none) → no greeting
+    /// line at all, never a hollow "Hey there".
+    var greetName: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +38,13 @@ struct FirstRunHero: View {
                 .font(.system(size: 56, weight: .thin))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 22)
+
+            if let name = greetName {
+                Text("Hey \(name),")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
+            }
 
             Text("Upload a talking head video")
                 .font(.system(size: 20, weight: .semibold))

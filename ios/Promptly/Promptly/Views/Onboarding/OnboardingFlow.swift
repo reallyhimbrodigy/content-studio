@@ -40,38 +40,59 @@ struct OnboardingFlow: View {
                 AuthView()
                     .transition(.opacity)
 
+            // EVENT NAMES ARE LITERALS on purpose: the deploy gate's regex only
+            // sees `Analytics.track("…")` literals, and the old indirect
+            // `.event` form left every answer silently dropped by the SQL
+            // mirror. Allowlisted on main (73609d2). Answers ride post-signup,
+            // so they key on the auth UUID.
             case .audience:
-                OnboardingQuestionView(question: .audience, onSkip: {}) { picked in
-                    if let picked {
-                        state.audience = picked
-                        Analytics.track(OnboardingQuestion.audience.event, props: [OnboardingQuestion.audience.propKey: picked])
+                OnboardingQuestionView(question: .audience,
+                                       progress: (1, 3), onSkip: {}) { picked in
+                    if let first = picked.first {
+                        state.audience = first
+                        Analytics.track("onboarding_audience", props: ["audience": first])
                     }
                     state.step = .intent
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
 
             case .intent:
-                OnboardingQuestionView(question: .intent, onSkip: {}) { picked in
-                    if let picked {
-                        state.intent = picked
-                        state.preselectedVibe = OnboardingQuestion.vibe(forIntent: picked)
-                        Analytics.track(OnboardingQuestion.intent.event, props: [OnboardingQuestion.intent.propKey: picked])
+                OnboardingQuestionView(question: .intent, multiSelect: true,
+                                       progress: (2, 3), onSkip: {}) { picked in
+                    if !picked.isEmpty {
+                        state.intents = picked
+                        // The vibe bridge keys off the FIRST pick.
+                        state.preselectedVibe = OnboardingQuestion.vibe(forIntent: picked[0])
+                        Analytics.track("onboarding_intent", props: ["intent": picked])
                     }
                     state.step = .attribution
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
 
             case .attribution:
-                OnboardingQuestionView(question: .attribution, onSkip: {}) { picked in
-                    if let picked {
-                        state.attribution = picked
-                        Analytics.track(OnboardingQuestion.attribution.event, props: [OnboardingQuestion.attribution.propKey: picked])
+                OnboardingQuestionView(question: .attribution, isOptional: true,
+                                       progress: (3, 3), onSkip: {}) { picked in
+                    if let first = picked.first {
+                        state.attribution = first
+                        Analytics.track("onboarding_attribution", props: ["attribution": first])
                     }
-                    // Onboarding done → PromptlyApp swaps to the editor in
-                    // picker-first state (greets by name, big Import, style
-                    // thumbnails, `preselectedVibe` already chosen). No paywall.
-                    Analytics.track("onboarding_completed")
+                    // Answers are final — persist now; completion fires after
+                    // the results wall + second paywall run.
                     state.persistAnswersToProfile()
+                    state.step = .results
+                }
+                .transition(.opacity)
+
+            case .results:
+                ResultsWallView {
+                    state.step = .paywall2
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+
+            case .paywall2:
+                SecondPaywallView {
+                    // Purchased, shared, or declined — all land in the app.
+                    Analytics.track("onboarding_completed")
                     state.hasCompletedOnboarding = true
                     state.step = .done
                 }

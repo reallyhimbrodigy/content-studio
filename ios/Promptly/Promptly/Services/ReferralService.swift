@@ -78,16 +78,23 @@ final class ReferralService: ObservableObject {
         guard let code = UserDefaults.standard.string(forKey: Self.pendingCodeKey),
               let uid = AuthService.shared.currentUser?.id,
               let token = await AuthService.shared.getValidToken() else { return }
-        let status = await rpc(function: "claim_referral",
-                               body: ["p_referred": uid, "p_code": code],
-                               token: token).status
-        switch status {
+        let resp = await rpc(function: "claim_referral",
+                             body: ["p_referred": uid, "p_code": code],
+                             token: token)
+        // VERIFIED CONTRACT (probe 2026-08-22): the RPC answers 200 with a
+        // structured body — {"ok":true} on success, {"ok":false,"reason":
+        // "unknown_code"|…} on any terminal rejection. Both are TERMINAL:
+        // consume the pending code (retrying an unknown/own/used code can never
+        // succeed). Only transport-level failures (0/5xx) keep it for retry.
+        struct ClaimResult: Codable { let ok: Bool; let reason: String? }
+        switch resp.status {
         case 200...299:
-            Analytics.track("referral_claimed", durable: true)
+            let result = resp.data.flatMap { try? JSONDecoder().decode(ClaimResult.self, from: $0) }
+            if result?.ok == true {
+                Analytics.track("referral_claimed", durable: true)
+            }
             UserDefaults.standard.removeObject(forKey: Self.pendingCodeKey)
         case 400...499:
-            // Terminal: invalid/own/already-used code. Consume — retrying can
-            // never succeed, and a stale pending code must not re-fire forever.
             UserDefaults.standard.removeObject(forKey: Self.pendingCodeKey)
         default:
             break // transient (offline / 5xx): keep pending, retry next session

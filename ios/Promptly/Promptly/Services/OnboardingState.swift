@@ -94,9 +94,11 @@ final class OnboardingState: ObservableObject {
     enum Step: String, Codable {
         case language       // pick the app language (kept from the quiz)
         case signup         // Sign in with Apple
-        case audience       // Q1: who are you making videos for? (segments)
-        case intent         // Q2: what do you want to make? (preselects a vibe)
-        case attribution    // Q3: how did you hear about us? (channel attribution)
+        case audience       // Q1: who are you making videos for? (required, Skip)
+        case intent         // Q2: what do you want to make? (required, MULTI-select, Skip)
+        case attribution    // Q3: how did you hear about us? (OPTIONAL, last)
+        case results        // the results wall — real renders, right before the ask
+        case paywall2       // the second, personalised paywall (referral = 3rd option)
         case done           // → straight to the video picker
     }
 
@@ -112,7 +114,11 @@ final class OnboardingState: ObservableObject {
     // PostHog person properties. Every future funnel cut can finally segment by
     // audience/intent, and we get channel attribution for the first time.
     @Published var audience: String?
-    @Published var intent: String?
+    /// Q2 is MULTI-SELECT (ruled 2026-08-21). All picks, in tap order.
+    @Published var intents: [String] = []
+    /// Back-compat single intent = the first pick (feeds the vibe bridge and
+    /// the profile_settings key existing consumers read).
+    var intent: String? { intents.first }
     @Published var attribution: String?
     /// Q2 maps the chosen intent to a starting vibe so the editor opens ON A
     /// STYLE, not a blank text field (nil = "not sure" → default composer).
@@ -155,6 +161,7 @@ final class OnboardingState: ObservableObject {
         var settings: [String: Any] = [:]
         if let audience { settings["audience"] = audience }
         if let intent { settings["intent"] = intent }
+        if !intents.isEmpty { settings["intents"] = intents }
         if let attribution { settings["attribution"] = attribution }
         guard !settings.isEmpty,
               let token = AuthService.shared.accessToken,

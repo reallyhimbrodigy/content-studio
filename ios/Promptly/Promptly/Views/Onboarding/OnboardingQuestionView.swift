@@ -88,21 +88,41 @@ struct OnboardingQuestion {
 
 struct OnboardingQuestionView: View {
     let question: OnboardingQuestion
+    /// Q2 is multi-select (ruled 2026-08-21); Q1/Q3 stay single-select.
+    var multiSelect: Bool = false
+    /// Q3 is OPTIONAL: Continue is always enabled (empty = same as Skip).
+    /// Q1/Q2 are required-with-Skip: Continue stays disabled until a pick.
+    var isOptional: Bool = false
+    /// Progress through the question run, e.g. (1, 3) — the bar at the top.
+    var progress: (index: Int, total: Int)? = nil
     let onSkip: () -> Void
-    /// Reports the chosen option key (nil if skipped). Advances the flow.
-    let onContinue: (_ pickedKey: String?) -> Void
+    /// Reports the chosen option keys ([] if skipped/none). Advances the flow.
+    let onContinue: (_ pickedKeys: [String]) -> Void
 
-    @State private var selected: String?
+    @State private var selected: [String] = []
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 0) {
-                // Skip — always available (every question is skippable).
-                HStack {
+                // Progress + Skip. Skip is always available on required
+                // questions (the escape); on the optional one Continue already
+                // never blocks, but Skip stays for consistency.
+                HStack(spacing: 12) {
+                    if let p = progress {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.12))
+                                Capsule().fill(Color.white)
+                                    .frame(width: geo.size.width * CGFloat(p.index) / CGFloat(max(p.total, 1)))
+                            }
+                        }
+                        .frame(width: 120, height: 4)
+                        .accessibilityLabel("Step \(p.index) of \(p.total)")
+                    }
                     Spacer()
-                    Button("Skip") { onContinue(nil); onSkip() }
+                    Button("Skip") { onContinue([]); onSkip() }
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -135,22 +155,23 @@ struct OnboardingQuestionView: View {
 
                 Spacer(minLength: 8)
 
-                // Continue — DISABLED until a choice is made (Zac's rule).
+                // Continue — DISABLED until a choice is made (Zac's rule) on
+                // required questions; always enabled on the optional one.
                 Button {
-                    guard let selected else { return }
+                    guard isOptional || !selected.isEmpty else { return }
                     onContinue(selected)
                 } label: {
                     Text("Continue")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .foregroundStyle(selected == nil ? .white.opacity(0.4) : .black)
+                        .foregroundStyle(!isOptional && selected.isEmpty ? .white.opacity(0.4) : .black)
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(selected == nil ? Color.white.opacity(0.12) : Color.white)
+                                .fill(!isOptional && selected.isEmpty ? Color.white.opacity(0.12) : Color.white)
                         )
                 }
-                .disabled(selected == nil)
+                .disabled(!isOptional && selected.isEmpty)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
@@ -158,10 +179,15 @@ struct OnboardingQuestionView: View {
     }
 
     private func chip(_ key: String, _ label: String) -> some View {
-        let isSelected = selected == key
+        let isSelected = selected.contains(key)
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            selected = key
+            if multiSelect {
+                if let idx = selected.firstIndex(of: key) { selected.remove(at: idx) }
+                else { selected.append(key) }
+            } else {
+                selected = [key]
+            }
         } label: {
             HStack {
                 Text(label)
