@@ -33,7 +33,10 @@
  *   node upload-abandonment-sweep.js --prefix uploads/   # once BUILDER confirms
  *   node upload-abandonment-sweep.js --json          # machine output
  *
- * Env: S3_BUCKET_NAME, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+ *   node upload-abandonment-sweep.js --from-snapshot <file.json>  # replay, no AWS
+ *
+ * Env: S3_BUCKET_NAME, S3_BUCKET_REGION (NOT AWS_REGION — see the region note
+ *      below), AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
  *      SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (optional — enables the
  *      reported-vs-silent split)
  */
@@ -68,6 +71,7 @@ const PREFIX = (args.find((a) => a.startsWith('--prefix=')) || '').split('=')[1]
   || (args.includes('--prefix') ? args[args.indexOf('--prefix') + 1] : '');
 const AS_JSON = args.includes('--json');
 const BUCKET = process.env.S3_BUCKET_NAME;
+let REPLAY_BUCKET = null;   // set in --from-snapshot mode so the header is honest
 
 // S3 Standard, us-east-1 list price. Abandoned parts are BILLED until aborted.
 const S3_GB_MONTH = 0.023;
@@ -102,8 +106,46 @@ async function partsFor(s3, Key, UploadId) {
   return { parts: n, bytes };
 }
 
+// ── SNAPSHOT REPLAY ────────────────────────────────────────────────────────
+// A lifecycle rule was applied 2026-08-22 and now aborts abandoned uploads, so
+// the bucket DRAINS: every live sweep from here reads a post-lifecycle regime
+// and is NOT comparable to the pre-lifecycle baseline. BUILDER captured the full
+// inventory first. Replaying it keeps the measurement REPRODUCIBLE rather than
+// merely archived — the finding can be re-derived and re-checked after the
+// evidence itself is gone.
+function loadSnapshot(file) {
+  const d = JSON.parse(require('fs').readFileSync(file, 'utf8'));
+  const ups = Array.isArray(d) ? d : (d.uploads || d.Uploads || d.rows || []);
+  const now = d.captured_at ? new Date(d.captured_at).getTime() : Date.now();
+  return {
+    meta: d,
+    rows: ups.map((u) => ({
+      key: u.Key || u.key,
+      prefix: String(u.Key || u.key).split('/')[0] + '/',
+      initiated_at: u.Initiated || u.initiated_at,
+      age_h: (now - new Date(u.Initiated || u.initiated_at).getTime()) / 3.6e6,
+      parts: u.parts || 0,
+      bytes: u.bytes || 0,
+    })),
+  };
+}
+
 (async () => {
   assertReadOnly();
+
+  const snapIdx = args.indexOf('--from-snapshot');
+  if (snapIdx !== -1) {
+    const f = args[snapIdx + 1];
+    const { meta, rows } = loadSnapshot(f);
+    console.log(`\n=== REPLAY from ${f}`);
+    console.log(`  captured_at ${meta.captured_at || '?'}  bucket ${meta.bucket || '?'}  region ${meta.region || '?'}`);
+    console.log('  PRE-LIFECYCLE BASELINE. A lifecycle rule now aborts abandoned uploads, so');
+    console.log('  live sweeps read a DIFFERENT REGIME and must not be compared to this.\n');
+    REPLAY_BUCKET = meta.bucket || '(from snapshot)';
+    report(rows);
+    return;
+  }
+
   if (!BUCKET) {
     console.error('S3_BUCKET_NAME unset — cannot sweep. Not a zero: UNKNOWN.');
     process.exit(2);
@@ -158,7 +200,12 @@ async function partsFor(s3, Key, UploadId) {
       parts, bytes,
     });
   }
+  report(rows);
+})().catch((e) => { console.error('SWEEP FAILED (not a zero):', e && e.message); process.exit(2); });
 
+// Shared by the live sweep and by --from-snapshot, so a replay of the
+// pre-lifecycle inventory produces byte-identical analysis to the live run.
+function report(rows) {
   // AGE SPLIT — an in-flight upload is not an abandoned one. 6h is generous
   // against a resumable uploader; anything older is not coming back.
   const ABANDONED_H = 6;
@@ -214,9 +261,22 @@ async function partsFor(s3, Key, UploadId) {
   console.log('  Billed until aborted. If this grows sweep-over-sweep there is no lifecycle rule,');
   console.log('  and it becomes the first cost-board line CAUSED BY the delivery-rate defect.');
 
-  console.log('\nSTILL OWED — the reported-vs-silent split. It needs the user id, which lives in');
-  console.log('the key convention BUILDER has not confirmed yet. Once the prefix is known, join');
-  console.log('these keys to analytics_events on upload_failed to split REPORTED from SILENT on');
-  console.log('the SAME population — that is what tests the same-mode hypothesis instead of');
-  console.log('assuming it, and it is the half of the spec this run does not deliver.');
-})().catch((e) => { console.error('SWEEP FAILED (not a zero):', e && e.message); process.exit(2); });
+  // RULE 7 — cut by USER, never by upload. A user who abandons five uploads is
+  // ONE lost user, not five failures. Convention confirmed 2026-08-22:
+  // sources/${userId}/${timestamp}-${fileName}
+  const byUser = new Map();
+  for (const r of dead) {
+    const p = String(r.key).split('/');
+    if (p[0] !== 'sources' || p.length < 3) continue;
+    byUser.set(p[1], (byUser.get(p[1]) || 0) + 1);
+  }
+  if (byUser.size) {
+    const per = [...byUser.values()].sort((a, b) => a - b);
+    console.log(`\nBY USER (Rule 7): ${byUser.size} DISTINCT USERS lost, not ${dead.length} failures.`);
+    console.log(`  abandoned uploads per affected user: p50=${per[Math.floor(per.length / 2)]}  max=${per[per.length - 1]}`);
+    console.log('  Join these user ids to analytics_events on upload_failed to split REPORTED');
+    console.log('  from SILENT on the SAME population — see DELIVERY_RATE.md. Measured 2026-08-22:');
+    console.log('  10.7% reported / 89.3% SILENT, and the two bytes_uploaded profiles MATCH');
+    console.log('  (56.0% vs 64.2% zero-byte) — one mode, not two defects.');
+  }
+}
