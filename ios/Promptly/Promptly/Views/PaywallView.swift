@@ -106,6 +106,7 @@ struct PaywallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.05)
 
                     Text(subtitle)
                         .font(.system(size: 16))
@@ -118,6 +119,7 @@ struct PaywallView: View {
 
                     featureList
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.12)
 
                     Spacer().frame(height: 28)
 
@@ -141,6 +143,7 @@ struct PaywallView: View {
 
                     ctaButton
                         .padding(.horizontal, 24)
+                        .entrance(delay: 0.26)
 
                     fineprint
                         .padding(.horizontal, 32)

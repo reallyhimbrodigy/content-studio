@@ -65,6 +65,7 @@ struct SecondPaywallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.05)
 
                     Text(personalBenefit)
                         .font(.system(size: 16))
@@ -72,6 +73,7 @@ struct SecondPaywallView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                         .padding(.top, 8)
+                        .entrance(delay: 0.11)
 
                     Spacer().frame(height: 24)
 
@@ -83,6 +85,7 @@ struct SecondPaywallView: View {
                             referralRow   // THIRD, after the SKUs — the alternative to paying
                         }
                         .padding(.horizontal, 24)
+                        .entrance(delay: 0.18)
                     } else if subscription.isLoadingOfferings {
                         ProgressView().tint(.white).padding(.vertical, 30)
                     } else {
@@ -92,7 +95,7 @@ struct SecondPaywallView: View {
 
                     Spacer().frame(height: 20)
 
-                    ctaButton.padding(.horizontal, 24)
+                    ctaButton.padding(.horizontal, 24).entrance(delay: 0.28)
 
                     Button {
                         onDone()

@@ -91,6 +91,7 @@ struct TrialWallView: View {
                 VStack(spacing: 10) {
                     // Brand mark, not a crown — consistent with PaywallView's header.
                     AnimatedPromptlyMark(size: 64, halo: true)
+                    // (Header text cascades below; the mark animates itself.)
                     Text(context == .lapsed ? "Your videos are waiting" : "Unlock Promptly Pro")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundColor(.white)

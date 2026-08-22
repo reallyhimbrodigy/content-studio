@@ -53,6 +53,7 @@ struct FirstLaunchPaywallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
+                        .entrance(delay: 0.05)
 
                     Text("Talk to Promptly like an editor. Captions, cuts, graphics — done for you.")
                         .font(.system(size: 16))
@@ -60,11 +61,13 @@ struct FirstLaunchPaywallView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                         .padding(.top, 10)
+                        .entrance(delay: 0.11)
 
                     Spacer().frame(height: 26)
 
                     benefits
                         .padding(.horizontal, 30)
+                        .entrance(delay: 0.17)
 
                     Spacer().frame(height: 24)
 
@@ -75,6 +78,7 @@ struct FirstLaunchPaywallView: View {
                             }
                         }
                         .padding(.horizontal, 24)
+                        .entrance(delay: 0.24)
                     } else if subscription.isLoadingOfferings {
                         ProgressView().tint(.white).padding(.vertical, 36)
                     }
@@ -86,6 +90,7 @@ struct FirstLaunchPaywallView: View {
 
                     ctaButton
                         .padding(.horizontal, 24)
+                        .entrance(delay: 0.32)
 
                     Text(TrialCopy.fineprint)
                         .font(.system(size: 11))

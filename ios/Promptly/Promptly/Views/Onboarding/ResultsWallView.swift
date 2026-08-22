@@ -26,6 +26,7 @@ struct ResultsWallView: View {
                         .font(.system(size: 28, weight: .heavy))
                         .foregroundColor(.white)
                         .padding(.top, 24)
+                        .entrance()
                     Text("Real videos, edited by talking to it.")
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))
@@ -35,10 +36,13 @@ struct ResultsWallView: View {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                             GridItem(.flexible(), spacing: 10)],
                                   spacing: 10) {
-                            ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+                            ForEach(Array(tiles.enumerated()), id: \.offset) { idx, tile in
                                 LoopingVideoTile(url: tile.video, thumb: tile.thumb)
                                     .aspectRatio(9.0 / 16.0, contentMode: .fit)
                                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    // Tiles cascade in reading order, capped so a
+                                    // long grid never feels slow to assemble.
+                                    .entrance(delay: min(Double(idx) * 0.07, 0.42) + 0.10)
                             }
                         }
                         .padding(.horizontal, 16)
