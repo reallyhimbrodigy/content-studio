@@ -3271,6 +3271,17 @@ const server = http.createServer((req, res) => {
       // and cannot be overloaded for a UI-only wall). Env-flipped, default
       // OFF; the client caches last-known and defaults dark on fetch failure.
       first_launch_paywall: String(process.env.FIRST_LAUNCH_PAYWALL || '') === '1' ? 'on' : 'off',
+      // Conversion standing workstream (2026-08-22): three referral-surfacing
+      // knobs, each its own flag so each ships/measures/kills independently.
+      //   postrender_referral  — the delight-moment card after a finished video
+      //   abandon_referral     — the second-chance referral on sheet-abandon
+      //                          (two-step ask: the decline is the qualifier)
+      //   ambient_wall_referral— the referral row on the manual/ambient wall
+      //                          (88% of exposure, 0.2-0.3% buy — give the
+      //                          curious a non-paying path)
+      postrender_referral: String(process.env.POSTRENDER_REFERRAL || '') === '1' ? 'on' : 'off',
+      abandon_referral: String(process.env.ABANDON_REFERRAL || '') === '1' ? 'on' : 'off',
+      ambient_wall_referral: String(process.env.AMBIENT_WALL_REFERRAL || '') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
