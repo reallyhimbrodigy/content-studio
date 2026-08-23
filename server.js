@@ -3282,6 +3282,7 @@ const server = http.createServer((req, res) => {
       postrender_referral: String(process.env.POSTRENDER_REFERRAL || '') === '1' ? 'on' : 'off',
       abandon_referral: String(process.env.ABANDON_REFERRAL || '') === '1' ? 'on' : 'off',
       ambient_wall_referral: String(process.env.AMBIENT_WALL_REFERRAL || '') === '1' ? 'on' : 'off',
+      postrender_save_cta: String(process.env.POSTRENDER_SAVE_CTA || '') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -3419,6 +3420,7 @@ const server = http.createServer((req, res) => {
           'purchase_started', 'purchase_completed', 'purchase_failed',
           // RETENTION:
           'session_started',
+          'save_cta_shown',
         ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
