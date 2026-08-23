@@ -355,20 +355,6 @@ struct PaywallView: View {
         return nil
     }
 
-    /// Weekly anchor for the yearly plan (ruled 2026-08-21: both SKUs read in
-    /// weekly terms). RC's own localized per-week string first; ÷52 with the
-    /// product's formatter as fallback. Storefront-derived either way.
-    private func weeklyAnchor(for pkg: Package) -> String? {
-        if let perWeek = pkg.storeProduct.localizedPricePerWeek,
-           let line = TrialCopy.weeklyEquivalent(perWeekPrice: perWeek) {
-            return line
-        }
-        if let formatter = pkg.storeProduct.priceFormatter {
-            return TrialCopy.weeklyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
-        }
-        return nil
-    }
-
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -427,15 +413,15 @@ struct PaywallView: View {
                     Text("\(priceText) \(intervalText)")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
-                    // Honest per-WEEK divisor under the yearly sticker (ruled
-                    // 2026-08-21: both SKUs read in weekly terms — the smallest
-                    // honest unit leads). Full annual number stays; the anchor
-                    // kills the sticker shock. RC per-week string or ÷52 with the
-                    // product's formatter — currency + locale from StoreKit, no
-                    // price literal in code. (The weekly SKU's own price line is
-                    // already per-week.)
-                    if pkg.packageType == .annual, let weekly = weeklyAnchor(for: pkg) {
-                        Text(weekly)
+                    // RE-RULED 2026-08-22: the annual anchor reads MONTHLY, not
+                    // per-week. Apple's sheet restates the full $399.99 at
+                    // commitment — a per-week anchor maximises the perceived gap
+                    // at that exact moment (yearly = 56 of 99 sheet-cancels).
+                    // $33.33/mo · billed yearly is the honest minimal-gap frame.
+                    // The WEEKLY SKU's own line stays per-week (its native unit).
+                    // Storefront-derived (RC per-month or ÷12), no literals.
+                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
+                        Text(monthly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(PromptlyGold.solid)
                     }

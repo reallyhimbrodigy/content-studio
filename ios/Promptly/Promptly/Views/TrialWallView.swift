@@ -34,11 +34,12 @@ struct TrialWallView: View {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"
     }
     private var billedPeriod: String { periodLabel(selectedPackage) }
-    /// Weekly equivalent of the selected ANNUAL plan (ruled 2026-08-21: both
-    /// SKUs read in weekly terms). RC's pricePerWeek, storefront-formatted.
-    private var weeklyEquivalent: String? {
+    /// Monthly equivalent of the selected ANNUAL plan (re-ruled 2026-08-22:
+    /// monthly, not per-week — Apple's sheet restates the full annual charge,
+    /// and a per-week anchor maximises the gap at commitment). Storefront-aware.
+    private var monthlyEquivalent: String? {
         guard let pkg = selectedPackage, pkg.packageType == .annual,
-              let price = pkg.storeProduct.pricePerWeek else { return nil }
+              let price = pkg.storeProduct.pricePerMonth else { return nil }
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.locale = pkg.storeProduct.priceFormatter?.locale ?? .current
@@ -161,8 +162,8 @@ struct TrialWallView: View {
                             Text("\(pkg.storeProduct.localizedPriceString) / \(periodLabel(pkg))")
                                 .font(.system(size: 19, weight: .heavy))
                                 .foregroundColor(.white)
-                            if pkg.packageType == .annual, let w = weeklyEquivalent {
-                                Text("that's \(w)/week, billed yearly")
+                            if pkg.packageType == .annual, let m = monthlyEquivalent {
+                                Text("that's \(m)/month, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
                             }
