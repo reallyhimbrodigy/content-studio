@@ -583,6 +583,7 @@ final class AppState: ObservableObject {
         case .reedit:       limit = "re_edit"
         case .lumen:        limit = "lumen"
         case .concurrency:  limit = "second_upload"
+        case .exportGate:   limit = "export"
         case .manual:       limit = nil
         }
         if let limit { Analytics.track("free_limit_hit", props: ["limit": limit]) }
@@ -676,6 +677,11 @@ enum PaywallReason: Equatable, Hashable {
     /// the account-global concurrency cap (1 free / 10 pro). Server-enforced at
     /// the upload door; this drives the honest "one at a time" upgrade copy.
     case concurrency
+    /// Save/Share hit the server export gate's 402 (out of free exports). Kept
+    /// distinct from .manual so the context split can see the highest-intent
+    /// blocked moment — a user trying to keep their own video — the day
+    /// EXPORT_GATE_ENABLED arms. Inert until then (gate returns 501 → free save).
+    case exportGate
 }
 
 // MARK: - Pipeline stages (render progress narrative)

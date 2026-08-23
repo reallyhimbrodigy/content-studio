@@ -1235,7 +1235,7 @@ final class VideoExporter: ObservableObject {
                 // 225 item 3: 402 — out of free exports. Present the upgrade paywall;
                 // NEVER fall back to a public save. No error copy (this is a flow).
                 saveState = .idle
-                await MainActor.run { AppState.shared.presentPaywall(.manual) }
+                await MainActor.run { AppState.shared.presentPaywall(.exportGate) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 saveState = .error(error.localizedDescription)
@@ -1264,7 +1264,7 @@ final class VideoExporter: ObservableObject {
                 }
             } catch ExportError.gatedPaywall {
                 shareState = .idle
-                await MainActor.run { AppState.shared.presentPaywall(.manual) }
+                await MainActor.run { AppState.shared.presentPaywall(.exportGate) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 shareState = .error(error.localizedDescription)

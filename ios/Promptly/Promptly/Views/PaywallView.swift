@@ -59,6 +59,7 @@ struct PaywallView: View {
         case .manual:       return "Unlock Promptly Pro"
         case .lumen:        return "Unlock Promptly Pro"
         case .concurrency:  return "One video at a time on Free"
+        case .exportGate:   return "You're out of free saves"
         }
     }
     private var subtitle: String {
@@ -75,6 +76,8 @@ struct PaywallView: View {
             return "Go beyond your one free video a day — everything, unlimited."
         case .concurrency:
             return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
+        case .exportGate:
+            return "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats."
         }
     }
 
@@ -311,6 +314,7 @@ struct PaywallView: View {
         case .manual:       return "manual"
         case .lumen:        return "lumen"
         case .concurrency:  return "concurrency"
+        case .exportGate:   return "export_gate"
         }
     }
 
