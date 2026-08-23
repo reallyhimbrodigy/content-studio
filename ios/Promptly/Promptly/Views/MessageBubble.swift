@@ -1303,6 +1303,11 @@ struct VideoActionRow: View {
     let jobId: String?
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
+    /// P4: moment-triggered prominent save ask (distinct from the always-there
+    /// Save pill). Parent arms it after a watch; this row renders it and fires
+    /// `save_cta_shown` once per job at first display.
+    let showSaveCta: Bool
+    let onSaveCtaHandled: (() -> Void)?
     @StateObject private var exporter: VideoExporter
     // Observe both signals so the Re-edit pill re-renders (gold ↔ lock)
     // the moment Pro state flips — a fresh purchase or an SQL comp on
@@ -1310,12 +1315,14 @@ struct VideoActionRow: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil, showSaveCta: Bool = false, onSaveCtaHandled: (() -> Void)? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
         self.jobId = jobId
         self.onReedit = onReedit
         self.onMakeAnother = onMakeAnother
+        self.showSaveCta = showSaveCta
+        self.onSaveCtaHandled = onSaveCtaHandled
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr, jobId: jobId))
     }
 
@@ -1323,6 +1330,10 @@ struct VideoActionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showSaveCta {
+                saveCtaBanner
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             // HERO: Share — the growth action. A finished edit does nothing
             // sitting in the app; sharing it is the point, so it leads as the
             // one primary button instead of being one of four equal pills.
@@ -1348,6 +1359,54 @@ struct VideoActionRow: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    /// P4 banner: the one-tap keep step. Saving goes through the SAME gated
+    /// exporter path as the pill (402 → .exportGate paywall, never a leak).
+    private var saveCtaBanner: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            exporter.save()
+            onSaveCtaHandled?()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.arrow.down.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(PromptlyGold.gradient)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep this video")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Save it to Photos — one tap")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.65))
+                }
+                Spacer(minLength: 8)
+                Button {
+                    onSaveCtaHandled?()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.45))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss save suggestion")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(PromptlyGold.solid.opacity(0.35), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            guard let jobId, !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)") else { return }
+            UserDefaults.standard.set(true, forKey: "save_cta_shown_\(jobId)")
+            Analytics.track("save_cta_shown", props: ["job_id": jobId])
+        }
     }
 
     /// "New" pill — a plain circle+label action matching the row rhythm (the
@@ -1692,6 +1751,11 @@ struct CompletedVideoView: View {
     /// Set only when the user taps play AND FeedbackManager says we're due
     /// (rare, frequency-capped). Lives per-video so only the watched one asks.
     @State private var showFeedbackPrompt = false
+    /// P4 (`postrender_save_cta`, cycle 2): armed at play-tap so the save ask is
+    /// waiting under the video when the user closes the player — the moment of
+    /// demonstrated value. Once per job (persisted at first showing); yields to
+    /// the P2 referral card's single once-per-install showing.
+    @State private var showSaveCta = false
 
     /// ACTIVATION funnel dedupe: `result_viewed` fires at most once per
     /// appearance-session of this completed result, so scrolling the bubble
@@ -1735,6 +1799,13 @@ struct CompletedVideoView: View {
                 if FeedbackManager.shared.shouldShowPrompt() {
                     FeedbackManager.shared.recordPromptShown()
                     withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = true }
+                }
+                if let jobId,
+                   OnboardingState.shared.postrenderSaveCtaEnabled,
+                   !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)"),
+                   !(OnboardingState.shared.postrenderReferralEnabled
+                     && !UserDefaults.standard.bool(forKey: "postrender_referral_shown")) {
+                    withAnimation(.easeInOut(duration: 0.28)) { showSaveCta = true }
                 }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
@@ -1812,7 +1883,11 @@ struct CompletedVideoView: View {
                 thumbnailUrlStr: thumbnailUrlStr,
                 jobId: jobId,
                 onReedit: onReedit,
-                onMakeAnother: onMakeAnother
+                onMakeAnother: onMakeAnother,
+                showSaveCta: showSaveCta && !showFeedbackPrompt,
+                onSaveCtaHandled: {
+                    withAnimation(.easeInOut(duration: 0.28)) { showSaveCta = false }
+                }
             )
             .opacity(isPlayable ? 1 : 0.4)
             .disabled(!isPlayable)

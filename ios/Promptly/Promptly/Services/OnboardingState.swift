@@ -35,6 +35,7 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var postrenderReferralEnabled = false
     @Published private(set) var abandonReferralEnabled = false
     @Published private(set) var ambientWallReferralEnabled = false
+    @Published private(set) var postrenderSaveCtaEnabled = false
 
     /// Show-once: set when the first-launch wall is dismissed or purchased
     /// through. @Published so the root ZStack re-branches the moment it flips.
@@ -71,9 +72,11 @@ final class OnboardingState: ObservableObject {
             postrenderReferralEnabled = (obj?["postrender_referral"] as? String) == "on"
             abandonReferralEnabled = (obj?["abandon_referral"] as? String) == "on"
             ambientWallReferralEnabled = (obj?["ambient_wall_referral"] as? String) == "on"
+            postrenderSaveCtaEnabled = (obj?["postrender_save_cta"] as? String) == "on"
             UserDefaults.standard.set(postrenderReferralEnabled, forKey: "postrender_referral_enabled")
             UserDefaults.standard.set(abandonReferralEnabled, forKey: "abandon_referral_enabled")
             UserDefaults.standard.set(ambientWallReferralEnabled, forKey: "ambient_wall_referral_enabled")
+            UserDefaults.standard.set(postrenderSaveCtaEnabled, forKey: "postrender_save_cta_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -81,6 +84,7 @@ final class OnboardingState: ObservableObject {
             postrenderReferralEnabled = UserDefaults.standard.bool(forKey: "postrender_referral_enabled")
             abandonReferralEnabled = UserDefaults.standard.bool(forKey: "abandon_referral_enabled")
             ambientWallReferralEnabled = UserDefaults.standard.bool(forKey: "ambient_wall_referral_enabled")
+            postrenderSaveCtaEnabled = UserDefaults.standard.bool(forKey: "postrender_save_cta_enabled")
         }
     }
 
