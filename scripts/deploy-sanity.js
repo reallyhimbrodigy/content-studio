@@ -194,21 +194,64 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     // Asserted on every roll and DELIBERATELY NOT conditional on a flag —
     // privacy of a prefix is not a feature that gets armed.
     {
-      const cfDom = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
+      // THE DOMAIN CANNOT COME FROM env ALONE. CLOUDFRONT_DOMAIN is a DEPLOY-side
+      // variable; it is absent from a developer .env.local, so sourcing it from
+      // env made this whole block skip silently and the run still printed
+      // "SANITY PASS" — a check that never executed, reported as an invariant
+      // that holds. Third instance of that shape today. Derive it from a real
+      // job's rendered URL (which IS a CDN URL) and treat "cannot determine" as
+      // a FAILURE, never a skip.
+      let cfDom = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
+      if (!cfDom) {
+        const anyJob = await sbJson('video_jobs?select=rendered_video_url&rendered_video_url=not.is.null&order=created_at.desc&limit=1');
+        const u = Array.isArray(anyJob) && anyJob[0] && anyJob[0].rendered_video_url;
+        try { if (u) cfDom = `https://${new URL(u).hostname}`; } catch (_) { /* stays null */ }
+      }
+      check('chat media: CDN host determined (prefix privacy is testable)', !!cfDom,
+        'no CLOUDFRONT_DOMAIN and no job to derive it from — the privacy assertion '
+        + 'below is UNMEASURED, not passing');
       if (cfDom) {
-        // A key that does not exist is enough: the question is whether the CDN
-        // ENFORCES on this path prefix, and an absent object answers that
-        // without needing a real user's image to test with.
-        const probeKey = 'chat-media/00000000-0000-0000-0000-000000000000/0-probe-x.png';
-        const st = await fetch(`${cfDom}/${probeKey}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
-        // 403 = restricted (signature required). 404 would mean CloudFront
-        // forwarded to S3 unrestricted — i.e. a real key WOULD serve. Only 403
-        // is a pass.
-        check('chat media: the chat-media/ prefix is CDN-restricted (403 unauthenticated)',
-          st === 403,
-          `got ${st} — a real chat image is publicly readable at ${cfDom}/<key>. `
-          + 'FIX: add a CloudFront behaviour for chat-media/* with Restrict viewer access, '
-          + 'same as exports/*.');
+        // THE PROBE MUST FIRE ON THE KNOWN-BAD WINDOW. The first cut of this
+        // check fetched a key that does NOT exist and passed on 403 — but with
+        // no s3:ListBucket, S3 answers an absent key with AccessDenied, so
+        // CloudFront returns 403 whether the prefix is restricted or wide open.
+        // Measured both ways within a minute of each other:
+        //     absent chat-media key -> 403   (looks restricted)
+        //     REAL   chat-media key -> 200   (is public)
+        // A check that green-lights a public prefix is worse than no check, so
+        // this uploads a REAL object through the real endpoint and tests THAT.
+        let probeKey = null;
+        try {
+          const _tok = await signIn(env.PROBE_PRO_EMAIL, env.PROBE_PRO_PASSWORD);
+          const mint = await fetch(`${HOST}/api/upload-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_tok}` },
+            body: JSON.stringify({ purpose: 'chat_media', mime: 'image/png', fileName: 'sanity-probe.png' }),
+          }).then((r) => r.json());
+          if (mint && mint.uploadUrl && mint.key) {
+            // 1x1 PNG — the smallest thing that is unambiguously a real object.
+            const px = Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+              'base64');
+            const put = await fetch(mint.uploadUrl, {
+              method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: px,
+            });
+            if (put.ok) probeKey = mint.key;
+          }
+        } catch (e) { /* reported as unmeasured below */ }
+
+        if (!probeKey) {
+          check('chat media: probe object uploaded (prefix privacy is testable)', false,
+            'could not mint+PUT a chat-media object — the privacy assertion below is '
+            + 'UNMEASURED, not passing');
+        } else {
+          const st = await fetch(`${cfDom}/${probeKey}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+          check('chat media: a REAL chat image is CDN-restricted (403 unauthenticated)',
+            st === 403,
+            `got ${st} on a real object — chat images are publicly readable at ${cfDom}/<key>. `
+            + 'FIX: add a CloudFront behaviour for chat-media/* with Restrict viewer access, '
+            + 'same as exports/*.');
+        }
       }
     }
     const cfBase = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
