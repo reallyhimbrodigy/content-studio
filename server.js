@@ -6474,9 +6474,33 @@ const server = http.createServer((req, res) => {
             if (data && data.status === 'completed' && data.rendered_video_url) {
               // Poster deliberately omitted: thumbnail_url is a presigned S3 URL
               // that expires within days, so on an email opened later it would rot
-              // to a broken image. The rendered video is stable CloudFront and its
-              // first frame (preload=metadata) serves as the preview.
-              ready = { videoUrl: data.rendered_video_url };
+              // to a broken image. The rendered video's first frame
+              // (preload=metadata) serves as the preview instead.
+              //
+              // MINT PER LOAD (2026-08-23, posture step 4). This page is
+              // SERVER-RENDERED on every request and sent with
+              // Cache-Control: no-store, so it can hand out a short-lived grant
+              // and still work forever — the durable thing we share is the
+              // opaque /v/{jobId} link, not the asset URL. That is what makes
+              // restricting renders/ possible without touching the viral path:
+              // the share link keeps working, the permanent hotlink stops.
+              //
+              // 6 hours, not 7 days: long enough that a page left open in a tab
+              // still downloads, short enough that a scraped <video src> is not
+              // a durable public link. Re-minted free on the next load.
+              let shareUrl = data.rendered_video_url;
+              try {
+                const _s3 = require('./services/s3');
+                const _k = require('./lib/source-presence').sourceKeyFromUrl(data.rendered_video_url);
+                if (_k) shareUrl = await _s3.createPresignedGetUrl(_k, 6 * 3600);
+              } catch (e) {
+                // Fail OPEN to the stored url. While renders/ is public that
+                // still plays; once it is restricted this line is the failure
+                // that matters, so it is logged rather than swallowed.
+                console.error(`[result-page] share presign FAILED for ${jobId}: ${e && e.message}`
+                  + ' — falling back to the stored url (works only while renders/ is public)');
+              }
+              ready = { videoUrl: shareUrl };
             }
           }
         } catch (e) { console.warn('[result-page] lookup failed:', e && e.message); }
