@@ -3313,6 +3313,42 @@ const server = http.createServer((req, res) => {
       // worker-auth secret is caught loudly instead of running open.
       modal_run_secret: !!process.env.MODAL_RUN_SECRET,
       modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
+      // CDN SIGNING, PROVEN FROM INSIDE THE PROCESS (2026-08-23).
+      //
+      // "the env var is set" is NOT the question. cloudfront.js computes
+      // signedMode from domain + KEY_PAIR_ID + a private key it must PARSE, and
+      // Render's env editor is known to turn a multi-line PEM into \n-escaped
+      // text. A malformed key leaves the vars present and the signer dead, and
+      // the old code then returned a BARE, NON-EXPIRING CDN url that looked
+      // exactly like a grant. My own guard read `cloudfront.signedMode` as
+      // undefined and took that branch silently, so a boolean sourced from
+      // env presence is not evidence.
+      //
+      // canSign actually RUNS the signer against a canary key and checks the
+      // result carries a Signature. That is the difference between "configured"
+      // and "working" — and with the exports prefix now behind
+      // Restrict-viewer-access, a dead
+      // signer means every paying user's export 403s.
+      //
+      // Booleans only. No URL, no key id, no expiry is exposed here.
+      cloudfront: (() => {
+        try {
+          const cf = require('./services/cloudfront');
+          let canSign = false;
+          if (cf.signedMode) {
+            const probe = cf.createSignedUrl('exports/__healthcheck__/probe.mp4', 60);
+            canSign = typeof probe === 'string' && /[?&]Signature=/.test(probe);
+          }
+          return {
+            enabled: !!cf.enabled,
+            signedMode: !!cf.signedMode,
+            unsignedMode: !!cf.unsignedMode,
+            canSign,
+          };
+        } catch (e) {
+          return { error: String(e && e.message || e).slice(0, 120) };
+        }
+      })(),
     });
   }
 
