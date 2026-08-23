@@ -19,6 +19,12 @@ struct EditorView: View {
     @State private var showPushExplainer = false
     @State private var showVoiceInput = false
     @State private var pendingVideos: [PendingVideo] = []
+    /// Multimodal boundary (§1, iOS half): images staged for the NEXT chat
+    /// turn. Picker gated by the chat_media knob (a pre-§1 server ignores
+    /// media[] entirely — the image would silently vanish); capped at 3;
+    /// JPEG re-encoded ≤1568px per spec §1.3's size discipline.
+    @State private var pendingImages: [PendingChatImage] = []
+    @State private var pickedChatImageItem: PhotosPickerItem?
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
@@ -384,12 +390,10 @@ struct EditorView: View {
             // Skip the onboarding welcome — it'd burn API tokens and
             // bias the model's tone if echoed back as prior context.
             if msg.isOnboarding { return nil }
-            if msg.role == .user, !msg.content.isEmpty {
-                return ["role": "user", "content": msg.content]
-            }
-            if msg.role == .assistant, !msg.content.isEmpty {
-                return ["role": "assistant", "content": msg.content]
-            }
+            let text = msg.historyText
+            guard !text.isEmpty else { return nil }
+            if msg.role == .user { return ["role": "user", "content": text] }
+            if msg.role == .assistant { return ["role": "assistant", "content": text] }
             return nil
         }
         loadedChatId = newId
@@ -501,6 +505,7 @@ struct EditorView: View {
         inputText = ""
         pendingVideos.forEach { $0.uploadTask?.cancel() }
         pendingVideos = []
+        pendingImages = []
         guard let chat = await chatStore.createChat() else { return }
         loadedChatId = chat.id
         chatStore.activeChatId = chat.id
@@ -774,6 +779,37 @@ struct EditorView: View {
                 .frame(height: 72)
             }
 
+            if !pendingImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Space.xs) {
+                        ForEach(pendingImages) { img in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: img.image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        pendingImages.removeAll { $0.id == img.id }
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(.white, .black.opacity(0.6))
+                                }
+                                .offset(x: 5, y: -5)
+                                .accessibilityLabel("Remove image")
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+                }
+                .frame(height: 72)
+            }
+
             // Vibe-edit pill. Visible only when the backend told us
             // to change the vibe and we're holding cached S3 URLs for
             // the previous source — Send routes to a re-dispatch with
@@ -809,6 +845,27 @@ struct EditorView: View {
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
                 .padding(.leading, 5)
                 .padding(.bottom, 5)
+
+                // §1 attach button: images ride the TEXT chat path only, so the
+                // button hides while a video is staged or a re-edit is active
+                // (those paths ignore media — no silent drops by construction).
+                if onboardingState.chatMediaEnabled && pendingVideos.isEmpty && reeditSession == nil {
+                    PhotosPicker(selection: $pickedChatImageItem, matching: .images) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(pendingImages.count >= 3 ? .white.opacity(0.3) : .white)
+                            .frame(width: 30, height: 30)
+                            .accessibilityHidden(true)
+                    }
+                    .disabled(pendingImages.count >= 3)
+                    .accessibilityLabel("Attach an image")
+                    .padding(.bottom, 5)
+                    .onChange(of: pickedChatImageItem) { _, item in
+                        guard let item else { return }
+                        pickedChatImageItem = nil
+                        Task { await stageChatImage(item) }
+                    }
+                }
 
                 ZStack(alignment: .leading) {
                     // Static placeholder. The rotating ghost-text was
@@ -1195,7 +1252,8 @@ struct EditorView: View {
 
     private var canSend: Bool {
         // Empty input + no video = nothing to send.
-        if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingVideos.isEmpty {
+        if inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && pendingVideos.isEmpty && pendingImages.isEmpty {
             return false
         }
         // Video sends still gate on isSending so we don't dispatch
@@ -1236,6 +1294,30 @@ struct EditorView: View {
     /// Routed from the + button (composer + empty-state). Pops the
     /// paywall when a free user already has their one pending slot
     /// filled; otherwise opens the picker.
+    /// Load a picked image, downscale + JPEG-encode once, stage it. Cap 3.
+    /// The decode/scale/encode runs OFF the main actor — a 48MP camera-roll
+    /// photo would otherwise freeze the composer for the whole pipeline. Only
+    /// Sendable Data crosses back; the small display thumb (≤400px — strip is
+    /// 56pt, bubble echo 132pt) is what ThumbnailCache stores at send, keeping
+    /// its unbounded memory tier at tile-thumb sizes by design.
+    private func stageChatImage(_ item: PhotosPickerItem) async {
+        guard pendingImages.count < 3 else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let pair: (wire: Data, thumb: Data)? = await Task.detached(priority: .userInitiated) {
+            guard let raw = UIImage(data: data) else { return nil }
+            let wire = raw.promptlyScaledDown(maxDimension: 1568)
+            guard let jpeg = wire.jpegData(compressionQuality: 0.8) else { return nil }
+            let thumb = wire.promptlyScaledDown(maxDimension: 400)
+            guard let thumbJpeg = thumb.jpegData(compressionQuality: 0.85) else { return nil }
+            return (jpeg, thumbJpeg)
+        }.value
+        guard let pair, let thumbImage = UIImage(data: pair.thumb) else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            pendingImages.append(PendingChatImage(image: thumbImage, jpegData: pair.wire))
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
     private func tapAddVideo() {
         if pendingVideos.count >= maxPendingVideos {
             if SubscriptionService.shared.effectiveIsPro {
@@ -2145,9 +2227,10 @@ struct EditorView: View {
         // onboarding and empty messages.
         let context: [[String: String]] = messages[..<promptIdx].compactMap { m in
             if m.isOnboarding { return nil }
-            guard !m.content.isEmpty else { return nil }
-            if m.role == .user { return ["role": "user", "content": m.content] }
-            if m.role == .assistant { return ["role": "assistant", "content": m.content] }
+            let text = m.historyText
+            guard !text.isEmpty else { return nil }
+            if m.role == .user { return ["role": "user", "content": text] }
+            if m.role == .assistant { return ["role": "assistant", "content": text] }
             return nil
         }
 
@@ -2159,6 +2242,7 @@ struct EditorView: View {
         messages[idx].isThinking = true
         messages[idx].isStreaming = true   // 225 item 2: drives the tail caret
         messages[idx].error = nil
+        messages[idx].attachments = nil    // stale §1 images must not pair with the re-roll
         isChatStreaming = true             // 225 item 2: composer shows Stop
 
         activeChatTask = Task { @MainActor in
@@ -2197,9 +2281,10 @@ struct EditorView: View {
         // Rebuild conversation history to match.
         conversationHistory = messages.compactMap { m in
             if m.isOnboarding { return nil }
-            guard !m.content.isEmpty else { return nil }
-            if m.role == .user { return ["role": "user", "content": m.content] }
-            if m.role == .assistant { return ["role": "assistant", "content": m.content] }
+            let text = m.historyText
+            guard !text.isEmpty else { return nil }
+            if m.role == .user { return ["role": "user", "content": text] }
+            if m.role == .assistant { return ["role": "assistant", "content": text] }
             return nil
         }
         persistMessages()
@@ -2236,7 +2321,8 @@ struct EditorView: View {
     private func streamReplyWithFallback(
         intoMessageId messageId: UUID,
         prompt: String,
-        context: [[String: String]]
+        context: [[String: String]],
+        media: [[String: Any]]? = nil
     ) async {
         func idx() -> Int? { messages.firstIndex(where: { $0.id == messageId }) }
 
@@ -2286,11 +2372,15 @@ struct EditorView: View {
         // ── Tier 1: streaming ─────────────────────────────────────────
         var hitPaywall = false
         var paywallReason: PaywallReason?
-        let stream = APIService.shared.chatStream(message: prompt, history: context)
+        var receivedAttachments: [ChatAttachmentPayload] = []
+        let stream = APIService.shared.chatStream(message: prompt, history: context, media: media)
         do {
-            for try await token in stream {
+            for try await event in stream {
                 if Task.isCancelled { typewriter.cancel(); return }
-                buffer.text += token
+                switch event {
+                case .token(let token): buffer.text += token
+                case .attachments(let atts): receivedAttachments += atts
+                }
             }
         } catch let APIError.paymentRequired(_, limit, _) {
             // Server hit the daily chat cap. No point falling back to the
@@ -2309,11 +2399,12 @@ struct EditorView: View {
         // Stream silently buffered or threw — try the non-streaming
         // endpoint and dump the whole reply into the buffer. The
         // typewriter takes care of revealing it smoothly.
-        if buffer.text.isEmpty && !hitPaywall {
+        if buffer.text.isEmpty && receivedAttachments.isEmpty && !hitPaywall {
             do {
-                let reply = try await APIService.shared.chat(message: prompt, history: context)
+                let reply = try await APIService.shared.chat(message: prompt, history: context, media: media)
                 if Task.isCancelled { typewriter.cancel(); return }
-                buffer.text = reply
+                buffer.text = reply.reply
+                receivedAttachments += reply.attachments
             } catch let APIError.paymentRequired(_, limit, _) {
                 // Daily AI chat cap. Pop the paywall sheet and remove the
                 // empty assistant bubble — the user didn't really get a
@@ -2347,7 +2438,11 @@ struct EditorView: View {
         }
         if let i = idx() {
             messages[i].isThinking = false
-            if buffer.text.isEmpty {
+            if !receivedAttachments.isEmpty {
+                var seen = Set<String>()
+                messages[i].attachments = receivedAttachments.filter { seen.insert($0.id).inserted }
+            }
+            if buffer.text.isEmpty && receivedAttachments.isEmpty {
                 // Both tiers failed. Surface a clean error state via the
                 // typewriter too, so even the failure mode feels alive
                 // instead of slamming in an error string.
@@ -2356,7 +2451,10 @@ struct EditorView: View {
             } else {
                 messages[i].content = buffer.text
                 messages[i].error = nil
-                conversationHistory.append(["role": "assistant", "content": buffer.text])
+                let historyEntry = messages[i].historyText
+                if !historyEntry.isEmpty {
+                    conversationHistory.append(["role": "assistant", "content": historyEntry])
+                }
             }
             persistMessages()
         }
@@ -2445,11 +2543,27 @@ struct EditorView: View {
 
         clearInputField()
 
+        // §1: consume the staged images for THIS turn. Cached to disk at
+        // stage-consumption so the sent echo survives chat reload (same
+        // mechanism as the user-side video thumbnail).
+        let stagedImages = pendingImages
+        withAnimation(.easeOut(duration: 0.2)) { pendingImages = [] }
+
         // User bubble appears IMMEDIATELY. Was the build-139 bug —
         // user message wasn't being appended at all in text-only.
-        let userMsg = ChatMessage(role: .user, content: text)
+        var userMsg = ChatMessage(role: .user, content: text)
+        if !stagedImages.isEmpty {
+            userMsg.attachments = stagedImages.map { img in
+                let key = "chatimg-\(userMsg.id.uuidString)-\(img.id.uuidString)"
+                ThumbnailCache.shared.save(img.image, for: key)
+                return ChatAttachmentPayload(kind: "image", mime: "image/jpeg", url: nil, localKey: key)
+            }
+        }
         messages.append(userMsg)
-        conversationHistory.append(["role": "user", "content": text])
+        // History is text-only by contract; historyText supplies the image
+        // placeholder for a media-only turn — the SAME accessor the reload
+        // rebuilders use, so live and reloaded histories cannot diverge.
+        conversationHistory.append(["role": "user", "content": userMsg.historyText])
 
         let thinkingMsg = ChatMessage(role: .assistant, content: "", isThinking: true)
         messages.append(thinkingMsg)
@@ -2472,10 +2586,17 @@ struct EditorView: View {
             // /api/chat/actions 404s while PROMPTLY_CHAT_ACTIONS is off, and network/
             // other errors also map to .notFound, so we fall through to today's
             // streaming chat (identical to 225). No client-side intent parsing.
-            let outcome = (try? await APIService.shared.chatActions(message: text)) ?? .notFound
+            // §1: media turns go straight to the multimodal chat path — the
+            // action router is a text contract and would drop the image.
+            let media: [[String: Any]]? = stagedImages.isEmpty ? nil : stagedImages.map {
+                ["kind": "image", "mime": "image/jpeg", "data": $0.jpegData.base64EncodedString()]
+            }
+            let outcome: APIService.ChatActionResult = media != nil
+                ? .notFound
+                : ((try? await APIService.shared.chatActions(message: text)) ?? .notFound)
             switch outcome {
             case .notFound, .converse:
-                await streamReplyWithFallback(intoMessageId: msgId, prompt: text, context: historySnapshot)
+                await streamReplyWithFallback(intoMessageId: msgId, prompt: text, context: historySnapshot, media: media)
             case .status(let m), .clarify(let m):
                 if let i = messages.firstIndex(where: { $0.id == msgId }) {
                     messages[i].isThinking = false
@@ -2517,7 +2638,7 @@ struct EditorView: View {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
-        guard !text.isEmpty || hasVideos else { return }
+        guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }
 
         // ── requires_vibe_change re-dispatch path ─────────────────────
         // Backend told us the source was fine but the vibe was the
@@ -3683,6 +3804,31 @@ struct EditorView: View {
 }
 
 // MARK: - Pending Video Thumbnail (Claude-style: small square with subtle progress ring)
+
+/// A §1 image staged in the composer: the display image plus its wire-ready
+/// JPEG (re-encoded once at pick, not at send).
+struct PendingChatImage: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let jpegData: Data
+}
+
+private extension UIImage {
+    /// Spec §1.3 size discipline: chat is the cheapest place to send 40MB by
+    /// accident. Longest edge capped; format scale forced to 1 so a 3x-retina
+    /// asset doesn't triple the pixel count back.
+    func promptlyScaledDown(maxDimension: CGFloat) -> UIImage {
+        let longest = max(size.width, size.height)
+        guard longest > maxDimension else { return self }
+        let ratio = maxDimension / longest
+        let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: newSize, format: fmt).image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+}
 
 struct PendingVideoThumb: View {
     @ObservedObject var video: PendingVideo

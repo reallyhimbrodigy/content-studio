@@ -93,6 +93,55 @@ struct MessageBubble: View {
 
     // MARK: - User (right-aligned, subtle gray container)
 
+    /// §1 image attachments (both roles): tappable thumbnails, siblings of the
+    /// text — never a replacement for it (spec §1.4).
+    @State private var viewerAttachment: ChatAttachmentPayload?
+
+    @ViewBuilder
+    private func chatAttachmentsRow(_ atts: [ChatAttachmentPayload]) -> some View {
+        HStack(spacing: 8) {
+            ForEach(atts) { att in
+                Button { viewerAttachment = att } label: {
+                    chatAttachmentThumb(att)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Attached image — tap to view")
+            }
+        }
+        .fullScreenCover(item: $viewerAttachment) { att in
+            ChatImageViewer(attachment: att)
+        }
+    }
+
+    @ViewBuilder
+    private func chatAttachmentThumb(_ att: ChatAttachmentPayload) -> some View {
+        Group {
+            if let key = att.localKey, let img = ThumbnailCache.shared.load(for: key) {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else if let urlStr = att.url, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else if phase.error != nil {
+                        // Short-TTL grant expired (spec §1.2) — degrade quietly,
+                        // never an error state.
+                        ZStack {
+                            Color(.tertiarySystemBackground)
+                            Image(systemName: "photo")
+                                .foregroundColor(.white.opacity(0.3))
+                        }
+                    } else {
+                        Color(.tertiarySystemBackground)
+                    }
+                }
+            } else {
+                Color(.tertiarySystemBackground)
+            }
+        }
+        .frame(width: 132, height: 132)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     @ViewBuilder
     private var userContent: some View {
         VStack(alignment: .trailing, spacing: 8) {
@@ -116,6 +165,10 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .accessibilityLabel("Attached video")
                 }
+            }
+
+            if let atts = message.attachments, !atts.isEmpty {
+                chatAttachmentsRow(atts)
             }
 
             if !message.content.isEmpty {
@@ -296,6 +349,10 @@ struct MessageBubble: View {
                             }
                         }
                     }
+            }
+
+            if let atts = message.attachments, !atts.isEmpty {
+                chatAttachmentsRow(atts)
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
@@ -2015,6 +2072,67 @@ struct CompletedVideoView: View {
 // selection (HLS / cache hit / CDN streaming) and SigV4 refresh
 // logic live here; the actual playback chrome lives in
 // PromptlyVideoPlayer.swift.
+
+/// Minimal full-screen viewer for §1 chat images — pinch to zoom, double-tap
+/// toggle, close button. The app's first still-image surface
+/// (VideoPlayerPresenter is video-only).
+struct ChatImageViewer: View {
+    let attachment: ChatAttachmentPayload
+    @Environment(\.dismiss) private var dismiss
+    @State private var zoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            Group {
+                if let key = attachment.localKey, let img = ThumbnailCache.shared.load(for: key) {
+                    Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+                } else if let urlStr = attachment.url, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        } else if phase.error != nil {
+                            VStack(spacing: 10) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.white.opacity(0.3))
+                                Text("This image link expired")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                        } else {
+                            ProgressView().tint(.white)
+                        }
+                    }
+                }
+            }
+            .scaleEffect(zoom * pinch)
+            .gesture(
+                MagnificationGesture()
+                    .updating($pinch) { value, state, _ in state = value }
+                    .onEnded { value in zoom = min(max(zoom * value, 1), 4) }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 1.0)) {
+                    zoom = zoom > 1 ? 1 : 2
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .padding(.top, 8)
+            .padding(.trailing, 16)
+            .accessibilityLabel("Close image")
+        }
+    }
+}
 
 enum VideoPlayerPresenter {
     /// Present the player. When `jobId` is provided, the local cache is

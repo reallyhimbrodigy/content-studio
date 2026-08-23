@@ -22,6 +22,19 @@ struct MovieFile: Transferable {
     }
 }
 
+/// Multimodal boundary (§1, iOS half): an image attached to a chat message.
+/// User side: `localKey` points into ThumbnailCache so the sent echo survives
+/// chat reload. Assistant side: `url` is the server's short-TTL signed GRANT
+/// (spec §1.2 — the key never leaves the server); an expired URL degrades to
+/// a placeholder, never an error state.
+struct ChatAttachmentPayload: Codable, Hashable, Identifiable {
+    var kind: String = "image"
+    var mime: String = "image/jpeg"
+    var url: String?
+    var localKey: String?
+    var id: String { url ?? localKey ?? kind }
+}
+
 struct ChatMessage: Identifiable {
     // `var` (not `let`) so a restored message can keep its ORIGINAL id across a
     // persist→reload round-trip. The in-flight render lifecycle (upload →
@@ -32,6 +45,20 @@ struct ChatMessage: Identifiable {
     let role: MessageRole
     var content: String
     var videoAttachment: VideoAttachment?
+    var attachments: [ChatAttachmentPayload]?
+
+    /// The text this message contributes to the model's conversation history.
+    /// History is a text-only contract, so an image-only turn contributes a
+    /// stable placeholder — and every history REBUILDER (chat switch, edit,
+    /// regenerate) must use this same accessor, or live and reloaded
+    /// histories silently diverge (an assistant reply with no user turn).
+    var historyText: String {
+        if !content.isEmpty { return content }
+        if !(attachments ?? []).isEmpty {
+            return role == .user ? "(sent an image)" : "(replied with an image)"
+        }
+        return ""
+    }
     var jobId: String?
     var jobStatus: String?
     var jobProgress: Int?
@@ -225,6 +252,7 @@ struct SerializedMessage: Codable, Hashable {
     var postPackage: PostPackage?        // §6 post package — persisted so it survives chat reload
     var attachmentThumbnailUrl: String?  // for re-edit / "you sent a video" rows
     var attachmentFileName: String?
+    var attachments: [ChatAttachmentPayload]?   // multimodal images (optional => old rows decode fine)
     var error: String?
     var originalVibe: String?
     var isOnboarding: Bool?
@@ -276,7 +304,8 @@ struct SerializedMessage: Codable, Hashable {
             return true
         }
         // Otherwise: assistant text bubbles with content but no job.
-        return !message.isThinking && message.jobStatus == nil && !message.content.isEmpty
+        return !message.isThinking && message.jobStatus == nil
+            && (!message.content.isEmpty || !(message.attachments ?? []).isEmpty)
     }
 
     @MainActor
@@ -298,6 +327,7 @@ struct SerializedMessage: Codable, Hashable {
         self.postPackage = message.postPackage
         self.attachmentThumbnailUrl = message.videoAttachment?.remoteThumbnailUrl
         self.attachmentFileName = message.videoAttachment?.fileName
+        self.attachments = message.attachments
         self.error = message.error
         self.originalVibe = message.originalVibe
         self.isOnboarding = message.isOnboarding ? true : nil
@@ -335,6 +365,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
         msg.postPackage = postPackage
+        msg.attachments = attachments
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false
