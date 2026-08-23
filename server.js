@@ -3344,6 +3344,10 @@ const server = http.createServer((req, res) => {
             signedMode: !!cf.signedMode,
             unsignedMode: !!cf.unsignedMode,
             canSign,
+            // TRUE means a key pair id IS configured and is not a key pair id
+            // (2026-08-23: it was the public key PEM). Distinct from plain
+            // unsigned mode, because this one is a live misconfiguration.
+            keyPairIdMalformed: !!cf.keyPairIdMalformed,
           };
           // canSign proves WE can sign. It does NOT prove CloudFront ACCEPTS the
           // signature — that needs the key pair to be in the trusted key group
