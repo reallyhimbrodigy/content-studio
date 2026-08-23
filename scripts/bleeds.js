@@ -1076,6 +1076,59 @@ function reportZero({ label, count, control }) {
   say(`purchase_failed n=${pf.length}, self-cancelled at the sheet **${selfCancel}** (${pct(selfCancel, pf.length)}) — the leak is the OFFER, not the funnel.`);
   say('');
 
+  // ── PAYWALL EXPOSURE BY CONTEXT — standing line (owner, 2026-08-22) ───────
+  // An ALLOCATION metric, deliberately led by impression share rather than by
+  // conversion: at this purchase volume the rates cannot carry a decision and
+  // the allocation can. Reporting rates first would invite exactly the
+  // small-sample multiplier this line exists to prevent.
+  const wallEv = ev.filter((r) => r.event === 'upgrade_wall_viewed');
+  const AMBIENT = new Set(['manual', 'post_onboarding']);
+  const ctxV = new Map(), ctxU = new Map();
+  for (const r of wallEv) {
+    const c = ((r.props || {}).context) || 'none';
+    ctxV.set(c, (ctxV.get(c) || 0) + 1);
+    if (r.user_id) { if (!ctxU.has(c)) ctxU.set(c, new Set()); ctxU.get(c).add(r.user_id); }
+  }
+  const totV = [...ctxV.values()].reduce((a, b) => a + b, 0);
+  if (totV) {
+    say('## 6b. Paywall exposure BY CONTEXT — an ALLOCATION metric');
+    say('');
+    say('| context | views | **impression share** | users | bought | conv |');
+    say('|---|---:|---:|---:|---:|---:|');
+    let ambV = 0, ambB = new Set(), blkV = 0, blkB = new Set(), totB = 0;
+    for (const [c, v] of [...ctxV.entries()].sort((a, b) => b[1] - a[1])) {
+      const us = ctxU.get(c) || new Set();
+      const bought = new Set([...us].filter((u) => paidU.has(u)));
+      totB += bought.size;
+      if (AMBIENT.has(c)) { ambV += v; bought.forEach((u) => ambB.add(u)); } else { blkV += v; bought.forEach((u) => blkB.add(u)); }
+      say(`| \`${c}\` | ${v} | **${pct(v, totV)}** | ${us.size} | ${bought.size} | ${us.size ? (100 * bought.size / us.size).toFixed(2) : '0.00'}% |`);
+    }
+    say(`| **AMBIENT** (manual + post_onboarding) | ${ambV} | **${pct(ambV, totV)}** | — | ${ambB.size} | — |`);
+    say(`| **BLOCKED-INTENT** (the gates) | ${blkV} | ${pct(blkV, totV)} | — | ${blkB.size} | — |`);
+    say('');
+    // The rates are only quotable if the sample can carry them. Say so from the data.
+    if (totB < 100) {
+      say(`_**⚠️ ${totB} purchases in this window — the CONVERSION COLUMN IS NOT QUOTABLE.** Measured `
+        + 'since 08-01 the ambient/blocked gap was 2.19x at **z=1.49, p=0.135 — not distinguishable at '
+        + '95%**, with overlapping CIs, and ~5,931 users/arm are needed to resolve it at 80% power. '
+        + 'A per-context rate here rests on one or two buyers. **Lead with impression share; never quote '
+        + 'the multiplier.**_');
+    }
+    say('_**The allocation claim does not need the rates and stands on its own:** the largest '
+      + 'impression share goes to `manual`, the context with the weakest measured intent, while gated '
+      + 'contexts with better point estimates receive a fraction of it. `reedit` has never converted '
+      + 'anyone. Re-allocate on INTENT — that decision is reversible and does not wait on n._');
+    say('_**⚠️ DEFINITIONS UNRECONCILED:** "ambient" and "blocked-intent" are grouped HERE as '
+      + 'manual+post_onboarding vs the four gates. FRONTEND reports 88%/1.5% against this board\'s '
+      + '69.5%/0.53% — reproducible by a narrower blocked-intent (`daily_chats` alone is 1.28%) and a '
+      + 'wider ambient bucket. **One definition, one place, before either figure is quoted again.**_');
+    say('');
+    say('_**Second-order, and stated every time:** paywall work sits behind delivery. 3,791 users saw '
+      + 'a paywall against a **39.1%** delivery rate — a user who never received a video is not a user '
+      + 'a paywall can convert._');
+    say('');
+  }
+
   // ── LUMEN CAMPAIGN BASELINE — First Light, VERIFIED 2026-08-15 ───────────
   // The campaign's first cost/latency baseline. Constants, not queries: there
   // are still ZERO Lumen renders in video_jobs, so this comes from the
