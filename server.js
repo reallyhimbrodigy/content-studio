@@ -3400,8 +3400,22 @@ const server = http.createServer((req, res) => {
           // that exact URL, it dies in 60s, and Key-Pair-Id is public by
           // construction — it rides in every signed URL a client already gets.
           // Off by default so the default health payload stays a cheap boolean.
-          if (canSign && String(parsed.query?.cfcanary || '') === '1') {
-            out.canaryUrl = cf.createSignedUrl('exports/__healthcheck__/probe.mp4', 60);
+          // ?cfcanary=1 (exports) or ?cfcanary=<prefix> for any RESTRICTED
+          // prefix. Every candidate is a hardcoded __healthcheck__ path under a
+          // prefix we own, and every one DELIBERATELY DOES NOT EXIST, so the
+          // probe can never mint a grant for real user data no matter what the
+          // query string says. The allowlist is the security boundary — a
+          // caller-supplied key here would be an open signing oracle.
+          const CANARY = {
+            exports: 'exports/__healthcheck__/probe.mp4',
+            'chat-media': 'chat-media/__healthcheck__/probe.png',
+            sources: 'sources/__healthcheck__/probe.mp4',
+          };
+          const want = String(parsed.query?.cfcanary || '');
+          if (canSign && want) {
+            const k = want === '1' ? CANARY.exports : CANARY[want];
+            if (k) { out.canaryKey = k; out.canaryUrl = cf.createSignedUrl(k, 60); }
+            else { out.canaryError = `unknown prefix; allowed: ${Object.keys(CANARY).join(', ')}`; }
           }
           return out;
         } catch (e) {
