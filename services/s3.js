@@ -271,8 +271,29 @@ async function createPresignedGetUrl(key, expiresIn = SIGV4_MAX_EXPIRES) {
   // iOS detects the CloudFront host on the URL and switches to
   // streaming-first playback for those URLs — no full-file download
   // gate before the play button unlocks.
-  const cfUrl = cloudfront.createSignedUrl(key, safeExpires);
-  if (cfUrl) return cfUrl;
+  // UNSIGNED_MODE_REFUSES (2026-08-23). cloudfront.createSignedUrl returns a
+  // BARE, NON-EXPIRING https://<domain>/<key> when only CLOUDFRONT_DOMAIN is set
+  // — byte-identical to getPublicUrl. Returning it here silently converted every
+  // "short-TTL signed grant" into a permanent public link, and no caller could
+  // tell: same shape, same type, no error. MEASURED live on 2026-08-23:
+  // exports/<job>/clean.mp4 → HTTP 200, video/mp4, 34,240,387 bytes, real ftyp
+  // magic, on two independent keys (S3 direct 403, so the DISTRIBUTION serves
+  // it). The export paywall was theatre.
+  //
+  // Falling through to the S3 SigV4 presign is the SAFE degrade: a genuinely
+  // time-limited URL, slower to first byte than the edge but actually private.
+  // It is a real behaviour change for callers who assumed CloudFront — accepted
+  // deliberately, because "fast and public" is not a valid answer to a request
+  // for a private URL.
+  if (cloudfront.signedMode) {
+    const cfUrl = cloudfront.createSignedUrl(key, safeExpires);
+    if (cfUrl) return cfUrl;
+  } else if (cloudfront.enabled) {
+    console.warn(`[s3] CloudFront is UNSIGNED (no CLOUDFRONT_KEY_PAIR_ID/`
+      + `CLOUDFRONT_PRIVATE_KEY) — refusing to mint a bare CDN URL for `
+      + `${String(key).slice(0, 80)} and falling back to an S3 presign. `
+      + `A bare CDN URL would be permanent and public.`);
+  }
 
   // Fallback: signed S3 URL via the accelerate endpoint. Same behavior
   // as before. iOS keeps its download-first playback path for these.

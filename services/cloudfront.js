@@ -68,6 +68,12 @@ function encodeURIPath(key) {
 
 module.exports = {
   enabled,
+  // EXPORTED 2026-08-23. Callers must be able to tell a GRANT from a bare
+  // permanent link. Without this, s3.createPresignedGetUrl read
+  // `cloudfront.signedMode` as undefined and took the unsigned branch silently
+  // — the exact undetectable-degrade shape the guard exists to close.
+  signedMode,
+  unsignedMode,
   cloudFrontDomain,
   createSignedUrl,
 };

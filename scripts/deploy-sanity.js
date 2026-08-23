@@ -160,6 +160,22 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     // If the gate is ARMED (EXPORT_GATE_ENABLED=1) with no verifiable clean asset,
     // the flip is BLOCKED — an absent target must never silently pass.
     const armed = String(env.EXPORT_GATE_ENABLED || '') === '1';
+    // UNCONDITIONAL FROM 2026-08-23 (owner ruling). The 403 assertion used to
+    // live ONLY inside `if (armed)`, and EXPORT_GATE_ENABLED is not declared in
+    // render.yaml — so the one check that proves the export paywall is real has
+    // never run in production. MEASURED the day it was taken out from behind the
+    // flag: exports/<job>/clean.mp4 returns HTTP 200 from CloudFront,
+    // content-type video/mp4, content-length 34,240,387, genuine ftyp magic —
+    // on two independent keys. S3 direct is 403, so the bucket is locked and the
+    // DISTRIBUTION is what serves it. The paywall is theatre: anyone with a job
+    // id can fetch the un-watermarked master.
+    //
+    // This runs on EVERY deploy now. It will keep failing until the CloudFront
+    // behaviour for exports/* requires a signed URL — that is AWS-side work, not
+    // a code change, and a deploy gate that blocks on it is the correct state:
+    // shipping more product on top of an unenforced paywall is worse than not
+    // shipping.
+    const EXPORT_PRIVACY_UNCONDITIONAL = true;
     const cfBase = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
     const recent = await sbJson('video_jobs?select=id,result,rendered_video_url&result->>clean_export_key=not.is.null&order=created_at.desc&limit=1');
     const job = Array.isArray(recent) && recent[0];
