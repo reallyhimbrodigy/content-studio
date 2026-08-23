@@ -2907,12 +2907,49 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
+        const _preBody = await readJsonBody(req);
+
+        // ── purpose: "chat_media" (§1 reference contract, 2026-08-23) ────────
+        // A chat image is NOT a video upload: it must not consume a render from
+        // the upload wall, it must not land under the world-readable `sources/`
+        // prefix, and it has no public URL by design. Branching BEFORE the wall
+        // is the point — routing chat attachments through the video door would
+        // silently bill a user a render for sending a photo.
+        if (String(_preBody?.purpose || '') === 'chat_media') {
+          const cm = require('./lib/chat-media');
+          const s3 = require('./services/s3');
+          if (!s3.isConfigured()) return sendJson(res, 500, { error: 'Storage not configured' });
+          let key;
+          try {
+            key = cm.buildKey(authUser.id, _preBody?.mime, _preBody?.fileName);
+          } catch (e) {
+            return sendJson(res, e.statusCode || 400, {
+              error: e.message,
+              allowed: Array.from(cm.ALLOWED_MIME),
+            });
+          }
+          // 1 hour, NOT the 7 days the video path uses. A chat image is picked
+          // and sent within seconds; the long TTL exists for background
+          // URLSession resumes that do not apply here, and a shorter-lived
+          // single-use PUT is strictly less to leak.
+          const uploadUrl = await s3.createPresignedPutUrl(key, 3600);
+          // No publicUrl. This prefix is private, and returning a public-shaped
+          // URL is precisely how the exports/ paywall became theatre.
+          return sendJson(res, 200, {
+            uploadUrl,
+            key,
+            mime: cm.normalizeMime(_preBody?.mime),
+            maxBytes: cm.MAX_MEDIA_BYTES,
+            maxPerMessage: cm.MAX_MEDIA_PER_MESSAGE,
+          });
+        }
+
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
           if (!dec.allow) return sendUploadDenial(res, dec, 'upload-url', authUser.id);
         }
-        const body = await readJsonBody(req);
+        const body = _preBody;
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
         const s3 = require('./services/s3');
         if (!s3.isConfigured()) {
@@ -3598,17 +3635,82 @@ const server = http.createServer((req, res) => {
   // 404s, so the route does not exist as far as any client can tell.
   if (parsed.pathname === '/api/chat/actions' && req.method === 'POST') return require('./routes/chat-actions').handle(req, res, { requireSupabaseUser, readJsonBody, sendJson, supabaseAdmin, checkRateLimit, PORT });
 
+  // ── POST /api/chat/media-resolve ─────────────────────────────────────────
+  // {key} → {url, expiresIn}. The read half of the reference contract.
+  //
+  // Stored chat messages carry {kind, mime, key} and NEVER a URL, so nothing in
+  // a transcript can expire. The client calls this when it is about to display
+  // an image and again whenever a previously-resolved URL goes stale. That is
+  // the whole reason the wire shape is a key: there is no server writer for
+  // chats.messages (the client PATCHes it under RLS, and the one server writer
+  // CASes on updated_at after a lost update cost 180 completions), so a URL
+  // baked into a stored message could never be refreshed by us.
+  //
+  // Authorisation is the parse: assertOwnedKey compares the user id embedded in
+  // the key against the caller. No DB read, no join, nothing to forget.
+  if (parsed.pathname === '/api/chat/media-resolve' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'chat-media-resolve', authUser.id, 120, 60)) return;
+        const body = await readJsonBody(req).catch(() => ({}));
+        const cm = require('./lib/chat-media');
+        const s3 = require('./services/s3');
+        if (!s3.isConfigured()) return sendJson(res, 500, { error: 'Storage not configured' });
+
+        let key;
+        try {
+          key = cm.assertOwnedKey(authUser.id, body && body.key);
+        } catch (e) {
+          // 403 for someone else's key, and 403 for a malformed one — the two
+          // must not be distinguishable, or this becomes an oracle for probing
+          // which keys exist.
+          return sendJson(res, 403, { error: 'forbidden_key' });
+        }
+
+        // 404 before minting: a URL for an absent object would 403 at the CDN
+        // later and read to the client as an auth failure. objectExists returns
+        // null when it cannot tell (no ListBucket) — treat that as present and
+        // let the fetch decide, rather than hiding a real image.
+        const exists = await s3.objectExists(key);
+        if (exists === false) return sendJson(res, 404, { error: 'not_found' });
+
+        // 1 hour. Long enough to render a conversation, short enough that a
+        // leaked URL dies quickly — and re-resolve makes expiry a non-event.
+        const expiresIn = 3600;
+        const url = await s3.createPresignedGetUrl(key, expiresIn);
+        return sendJson(res, 200, { url, expiresIn, key });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: clientSafeMessage(error) });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/chat' && req.method === 'POST') {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
         const body = await readJsonBody(req);
         const message = String(body?.message || '').trim();
-        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+        // §1: a message may be images ALONE. Requiring text would make "what is
+        // this?" with a photo attached a 400 — the single most obvious thing a
+        // user does with an image, rejected by the boundary.
+        const _cm = require('./lib/chat-media');
+        let inboundMedia;
+        try {
+          inboundMedia = _cm.parseInboundMedia(authUser.id, body?.media);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 400, { error: e.message, ...(e.detail || {}) });
+        }
+        if (!message && !inboundMedia.length) {
+          return sendJson(res, 400, { error: 'Message is required' });
+        }
 
         // ── Class 1: trivial input (a bare comma, "...", stray character) ──
         // Never reaches Gemini, never burns quota, never becomes a render.
-        if (isTrivialMessage(message)) {
+        // Skipped when media rides along: "?" beside a photo is a real question.
+        if (!inboundMedia.length && isTrivialMessage(message)) {
           return sendJson(res, 200, { reply: TRIVIAL_REPLY });
         }
 
@@ -3630,7 +3732,9 @@ const server = http.createServer((req, res) => {
 
         // ── Class 2: status questions → deterministic answer from the row ──
         // No LLM, no quota: stage name + honest typical duration + freshness.
-        if (isStatusQuestion(message)) {
+        // Also skipped with media: "how's it going?" beside a screenshot is
+        // asking about the picture, and the canned status reply would ignore it.
+        if (!inboundMedia.length && isStatusQuestion(message)) {
           const answer = statusAnswerFromJob(recentJob);
           if (answer) return sendJson(res, 200, { reply: answer });
           // No job to talk about → fall through to the conversational LLM.
@@ -3690,8 +3794,21 @@ const server = http.createServer((req, res) => {
           }
         }
 
-        // Add current message
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Add current message. Image parts come FIRST: Gemini grounds better
+        // when the referent precedes the question, and it makes a text-free
+        // attachment message ("<image>") a valid turn rather than an empty one.
+        let _inlineParts = [];
+        try {
+          _inlineParts = await _cm.inlinePartsForGemini(require('./services/s3'), inboundMedia);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 502, {
+            error: e.statusCode === 413 ? 'media_too_large' : 'media_unreadable',
+            ...(e.detail || {}),
+          });
+        }
+        const _userParts = [..._inlineParts];
+        if (message) _userParts.push({ text: message });
+        contents.push({ role: 'user', parts: _userParts });
 
         // Flash model for the chat path. The pro/preview model burns
         // 5-15s on simple replies — fine for the analysis pipeline,
@@ -3770,7 +3887,17 @@ const server = http.createServer((req, res) => {
         // the user's daily quota.
         await logUsageEvent(authUser.id, 'chat');
 
-        return sendJson(res, 200, { reply });
+        // §1 outbound: model-generated images are persisted to the PRIVATE
+        // prefix and returned as {kind, mime, key} — never a base64 blob. The
+        // client re-resolves the key via /api/chat/media-resolve on read, so a
+        // stored transcript holds nothing that can expire.
+        const attachments = await _cm.persistGeneratedAttachments(
+          require('./services/s3'), authUser.id, decoded.attachments,
+          (e) => console.error('[Chat] attachment persist failed:', e?.message)
+        );
+        // `attachments` is omitted entirely when empty rather than sent as [],
+        // so an older client that has never seen the field is byte-unaffected.
+        return sendJson(res, 200, attachments.length ? { reply, attachments } : { reply });
       } catch (error) {
         console.error('[Chat] Error:', error);
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Chat error' });
@@ -3790,7 +3917,19 @@ const server = http.createServer((req, res) => {
         const streamUser = await requireSupabaseUser(req);
         const body = await readJsonBody(req);
         const message = String(body?.message || '').trim();
-        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+        // §1: identical media handling to /api/chat. The client tries THIS
+        // endpoint first, so a boundary enforced only on the one-shot path
+        // would be enforced on the path almost nobody takes.
+        const _cmS = require('./lib/chat-media');
+        let streamMedia;
+        try {
+          streamMedia = _cmS.parseInboundMedia(streamUser.id, body?.media);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 400, { error: e.message, ...(e.detail || {}) });
+        }
+        if (!message && !streamMedia.length) {
+          return sendJson(res, 400, { error: 'Message is required' });
+        }
 
         // Router classes 1+2 (same as /api/chat — the client tries THIS
         // endpoint first, so the gates must live here too). Canned replies
@@ -3805,7 +3944,8 @@ const server = http.createServer((req, res) => {
           res.write('data: [DONE]\n\n');
           res.end();
         };
-        if (isTrivialMessage(message)) return emitCanned(TRIVIAL_REPLY);
+        // Media present → never canned. See /api/chat for the reasoning.
+        if (!streamMedia.length && isTrivialMessage(message)) return emitCanned(TRIVIAL_REPLY);
 
         let streamRecentJob = null;
         if (supabaseAdmin) {
@@ -3820,7 +3960,7 @@ const server = http.createServer((req, res) => {
             streamRecentJob = Array.isArray(jobs) ? jobs[0] || null : null;
           } catch (e) { /* best-effort */ }
         }
-        if (isStatusQuestion(message)) {
+        if (!streamMedia.length && isStatusQuestion(message)) {
           const answer = statusAnswerFromJob(streamRecentJob);
           if (answer) return emitCanned(answer);
         }
@@ -3871,7 +4011,22 @@ const server = http.createServer((req, res) => {
             });
           }
         }
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Images first, then text — same ordering as /api/chat. Resolved BEFORE
+        // the SSE headers go out: an unreadable or oversized image must be a
+        // clean typed JSON error, and once `res.writeHead` has fired the only
+        // way left to report it is an error frame the client may not surface.
+        let _sInline = [];
+        try {
+          _sInline = await _cmS.inlinePartsForGemini(require('./services/s3'), streamMedia);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 502, {
+            error: e.statusCode === 413 ? 'media_too_large' : 'media_unreadable',
+            ...(e.detail || {}),
+          });
+        }
+        const _sParts = [..._sInline];
+        if (message) _sParts.push({ text: message });
+        contents.push({ role: 'user', parts: _sParts });
 
         // Open SSE response stream to the client BEFORE we hit Gemini —
         // a slow connection from us to Gemini shouldn't delay the
@@ -3938,6 +4093,9 @@ const server = http.createServer((req, res) => {
         // need to know Gemini's response shape.
         const decoder = new TextDecoder();
         let buffer = '';
+        // Generated image parts, accumulated across frames and persisted once
+        // the stream drains (see the attachments frame below [DONE]).
+        const _streamInlineAtts = [];
         const reader = geminiRes.body.getReader();
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -3971,6 +4129,15 @@ const server = http.createServer((req, res) => {
               if (token) {
                 res.write(`data: ${JSON.stringify({ token })}\n\n`);
               }
+              // §1: collect generated image parts as they stream. They are NOT
+              // emitted inline — a base64 blob in an SSE frame would be
+              // megabytes on the wire and unusable in a stored transcript. They
+              // are persisted after the stream drains and announced as keys.
+              for (const p of parts) {
+                if (!p || p.thought) continue;
+                const inline = p.inlineData || p.inline_data;
+                if (inline && inline.data) _streamInlineAtts.push(inline);
+              }
             } catch {
               // Non-JSON frame (keep-alive comment, etc) — ignore.
             }
@@ -3992,6 +4159,25 @@ const server = http.createServer((req, res) => {
           // counter remains accurate. Better than letting an outage
           // disable the cap.
           res.write(`data: ${JSON.stringify({ error: 'usage_log_failed' })}\n\n`);
+        }
+        // §1: the attachments frame — LAST data frame, immediately before
+        // [DONE]. Persisting to S3 takes a round trip per image, so doing it
+        // inline during the stream would stall token delivery; doing it here
+        // costs the user nothing they can perceive because the text has already
+        // rendered. Shape matches /api/chat exactly: {kind, mime, key}.
+        // Emitted only when non-empty, so a client that ignores the frame is
+        // byte-unaffected.
+        try {
+          const streamAtts = await _cmS.persistGeneratedAttachments(
+            require('./services/s3'), streamUser.id, _streamInlineAtts,
+            (e) => console.error('[ChatStream] attachment persist failed:', e?.message)
+          );
+          if (streamAtts.length) {
+            res.write(`data: ${JSON.stringify({ attachments: streamAtts })}\n\n`);
+          }
+        } catch (attErr) {
+          // Never fatal: the text reply already streamed and is the answer.
+          console.error('[ChatStream] attachment stage failed:', attErr?.message);
         }
         res.write('data: [DONE]\n\n');
         res.end();

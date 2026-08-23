@@ -131,6 +131,53 @@ async function objectExists(key) {
 }
 
 /**
+ * Read an object into memory, with a HARD byte ceiling.
+ *
+ * Added for chat media (§1): Gemini takes images as inline base64, so the bytes
+ * have to come back through us. `maxBytes` is checked against ContentLength
+ * BEFORE the body is drained — a presigned PUT cannot be trusted to have
+ * honoured whatever the client declared at mint time, and streaming an
+ * unbounded object into a Buffer is how one oversized upload takes the process
+ * down. Throws `too_large` (413) rather than truncating: a silently clipped
+ * image would reach the model as corrupt data and produce a confidently wrong
+ * answer about a picture nobody sent.
+ *
+ * @param {string} key
+ * @param {number} maxBytes
+ * @returns {Promise<{buffer: Buffer, contentType: string, size: number}>}
+ */
+async function getObjectBuffer(key, maxBytes) {
+  if (!s3Client) throw new Error('S3 client not configured');
+  const out = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+  const declared = Number(out.ContentLength || 0);
+  if (maxBytes && declared > maxBytes) {
+    const e = new Error('too_large');
+    e.statusCode = 413;
+    e.detail = { size: declared, limit: maxBytes };
+    throw e;
+  }
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of out.Body) {
+    total += chunk.length;
+    // Belt and braces: ContentLength is server-reported, so enforce on the
+    // actual stream too and abort the moment it is exceeded.
+    if (maxBytes && total > maxBytes) {
+      const e = new Error('too_large');
+      e.statusCode = 413;
+      e.detail = { size: total, limit: maxBytes };
+      throw e;
+    }
+    chunks.push(chunk);
+  }
+  return {
+    buffer: Buffer.concat(chunks),
+    contentType: out.ContentType || 'application/octet-stream',
+    size: total,
+  };
+}
+
+/**
  * Upload a Buffer to S3.
  * @param {string} key - Object key (e.g. "sources/userId/timestamp-file.mp4")
  * @param {Buffer} buffer
@@ -323,6 +370,7 @@ module.exports = {
   s3Client,
   isConfigured,
   objectExists,
+  getObjectBuffer,
   upload,
   createPresignedPutUrl,
   createPresignedGetUrl,
