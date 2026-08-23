@@ -79,6 +79,8 @@ struct PaywallView: View {
     }
 
     @ObservedObject private var subscription = SubscriptionService.shared
+    @ObservedObject private var onboardingStateRef = OnboardingState.shared
+    @ObservedObject private var referralsRef = ReferralService.shared
     @State private var selectedPackage: Package?
     @State private var isPurchasing = false
     @State private var showError = false
@@ -130,6 +132,16 @@ struct PaywallView: View {
                     if let packages = currentPackages, !packages.isEmpty {
                         packagePicker(packages: packages)
                             .padding(.horizontal, 24)
+                        // Ambient-wall referral row (conversion standing): 88% of
+                        // wall exposure is THIS wall in .manual context at 0.2-0.3%
+                        // buy — the curious get a non-paying path. Outside the
+                        // radio selection; never wedges the buy button. Flag:
+                        // ambient_wall_referral (server, default off).
+                        if case .manual = reason, onboardingStateRef.ambientWallReferralEnabled {
+                            ambientReferralRow
+                                .padding(.horizontal, 24)
+                                .padding(.top, 10)
+                        }
                     } else if subscription.isLoadingOfferings {
                         ProgressView()
                             .tint(.white)
@@ -344,6 +356,39 @@ struct PaywallView: View {
     /// per-month string; falls back to price ÷ 12 formatted with the product's
     /// own formatter. Both are storefront-derived — never a hardcoded currency,
     /// so ₹19,900 renders "₹1,658/mo" and CAD renders CAD, worldwide, for free.
+    private var ambientReferralRow: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Task { await referralsRef.presentShareSheet(source: "ambient_wall") }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(PromptlyGold.gradient)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Or get Pro free")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Invite 3 friends who make a video — get a week of Pro")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.65))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func monthlyAnchor(for pkg: Package) -> String? {
         if let perMonth = pkg.storeProduct.localizedPricePerMonth,
            let line = TrialCopy.monthlyEquivalent(perMonthPrice: perMonth) {
@@ -542,6 +587,9 @@ struct PaywallView: View {
 /// the user closed Apple's sheet — confirm no charge, same offer, no new flow.
 struct AbandonRecoveryOverlay: View {
     let onBack: () -> Void
+    @ObservedObject private var onboarding = OnboardingState.shared
+    @ObservedObject private var referrals = ReferralService.shared
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.72).ignoresSafeArea()
@@ -562,6 +610,28 @@ struct AbandonRecoveryOverlay: View {
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(Color.white, in: Capsule())
+                }
+                // P1 (conversion standing): the two-step ask — the decline is
+                // the qualifier. Only sheet-decliners ever see this, so it
+                // cannot cannibalise a willing buyer by construction. Flag:
+                // abandon_referral (server, default off).
+                if onboarding.abandonReferralEnabled {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task { await referrals.presentShareSheet(source: "abandon") }
+                        onBack()
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text("Or get Pro free")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(PromptlyGold.solid)
+                            Text("Invite 3 friends who make a video — get a week of Pro")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(26)

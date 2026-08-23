@@ -10,6 +10,7 @@ struct EditorView: View {
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @ObservedObject private var usageService = UsageService.shared
     @ObservedObject private var versionAware = VersionAwareness.shared
+    @ObservedObject private var onboardingState = OnboardingState.shared
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -100,6 +101,17 @@ struct EditorView: View {
                 // favor of in-bubble ghost-text rotation (see inputBar).
                 VStack(spacing: 0) {
                     reeditChip
+                    // P2 (conversion standing): the delight-moment referral card,
+                    // shown ONCE, only after a completed render exists in this
+                    // chat — the ask lands at the payoff, not at a wall. Flag:
+                    // postrender_referral (server, default off).
+                    if onboardingState.postrenderReferralEnabled,
+                       !UserDefaults.standard.bool(forKey: "postrender_referral_shown"),
+                       messages.contains(where: { $0.jobStatus == "completed" }) {
+                        PostRenderReferralCard {
+                            UserDefaults.standard.set(true, forKey: "postrender_referral_shown")
+                        }
+                    }
                     // CONTEXTUAL update prompt (version awareness): an upload
                     // just failed AND this build is older than what's live —
                     // the known-fixed-failure case (1.3.6's upload defect,
@@ -3796,6 +3808,58 @@ private struct PushExplainerAlert: ViewModifier {
 /// With quota it's a quiet "N free videos left today"; at the cap it escalates
 /// to a reset countdown + a gold "Get more usage" link into the paywall. This
 /// is DISPLAY ONLY — the server is the real gate (see UsageService).
+/// P2 — the delight-moment referral ask: one card, after a finished video,
+/// dismissed forever on interaction. "Ask at the payoff, not the paywall."
+private struct PostRenderReferralCard: View {
+    let onDone: () -> Void
+    @ObservedObject private var referrals = ReferralService.shared
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(PromptlyGold.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Love it? Get Pro free")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Invite 3 friends who make a video — get a week of Pro")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.65))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Task { await referrals.presentShareSheet(source: "postrender") }
+                onDone()
+            } label: {
+                Text("Invite")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(Capsule().fill(Color.white))
+            }
+            .buttonStyle(.plain)
+            Button {
+                onDone()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.05))
+        .entrance()
+    }
+}
+
 /// Version awareness — the contextual "this failure is fixed in the update"
 /// strip. One honest line + the store button; no error language beyond what
 /// the failed tile already shows.

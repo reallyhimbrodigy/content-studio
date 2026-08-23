@@ -31,6 +31,11 @@ final class OnboardingState: ObservableObject {
     /// nil = not fetched, default false on failure, last-known cached.
     @Published private(set) var firstLaunchPaywallEnabled: Bool? = nil
 
+    /// Conversion-experiment knobs (one per experiment; default off, cached).
+    @Published private(set) var postrenderReferralEnabled = false
+    @Published private(set) var abandonReferralEnabled = false
+    @Published private(set) var ambientWallReferralEnabled = false
+
     /// Show-once: set when the first-launch wall is dismissed or purchased
     /// through. @Published so the root ZStack re-branches the moment it flips.
     @Published var hasSeenFirstLaunchPaywall: Bool =
@@ -62,10 +67,20 @@ final class OnboardingState: ObservableObject {
             // Version awareness rides the same fetch (latest/min-supported/
             // force flag/notes — all server-driven).
             VersionAwareness.shared.ingest(obj)
+            // Referral-surfacing experiment knobs (P2/P1/ambient-wall).
+            postrenderReferralEnabled = (obj?["postrender_referral"] as? String) == "on"
+            abandonReferralEnabled = (obj?["abandon_referral"] as? String) == "on"
+            ambientWallReferralEnabled = (obj?["ambient_wall_referral"] as? String) == "on"
+            UserDefaults.standard.set(postrenderReferralEnabled, forKey: "postrender_referral_enabled")
+            UserDefaults.standard.set(abandonReferralEnabled, forKey: "abandon_referral_enabled")
+            UserDefaults.standard.set(ambientWallReferralEnabled, forKey: "ambient_wall_referral_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
             firstLaunchPaywallEnabled = UserDefaults.standard.bool(forKey: flpCacheKey)
+            postrenderReferralEnabled = UserDefaults.standard.bool(forKey: "postrender_referral_enabled")
+            abandonReferralEnabled = UserDefaults.standard.bool(forKey: "abandon_referral_enabled")
+            ambientWallReferralEnabled = UserDefaults.standard.bool(forKey: "ambient_wall_referral_enabled")
         }
     }
 

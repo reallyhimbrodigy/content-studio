@@ -124,9 +124,11 @@ final class ReferralService: ObservableObject {
 
     /// Open the system share sheet with the referral link. Reuses the app's
     /// topmost-VC presentation pattern (AppState.topViewController).
-    func presentShareSheet() async {
+    func presentShareSheet(source: String = "paywall2") async {
         guard let code = await getOrCreateCode() else { return }
-        Analytics.track("referral_share")
+        // source segments the surfacing experiments (paywall2 / postrender /
+        // abandon / ambient_wall) — props need no allowlist change.
+        Analytics.track("referral_share", props: ["source": source])
         let link = Self.shareURL(code: code)
         // Honest per the schema: the reward (7 days Pro at 3 qualified friends)
         // goes to the REFERRER — never promise the invitee something the
