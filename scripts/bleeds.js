@@ -66,7 +66,30 @@ function _guard(row, sel, tag) {
   });
 }
 
-async function pageAll(q) {
+// ── SYNTHETIC EXCLUSION — one predicate, applied by CONSTRUCTION ───────────
+// Fixtures must never reach a board. This is enforced inside pageAll() rather
+// than appended per-query, so a future query is excluded by construction and not
+// by whoever writes it remembering to.
+//
+// THE FORM MATTERS AND THE OBVIOUS ONE IS A TRAP. `result->>synthetic=neq.true`
+// returns ZERO ROWS — measured, not assumed — because rows WITHOUT the key have
+// a NULL there and SQL's NULL != 'true' is NULL, not true. Shipping the naive
+// predicate would have silently emptied every section of this board while
+// looking like a clean run. Verified live on 2026-08-23:
+//     <none>                          1000 rows
+//     neq.true            (NAIVE)        0 rows   <- would have emptied the board
+//     or(is.null,neq.true) (SAFE)     1000 rows
+//     eq.true             (fixtures)      1 row
+const NOT_SYNTHETIC = 'or=(result->>synthetic.is.null,result->>synthetic.neq.true)';
+
+function excludeSynthetic(q) {
+  if (!q.startsWith('video_jobs?')) return q;      // only the table that carries fixtures
+  if (q.includes('result->>synthetic')) return q;  // an explicit fixture query stays explicit
+  return `${q}&${NOT_SYNTHETIC}`;
+}
+
+async function pageAll(q0) {
+  const q = excludeSynthetic(q0);
   const out = [];
   const sel = _selectedKeys(q);
   const tag = q.split('?')[0] + ' [' + (sel ? [...sel].slice(0, 4).join(',') + '…' : 'no-select') + ']';
