@@ -176,6 +176,41 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
     // shipping more product on top of an unenforced paywall is worse than not
     // shipping.
     const EXPORT_PRIVACY_UNCONDITIONAL = true;
+
+    // ── CHAT MEDIA PREFIX PRIVACY (unconditional, 2026-08-23) ──────────────
+    //
+    // MEASURED THE HOUR chat-media/ SHIPPED: an unauthenticated CDN GET of a
+    // freshly uploaded chat image returned 200. The distribution serves the
+    // whole bucket and only exports/* carries Restrict-viewer-access, so a
+    // brand-new "private" prefix was world-readable on arrival — the exact
+    // shape of the exports/ leak, reintroduced by adding a prefix rather than
+    // by changing a permission.
+    //
+    // Keys are unguessable (ms timestamp + 8 random chars), so this is not
+    // enumerable. It is worse in a different way: the KEY is what the client
+    // stores in the chat transcript, so any transcript disclosure converts to
+    // permanent, non-expiring public image URLs. "Unguessable" is not "private".
+    //
+    // Asserted on every roll and DELIBERATELY NOT conditional on a flag —
+    // privacy of a prefix is not a feature that gets armed.
+    {
+      const cfDom = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
+      if (cfDom) {
+        // A key that does not exist is enough: the question is whether the CDN
+        // ENFORCES on this path prefix, and an absent object answers that
+        // without needing a real user's image to test with.
+        const probeKey = 'chat-media/00000000-0000-0000-0000-000000000000/0-probe-x.png';
+        const st = await fetch(`${cfDom}/${probeKey}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+        // 403 = restricted (signature required). 404 would mean CloudFront
+        // forwarded to S3 unrestricted — i.e. a real key WOULD serve. Only 403
+        // is a pass.
+        check('chat media: the chat-media/ prefix is CDN-restricted (403 unauthenticated)',
+          st === 403,
+          `got ${st} — a real chat image is publicly readable at ${cfDom}/<key>. `
+          + 'FIX: add a CloudFront behaviour for chat-media/* with Restrict viewer access, '
+          + 'same as exports/*.');
+      }
+    }
     const cfBase = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
     const recent = await sbJson('video_jobs?select=id,result,rendered_video_url&result->>clean_export_key=not.is.null&order=created_at.desc&limit=1');
     const job = Array.isArray(recent) && recent[0];
