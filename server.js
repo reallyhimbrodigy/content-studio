@@ -3339,12 +3339,30 @@ const server = http.createServer((req, res) => {
             const probe = cf.createSignedUrl('exports/__healthcheck__/probe.mp4', 60);
             canSign = typeof probe === 'string' && /[?&]Signature=/.test(probe);
           }
-          return {
+          const out = {
             enabled: !!cf.enabled,
             signedMode: !!cf.signedMode,
             unsignedMode: !!cf.unsignedMode,
             canSign,
           };
+          // canSign proves WE can sign. It does NOT prove CloudFront ACCEPTS the
+          // signature — that needs the key pair to be in the trusted key group
+          // bound to the restricted behaviour, which is configured in the AWS
+          // console, not here. Those are different failures with the same
+          // symptom, and the second one 403s every paying user's export.
+          //
+          // ?cfcanary=1 returns a 60s signed URL for a key that DELIBERATELY DOES
+          // NOT EXIST. Fetch it and the status is decisive:
+          //   404 / NoSuchKey  -> signature ACCEPTED, CloudFront forwarded to S3
+          //   403              -> signature REJECTED by the key group  (P0)
+          // Nothing is leaked: the object is absent, the signature is scoped to
+          // that exact URL, it dies in 60s, and Key-Pair-Id is public by
+          // construction — it rides in every signed URL a client already gets.
+          // Off by default so the default health payload stays a cheap boolean.
+          if (canSign && String(parsed.query?.cfcanary || '') === '1') {
+            out.canaryUrl = cf.createSignedUrl('exports/__healthcheck__/probe.mp4', 60);
+          }
+          return out;
         } catch (e) {
           return { error: String(e && e.message || e).slice(0, 120) };
         }
