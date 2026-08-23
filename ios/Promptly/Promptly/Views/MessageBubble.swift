@@ -96,6 +96,25 @@ struct MessageBubble: View {
     /// §1 image attachments (both roles): tappable thumbnails, siblings of the
     /// text — never a replacement for it (spec §1.4).
     @State private var viewerAttachment: ChatAttachmentPayload?
+    /// Re-resolve-on-read (the CompletedVideoView discipline applied to
+    /// attachments): the stored url is an expired-able grant; the key is the
+    /// identity. One resolve attempt per attachment per view lifetime.
+    @State private var liveAttachmentUrls: [String: String] = [:]
+    @State private var attachmentResolveAttempted: Set<String> = []
+
+    private func effectiveAttachmentUrl(_ att: ChatAttachmentPayload) -> URL? {
+        if let live = liveAttachmentUrls[att.id] { return URL(string: live) }
+        if let u = att.url { return URL(string: u) }
+        return nil
+    }
+
+    private func resolveAttachmentIfNeeded(_ att: ChatAttachmentPayload) async {
+        guard let key = att.key, !attachmentResolveAttempted.contains(att.id) else { return }
+        attachmentResolveAttempted.insert(att.id)
+        if let fresh = try? await APIService.shared.resolveChatMedia(key: key) {
+            liveAttachmentUrls[att.id] = fresh
+        }
+    }
 
     @ViewBuilder
     private func chatAttachmentsRow(_ atts: [ChatAttachmentPayload]) -> some View {
@@ -118,24 +137,29 @@ struct MessageBubble: View {
         Group {
             if let key = att.localKey, let img = ThumbnailCache.shared.load(for: key) {
                 Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
-            } else if let urlStr = att.url, let url = URL(string: urlStr) {
+            } else if let url = effectiveAttachmentUrl(att) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
                         image.resizable().aspectRatio(contentMode: .fill)
                     } else if phase.error != nil {
-                        // Short-TTL grant expired (spec §1.2) — degrade quietly,
-                        // never an error state.
+                        // Grant expired (spec §1.2): re-resolve once from the
+                        // key — the @State url change re-runs AsyncImage.
+                        // Beyond that, degrade quietly, never an error state.
                         ZStack {
                             Color(.tertiarySystemBackground)
                             Image(systemName: "photo")
                                 .foregroundColor(.white.opacity(0.3))
                         }
+                        .task { await resolveAttachmentIfNeeded(att) }
                     } else {
                         Color(.tertiarySystemBackground)
                     }
                 }
             } else {
+                // No usable url yet (local cache purged, or a key-only wire
+                // attachment): mint one from the key.
                 Color(.tertiarySystemBackground)
+                    .task { await resolveAttachmentIfNeeded(att) }
             }
         }
         .frame(width: 132, height: 132)
@@ -2081,6 +2105,22 @@ struct ChatImageViewer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var zoom: CGFloat = 1
     @GestureState private var pinch: CGFloat = 1
+    @State private var liveUrl: String?
+    @State private var resolveAttempted = false
+
+    private var effectiveUrl: URL? {
+        if let liveUrl { return URL(string: liveUrl) }
+        if let u = attachment.url { return URL(string: u) }
+        return nil
+    }
+
+    private func resolveIfNeeded() async {
+        guard let key = attachment.key, !resolveAttempted else { return }
+        resolveAttempted = true
+        if let fresh = try? await APIService.shared.resolveChatMedia(key: key) {
+            liveUrl = fresh
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -2088,7 +2128,7 @@ struct ChatImageViewer: View {
             Group {
                 if let key = attachment.localKey, let img = ThumbnailCache.shared.load(for: key) {
                     Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
-                } else if let urlStr = attachment.url, let url = URL(string: urlStr) {
+                } else if let url = effectiveUrl {
                     AsyncImage(url: url) { phase in
                         if let image = phase.image {
                             image.resizable().aspectRatio(contentMode: .fit)
@@ -2101,10 +2141,14 @@ struct ChatImageViewer: View {
                                     .font(.system(size: 14))
                                     .foregroundColor(.white.opacity(0.5))
                             }
+                            .task { await resolveIfNeeded() }
                         } else {
                             ProgressView().tint(.white)
                         }
                     }
+                } else {
+                    ProgressView().tint(.white)
+                        .task { await resolveIfNeeded() }
                 }
             }
             .scaleEffect(zoom * pinch)

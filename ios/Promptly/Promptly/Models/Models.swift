@@ -30,9 +30,14 @@ struct MovieFile: Transferable {
 struct ChatAttachmentPayload: Codable, Hashable, Identifiable {
     var kind: String = "image"
     var mime: String = "image/jpeg"
+    /// Ephemeral signed GRANT — valid for one TTL window, never an identity.
     var url: String?
+    /// The persistent identity: the private-prefix storage key. Re-resolve a
+    /// fresh url from this on read (same discipline as rendered_video_url —
+    /// a chat reopened next week must not show dead images).
+    var key: String?
     var localKey: String?
-    var id: String { url ?? localKey ?? kind }
+    var id: String { key ?? url ?? localKey ?? kind }
 }
 
 struct ChatMessage: Identifiable {

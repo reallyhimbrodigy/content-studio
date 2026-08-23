@@ -605,9 +605,14 @@ class APIService {
 
     // MARK: - Upload
 
-    func getUploadUrl(fileName: String) async throws -> UploadUrlResponse {
+    /// `purpose` routes the presign: "chat_media" lands in the PRIVATE chat
+    /// prefix (§1 contract — user images must never touch the public prefix).
+    /// Absent (all existing callers) === today's behaviour.
+    func getUploadUrl(fileName: String, purpose: String? = nil) async throws -> UploadUrlResponse {
         var request = await authorizedRequest("/api/upload-url", method: "POST")
-        request.httpBody = try JSONEncoder().encode(["fileName": fileName])
+        var body = ["fileName": fileName]
+        if let purpose { body["purpose"] = purpose }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
         try Self.throwIfWall(response, data)
@@ -1413,6 +1418,20 @@ class APIService {
         case attachments([ChatAttachmentPayload])
     }
 
+    /// Mint a fresh short-TTL url for a chat-media key (the re-resolve-on-read
+    /// half of the §1 expiry contract). POST /api/chat/media-resolve {key} →
+    /// {url}. Throws on non-2xx; the caller degrades to a placeholder.
+    func resolveChatMedia(key: String) async throws -> String {
+        var request = await authorizedRequest("/api/chat/media-resolve", method: "POST")
+        request.httpBody = try JSONEncoder().encode(["key": key])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.jobCreationFailed("media resolve HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        struct R: Decodable { let url: String }
+        return try JSONDecoder().decode(R.self, from: data).url
+    }
+
     /// One-shot chat. `media` is the §1 multimodal boundary: optional array of
     /// {kind, mime, data(base64)} — absent === today's behaviour, so a pre-§1
     /// server is unaffected (the client gates sending on the chat_media knob).
@@ -1443,12 +1462,12 @@ class APIService {
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw APIError.jobCreationFailed("Chat failed (HTTP \(http.statusCode))")
         }
-        struct WireAttachment: Decodable { let kind: String?; let mime: String?; let url: String? }
+        struct WireAttachment: Decodable { let kind: String?; let mime: String?; let url: String?; let key: String? }
         struct StrictChatResponse: Decodable { let reply: String; let attachments: [WireAttachment]? }
         let result = try JSONDecoder().decode(StrictChatResponse.self, from: data)
         let attachments: [ChatAttachmentPayload] = (result.attachments ?? []).compactMap { w in
-            guard (w.kind ?? "image") == "image", let url = w.url, !url.isEmpty else { return nil }
-            return ChatAttachmentPayload(kind: "image", mime: w.mime ?? "image/png", url: url, localKey: nil)
+            guard (w.kind ?? "image") == "image", (w.url ?? w.key) != nil else { return nil }
+            return ChatAttachmentPayload(kind: "image", mime: w.mime ?? "image/png", url: w.url, key: w.key, localKey: nil)
         }
         // Empty-reply rule per spec §1.3: empty iff NEITHER text NOR attachment.
         guard !result.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else {
@@ -1522,9 +1541,10 @@ class APIService {
                                 }
                                 if let atts = obj["attachments"] as? [[String: Any]] {
                                     let parsed = atts.compactMap { d -> ChatAttachmentPayload? in
-                                        guard (d["kind"] as? String ?? "image") == "image",
-                                              let url = d["url"] as? String, !url.isEmpty else { return nil }
-                                        return ChatAttachmentPayload(kind: "image", mime: d["mime"] as? String ?? "image/png", url: url, localKey: nil)
+                                        guard (d["kind"] as? String ?? "image") == "image" else { return nil }
+                                        let url = d["url"] as? String, key = d["key"] as? String
+                                        guard url != nil || key != nil else { return nil }
+                                        return ChatAttachmentPayload(kind: "image", mime: d["mime"] as? String ?? "image/png", url: url, key: key, localKey: nil)
                                     }
                                     if !parsed.isEmpty { continuation.yield(.attachments(parsed)) }
                                 }

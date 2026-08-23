@@ -2586,10 +2586,48 @@ struct EditorView: View {
             // /api/chat/actions 404s while PROMPTLY_CHAT_ACTIONS is off, and network/
             // other errors also map to .notFound, so we fall through to today's
             // streaming chat (identical to 225). No client-side intent parsing.
-            // §1: media turns go straight to the multimodal chat path — the
-            // action router is a text contract and would drop the image.
-            let media: [[String: Any]]? = stagedImages.isEmpty ? nil : stagedImages.map {
-                ["kind": "image", "mime": "image/jpeg", "data": $0.jpegData.base64EncodedString()]
+            // §1 (settled contract): media[] carries {key, mime}, never base64.
+            // Each image goes up via the existing presigned-PUT flow to the
+            // PRIVATE chat prefix; the server fetches and inlines for Gemini.
+            // No size cap in the JSON body, and user images never touch the
+            // public prefix.
+            var media: [[String: Any]]? = nil
+            if !stagedImages.isEmpty {
+                var parts: [[String: Any]] = []
+                var uploadedKeys: [String] = []
+                for img in stagedImages {
+                    do {
+                        let presign = try await APIService.shared.getUploadUrl(
+                            fileName: "chat-\(UUID().uuidString).jpg", purpose: "chat_media")
+                        guard let putUrl = presign.uploadUrl, let key = presign.key else {
+                            throw APIError.uploadFailed
+                        }
+                        try await APIService.shared.uploadToS3(url: putUrl, data: img.jpegData, mimeType: "image/jpeg")
+                        parts.append(["kind": "image", "mime": "image/jpeg", "key": key])
+                        uploadedKeys.append(key)
+                    } catch {
+                        // An image the model never saw must not be silently
+                        // pretended into the turn — fail the turn honestly.
+                        if let i = messages.firstIndex(where: { $0.id == msgId }) {
+                            messages[i].isThinking = false
+                            messages[i].error = "chat_failed"
+                            messages[i].content = "Couldn't upload your image — check your connection and try again."
+                        }
+                        if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = false }
+                        isChatStreaming = false
+                        persistMessages()
+                        return
+                    }
+                }
+                media = parts
+                // Land the storage keys on the user echo: the key is the
+                // persistent identity, so a purged local cache can still
+                // re-resolve this image next week.
+                if let u = messages.firstIndex(where: { $0.id == userMsg.id }),
+                   var atts = messages[u].attachments, atts.count == uploadedKeys.count {
+                    for k in atts.indices { atts[k].key = uploadedKeys[k] }
+                    messages[u].attachments = atts
+                }
             }
             let outcome: APIService.ChatActionResult = media != nil
                 ? .notFound
