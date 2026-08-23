@@ -3684,12 +3684,26 @@ const server = http.createServer((req, res) => {
         }
 
         const geminiData = await geminiRes.json();
-        const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Walk ALL parts, not parts[0]. Two defects fixed here:
+        //   (a) LIVE TODAY: a thinking model emits a THOUGHT part alongside the
+        //       answer. If the thought lands at parts[0] the answer is dropped
+        //       and a good reply becomes 502 empty_ai_reply. The STREAMING path
+        //       already fixed this ("reading only parts[0] would drop the
+        //       answer"); the one-shot path never got it. Same filter, so the
+        //       two entrances cannot drift again.
+        //   (b) "empty" meant "no text", making an image-only reply an error by
+        //       construction and blocking every later multimodal part.
+        const { decodeChatCandidate, isEmptyReply } = require('./lib/chat-reply');
+        const decoded = decodeChatCandidate(geminiData?.candidates?.[0]);
+        const reply = decoded.text;
         // Decode gate (server half): an empty candidate (safety block, model
         // hiccup) must be an ERROR, never a 200 with a blank reply — the
-        // client's retry handler needs a throw to fire.
-        if (!reply.trim()) {
-          console.error('[Chat] Gemini returned an empty candidate');
+        // client's retry handler needs a throw to fire. EMPTY now means neither
+        // text NOR attachment; a thought-only candidate is counted separately
+        // so it stops hiding inside one opaque 502.
+        if (isEmptyReply(decoded)) {
+          console.error(`[Chat] Gemini returned an empty candidate`
+            + `${decoded.thoughtOnly ? ' (thought-only — model reasoned but never answered)' : ''}`);
           return sendJson(res, 502, { error: 'empty_ai_reply' });
         }
 
