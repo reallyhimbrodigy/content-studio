@@ -3410,6 +3410,7 @@ const server = http.createServer((req, res) => {
             exports: 'exports/__healthcheck__/probe.mp4',
             'chat-media': 'chat-media/__healthcheck__/probe.png',
             sources: 'sources/__healthcheck__/probe.mp4',
+            'renders-private': 'renders-private/__healthcheck__/probe.mp4',
           };
           const want = String(parsed.query?.cfcanary || '');
           if (canSign && want) {
