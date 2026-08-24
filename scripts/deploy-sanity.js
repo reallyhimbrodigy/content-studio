@@ -255,8 +255,59 @@ async function chatProbe(token, message = 'Reply with exactly the word: PONG') {
       }
     }
     const cfBase = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
-    const recent = await sbJson('video_jobs?select=id,result,rendered_video_url&result->>clean_export_key=not.is.null&order=created_at.desc&limit=1');
+    // PREFER THE FIXTURE, deterministically. "Most recent job with a
+    // clean_export_key" made this check depend on whichever real user rendered
+    // last — so it tested a different object every run, went UNMEASURED whenever
+    // no recent job had one, and could never be trusted to have actually
+    // exercised anything. The fixture is a real, playable 720x1280 mp4 at a
+    // fixed key owned by the PRO probe, so the assertion below runs identically
+    // on every deploy, forever, against an object that always exists.
+    const FIXTURE_JOB = '00000000-0000-4000-8000-00000000da71';
+    let recent = await sbJson(`video_jobs?select=id,result,rendered_video_url&id=eq.${FIXTURE_JOB}&result->>clean_export_key=not.is.null&limit=1`);
+    let usedFixture = Array.isArray(recent) && recent.length > 0;
+    if (!usedFixture) {
+      recent = await sbJson('video_jobs?select=id,result,rendered_video_url&result->>clean_export_key=not.is.null&order=created_at.desc&limit=1');
+    }
+    check('export privacy: a fixed fixture object exists to assert against',
+      usedFixture,
+      `the ${FIXTURE_JOB.slice(0, 8)} fixture has no clean_export_key — falling back to `
+      + 'whichever job rendered last, so this check is no longer deterministic');
     const job = Array.isArray(recent) && recent[0];
+
+    // ── THE PAYWALL ASSERTION, ACTUALLY UNCONDITIONAL NOW ──────────────────
+    //
+    // EXPORT_PRIVACY_UNCONDITIONAL was set to `true` on 2026-08-22 to hoist this
+    // out of `if (armed)`. It was never READ. The constant sat there asserting
+    // nothing while the real check stayed behind EXPORT_GATE_ENABLED, which is
+    // unset — so the assertion that the clean master is private has NEVER RUN,
+    // through the entire window in which it was in fact PUBLIC. A flag that
+    // describes an intention is not the same as a branch that enforces it.
+    //
+    // It runs on every deploy now, against the fixture, which always exists.
+    // Privacy of the paid artefact is not a feature that gets armed.
+    if (EXPORT_PRIVACY_UNCONDITIONAL && job && job.result && job.result.clean_export_key) {
+      const ck = job.result.clean_export_key;
+      let base = env.CLOUDFRONT_DOMAIN ? `https://${env.CLOUDFRONT_DOMAIN.replace(/\/$/, '')}` : null;
+      if (!base) {
+        // Same derivation as the chat-media check — CLOUDFRONT_DOMAIN is a
+        // deploy-side variable and sourcing it from env alone made that block
+        // skip in silence.
+        try { base = `https://${new URL(job.rendered_video_url).hostname}`; } catch (_) { /* null */ }
+      }
+      check('export privacy: CDN host determined', !!base,
+        'cannot test the clean master — UNMEASURED, not passing');
+      if (base) {
+        const pub = await fetch(`${base}/${ck}`).then((r) => r.status).catch((e) => `ERR:${e.message}`);
+        check('export privacy: the clean master is NOT publicly readable (403)',
+          pub === 403,
+          `got ${pub} on ${ck} — the export paywall is theatre; anyone with the link `
+          + 'has the full-quality file');
+      }
+      const s3direct = await fetch(`https://thisismybucketagainwooo.s3.us-west-2.amazonaws.com/${ck}`)
+        .then((r) => r.status).catch((e) => `ERR:${e.message}`);
+      check('export privacy: S3 direct is also closed (CDN is the only door)',
+        s3direct === 403, `got ${s3direct} — the bucket serves the clean master directly`);
+    }
     const cleanKey = job && job.result && job.result.clean_export_key;
     if (armed) {
       check('export arming: a recent render has a clean_export_key to verify', !!cleanKey, 'none — cannot arm the gate');
