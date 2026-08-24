@@ -605,9 +605,14 @@ class APIService {
 
     // MARK: - Upload
 
-    func getUploadUrl(fileName: String) async throws -> UploadUrlResponse {
+    /// `purpose` routes the presign: "chat_media" lands in the PRIVATE chat
+    /// prefix (§1 contract — user images must never touch the public prefix).
+    /// Absent (all existing callers) === today's behaviour.
+    func getUploadUrl(fileName: String, purpose: String? = nil) async throws -> UploadUrlResponse {
         var request = await authorizedRequest("/api/upload-url", method: "POST")
-        request.httpBody = try JSONEncoder().encode(["fileName": fileName])
+        var body = ["fileName": fileName]
+        if let purpose { body["purpose"] = purpose }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
         try Self.throwIfWall(response, data)
@@ -1401,9 +1406,39 @@ class APIService {
 
     // MARK: - Chat
 
-    func chat(message: String, history: [[String: String]]) async throws -> String {
+    /// One-shot chat result: text plus any §1 image attachments (short-TTL URLs).
+    struct ChatReply {
+        let reply: String
+        let attachments: [ChatAttachmentPayload]
+    }
+
+    /// Streamed chat events: token chunks, or an attachments frame (§1 out).
+    enum ChatStreamEvent {
+        case token(String)
+        case attachments([ChatAttachmentPayload])
+    }
+
+    /// Mint a fresh short-TTL url for a chat-media key (the re-resolve-on-read
+    /// half of the §1 expiry contract). POST /api/chat/media-resolve {key} →
+    /// {url}. Throws on non-2xx; the caller degrades to a placeholder.
+    func resolveChatMedia(key: String) async throws -> String {
+        var request = await authorizedRequest("/api/chat/media-resolve", method: "POST")
+        request.httpBody = try JSONEncoder().encode(["key": key])
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.jobCreationFailed("media resolve HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        struct R: Decodable { let url: String }
+        return try JSONDecoder().decode(R.self, from: data).url
+    }
+
+    /// One-shot chat. `media` is the §1 multimodal boundary: optional array of
+    /// {kind, mime, data(base64)} — absent === today's behaviour, so a pre-§1
+    /// server is unaffected (the client gates sending on the chat_media knob).
+    func chat(message: String, history: [[String: String]], media: [[String: Any]]? = nil) async throws -> ChatReply {
         var request = await authorizedRequest("/api/chat", method: "POST")
-        let payload: [String: Any] = ["message": message, "history": history]
+        var payload: [String: Any] = ["message": message, "history": history]
+        if let media, !media.isEmpty { payload["media"] = media }
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await requestData(request)
@@ -1427,12 +1462,18 @@ class APIService {
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw APIError.jobCreationFailed("Chat failed (HTTP \(http.statusCode))")
         }
-        struct StrictChatResponse: Decodable { let reply: String }
+        struct WireAttachment: Decodable { let kind: String?; let mime: String?; let url: String?; let key: String? }
+        struct StrictChatResponse: Decodable { let reply: String; let attachments: [WireAttachment]? }
         let result = try JSONDecoder().decode(StrictChatResponse.self, from: data)
-        guard !result.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let attachments: [ChatAttachmentPayload] = (result.attachments ?? []).compactMap { w in
+            guard (w.kind ?? "image") == "image", (w.url ?? w.key) != nil else { return nil }
+            return ChatAttachmentPayload(kind: "image", mime: w.mime ?? "image/png", url: w.url, key: w.key, localKey: nil)
+        }
+        // Empty-reply rule per spec §1.3: empty iff NEITHER text NOR attachment.
+        guard !result.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else {
             throw APIError.jobCreationFailed("Empty chat reply")
         }
-        return result.reply
+        return ChatReply(reply: result.reply, attachments: attachments)
     }
 
     /// Streaming chat. Each yielded String is a token chunk (could be
@@ -1442,12 +1483,13 @@ class APIService {
     ///
     /// The stream terminates normally on `[DONE]` from the server, or
     /// throws on transport error / server error frame.
-    func chatStream(message: String, history: [[String: String]]) -> AsyncThrowingStream<String, Error> {
+    func chatStream(message: String, history: [[String: String]], media: [[String: Any]]? = nil) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let work = Task {
                 do {
                     var request = await authorizedRequest("/api/chat/stream", method: "POST")
-                    let payload: [String: Any] = ["message": message, "history": history]
+                    var payload: [String: Any] = ["message": message, "history": history]
+                    if let media, !media.isEmpty { payload["media"] = media }
                     request.httpBody = try JSONSerialization.data(withJSONObject: payload)
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.timeoutInterval = 60
@@ -1485,14 +1527,26 @@ class APIService {
                             return
                         }
                         if let data = payload.data(using: .utf8) {
-                            // Expect {"token":"..."} or {"error":"..."}.
-                            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                                if let err = obj["error"] {
+                            // Expect {"token":"..."} | {"error":"..."} | {"attachments":[...]}.
+                            // Decoded as [String: Any] — the old [String: String] cast
+                            // silently DROPPED any frame with a non-string value, which
+                            // is exactly what an attachments frame is.
+                            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                                if let err = obj["error"] as? String {
                                     continuation.finish(throwing: APIError.jobCreationFailed(err))
                                     return
                                 }
-                                if let token = obj["token"] {
-                                    continuation.yield(token)
+                                if let token = obj["token"] as? String {
+                                    continuation.yield(.token(token))
+                                }
+                                if let atts = obj["attachments"] as? [[String: Any]] {
+                                    let parsed = atts.compactMap { d -> ChatAttachmentPayload? in
+                                        guard (d["kind"] as? String ?? "image") == "image" else { return nil }
+                                        let url = d["url"] as? String, key = d["key"] as? String
+                                        guard url != nil || key != nil else { return nil }
+                                        return ChatAttachmentPayload(kind: "image", mime: d["mime"] as? String ?? "image/png", url: url, key: key, localKey: nil)
+                                    }
+                                    if !parsed.isEmpty { continuation.yield(.attachments(parsed)) }
                                 }
                             }
                         }

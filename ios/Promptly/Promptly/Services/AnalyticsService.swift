@@ -39,6 +39,21 @@ enum Analytics {
         return Purchases.shared.appUserID
     }
 
+    /// Identity bridge (cycle-2 audit, 2026-08-23): pre-auth events land in the
+    /// mirror with only the RC anonymous id, and NOTHING joins it to the auth
+    /// UUID later — 46% of new users' session_started rows were unreadable.
+    /// This value is stable per install and rides every event as a prop
+    /// (props need no allowlisting), so pre-auth → post-auth joins are exact.
+    /// Prefers the first-seen RC appUserID (joins historical anon rows);
+    /// mints a UUID if RC isn't configured at first fire.
+    private static var installId: String {
+        let d = UserDefaults.standard
+        if let v = d.string(forKey: "analytics_install_id") { return v }
+        let v = anonUserId ?? "install-" + UUID().uuidString
+        d.set(v, forKey: "analytics_install_id")
+        return v
+    }
+
     /// StoreKit's storefront (country + id). Cheap — StoreKit caches it —
     /// so we resolve per-event rather than holding shared mutable state
     /// (which would be a data race across detached tasks).
@@ -58,13 +73,15 @@ enum Analytics {
         // boundary — keeps this clean under strict concurrency.
         let version = appVersion
         let anon = anonUserId
-        let propsData: Data = (JSONSerialization.isValidJSONObject(props)
-            ? (try? JSONSerialization.data(withJSONObject: props)) : nil) ?? Data("{}".utf8)
+        var enrichedProps = props
+        enrichedProps["install_id"] = installId
+        let propsData: Data = (JSONSerialization.isValidJSONObject(enrichedProps)
+            ? (try? JSONSerialization.data(withJSONObject: enrichedProps)) : nil) ?? Data("{}".utf8)
 
         // Sink 1: PostHog. Same event name + props; the SDK batches, retries,
         // and persists its own queue. Envelope fields ride as properties so
         // funnels can cut by them without waiting for the person merge.
-        var phProps: [String: Any] = props
+        var phProps: [String: Any] = enrichedProps
         phProps["app_version"] = version
         if let a = anon { phProps["rc_app_user_id"] = a }
         PostHogSDK.shared.capture(event, properties: phProps)

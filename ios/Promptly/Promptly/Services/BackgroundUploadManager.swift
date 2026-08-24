@@ -26,6 +26,17 @@ import UIKit
 /// per-chunk `Data` body isn't compatible with background sessions.
 /// The 100MB single-PUT threshold means most uploads benefit here.
 @MainActor
+/// Best-effort snapshot of the last TRANSPORT-LEVEL upload error (the real
+/// NSError from URLSession) — same doctrine as ReachabilityMonitor's static
+/// conn snapshot. The alive-failure upload_failed emit happens UPSTREAM
+/// (EditorView), where only a generic APIError survives — error_desc read
+/// "Upload failed" on the DOMINANT enriched class and named nothing. Written
+/// at every resume(throwing:) site in both upload managers; read+cleared at
+/// emit. Racy by design: a telemetry tag, one active upload per message.
+enum UploadDiagnostics {
+    nonisolated(unsafe) static var lastTransportError: (domain: String, code: Int)?
+}
+
 final class BackgroundUploadManager: NSObject {
     static let shared = BackgroundUploadManager()
 
@@ -187,8 +198,11 @@ final class BackgroundUploadManager: NSObject {
                 ])
             }
             if let error {
+                let ns = error as NSError
+                UploadDiagnostics.lastTransportError = (ns.domain, ns.code)
                 cont.resume(throwing: error)
             } else if !success {
+                UploadDiagnostics.lastTransportError = ("HTTP", httpStatus)
                 cont.resume(throwing: APIError.uploadFailed)
             } else if let ctx {
                 cont.resume(returning: ctx.publicUrl)
@@ -220,6 +234,8 @@ final class BackgroundUploadManager: NSObject {
                 "mechanism": mech,
                 "path": "background_orphan",
                 "http_status": httpStatus,
+                "error_domain": (error as NSError?)?.domain ?? "",
+                "error_code": (error as NSError?)?.code ?? 0,
                 // src_key joins this app-killed failure to its upload_attempt (size/path)
                 // and to the video_jobs row — the orphan class was the biggest silent
                 // loser and was entirely keyless before this.

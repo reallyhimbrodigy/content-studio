@@ -167,8 +167,8 @@ struct SecondPaywallView: View {
                     Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
-                    if pkg.packageType == .annual, let weekly = weeklyAnchor(for: pkg) {
-                        Text(weekly)
+                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
+                        Text(monthly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(PromptlyGold.solid)
                     }
@@ -261,13 +261,15 @@ struct SecondPaywallView: View {
         }
     }
 
-    private func weeklyAnchor(for pkg: Package) -> String? {
-        if let perWeek = pkg.storeProduct.localizedPricePerWeek,
-           let line = TrialCopy.weeklyEquivalent(perWeekPrice: perWeek) {
+    /// Re-ruled 2026-08-22: the ANNUAL anchor reads monthly (Apple's sheet
+    /// restates the full charge; per-week maximises the gap at commitment).
+    private func monthlyAnchor(for pkg: Package) -> String? {
+        if let perMonth = pkg.storeProduct.localizedPricePerMonth,
+           let line = TrialCopy.monthlyEquivalent(perMonthPrice: perMonth) {
             return line
         }
         if let formatter = pkg.storeProduct.priceFormatter {
-            return TrialCopy.weeklyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
+            return TrialCopy.monthlyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
         }
         return nil
     }

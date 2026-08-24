@@ -93,6 +93,79 @@ struct MessageBubble: View {
 
     // MARK: - User (right-aligned, subtle gray container)
 
+    /// §1 image attachments (both roles): tappable thumbnails, siblings of the
+    /// text — never a replacement for it (spec §1.4).
+    @State private var viewerAttachment: ChatAttachmentPayload?
+    /// Re-resolve-on-read (the CompletedVideoView discipline applied to
+    /// attachments): the stored url is an expired-able grant; the key is the
+    /// identity. One resolve attempt per attachment per view lifetime.
+    @State private var liveAttachmentUrls: [String: String] = [:]
+    @State private var attachmentResolveAttempted: Set<String> = []
+
+    private func effectiveAttachmentUrl(_ att: ChatAttachmentPayload) -> URL? {
+        if let live = liveAttachmentUrls[att.id] { return URL(string: live) }
+        if let u = att.url { return URL(string: u) }
+        return nil
+    }
+
+    private func resolveAttachmentIfNeeded(_ att: ChatAttachmentPayload) async {
+        guard let key = att.key, !attachmentResolveAttempted.contains(att.id) else { return }
+        attachmentResolveAttempted.insert(att.id)
+        if let fresh = try? await APIService.shared.resolveChatMedia(key: key) {
+            liveAttachmentUrls[att.id] = fresh
+        }
+    }
+
+    @ViewBuilder
+    private func chatAttachmentsRow(_ atts: [ChatAttachmentPayload]) -> some View {
+        HStack(spacing: 8) {
+            ForEach(atts) { att in
+                Button { viewerAttachment = att } label: {
+                    chatAttachmentThumb(att)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Attached image — tap to view")
+            }
+        }
+        .fullScreenCover(item: $viewerAttachment) { att in
+            ChatImageViewer(attachment: att)
+        }
+    }
+
+    @ViewBuilder
+    private func chatAttachmentThumb(_ att: ChatAttachmentPayload) -> some View {
+        Group {
+            if let key = att.localKey, let img = ThumbnailCache.shared.load(for: key) {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else if let url = effectiveAttachmentUrl(att) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else if phase.error != nil {
+                        // Grant expired (spec §1.2): re-resolve once from the
+                        // key — the @State url change re-runs AsyncImage.
+                        // Beyond that, degrade quietly, never an error state.
+                        ZStack {
+                            Color(.tertiarySystemBackground)
+                            Image(systemName: "photo")
+                                .foregroundColor(.white.opacity(0.3))
+                        }
+                        .task { await resolveAttachmentIfNeeded(att) }
+                    } else {
+                        Color(.tertiarySystemBackground)
+                    }
+                }
+            } else {
+                // No usable url yet (local cache purged, or a key-only wire
+                // attachment): mint one from the key.
+                Color(.tertiarySystemBackground)
+                    .task { await resolveAttachmentIfNeeded(att) }
+            }
+        }
+        .frame(width: 132, height: 132)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     @ViewBuilder
     private var userContent: some View {
         VStack(alignment: .trailing, spacing: 8) {
@@ -116,6 +189,10 @@ struct MessageBubble: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .accessibilityLabel("Attached video")
                 }
+            }
+
+            if let atts = message.attachments, !atts.isEmpty {
+                chatAttachmentsRow(atts)
             }
 
             if !message.content.isEmpty {
@@ -296,6 +373,10 @@ struct MessageBubble: View {
                             }
                         }
                     }
+            }
+
+            if let atts = message.attachments, !atts.isEmpty {
+                chatAttachmentsRow(atts)
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
@@ -1235,7 +1316,7 @@ final class VideoExporter: ObservableObject {
                 // 225 item 3: 402 — out of free exports. Present the upgrade paywall;
                 // NEVER fall back to a public save. No error copy (this is a flow).
                 saveState = .idle
-                await MainActor.run { AppState.shared.presentPaywall(.manual) }
+                await MainActor.run { AppState.shared.presentPaywall(.exportGate) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 saveState = .error(error.localizedDescription)
@@ -1264,7 +1345,7 @@ final class VideoExporter: ObservableObject {
                 }
             } catch ExportError.gatedPaywall {
                 shareState = .idle
-                await MainActor.run { AppState.shared.presentPaywall(.manual) }
+                await MainActor.run { AppState.shared.presentPaywall(.exportGate) }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 shareState = .error(error.localizedDescription)
@@ -1303,6 +1384,11 @@ struct VideoActionRow: View {
     let jobId: String?
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
+    /// P4: moment-triggered prominent save ask (distinct from the always-there
+    /// Save pill). Parent arms it after a watch; this row renders it and fires
+    /// `save_cta_shown` once per job at first display.
+    let showSaveCta: Bool
+    let onSaveCtaHandled: (() -> Void)?
     @StateObject private var exporter: VideoExporter
     // Observe both signals so the Re-edit pill re-renders (gold ↔ lock)
     // the moment Pro state flips — a fresh purchase or an SQL comp on
@@ -1310,12 +1396,14 @@ struct VideoActionRow: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
 
-    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil) {
+    init(videoUrlStr: String, thumbnailUrlStr: String?, jobId: String? = nil, onReedit: (() -> Void)?, onMakeAnother: (() -> Void)? = nil, showSaveCta: Bool = false, onSaveCtaHandled: (() -> Void)? = nil) {
         self.videoUrlStr = videoUrlStr
         self.thumbnailUrlStr = thumbnailUrlStr
         self.jobId = jobId
         self.onReedit = onReedit
         self.onMakeAnother = onMakeAnother
+        self.showSaveCta = showSaveCta
+        self.onSaveCtaHandled = onSaveCtaHandled
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr, jobId: jobId))
     }
 
@@ -1323,6 +1411,10 @@ struct VideoActionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showSaveCta {
+                saveCtaBanner
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             // HERO: Share — the growth action. A finished edit does nothing
             // sitting in the app; sharing it is the point, so it leads as the
             // one primary button instead of being one of four equal pills.
@@ -1348,6 +1440,54 @@ struct VideoActionRow: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    /// P4 banner: the one-tap keep step. Saving goes through the SAME gated
+    /// exporter path as the pill (402 → .exportGate paywall, never a leak).
+    private var saveCtaBanner: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            exporter.save()
+            onSaveCtaHandled?()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.arrow.down.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(PromptlyGold.gradient)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep this video")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Save it to Photos — one tap")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.65))
+                }
+                Spacer(minLength: 8)
+                Button {
+                    onSaveCtaHandled?()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.45))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss save suggestion")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(PromptlyGold.solid.opacity(0.35), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            guard let jobId, !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)") else { return }
+            UserDefaults.standard.set(true, forKey: "save_cta_shown_\(jobId)")
+            Analytics.track("save_cta_shown", props: ["job_id": jobId])
+        }
     }
 
     /// "New" pill — a plain circle+label action matching the row rhythm (the
@@ -1692,6 +1832,11 @@ struct CompletedVideoView: View {
     /// Set only when the user taps play AND FeedbackManager says we're due
     /// (rare, frequency-capped). Lives per-video so only the watched one asks.
     @State private var showFeedbackPrompt = false
+    /// P4 (`postrender_save_cta`, cycle 2): armed at play-tap so the save ask is
+    /// waiting under the video when the user closes the player — the moment of
+    /// demonstrated value. Once per job (persisted at first showing); yields to
+    /// the P2 referral card's single once-per-install showing.
+    @State private var showSaveCta = false
 
     /// ACTIVATION funnel dedupe: `result_viewed` fires at most once per
     /// appearance-session of this completed result, so scrolling the bubble
@@ -1735,6 +1880,13 @@ struct CompletedVideoView: View {
                 if FeedbackManager.shared.shouldShowPrompt() {
                     FeedbackManager.shared.recordPromptShown()
                     withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = true }
+                }
+                if let jobId,
+                   OnboardingState.shared.postrenderSaveCtaEnabled,
+                   !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)"),
+                   !(OnboardingState.shared.postrenderReferralEnabled
+                     && !UserDefaults.standard.bool(forKey: "postrender_referral_shown")) {
+                    withAnimation(.easeInOut(duration: 0.28)) { showSaveCta = true }
                 }
                 VideoPlayerPresenter.present(
                     urlString: effectiveVideoUrl,
@@ -1812,7 +1964,11 @@ struct CompletedVideoView: View {
                 thumbnailUrlStr: thumbnailUrlStr,
                 jobId: jobId,
                 onReedit: onReedit,
-                onMakeAnother: onMakeAnother
+                onMakeAnother: onMakeAnother,
+                showSaveCta: showSaveCta && !showFeedbackPrompt,
+                onSaveCtaHandled: {
+                    withAnimation(.easeInOut(duration: 0.28)) { showSaveCta = false }
+                }
             )
             .opacity(isPlayable ? 1 : 0.4)
             .disabled(!isPlayable)
@@ -1940,6 +2096,87 @@ struct CompletedVideoView: View {
 // selection (HLS / cache hit / CDN streaming) and SigV4 refresh
 // logic live here; the actual playback chrome lives in
 // PromptlyVideoPlayer.swift.
+
+/// Minimal full-screen viewer for §1 chat images — pinch to zoom, double-tap
+/// toggle, close button. The app's first still-image surface
+/// (VideoPlayerPresenter is video-only).
+struct ChatImageViewer: View {
+    let attachment: ChatAttachmentPayload
+    @Environment(\.dismiss) private var dismiss
+    @State private var zoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+    @State private var liveUrl: String?
+    @State private var resolveAttempted = false
+
+    private var effectiveUrl: URL? {
+        if let liveUrl { return URL(string: liveUrl) }
+        if let u = attachment.url { return URL(string: u) }
+        return nil
+    }
+
+    private func resolveIfNeeded() async {
+        guard let key = attachment.key, !resolveAttempted else { return }
+        resolveAttempted = true
+        if let fresh = try? await APIService.shared.resolveChatMedia(key: key) {
+            liveUrl = fresh
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            Group {
+                if let key = attachment.localKey, let img = ThumbnailCache.shared.load(for: key) {
+                    Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+                } else if let url = effectiveUrl {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        } else if phase.error != nil {
+                            VStack(spacing: 10) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.white.opacity(0.3))
+                                Text("This image link expired")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .task { await resolveIfNeeded() }
+                        } else {
+                            ProgressView().tint(.white)
+                        }
+                    }
+                } else {
+                    ProgressView().tint(.white)
+                        .task { await resolveIfNeeded() }
+                }
+            }
+            .scaleEffect(zoom * pinch)
+            .gesture(
+                MagnificationGesture()
+                    .updating($pinch) { value, state, _ in state = value }
+                    .onEnded { value in zoom = min(max(zoom * value, 1), 4) }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 1.0)) {
+                    zoom = zoom > 1 ? 1 : 2
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .padding(.top, 8)
+            .padding(.trailing, 16)
+            .accessibilityLabel("Close image")
+        }
+    }
+}
 
 enum VideoPlayerPresenter {
     /// Present the player. When `jobId` is provided, the local cache is
