@@ -249,6 +249,12 @@ struct PromptlyApp: App {
         // alias their RC ID to the Supabase user.id — that's what the
         // webhook uses to write pro_until back to profiles.
         SubscriptionService.shared.bootstrap()
+        // conn-capture fix (UNS audit 2026-08-24): the reachability singleton is
+        // LAZY, and only JobDispatchCoordinator ever touched it — so the static
+        // conn snapshot read at upload_failed emit time stayed "unknown" for
+        // 15 of 18 enriched-failure users. Start the NWPathMonitor at launch so
+        // the snapshot is always live before any upload can fail.
+        _ = ReachabilityMonitor.shared
     }
 
     @StateObject private var appState = AppState.shared

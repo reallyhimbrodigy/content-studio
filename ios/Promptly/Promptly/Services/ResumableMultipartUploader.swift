@@ -273,13 +273,19 @@ final class ResumableMultipartUploader: NSObject {
         case .background: life = "background"
         default: life = "inactive"
         }
-        Analytics.track("upload_failed", props: [
+        var mpFailProps: [String: Any] = [
             "path": "multipart",
             "mechanism": reason,
             "src_key": srcKey,
             "conn": ReachabilityMonitor.currentConnectionType,
             "lifecycle": life,
-        ], durable: true)
+        ]
+        if let t = UploadDiagnostics.lastTransportError {
+            mpFailProps["transport_domain"] = t.domain
+            mpFailProps["transport_code"] = t.code
+            UploadDiagnostics.lastTransportError = nil
+        }
+        Analytics.track("upload_failed", props: mpFailProps, durable: true)
         resolveTransfer(uploadId: uploadId, result: .failure(APIError.uploadFailed))
         cleanupLocalState(uploadId: uploadId)
     }
@@ -420,6 +426,10 @@ private final class MultipartUploadDelegate: NSObject, URLSessionTaskDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            let ns = error as NSError
+            UploadDiagnostics.lastTransportError = (ns.domain, ns.code)
+        }
         let taskId = task.taskIdentifier
         let response = task.response
         Task { @MainActor in ResumableMultipartUploader.shared.didComplete(taskId: taskId, response: response, error: error) }

@@ -1903,6 +1903,18 @@ struct EditorView: View {
                         "lifecycle": lifecycle,
                     ]
                     if sizeMb > 0 { failProps["size_mb"] = sizeMb }
+                    // The caught error's identity — if the transport NSError
+                    // propagated intact these are the real domain+code; if a
+                    // generic APIError swallowed it, transport_* below carries
+                    // the truth recorded at the resume(throwing:) site.
+                    let nsErr = error as NSError
+                    failProps["error_domain"] = nsErr.domain
+                    failProps["error_code"] = nsErr.code
+                    if let t = UploadDiagnostics.lastTransportError {
+                        failProps["transport_domain"] = t.domain
+                        failProps["transport_code"] = t.code
+                        UploadDiagnostics.lastTransportError = nil
+                    }
                     Analytics.track("upload_failed", props: failProps, durable: true)
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
