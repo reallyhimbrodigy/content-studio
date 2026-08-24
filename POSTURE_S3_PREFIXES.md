@@ -116,7 +116,7 @@ frame — more work, and it should be a decision rather than a side effect.
 | `exports/` | restricted | done |
 | `chat-media/` | restricted | no public consumer; blocked on the key pair id |
 | `sources/` | **restricted** | raw user footage; no product reason to be public |
-| `renders/` | **restricted** | share page mints per load; iOS already re-resolves |
+| `renders/` | **writes-forward only** (ruled 2026-08-23) | see §6 |
 | `thumbnails/` | **public** | OG crawler caching; least sensitive; named exception |
 
 ---
@@ -133,3 +133,84 @@ frame — more work, and it should be a decision rather than a side effect.
 
 Each step is independently reversible and each has a check that fails if it
 regresses.
+
+
+---
+
+## 6. `renders/` — writes-forward only (ruled 2026-08-23)
+
+**The ruling.** New renders write to a private prefix and are delivered by
+grant. The existing `renders/` prefix stays unrestricted and ages out with the
+fleet.
+
+**Why not restrict it outright.** Measured across the whole table:
+
+```
+total rendered_video_url    6210
+  CF-signed                    8    expire in 7d
+  S3-presigned                 2    unaffected
+  BARE permanent            6200    403 the instant renders/ is restricted
+    distinct users holding one    5121
+    created in the last 30 days   5752
+```
+
+Restricting the prefix 403s 6,200 links already in the hands of 5,121 users at
+once. Writes-forward gets the same end state without that.
+
+### 6.1 The client recovery path — CHECKED, not inherited
+
+The gating question was whether every live build recovers from a URL it cannot
+fetch. It does, and the chain is verified end to end:
+
+```
+tap play
+  -> preflightOrRefresh: HEAD, 5s timeout
+  -> ANY 4xx (a 403 from a restricted prefix qualifies)
+  -> onRefreshNeeded()  ->  refreshAndReturnVideoUrl()
+  -> POST /api/video-jobs/:id/refresh-urls
+  -> server re-signs, PREFIX-AGNOSTIC          <- proven live, see below
+  -> player presents with the fresh URL
+```
+
+The server half was tested rather than read: pointing a fixture at
+`renders-private/...` and calling the endpoint returned a CloudFront-signed URL
+with the path preserved exactly, and a foreign host was correctly left alone.
+`extractS3Key` gates on bucket/CDN host, never on prefix.
+
+The client half shipped in **builds 89 / 107 / 113**. The live fleet floor is
+~199, so it is universal:
+
+```
+1.3.6 (224)  36.4%      1.3.9  (227)  16.9%
+1.3.8 (226)  22.8%      1.3.11 (229)   4.0%
+1.3.10 (228) 18.9%      <=223          0.9%
+```
+
+### 6.2 The complication to solve before the first render lands there
+
+**88.7% of completions in the last 24h write a BARE url** (118 of 133); 98.5%
+over 7 days. The dominant completion path does not sign at all — the signing at
+`dispatch-to-modal.js` fires on a path most jobs do not take.
+
+So moving `s3OutputKey` to a private prefix WITHOUT also making the completion
+write a grant means every new render lands with a bare URL that 403s. It would
+still play — recovery is universal — but every first play would pay a
+HEAD-403 plus a refresh round trip, and any non-app consumer (share page, push
+payload, anything that is not the iOS player) gets a dead link with no recovery.
+
+**The write-forward is therefore two changes, not one**, and the second is the
+load-bearing one:
+
+1. `s3OutputKey` -> a private prefix, and a CloudFront behaviour for it
+2. **every** completion write emits a signed URL, not the worker's bare
+   `public_url` — there are 6 write sites (3 in dispatch-to-modal,
+   completion-reconcile, completion-repair, process-job)
+
+Doing (1) without (2) is the failure this note exists to prevent.
+
+### 6.3 The residual, recorded
+
+**6,200 existing renders remain publicly readable and age out with the fleet.**
+This is accepted, not overlooked. Revisit restricting the legacy prefix when
+**1.3.9+ passes ~90%** — it is **39.8% today** — at which point the remaining
+bare links belong to builds nobody is running and restricting costs nothing.
