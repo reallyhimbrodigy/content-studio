@@ -57,6 +57,24 @@
             "state": "translated",
             "value": "素材を入れる。スタジオ編集が出来上がる。"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কাঁচা ক্লিপ দিন। স্টুডিও এডিট পান।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خام کلپ دیں۔ اسٹوڈیو ایڈٹ پائیں۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कच्चा क्लिप दिनुहोस्। स्टुडियो एडिट पाउनुहोस्।"
+          }
         }
       }
     },
@@ -115,6 +133,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "字幕、カット、B-roll。トーク動画のワンテイクから。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ক্যাপশন, কাট আর B-roll — একটাই টকিং-হেড টেক থেকে।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کیپشنز، کٹس اور B-roll — کیمرے کے سامنے ایک ہی ٹیک سے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "क्याप्सन, कट र B-roll — क्यामेराअगाडि बोलेको एउटै टेकबाट।"
           }
         }
       }
@@ -175,6 +211,24 @@
             "state": "translated",
             "value": "はじめる"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "শুরু করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شروع کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सुरु गर्नुहोस्"
+          }
         }
       }
     },
@@ -233,6 +287,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "言語を選択"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ভাষা বেছে নিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپنی زبان منتخب کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आफ्नो भाषा छान्नुहोस्"
           }
         }
       }
@@ -293,6 +365,24 @@
             "state": "translated",
             "value": "何を作っていますか？"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কী ধরনের কনটেন্ট বানান?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کیا بناتے ہیں؟"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईं के बनाउनुहुन्छ?"
+          }
         }
       }
     },
@@ -351,6 +441,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "あなたの世界に合った編集にするために。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "যাতে আপনার এডিট মিলে যায় আপনার জগতের সাথে।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تاکہ آپ کے ایڈٹس آپ کی دنیا سے میل کھائیں۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ताकि तपाईंका एडिट तपाईंकै संसारसँग मिलून्।"
           }
         }
       }
@@ -411,6 +519,24 @@
             "state": "translated",
             "value": "トーク動画"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "টকিং-হেড ভিডিও"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹاکنگ ہیڈ ویڈیوز"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "क्यामेराअगाडि बोल्ने भिडियो"
+          }
         }
       }
     },
@@ -469,6 +595,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "チュートリアル・ハウツー"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "টিউটোরিয়াল ও হাউ-টু"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹیوٹوریلز اور گائیڈز"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ट्युटोरियल र हाउ-टु"
           }
         }
       }
@@ -529,6 +673,24 @@
             "state": "translated",
             "value": "商品・ビジネス系コンテンツ"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রোডাক্ট ও বিজনেস কনটেন্ট"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پروڈکٹ اور بزنس کانٹینٹ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "प्रोडक्ट र बिजनेस कन्टेन्ट"
+          }
         }
       }
     },
@@ -587,6 +749,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "信仰・モチベーション"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ধর্ম ও মোটিভেশন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایمان اور موٹیویشن"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आस्था र प्रेरणा"
           }
         }
       }
@@ -647,6 +827,24 @@
             "state": "translated",
             "value": "その他"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অন্য কিছু"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کچھ اور"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अरू केही"
+          }
         }
       }
     },
@@ -705,6 +903,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "どこに投稿していますか？"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কোথায় পোস্ট করেন?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کہاں پوسٹ کرتے ہیں؟"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईं कहाँ पोस्ट गर्नुहुन्छ?"
           }
         }
       }
@@ -765,6 +981,24 @@
             "state": "translated",
             "value": "複数のプラットフォーム"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "একাধিক"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایک سے زیادہ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एकभन्दा बढी"
+          }
         }
       }
     },
@@ -823,6 +1057,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "まだ投稿していない"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এখনও পোস্ট করি না"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی پوسٹنگ شروع نہیں کی"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अझै पोस्ट गरेको छैन"
           }
         }
       }
@@ -883,6 +1135,24 @@
             "state": "translated",
             "value": "どのくらいの頻度で投稿しますか？"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কত ঘন ঘন পোস্ট করেন?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کتنی بار پوسٹ کرتے ہیں؟"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईं कति पटक पोस्ट गर्नुहुन्छ?"
+          }
         }
       }
     },
@@ -941,6 +1211,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "毎日"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রতিদিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "روزانہ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "दैनिक"
           }
         }
       }
@@ -1001,6 +1289,24 @@
             "state": "translated",
             "value": "週に数回"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সপ্তাহে কয়েকবার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہفتے میں چند بار"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हप्तामा केही पटक"
+          }
         }
       }
     },
@@ -1059,6 +1365,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "週に1回"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সপ্তাহে একবার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہفتہ وار"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "साप्ताहिक"
           }
         }
       }
@@ -1119,6 +1443,24 @@
             "state": "translated",
             "value": "始めたばかり"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সবে শুরু করছি"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی شروعات ہے"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भर्खरै सुरु गर्दैछु"
+          }
         }
       }
     },
@@ -1177,6 +1519,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "目標は何ですか？"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার লক্ষ্য কী?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا مقصد کیا ہے؟"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको लक्ष्य के हो?"
           }
         }
       }
@@ -1237,6 +1597,24 @@
             "state": "translated",
             "value": "フォロワーを増やす"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অডিয়েন্স বাড়ানো"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپنی آڈیئنس بڑھانا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आफ्नो अडियन्स बढाउने"
+          }
         }
       }
     },
@@ -1295,6 +1673,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "編集時間を短縮する"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এডিটিংয়ের সময় বাঁচানো"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایڈیٹنگ کا وقت بچانا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एडिटिङ समय बचाउने"
           }
         }
       }
@@ -1355,6 +1751,24 @@
             "state": "translated",
             "value": "動画をプロっぽく仕上げる"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভিডিওতে প্রফেশনাল লুক আনা"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ویڈیوز کو پروفیشنل بنانا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भिडियोलाई प्रो लुक दिने"
+          }
         }
       }
     },
@@ -1413,6 +1827,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "コンテンツを収入に変える"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কনটেন্ট থেকে আয় করা"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کانٹینٹ سے کمائی کرنا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कन्टेन्टबाट कमाइ गर्ने"
           }
         }
       }
@@ -1473,6 +1905,24 @@
             "state": "translated",
             "value": "90日後、どうなっていたいですか？"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "৯০ দিন পর নিজেকে কোথায় দেখতে চান?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90 دن بعد آپ خود کو کہاں دیکھنا چاہتے ہیں؟"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "९० दिनपछि तपाईं कहाँ पुग्न चाहनुहुन्छ?"
+          }
         }
       }
     },
@@ -1531,6 +1981,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "それに合わせてあなたのスタジオを作ります。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সেটাকে ঘিরেই সাজাব আপনার স্টুডিও।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہم آپ کا اسٹوڈیو اسی کے مطابق بنائیں گے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "त्यसैअनुसार हामी तपाईंको स्टुडियो बनाउनेछौँ।"
           }
         }
       }
@@ -1591,6 +2059,24 @@
             "state": "translated",
             "value": "コンスタントに投稿している"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "নিয়মিত পোস্ট করা"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "باقاعدگی سے پوسٹنگ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नियमित पोस्ट गर्दै"
+          }
         }
       }
     },
@@ -1649,6 +2135,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "最初の1,000フォロワー"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রথম ১,০০০ ফলোয়ার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پہلے 1,000 فالوورز"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पहिलो १,००० फलोअर"
           }
         }
       }
@@ -1709,6 +2213,24 @@
             "state": "translated",
             "value": "初めてのバズ動画"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রথম ভাইরাল ভিডিও"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پہلی وائرل ویڈیو"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पहिलो भाइरल भिडियो"
+          }
         }
       }
     },
@@ -1767,6 +2289,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "コンテンツが本業"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কনটেন্টই আমার পেশা"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کانٹینٹ ہی میرا کام ہے"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कन्टेन्ट नै मेरो पेशा"
           }
         }
       }
@@ -1827,6 +2367,24 @@
             "state": "translated",
             "value": "スタジオを構築中…"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার স্টুডিও তৈরি হচ্ছে…"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو تیار ہو رہا ہے…"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो बनाउँदै…"
+          }
         }
       }
     },
@@ -1885,6 +2443,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "注目を集める字幕スタイル"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মনোযোগ ধরে রাখার মতো স্টাইলিশ ক্যাপশন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایسے کیپشنز جو توجہ جمائے رکھیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ध्यान खिच्ने स्टाइलका क्याप्सन"
           }
         }
       }
@@ -1945,6 +2521,24 @@
             "state": "translated",
             "value": "話す内容に合わせたB-roll"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনি যা বলেন, তার সাথে মানানসই B-roll"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی باتوں سے میل کھاتا B-roll"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंले भनेको कुरासँग मेल खाने B-roll"
+          }
         }
       }
     },
@@ -2003,6 +2597,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "続ける"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "চালিয়ে যান"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جاری رکھیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जारी राख्नुहोस्"
           }
         }
       }
@@ -2063,6 +2675,24 @@
             "state": "translated",
             "value": "あなたのスタジオは、コンスタントな投稿習慣のために作られています。"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "নিয়মিত পোস্টের অভ্যাস গড়তেই সাজানো হয়েছে আপনার স্টুডিও।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو باقاعدہ پوسٹنگ کی عادت کے لیے بنایا گیا ہے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो नियमित पोस्ट गर्ने बानीका लागि बनेको छ।"
+          }
         }
       }
     },
@@ -2121,6 +2751,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "あなたのスタジオは、1,000フォロワーへ導くために作られています。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "১,০০০ ফলোয়ারে পৌঁছে দিতেই সাজানো হয়েছে আপনার স্টুডিও।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو آپ کو 1,000 فالوورز تک پہنچانے کے لیے بنایا گیا ہے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो तपाईंलाई १,००० फलोअरसम्म पुर्‍याउन बनेको छ।"
           }
         }
       }
@@ -2181,6 +2829,24 @@
             "state": "translated",
             "value": "あなたのスタジオは、すべてのテイクを最高の形に仕上げるために作られています。"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রতিটি টেক যেন তার সেরাটা পায় — সেভাবেই সাজানো আপনার স্টুডিও।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو ہر ٹیک کو بہترین بنانے کے لیے بنایا گیا ہے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो हरेक टेकबाट उत्कृष्ट नतिजा निकाल्न बनेको छ।"
+          }
         }
       }
     },
@@ -2239,6 +2905,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "あなたのスタジオは、本業として作られています。いずれそうなるからです。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার স্টুডিও সাজানো হয়েছে পেশার মতো করেই — কারণ এটাই হতে চলেছে আপনার পেশা।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو ایسے بنا ہے جیسے یہ آپ کا کام ہو — کیونکہ جلد یہی ہوگا۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो पेशाकै स्तरमा बनेको छ — किनभने चाँडै यो तपाईंको पेशा हुनेछ।"
           }
         }
       }
@@ -2299,6 +2983,24 @@
             "state": "translated",
             "value": "あなたのスタジオの準備ができました。"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার স্টুডিও তৈরি।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا اسٹوڈیو تیار ہے۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको स्टुडियो तयार छ।"
+          }
         }
       }
     },
@@ -2357,6 +3059,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "仲間がたくさんいます"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনি একা নন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ اکیلے نہیں ہیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईं एक्लै हुनुहुन्न"
           }
         }
       }
@@ -2417,6 +3137,24 @@
             "state": "translated",
             "value": "700人以上のクリエイター"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "৭০০+ ক্রিয়েটর"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "700+ کریئیٹرز"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "७००+ क्रिएटर"
+          }
         }
       }
     },
@@ -2475,6 +3213,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "がPromptlyで編集を始めました"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly দিয়ে এডিটিং শুরু করেছেন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly پر ایڈیٹنگ شروع کر چکے ہیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly सँग एडिट गर्न थालिसकेका छन्"
           }
         }
       }
@@ -2535,6 +3291,24 @@
             "state": "translated",
             "value": "約2分"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "~২ মিনিট"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "~2 منٹ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "~२ मिनेट"
+          }
         }
       }
     },
@@ -2593,6 +3367,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "素材のアップロードから編集完了まで"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপলোড থেকে ফিনিশড এডিট পর্যন্ত"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خام اپ لوڈ سے مکمل ایڈٹ تک"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कच्चा अपलोडदेखि तयार एडिटसम्म"
           }
         }
       }
@@ -2653,6 +3445,24 @@
             "state": "translated",
             "value": "カット・字幕・B-roll"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কাট · ক্যাপশন · B-roll"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کٹس · کیپشنز · B-roll"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कट · क्याप्सन · B-roll"
+          }
         }
       }
     },
@@ -2711,6 +3521,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "AIエディターがあなたのために選定"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI এডিটর বেছে নেয় আপনার জন্য"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI ایڈیٹر نے آپ کے لیے چُنے"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI एडिटरले तपाईंका लागि छानेको"
           }
         }
       }
@@ -2771,6 +3599,24 @@
             "state": "translated",
             "value": "今日から作り始めよう"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আজই বানানো শুরু করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آج ہی بنانا شروع کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आजै बनाउन थाल्नुहोस्"
+          }
         }
       }
     },
@@ -2830,6 +3676,24 @@
             "state": "translated",
             "value": "あなたの動画が待っています"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ভিডিওগুলো অপেক্ষা করছে"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی ویڈیوز منتظر ہیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंका भिडियो पर्खिरहेका छन्"
+          }
         }
       }
     },
@@ -2888,6 +3752,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "作ったものはすべてここに残っています。続きから再開できます。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার বানানো সবকিছুই এখানে আছে। যেখানে থেমেছিলেন, সেখান থেকেই শুরু করুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی بنائی ہر چیز یہیں موجود ہے۔ جہاں چھوڑا تھا وہیں سے شروع کریں۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंले बनाएका सबै कुरा यहीँ छन्। जहाँ छोड्नुभयो, त्यहीँबाट जारी राख्नुहोस्।"
           }
         }
       }
@@ -3006,6 +3888,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "AIスタジオにフルアクセス。"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার AI স্টুডিওতে সম্পূর্ণ অ্যাক্সেস।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپنے AI اسٹوڈیو تک مکمل رسائی۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको AI स्टुडियोमा पूर्ण पहुँच।"
           }
         }
       }
@@ -3361,6 +4261,24 @@
             "state": "translated",
             "value": "年額"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "বার্ষিক"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سالانہ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वार्षिक"
+          }
         }
       }
     },
@@ -3419,6 +4337,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "月額"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মাসিক"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ماہانہ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मासिक"
           }
         }
       }
@@ -3479,6 +4415,24 @@
             "state": "translated",
             "value": "月あたり%@、年額請求"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মানে %@/মাস, বিল বছরে একবার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یعنی %@/ماہ، سالانہ بلنگ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अर्थात् %@/महिना, वार्षिक बिलिङ"
+          }
         }
       }
     },
@@ -3537,6 +4491,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "今すぐProを入手"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এখনই Pro নিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی Pro حاصل کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिले नै Pro लिनुहोस्"
           }
         }
       }
@@ -3597,6 +4569,24 @@
             "state": "translated",
             "value": "本日%@が請求されます。キャンセルするまで自動更新されます。Apple Accountの設定でいつでもキャンセルできます。"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আজ আপনার কাছ থেকে %@ চার্জ হবে। বাতিল না করা পর্যন্ত অটো-রিনিউ হবে — Apple Account সেটিংসে গিয়ে যেকোনো সময় বাতিল করা যাবে।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آج آپ سے %@ چارج کیا جائے گا۔ کینسل ہونے تک خودکار تجدید ہوتی رہے گی — Apple اکاؤنٹ سیٹنگز میں کبھی بھی کینسل کریں۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आज तपाईंलाई %@ चार्ज गरिनेछ। रद्द नगरेसम्म आफैँ नवीकरण हुन्छ — Apple खाताको सेटिङबाट जहिले पनि रद्द गर्न सकिन्छ।"
+          }
         }
       }
     },
@@ -3655,6 +4645,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "購入を復元"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কেনাকাটা রিস্টোর করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خریداریاں بحال کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "खरिद रिस्टोर गर्नुहोस्"
           }
         }
       }
@@ -3715,6 +4723,24 @@
             "state": "translated",
             "value": "請求は発生していません"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কোনো টাকা কাটা হয়নি"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کوئی رقم نہیں کٹی"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कुनै रकम काटिएको छैन"
+          }
         }
       }
     },
@@ -3774,6 +4800,24 @@
             "state": "translated",
             "value": "オファーに戻る"
           }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অফারে ফিরে যান"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آفر پر واپس جائیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अफरमा फर्कनुहोस्"
+          }
         }
       }
     },
@@ -3832,6 +4876,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "あなたはProです"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনি এখন Pro"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ Pro ہیں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईं Pro हुनुहुन्छ"
           }
         }
       }
@@ -4304,6 +5366,1078 @@
           "stringUnit": {
             "state": "translated",
             "value": "作り始める"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "বানানো শুরু করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بنانا شروع کریں"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बनाउन थाल्नुहोस्"
+          }
+        }
+      }
+    },
+    "%lld of %lld friends": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld दोस्त"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld বন্ধু"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld دوست"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld من %lld أصدقاء"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld साथी"
+          }
+        }
+      }
+    },
+    "BEST VALUE": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बेस्ट वैल्यू"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সেরা ডিল"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بہترین ویلیو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الأفضل قيمة"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "उत्तम मूल्य"
+          }
+        }
+      }
+    },
+    "Back to Pro": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro पर वापस जाएँ"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro-তে ফিরে যান"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro پر واپس آئیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "العودة إلى Pro"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro मा फर्कनुहोस्"
+          }
+        }
+      }
+    },
+    "Couldn't respond. Long-press to try again.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जवाब नहीं मिल पाया। दोबारा कोशिश के लिए लॉन्ग-प्रेस करें।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "উত্তর দিতে পারিনি। আবার চেষ্টা করতে লং-প্রেস করুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جواب نہیں دیا جا سکا۔ دوبارہ کوشش کے لیے دیر تک دبائیں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر الرد. اضغط مطوّلًا للمحاولة مرة أخرى."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जवाफ दिन सकिएन। फेरि प्रयास गर्न लामो थिच्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Couldn't upload your image — check your connection and try again.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इमेज अपलोड नहीं हो पाई — कनेक्शन चेक करके फिर से कोशिश करें।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ছবিটা আপলোড হয়নি — কানেকশন চেক করে আবার চেষ্টা করুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تصویر اپ لوڈ نہیں ہو سکی — انٹرنیٹ کنکشن چیک کر کے دوبارہ کوشش کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر رفع صورتك — تحقق من الاتصال وحاول مرة أخرى."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको तस्बिर अपलोड हुन सकेन — कनेक्सन जाँचेर फेरि प्रयास गर्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Free includes %lld AI chat messages per day. Upgrade for unlimited.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में रोज़ %lld AI चैट मैसेज मिलते हैं। अनलिमिटेड के लिए अपग्रेड करें।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি প্ল্যানে দিনে %lldটি AI চ্যাট মেসেজ। আনলিমিটেড পেতে আপগ্রেড করুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری پلان میں روزانہ %lld AI چیٹ میسجز ملتے ہیں۔ لامحدود کے لیے اپ گریڈ کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تمنحك الخطة المجانية %lld من رسائل الدردشة الذكية يوميًا. قم بالترقية لرسائل غير محدودة."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा दिनको %lld AI च्याट मेसेज पाइन्छ। अनलिमिटेडका लागि अपग्रेड गर्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Free includes %lld video renders per day. Upgrade to Pro for unlimited.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में रोज़ %lld वीडियो रेंडर मिलते हैं। अनलिमिटेड के लिए Pro में अपग्रेड करें।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি প্ল্যানে দিনে %lldটি ভিডিও রেন্ডার। আনলিমিটেড পেতে Pro-তে আপগ্রেড করুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری پلان میں روزانہ %lld ویڈیو رینڈرز ملتے ہیں۔ لامحدود کے لیے Pro پر اپ گریڈ کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تمنحك الخطة المجانية %lld من عمليات إنتاج الفيديو يوميًا. قم بالترقية إلى Pro لإنتاج غير محدود."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा दिनको %lld भिडियो रेन्डर पाइन्छ। अनलिमिटेडका लागि Pro मा अपग्रेड गर्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में सीमित वीडियो ही सेव होते हैं। Pro में हर वीडियो सेव और शेयर होता है — साथ ही अनलिमिटेड रेंडर और चैट।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি প্ল্যানে সীমিত সংখ্যক ভিডিও সেভ করা যায়। Pro-তে প্রতিটি ভিডিও সেভ ও শেয়ার করা যায় — সাথে আনলিমিটেড রেন্ডার আর চ্যাট।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری پلان میں محدود تعداد میں ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ویڈیو محفوظ اور شیئر کرتا ہے — ساتھ لامحدود رینڈرز اور چیٹس بھی۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تتيح لك الخطة المجانية عددًا محدودًا من الفيديوهات المحفوظة. مع Pro تحفظ وتشارك كل فيديو — إضافةً إلى إنتاج ودردشة بلا حدود."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा सीमित सङ्ख्यामा मात्र भिडियो सेभ हुन्छन्। Pro ले हरेक भिडियो सेभ र सेयर गर्छ — साथै अनलिमिटेड रेन्डर र च्याट।"
+          }
+        }
+      }
+    },
+    "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में एक बार में एक ही वीडियो प्रोसेस होता है। Pro में अपग्रेड करें और एक साथ 10 तक चलाएँ।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রিতে একবারে একটি ভিডিও প্রসেস হয়। Pro-তে আপগ্রেড করে একসাথে ১০টি পর্যন্ত চালান।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری پلان میں ایک وقت میں ایک ہی ویڈیو پروسیس ہوتی ہے۔ Pro پر اپ گریڈ کریں اور بیک وقت 10 تک چلائیں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعالج الخطة المجانية فيديو واحدًا في كل مرة. قم بالترقية إلى Pro لمعالجة حتى 10 فيديوهات معًا."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free ले एकपटकमा एउटा भिडियो मात्र प्रोसेस गर्छ। एकैसाथ १० वटासम्म चलाउन Pro मा अपग्रेड गर्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Go beyond your one free video a day — everything, unlimited.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "दिन के एक फ़्री वीडियो से आगे बढ़ें — सब कुछ, अनलिमिटेड।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "দিনে একটা ফ্রি ভিডিওর গণ্ডি পেরিয়ে যান — সবকিছু, আনলিমিটেড।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "روزانہ ایک فری ویڈیو کی حد سے آگے بڑھیں — سب کچھ، لامحدود۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تجاوز حد فيديو واحد مجاني يوميًا — كل شيء بلا حدود."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "दिनको एउटा फ्री भिडियोभन्दा अगाडि बढ्नुहोस् — सबै कुरा, अनलिमिटेड।"
+          }
+        }
+      }
+    },
+    "Invite 3 friends who make a video — get a week of Pro": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 ऐसे दोस्त इनवाइट करें जो वीडियो बनाएँ — एक हफ़्ते का Pro पाएँ"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "৩ জন বন্ধুকে ইনভাইট করুন — তারা ভিডিও বানালেই পাবেন এক সপ্তাহের Pro"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایسے 3 دوست مدعو کریں جو ویڈیو بنائیں — Pro کا ایک ہفتہ مفت پائیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ادعُ 3 أصدقاء يصنعون فيديو — واحصل على أسبوع من Pro"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भिडियो बनाउने ३ जना साथीलाई इन्भाइट गर्नुहोस् — एक हप्ता Pro पाउनुहोस्"
+          }
+        }
+      }
+    },
+    "Keep this video": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह वीडियो अपने पास रखें"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ভিডিওটি রেখে দিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ ویڈیو اپنے پاس رکھیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "احتفظ بهذا الفيديو"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो भिडियो राख्नुहोस्"
+          }
+        }
+      }
+    },
+    "Love it? Get Pro free": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पसंद आया? Pro फ़्री पाएँ"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভালো লাগছে? ফ্রিতেই Pro নিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پسند آیا؟ Pro مفت پائیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أعجبك؟ احصل على Pro مجانًا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मन पर्‍यो? Pro फ्रीमा पाउनुहोस्"
+          }
+        }
+      }
+    },
+    "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़ाइनल एडिट में बदलाव करें — दोबारा अपलोड किए बिना। Pro में री-एडिट फ़्लो के साथ अनलिमिटेड रेंडर और चैट भी मिलते हैं।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আবার আপলোড না করেই তৈরি এডিটে পরিবর্তন আনুন। Pro-তে খুলে যায় রি-এডিট ফ্লো, সাথে আনলিমিটেড রেন্ডার আর চ্যাট।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مکمل ایڈٹس میں دوبارہ اپ لوڈ کیے بغیر تبدیلیاں کریں۔ Pro میں ری ایڈٹ فلو کے ساتھ لامحدود رینڈرز اور چیٹس بھی ملتے ہیں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عدّل على مونتاجاتك المكتملة دون إعادة الرفع. يفتح لك Pro إعادة التحرير مع إنتاج ودردشة بلا حدود."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फेरि अपलोड नगरी तयार भइसकेका एडिटमा परिवर्तन गर्नुहोस्। Pro ले री-एडिट, साथै अनलिमिटेड रेन्डर र च्याट अनलक गर्छ।"
+          }
+        }
+      }
+    },
+    "Not now": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अभी नहीं"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এখন নয়"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی نہیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ليس الآن"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिले होइन"
+          }
+        }
+      }
+    },
+    "One video at a time on Free": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में एक बार में एक वीडियो"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি প্ল্যানে একবারে একটি ভিডিও"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری پر ایک وقت میں ایک ویڈیو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فيديو واحد في كل مرة على الخطة المجانية"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा एकपटकमा एउटा भिडियो मात्र"
+          }
+        }
+      }
+    },
+    "Or get Pro free": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "या Pro फ़्री पाएँ"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অথবা ফ্রিতেই Pro নিন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یا Pro مفت پائیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أو احصل على Pro مجانًا"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वा Pro फ्रीमा पाउनुहोस्"
+          }
+        }
+      }
+    },
+    "Re-edit is a Pro feature": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "री-एडिट एक Pro फ़ीचर है"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "রি-এডিট একটি Pro ফিচার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ری ایڈٹ ایک Pro فیچر ہے"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة التحرير ميزة Pro"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "री-एडिट Pro को सुविधा हो"
+          }
+        }
+      }
+    },
+    "Save it to Photos — one tap": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos में सेव करें — बस एक टैप"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos-এ সেভ করুন — মাত্র এক ট্যাপ"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos میں محفوظ کریں — بس ایک ٹیپ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "احفظه في الصور — بضغطة واحدة"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos मा सेभ गर्नुहोस् — एकै ट्यापमा"
+          }
+        }
+      }
+    },
+    "Talk to Promptly like an editor. Captions, cuts, graphics — done for you.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly से वैसे ही बात करें जैसे अपने एडिटर से। कैप्शन, कट्स, ग्राफ़िक्स — सब आपके लिए तैयार।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "একজন এডিটরের মতোই Promptly-কে বলুন। ক্যাপশন, কাট, গ্রাফিক্স — সব হয়ে যাবে আপনার হয়ে।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly سے ویسے ہی بات کریں جیسے اپنے ایڈیٹر سے۔ کیپشنز، کٹس، گرافکس — سب آپ کے لیے تیار۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحدّث مع Promptly كما تتحدث مع مونتير. ترجمات وقص وجرافيك — كل شيء جاهز لك."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आफ्नो एडिटरलाई जस्तै Promptly सँग कुरा गर्नुहोस्। क्याप्सन, कट, ग्राफिक्स — सबै तपाईंका लागि तयार।"
+          }
+        }
+      }
+    },
+    "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आप बस वाइब बताइए, एडिट मुझ पर छोड़ दीजिए। नीचे दिए सुझावों में से कोई आज़माएँ — या अपने शब्दों में बताएँ।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কেমন ভাইব চান বলুন, আমি এডিট করে দেব। নিচের সাজেশনগুলো থেকে একটা বেছে নিন — বা নিজের ভাষায় বলুন।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مجھے بتائیں کیسا وائب چاہیے، میں ایڈٹ کر دوں گا۔ نیچے دی گئی کسی تجویز کو آزمائیں — یا اپنے الفاظ میں بیان کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أخبرني بالأجواء التي تريدها وسأتولى المونتاج. جرّب أحد الاقتراحات أدناه — أو صِفها بكلماتك."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंलाई चाहिएको भाइब भन्नुहोस्, म एडिट गरिदिन्छु। तलका सुझावमध्ये एउटा प्रयास गर्नुहोस् — वा आफ्नै शब्दमा वर्णन गर्नुहोस्।"
+          }
+        }
+      }
+    },
+    "Tell me the vibe…": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वाइब बताएँ…"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভাইবটা বলুন…"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وائب بتائیں…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أخبرني بالأجواء…"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भाइब बताउनुहोस्…"
+          }
+        }
+      }
+    },
+    "Unlock Promptly Pro": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly Pro अनलॉक करें"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly Pro আনলক করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly Pro اَن لاک کریں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افتح مزايا Promptly Pro"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly Pro अनलक गर्नुहोस्"
+          }
+        }
+      }
+    },
+    "Upgrade to Pro": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro में अपग्रेड करें"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro-তে আপগ্রেড করুন"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro پر اپ گریڈ کریں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الترقية إلى Pro"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro मा अपग्रेड गर्नुहोस्"
+          }
+        }
+      }
+    },
+    "Videos that edit themselves": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वीडियो जो खुद एडिट हो जाते हैं"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভিডিও এডিট হয় নিজে নিজেই"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ویڈیوز جو خود ایڈٹ ہو جائیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فيديوهات تُحرّر نفسها بنفسها"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आफैँ एडिट हुने भिडियो"
+          }
+        }
+      }
+    },
+    "You can upgrade to Pro whenever you're ready — nothing was charged.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जब भी तैयार हों, Pro में अपग्रेड कर लें — कोई पैसा नहीं कटा है।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রস্তুত হলেই Pro-তে আপগ্রেড করতে পারবেন — কোনো টাকা কাটা হয়নি।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جب تیار ہوں، Pro پر اپ گریڈ کر لیں — کوئی رقم نہیں کٹی۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمكنك الترقية إلى Pro متى كنت مستعدًا — لم يُخصم أي مبلغ."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तयार भएपछि जहिले पनि Pro मा अपग्रेड गर्न सक्नुहुन्छ — कुनै रकम काटिएको छैन।"
+          }
+        }
+      }
+    },
+    "You'll be charged %@ %@. Auto-renews until cancelled — cancel anytime in your Apple Account settings.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपसे %@ का भुगतान %@ लिया जाएगा। कैंसल करने तक ऑटो-रिन्यू होता रहेगा — Apple अकाउंट सेटिंग्स में कभी भी कैंसल कर सकते हैं।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার কাছ থেকে %@ চার্জ হবে %@। বাতিল না করা পর্যন্ত অটো-রিনিউ হবে — Apple Account সেটিংসে গিয়ে যেকোনো সময় বাতিল করা যাবে।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ سے %@ چارج کیا جائے گا (%@)۔ کینسل ہونے تک خودکار تجدید ہوتی رہے گی — Apple اکاؤنٹ سیٹنگز میں کبھی بھی کینسل کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سيتم خصم %@ %@. يتجدد الاشتراك تلقائيًا حتى الإلغاء — يمكنك الإلغاء في أي وقت من إعدادات حساب Apple."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंलाई %@ चार्ज गरिनेछ (%@)। रद्द नगरेसम्म आफैँ नवीकरण हुन्छ — Apple खाताको सेटिङबाट जहिले पनि रद्द गर्न सकिन्छ।"
+          }
+        }
+      }
+    },
+    "You're out of free chats for today": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आज की फ़्री चैट्स खत्म हो गईं"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আজকের ফ্রি চ্যাট শেষ"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آج کی فری چیٹس ختم ہو گئیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انتهت دردشاتك المجانية لليوم"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आजको फ्री च्याट सकियो"
+          }
+        }
+      }
+    },
+    "You're out of free renders for today": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आज के फ़्री रेंडर खत्म हो गए"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আজকের ফ্রি রেন্ডার শেষ"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آج کے فری رینڈرز ختم ہو گئے"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انتهت عمليات الإنتاج المجانية لليوم"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आजको फ्री रेन्डर सकियो"
+          }
+        }
+      }
+    },
+    "You're out of free saves": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़्री सेव खत्म हो गए"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ফ্রি সেভ শেষ"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی فری سیوز ختم ہو گئیں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انتهت عمليات الحفظ المجانية"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ्री सेभ सकियो"
+          }
+        }
+      }
+    },
+    "that's %@/month, billed yearly": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यानी %@ प्रति माह, सालाना बिलिंग"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মানে মাসে %@, বিল হবে বছরে একবার"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یعنی %@ فی ماہ، سالانہ بلنگ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أي %@ شهريًا، بفوترة سنوية"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अर्थात् महिनाको %@, वार्षिक रूपमा बिल हुन्छ"
           }
         }
       }
