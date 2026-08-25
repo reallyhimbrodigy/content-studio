@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import RevenueCat
+import StoreKit
 
 /// Single source of truth for Pro entitlement on the client.
 ///
@@ -287,22 +288,30 @@ final class SubscriptionService: ObservableObject {
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }
         let plan = planKey(package)
-        // FREEMIUM upgrade funnel — the central purchase path (fires for BOTH
-        // paywalls). No trial anymore, so no trial_start / trial reminder.
-        Analytics.track("purchase_started", props: [
+        // Storefront on the funnel (ruled 2026-08-25): the envelope's territory
+        // made the first geography cut possible, but the purchase rows must be
+        // SELF-CONTAINED — storefront + currency + price let the per-storefront
+        // pricing read run without an envelope join, and currency/price are the
+        // pricing-project's raw material (IND: 0/155 Hindi buyers at parity
+        // quality — the problem is the price sheet, so measure the price sheet).
+        var sfProps: [String: Any] = [
             "plan": plan,
             "product": package.storeProduct.productIdentifier,
-        ])
+            "currency": package.storeProduct.currencyCode ?? "",
+            "price": "\(package.storeProduct.price)",
+        ]
+        if let sf = await Storefront.current {
+            sfProps["storefront"] = sf.countryCode
+            sfProps["storefront_id"] = sf.id
+        }
+        Analytics.track("purchase_started", props: sfProps)
         do {
             let result = try await Purchases.shared.purchase(package: package)
             applyCustomerInfo(result.customerInfo)
             if !result.userCancelled {
                 lastError = nil
                 let priceString = package.storeProduct.localizedPriceString
-                Analytics.track("purchase_completed", props: [
-                    "plan": plan,
-                    "product": package.storeProduct.productIdentifier,
-                ])
+                Analytics.track("purchase_completed", props: sfProps)
                 if isPro { Analytics.setTier("pro") } // super-property flips free → pro
                 // Feed the confirmation screen with the concrete charge (no trial).
                 lastConfirmation = PurchaseConfirmation(price: priceString)
@@ -314,12 +323,8 @@ final class SubscriptionService: ObservableObject {
                 // Cancel that surfaces as a flag rather than a thrown error.
                 // Fire the terminal here so purchase_started ALWAYS pairs with
                 // exactly one purchase_completed/purchase_failed (clean funnel).
-                Analytics.track("purchase_failed", props: [
-                    "plan": plan,
-                    "billing_error": "user_cancelled",
-                    "cancelled": true,
-                    "product": package.storeProduct.productIdentifier,
-                ])
+                Analytics.track("purchase_failed", props: sfProps.merging(
+                    ["billing_error": "user_cancelled", "cancelled": true]) { _, new in new })
             }
             return isPro
         } catch {
@@ -327,12 +332,8 @@ final class SubscriptionService: ObservableObject {
             let cancelled = nsErr.code == ErrorCode.purchaseCancelledError.rawValue
             // purchase_failed makes billing declines VISIBLE as analytics, not a
             // mystery. `cancelled` separates a user-cancel from a real decline.
-            Analytics.track("purchase_failed", props: [
-                "plan": plan,
-                "billing_error": "\(nsErr.domain)#\(nsErr.code)",
-                "cancelled": cancelled,
-                "product": package.storeProduct.productIdentifier,
-            ])
+            Analytics.track("purchase_failed", props: sfProps.merging(
+                ["billing_error": "\(nsErr.domain)#\(nsErr.code)", "cancelled": cancelled]) { _, new in new })
             // Skip noisy alerts on user-cancel.
             if !cancelled {
                 lastError = error.localizedDescription

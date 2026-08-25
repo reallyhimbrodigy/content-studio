@@ -53,31 +53,31 @@ struct PaywallView: View {
 
     private var title: String {
         switch reason {
-        case .dailyRenders: return "You're out of free renders for today"
-        case .dailyChats:   return "You're out of free chats for today"
-        case .reedit:       return "Re-edit is a Pro feature"
-        case .manual:       return "Unlock Promptly Pro"
-        case .lumen:        return "Unlock Promptly Pro"
-        case .concurrency:  return "One video at a time on Free"
-        case .exportGate:   return "You're out of free saves"
+        case .dailyRenders: return String(localized: "You're out of free renders for today")
+        case .dailyChats:   return String(localized: "You're out of free chats for today")
+        case .reedit:       return String(localized: "Re-edit is a Pro feature")
+        case .manual:       return String(localized: "Unlock Promptly Pro")
+        case .lumen:        return String(localized: "Unlock Promptly Pro")
+        case .concurrency:  return String(localized: "One video at a time on Free")
+        case .exportGate:   return String(localized: "You're out of free saves")
         }
     }
     private var subtitle: String {
         switch reason {
         case .dailyRenders(_, let lim):
-            return "Free includes \(lim) video render\(lim == 1 ? "" : "s") per day. Upgrade to Pro for unlimited."
+            return String(localized: "Free includes \(lim) video renders per day. Upgrade to Pro for unlimited.")
         case .dailyChats(_, let lim):
-            return "Free includes \(lim) AI chat messages per day. Upgrade for unlimited."
+            return String(localized: "Free includes \(lim) AI chat messages per day. Upgrade for unlimited.")
         case .reedit:
-            return "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats."
+            return String(localized: "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats.")
         case .manual:
-            return "Go beyond your one free video a day — everything, unlimited."
+            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
         case .lumen:
-            return "Go beyond your one free video a day — everything, unlimited."
+            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
         case .concurrency:
-            return "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel."
+            return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:
-            return "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats."
+            return String(localized: "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats.")
         }
     }
 

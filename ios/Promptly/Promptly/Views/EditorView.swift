@@ -2459,7 +2459,7 @@ struct EditorView: View {
                 // typewriter too, so even the failure mode feels alive
                 // instead of slamming in an error string.
                 messages[i].error = "chat_failed"
-                await typewriteReveal("Couldn't respond. Long-press to try again.", intoMessageId: messageId)
+                await typewriteReveal(String(localized: "Couldn't respond. Long-press to try again."), intoMessageId: messageId)
             } else {
                 messages[i].content = buffer.text
                 messages[i].error = nil
@@ -2623,7 +2623,7 @@ struct EditorView: View {
                         if let i = messages.firstIndex(where: { $0.id == msgId }) {
                             messages[i].isThinking = false
                             messages[i].error = "chat_failed"
-                            messages[i].content = "Couldn't upload your image — check your connection and try again."
+                            messages[i].content = String(localized: "Couldn't upload your image — check your connection and try again.")
                         }
                         if let i = messages.firstIndex(where: { $0.id == msgId }) { messages[i].isStreaming = false }
                         isChatStreaming = false
@@ -2729,7 +2729,7 @@ struct EditorView: View {
         // chip suggestions). Re-edit is exempt — it operates on the
         // existing edit recipe so empty text means "no further change."
         if hasVideos && text.isEmpty && !reeditActive {
-            let nudgeText = "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words."
+            let nudgeText = String(localized: "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words.")
             let nudge = ChatMessage(role: .assistant, content: "")
             let nudgeId = nudge.id
             messages.append(nudge)
