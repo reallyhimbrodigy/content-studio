@@ -201,6 +201,10 @@ class AuthService {
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
         saveSession(session)
         scheduleTokenRefresh()
+        // Funnel top (audit 2026-08-26): the auth flow was the app's largest
+        // uninstrumented surface — signup_complete fires on INTERACTIVE auth
+        // success only; session restores never emit.
+        Analytics.track("signup_complete", props: ["method": "email_otp"])
     }
 
     /// Exchange an OAuth provider's id_token for a Supabase session.
@@ -243,6 +247,7 @@ class AuthService {
         let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
         saveSession(session)
         scheduleTokenRefresh()
+        Analytics.track("signup_complete", props: ["method": provider])
         print("[auth] signInWithIdToken \(provider) success")
     }
 

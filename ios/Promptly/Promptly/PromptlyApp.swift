@@ -326,6 +326,7 @@ struct PromptlyApp: App {
                 } else {
                     AuthView()
                         .transition(.opacity)
+                        .onAppear { Analytics.track("signup_start", props: ["step": "auth_shown"]) }
                 }
 
                 #if DEBUG
