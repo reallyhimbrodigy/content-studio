@@ -246,6 +246,10 @@ final class BackgroundUploadManager: NSObject {
                 // URLSession completion. That IS the relaunched-after-termination state.
                 "lifecycle": "relaunched",
             ], durable: true)
+            // Tell the user NOW — the process was relaunched in background to
+            // learn this; without the notification they discover it whenever
+            // they happen to return.
+            UploadFailureNotifier.notifyUploadDied()
         }
         // Notify ChatStore so it can update the message in the
         // persisted chat record.

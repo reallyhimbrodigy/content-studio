@@ -294,6 +294,11 @@ final class ResumableMultipartUploader: NSObject {
             UploadDiagnostics.lastTransportError = nil
         }
         Analytics.track("upload_failed", props: mpFailProps, durable: true)
+        // Background death → tell the user now (foreground failures already
+        // show the failed bubble on screen).
+        if UIApplication.shared.applicationState != .active {
+            UploadFailureNotifier.notifyUploadDied()
+        }
         resolveTransfer(uploadId: uploadId, result: .failure(APIError.uploadFailed))
         cleanupLocalState(uploadId: uploadId)
     }

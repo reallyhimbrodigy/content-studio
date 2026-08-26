@@ -166,3 +166,38 @@ final class PushService {
         }
     }
 }
+
+
+// MARK: - Upload-failure notification (drop-off audit, shipped 2026-08-27)
+//
+// "A failed upload must tell the user at the moment it's known." The Aug-24
+// class was analytics-loud but USER-SILENT until next foreground — 1,538
+// users lost at this door, mostly silently. When an upload dies while the
+// app is backgrounded (orphan delivery, background give-up), post a LOCAL
+// notification immediately. Tapping it opens the app, which lands on the
+// chat where the failed bubble's Retry is front and center. Foreground
+// failures stay silent here — the failed bubble is already on screen.
+enum UploadFailureNotifier {
+    static func notifyUploadDied() {
+        // Read the knob's UserDefaults cache — this fires from nonisolated
+        // background contexts where the @MainActor store can't be touched.
+        guard UserDefaults.standard.bool(forKey: "upload_fail_notify_enabled") else { return }
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
+            let content = UNMutableNotificationContent()
+            content.title = String(localized: "Your upload didn't finish")
+            content.body = String(localized: "Your clip is still ready — tap to retry.")
+            content.sound = .default
+            content.userInfo = ["route": "retry_upload"]
+            // Stable identifier: a second death before the user returns
+            // REPLACES the notification instead of stacking spam.
+            let req = UNNotificationRequest(
+                identifier: "upload-failure",
+                content: content,
+                trigger: nil
+            )
+            center.add(req)
+        }
+    }
+}
