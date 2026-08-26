@@ -34,11 +34,13 @@ struct TrialWallView: View {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"
     }
     private var billedPeriod: String { periodLabel(selectedPackage) }
-    /// Monthly equivalent of the selected ANNUAL plan (re-ruled 2026-08-22:
-    /// monthly, not per-week — Apple's sheet restates the full annual charge,
-    /// and a per-week anchor maximises the gap at commitment). Storefront-aware.
-    private var monthlyEquivalent: String? {
-        guard let pkg = selectedPackage, pkg.packageType == .annual,
+    /// Monthly equivalent of an ANNUAL plan (re-ruled 2026-08-22: monthly, not
+    /// per-week — Apple's sheet restates the full annual charge, and a per-week
+    /// anchor maximises the gap at commitment). Storefront-aware. Per-row (the
+    /// old selection-based property hid the annual anchor whenever another row
+    /// was selected).
+    private func monthlyEquivalent(for pkg: Package) -> String? {
+        guard pkg.packageType == .annual,
               let price = pkg.storeProduct.pricePerMonth else { return nil }
         let f = NumberFormatter()
         f.numberStyle = .currency
@@ -46,12 +48,8 @@ struct TrialWallView: View {
         return f.string(from: price)
     }
 
-    private let proBenefits: [(icon: String, text: String)] = [
-        ("infinity", "Unlimited videos a day"),
-        ("arrow.uturn.left", "Re-edit any finished video"),
-        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
-        ("square.stack.3d.up.fill", "Upload up to 10 at once"),
-    ]
+    // Benefits render via the shared PaywallFeatureChecklist (2026-08-26
+    // rebuild) — one approved 5-bullet list for both purchase surfaces.
 
     var body: some View {
         ZStack {
@@ -74,9 +72,9 @@ struct TrialWallView: View {
 
     private func selectDefaultPackage() {
         guard selectedPackage == nil else { return }
-        // Default to the offering's FIRST package (position 0). Order is owned by
-        // the RevenueCat offering (config, no build), so obey whatever it returns.
-        selectedPackage = packages.first
+        // Pre-selection follows the computed savings comparison (same live-price
+        // math as the badge — Aug-18 item closed at both files), not position 0.
+        selectedPackage = PlanSavings.defaultSelection(in: packages)
     }
 
     private var contextKey: String {
@@ -108,23 +106,10 @@ struct TrialWallView: View {
                 }
                 .padding(.top, 24)
 
-                // What Pro unlocks.
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(proBenefits, id: \.text) { b in
-                        HStack(spacing: 14) {
-                            Image(systemName: b.icon)
-                                .font(.system(size: 16))
-                                .foregroundColor(PromptlyGold.solid)
-                                .frame(width: 26)
-                            Text(b.text)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(18)
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+                // What Pro unlocks — the shared checklist (reference layout).
+                PaywallFeatureChecklist()
+                    .padding(18)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
 
                 planPicker
             }
@@ -144,42 +129,53 @@ struct TrialWallView: View {
                     // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
                     Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
                 } label: {
-                    HStack {
+                    // Reference structure (2026-08-26 rebuild): radio + bare-noun
+                    // label + anchor subline left, billed price right, computed
+                    // discount badge overhanging the annual card's top edge.
+                    HStack(alignment: .center, spacing: 14) {
+                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                            .font(.system(size: 22))
+                            .foregroundColor(isSelected ? .white : .white.opacity(0.3))
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 8) {
-                                Text(planTitle(pkg))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.white)
-                                if pkg.identifier == packages.first?.identifier {
-                                    Text("BEST VALUE")
-                                        .font(.system(size: 10, weight: .heavy))
-                                        .foregroundColor(.black)
-                                        .padding(.horizontal, 7).padding(.vertical, 3)
-                                        .background(PromptlyGold.gradient, in: Capsule())
-                                }
-                            }
-                            // LAW: the billed amount is the big number.
-                            Text("\(pkg.storeProduct.localizedPriceString) / \(periodLabel(pkg))")
-                                .font(.system(size: 19, weight: .heavy))
+                            Text(planTitle(pkg))
+                                .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(.white)
-                            if pkg.packageType == .annual, let m = monthlyEquivalent {
+                            if pkg.packageType == .annual, let m = monthlyEquivalent(for: pkg) {
                                 Text("that's \(m)/month, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
                             }
                         }
                         Spacer()
-                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                            .font(.system(size: 22))
-                            .foregroundColor(isSelected ? PromptlyGold.solid : .white.opacity(0.3))
+                        // LAW: the billed amount is the big number.
+                        Text("\(pkg.storeProduct.localizedPriceString)/\(periodLabel(pkg))")
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundColor(.white)
                     }
                     .padding(16)
                     .background(Color.white.opacity(isSelected ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16)
-                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08), lineWidth: 1.5))
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.1), lineWidth: 1.5))
+                    .overlay(alignment: .topTrailing) {
+                        // Computed at render time from the live per-territory
+                        // prices — floor(1 − y/(12·m)); never hardcoded.
+                        if pkg.packageType == .annual,
+                           let pct = PlanSavings.percentOff(in: packages) {
+                            Text("\(pct)% OFF")
+                                .font(.system(size: 10, weight: .heavy))
+                                .tracking(0.4)
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white))
+                                .offset(x: -12, y: -9)
+                        }
+                    }
                 }
             }
         }
+        // Headroom for the annual card's badge overhang (reference layout).
+        .padding(.top, 6)
     }
 
     private var footer: some View {
@@ -266,11 +262,14 @@ struct TrialWallView: View {
 
     // ── Package helpers (weekly / monthly / annual) ──────────────────────────
     private func planTitle(_ pkg: Package) -> String {
+        // Bare nouns, our OWN labels — NEVER StoreKit's localizedTitle (the
+        // Jul-24 rule; the old default branch here still fell back to it —
+        // regression closed 2026-08-26).
         switch pkg.packageType {
-        case .annual: return "Yearly"
-        case .monthly: return "Monthly"
-        case .weekly: return "Weekly"
-        default: return pkg.storeProduct.localizedTitle
+        case .annual: return String(localized: "Year")
+        case .monthly: return String(localized: "Month")
+        case .weekly: return String(localized: "Week")
+        default: return "Promptly Pro"
         }
     }
     private func periodLabel(_ pkg: Package?) -> String {
