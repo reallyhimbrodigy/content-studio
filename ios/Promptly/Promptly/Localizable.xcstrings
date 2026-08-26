@@ -6441,6 +6441,40 @@
           }
         }
       }
+    },
+    "%lld of %lld friends have made a video": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld दोस्तों ने वीडियो बनाया है"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld دوستوں نے ویڈیو بنائی ہے"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld साथीले भिडियो बनाइसके"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أنجز %lld من أصل %lld أصدقاء فيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld বন্ধু ভিডিও বানিয়েছে"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

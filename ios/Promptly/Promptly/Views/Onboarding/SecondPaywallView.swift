@@ -209,7 +209,12 @@ struct SecondPaywallView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     // Visible progress toward the reward — most of what makes
                     // referral programs work.
-                    Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends")
+                    // Honesty (ruled 2026-08-27): the progress line must state
+                    // the QUALIFICATION (made a video, not signed up) — a
+                    // promise that pays out days later has to say what ticks
+                    // the counter, or the first cohort learns the reward
+                    // "doesn't arrive".
+                    Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends have made a video")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(PromptlyGold.solid)
                 }
