@@ -3330,6 +3330,8 @@ const server = http.createServer((req, res) => {
       // ARMED by default (ruled 2026-08-26 — the audit's #1 cliff, 1,611 users). Env can still disable with FIRST_SESSION_AUTOPICKER=0.
       first_session_autopicker: String(process.env.FIRST_SESSION_AUTOPICKER || '1') === '1' ? 'on' : 'off',
       yearly_frame_fix: String(process.env.YEARLY_FRAME_FIX || '') === '1' ? 'on' : 'off',
+      // ARMED by default (shipped-today order 2026-08-27): a failed upload must tell the user when it's known. Env 0 disables.
+      upload_fail_notify: String(process.env.UPLOAD_FAIL_NOTIFY || '1') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
