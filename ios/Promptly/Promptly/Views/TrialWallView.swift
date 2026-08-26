@@ -63,7 +63,7 @@ struct TrialWallView: View {
         }
         .onAppear {
             // UPGRADE-funnel entry (after free_limit_hit).
-            Analytics.track("upgrade_wall_viewed", props: ["context": contextKey])
+            Analytics.track("upgrade_wall_viewed", props: (["context": contextKey] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             selectDefaultPackage()
             if packages.isEmpty { Task { await subscription.refreshOfferings() } }
         }
@@ -142,7 +142,7 @@ struct TrialWallView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     selectedPackage = pkg
                     // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
-                    Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
+                    Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {

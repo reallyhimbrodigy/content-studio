@@ -106,6 +106,7 @@ final class SubscriptionService: ObservableObject {
 
     /// Boot RevenueCat. Call once from PromptlyApp.init().
     func bootstrap() {
+        Self.refreshStorefrontCache()
         guard !initialized else { return }
         guard !revenueCatPublicKey.contains("PASTE_YOUR_PUBLIC_KEY") else {
             print("[Subscription] RevenueCat key not configured — Pro features disabled until you set it in SubscriptionService.swift")
@@ -266,6 +267,20 @@ final class SubscriptionService: ObservableObject {
     /// pre-selection and the BEST VALUE badge to `.first`. Sorting client-
     /// side removes the dashboard-order dependency entirely; the yearly
     /// anchor ($33.33/mo) plus this ordering is the whole reorder ask.
+    /// SYNC-readable storefront snapshot for funnel props (the coordinator's
+    /// "three queries instead of one": plan_selected and upgrade_wall_viewed
+    /// rows lacked storefront while purchase_* carried it — every funnel row
+    /// must be self-contained). Populated at bootstrap; best-effort static,
+    /// same doctrine as ReachabilityMonitor's conn snapshot.
+    nonisolated(unsafe) private(set) static var cachedStorefrontProps: [String: Any] = [:]
+    static func refreshStorefrontCache() {
+        Task {
+            if let sf = await Storefront.current {
+                cachedStorefrontProps = ["storefront": sf.countryCode, "storefront_id": sf.id]
+            }
+        }
+    }
+
     static func sortedByDuration(_ packages: [Package]) -> [Package] {
         func rank(_ t: PackageType) -> Int {
             switch t {

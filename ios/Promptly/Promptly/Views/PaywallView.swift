@@ -164,6 +164,20 @@ struct PaywallView: View {
                         .padding(.horizontal, 24)
                         .entrance(delay: 0.26)
 
+                    // yearly_frame_fix: the exact charge, BEFORE the sheet —
+                    // TrialWall's disclosure discipline applied to the wall
+                    // where 61% of cancels originate. Localized key already in
+                    // the catalog (14 languages).
+                    if onboardingStateRef.yearlyFrameFixEnabled,
+                       let sel = selectedPackage, sel.packageType == .annual {
+                        Text("You'll be charged \(sel.storeProduct.localizedPriceString) today. Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.55))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.top, 10)
+                    }
+
                     fineprint
                         .padding(.horizontal, 32)
                         .padding(.top, 14)
@@ -221,7 +235,7 @@ struct PaywallView: View {
         .task {
             // UPGRADE-funnel entry — same canonical event the TrialWallView fires,
             // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
-            Analytics.track("upgrade_wall_viewed", props: ["context": reasonKey])
+            Analytics.track("upgrade_wall_viewed", props: (["context": reasonKey] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             await subscription.refreshOfferings()
             // Default selection: the offering's FIRST package (position 0).
             // Order is owned by the RevenueCat offering (config, no build), so
@@ -423,7 +437,7 @@ struct PaywallView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
             // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
@@ -459,9 +473,17 @@ struct PaywallView: View {
                                 .background(Capsule().fill(PromptlyGold.gradient))
                         }
                     }
+                    // yearly_frame_fix (2026-08-26): 61% of ALL cancellations
+                    // come from the yearly SKU — the felt frame (monthly
+                    // anchor) and the sheet's charge differ 12×. With the knob
+                    // on, the REAL total leads on the annual row: the sheet
+                    // number becomes a number the user already accepted.
                     Text("\(priceText) \(intervalText)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.7))
+                        .font(.system(
+                            size: (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? 15 : 13,
+                            weight: (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? .semibold : .regular))
+                        .foregroundColor(.white.opacity(
+                            (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? 0.95 : 0.7))
                     // RE-RULED 2026-08-22: the annual anchor reads MONTHLY, not
                     // per-week. Apple's sheet restates the full $399.99 at
                     // commitment — a per-week anchor maximises the perceived gap

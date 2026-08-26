@@ -122,7 +122,7 @@ struct SecondPaywallView: View {
             }
         }
         .task {
-            Analytics.track("upgrade_wall_viewed", props: ["context": "post_onboarding"])
+            Analytics.track("upgrade_wall_viewed", props: (["context": "post_onboarding"] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             if packages.isEmpty { await subscription.refreshOfferings() }
             if selectedPackage == nil { selectedPackage = packages.first }
             await referrals.refreshProgress()
@@ -140,7 +140,7 @@ struct SecondPaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(spacing: 14) {
                 ZStack {
