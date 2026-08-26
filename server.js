@@ -3322,6 +3322,7 @@ const server = http.createServer((req, res) => {
       postrender_save_cta: String(process.env.POSTRENDER_SAVE_CTA || '') === '1' ? 'on' : 'off',
       chat_media: String(process.env.CHAT_MEDIA || '') === '1' ? 'on' : 'off',
       first_session_autopicker: String(process.env.FIRST_SESSION_AUTOPICKER || '') === '1' ? 'on' : 'off',
+      yearly_frame_fix: String(process.env.YEARLY_FRAME_FIX || '') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
