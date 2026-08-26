@@ -27,9 +27,17 @@ enum MultipartConfig {
     /// Files at/above this benefit from multipart (parallelism + resumability); below
     /// it single-PUT is strictly better (no init/complete roundtrips).
     static let threshold: Int64 = 30 * 1024 * 1024
-    /// The presigned part URLs expire at 3600s [Contract 2]; past that, resume is
-    /// impossible (the URLs are dead) so the upload is aborted + restarted fresh.
-    static let resumeTTL: TimeInterval = 3600
+    /// [Contract 2, revised 2026-08-27] Part URLs are presigned for 7 DAYS
+    /// server-side (was 3600s — that 1h deadline WAS the Aug-24 spike:
+    /// resume-window-expired hit 51.3% of spike failures vs 26.8% baseline,
+    /// with error_domain empty on 100% of rows because there is no transport
+    /// error — the window killed backgrounded uploads by deadline, not by
+    /// network). Client gives up at 6.5d: always BEFORE the URLs die, never
+    /// after, so every give-up stays a deliberate clean restart rather than a
+    /// mid-flight 403 surprise. Uploads presigned under the OLD 1h contract
+    /// are safe under this constant too: a too-long expiry check only ADDS
+    /// part-403 retries, which the maxPartAttempts path already absorbs.
+    static let resumeTTL: TimeInterval = 6.5 * 24 * 3600
     /// Client-side kill switch — false ⇒ the never-worse caller always uses single-PUT.
     nonisolated(unsafe) static var enabled = true
     /// Max reschedules of a single failing part before the whole transfer gives up.
