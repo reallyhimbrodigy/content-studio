@@ -229,6 +229,9 @@ struct EditorView: View {
                 if chatStore.chats.isEmpty {
                     await chatStore.loadChats()
                 }
+                // After history settles: the first-session picker assist
+                // (no-op unless the flag is on and this account has nothing).
+                maybeAutoOpenPickerOnFirstSession()
             }
             // Downgrade safety, live: if entitlement lapses while the editor is
             // on screen, fall back to Flare immediately so the pill never
@@ -1316,6 +1319,24 @@ struct EditorView: View {
             pendingImages.append(PendingChatImage(image: thumbImage, jpegData: pair.wire))
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Drop-off audit fix #1 (2026-08-26, flag first_session_autopicker):
+    /// 1,611 of 4,931 signups (33%) never START an upload — the largest cliff
+    /// by users. On screen at the drop: this empty chat, waiting for the user
+    /// to initiate. They installed a video editor; open the picker for them
+    /// ONCE, on the first authenticated session with no jobs. `source:"auto"`
+    /// on picker_opened separates assisted opens in every downstream read.
+    func maybeAutoOpenPickerOnFirstSession() {
+        guard onboardingState.firstSessionAutopickerEnabled,
+              !UserDefaults.standard.bool(forKey: "first_session_autopicker_fired"),
+              messages.filter({ !$0.isOnboarding }).isEmpty,
+              pendingVideos.isEmpty, reeditSession == nil else { return }
+        UserDefaults.standard.set(true, forKey: "first_session_autopicker_fired")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [self] in
+            Analytics.track("picker_opened", props: ["source": "auto_first_session"])
+            showVideoPicker = true
+        }
     }
 
     private func tapAddVideo() {
