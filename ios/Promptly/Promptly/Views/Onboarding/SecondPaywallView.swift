@@ -23,7 +23,7 @@ struct SecondPaywallView: View {
     @State private var didPurchaseHere = false
 
     private var packages: [Package] {
-        subscription.offerings?.current?.availablePackages ?? []
+        SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
 
     // MARK: Personalised copy (Q1 audience + Q2 intents feed this)
@@ -122,7 +122,7 @@ struct SecondPaywallView: View {
             }
         }
         .task {
-            Analytics.track("upgrade_wall_viewed", props: ["context": "post_onboarding"])
+            Analytics.track("upgrade_wall_viewed", props: (["context": "post_onboarding"] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             if packages.isEmpty { await subscription.refreshOfferings() }
             if selectedPackage == nil { selectedPackage = packages.first }
             await referrals.refreshProgress()
@@ -140,7 +140,7 @@ struct SecondPaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -209,7 +209,12 @@ struct SecondPaywallView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     // Visible progress toward the reward — most of what makes
                     // referral programs work.
-                    Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends")
+                    // Honesty (ruled 2026-08-27): the progress line must state
+                    // the QUALIFICATION (made a video, not signed up) — a
+                    // promise that pays out days later has to say what ticks
+                    // the counter, or the first cohort learns the reward
+                    // "doesn't arrive".
+                    Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends have made a video")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(PromptlyGold.solid)
                 }

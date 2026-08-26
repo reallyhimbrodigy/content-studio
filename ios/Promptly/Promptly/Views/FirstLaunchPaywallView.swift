@@ -34,7 +34,7 @@ struct FirstLaunchPaywallView: View {
     @State private var didPurchaseHere = false
 
     private var packages: [Package] {
-        subscription.offerings?.current?.availablePackages ?? []
+        SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
 
     var body: some View {
@@ -144,7 +144,7 @@ struct FirstLaunchPaywallView: View {
         }
         .task {
             // Canonical shared paywall-impression funnel; context segments it.
-            Analytics.track("upgrade_wall_viewed", props: ["context": "first_launch"])
+            Analytics.track("upgrade_wall_viewed", props: (["context": "first_launch"] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             if packages.isEmpty { await subscription.refreshOfferings() }
             if selectedPackage == nil { selectedPackage = packages.first }
         }
@@ -182,7 +182,7 @@ struct FirstLaunchPaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg)])
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(spacing: 14) {
                 ZStack {
