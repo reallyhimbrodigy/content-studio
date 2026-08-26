@@ -6475,6 +6475,74 @@
           }
         }
       }
+    },
+    "Your upload didn't finish": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका अपलोड पूरा नहीं हुआ"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی اپ لوڈ مکمل نہیں ہوئی"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको अपलोड पूरा भएन"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يكتمل رفع الفيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার আপলোড শেষ হয়নি"
+          }
+        }
+      }
+    },
+    "Your clip is still ready — tap to retry.": {
+      "localizations": {
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपकी क्लिप अभी भी तैयार है — दोबारा कोशिश के लिए टैप करें।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی کلپ اب بھی تیار ہے — دوبارہ کوشش کے لیے ٹیپ کریں۔"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको क्लिप अझै तयार छ — फेरि प्रयास गर्न ट्याप गर्नुहोस्।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مقطعك لا يزال جاهزًا — اضغط لإعادة المحاولة."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ক্লিপ এখনও তৈরি আছে — আবার চেষ্টা করতে ট্যাপ করুন।"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

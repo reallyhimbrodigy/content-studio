@@ -39,6 +39,7 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var chatMediaEnabled = false
     @Published private(set) var firstSessionAutopickerEnabled = false
     @Published private(set) var yearlyFrameFixEnabled = false
+    @Published private(set) var uploadFailNotifyEnabled = false
 
     /// Show-once: set when the first-launch wall is dismissed or purchased
     /// through. @Published so the root ZStack re-branches the moment it flips.
@@ -79,6 +80,7 @@ final class OnboardingState: ObservableObject {
             chatMediaEnabled = (obj?["chat_media"] as? String) == "on"
             firstSessionAutopickerEnabled = (obj?["first_session_autopicker"] as? String) == "on"
             yearlyFrameFixEnabled = (obj?["yearly_frame_fix"] as? String) == "on"
+            uploadFailNotifyEnabled = (obj?["upload_fail_notify"] as? String) == "on"
             UserDefaults.standard.set(postrenderReferralEnabled, forKey: "postrender_referral_enabled")
             UserDefaults.standard.set(abandonReferralEnabled, forKey: "abandon_referral_enabled")
             UserDefaults.standard.set(ambientWallReferralEnabled, forKey: "ambient_wall_referral_enabled")
@@ -86,6 +88,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(chatMediaEnabled, forKey: "chat_media_enabled")
             UserDefaults.standard.set(firstSessionAutopickerEnabled, forKey: "first_session_autopicker_enabled")
             UserDefaults.standard.set(yearlyFrameFixEnabled, forKey: "yearly_frame_fix_enabled")
+            UserDefaults.standard.set(uploadFailNotifyEnabled, forKey: "upload_fail_notify_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -97,6 +100,7 @@ final class OnboardingState: ObservableObject {
             chatMediaEnabled = UserDefaults.standard.bool(forKey: "chat_media_enabled")
             firstSessionAutopickerEnabled = UserDefaults.standard.bool(forKey: "first_session_autopicker_enabled")
             yearlyFrameFixEnabled = UserDefaults.standard.bool(forKey: "yearly_frame_fix_enabled")
+            uploadFailNotifyEnabled = UserDefaults.standard.bool(forKey: "upload_fail_notify_enabled")
         }
     }
 

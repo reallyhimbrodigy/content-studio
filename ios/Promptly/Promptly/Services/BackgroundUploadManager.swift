@@ -117,10 +117,29 @@ final class BackgroundUploadManager: NSObject {
         let attrs = try? FileManager.default.attributesOfItem(atPath: path)
         let size = (attrs?[.size] as? Int64) ?? 0
         guard FileManager.default.isReadableFile(atPath: path), size > 0 else {
+            // Discriminator (2026-08-27): 66 users/14d hit this with size 0,
+            // seconds after pick, in-session — purge/eviction/relaunch all
+            // eliminated. Three candidate branches remain (double-dispatch
+            // delete race; copyItem from an unmaterialized iCloud original;
+            // export-created-empty). dir_class + parent_exists + src_key name
+            // the branch: app-support = our staged copy vanished (race);
+            // photos-sandbox = a raw Photos URL leaked into the upload path;
+            // tmp = the temp export path leaked past materialization.
+            let dirClass: String = {
+                let p = fileUrl.path
+                if p.contains("/Application Support/") { return "app-support" }
+                if p.contains("/tmp/") || p.contains("/Temporary") { return "tmp" }
+                if p.contains("/DCIM/") || p.contains("/PhotoData/") || p.contains("/Media/") { return "photos-sandbox" }
+                return "other"
+            }()
+            let parentExists = FileManager.default.fileExists(atPath: fileUrl.deletingLastPathComponent().path)
             Analytics.track("upload_failed", props: [
                 "mechanism": "source_file_missing_precreate",
                 "path": "bg-single",
                 "size_on_disk": size,
+                "src_key": fileUrl.lastPathComponent,
+                "dir_class": dirClass,
+                "parent_exists": parentExists,
                 "conn": ReachabilityMonitor.currentConnectionType,
             ], durable: true)
             throw APIError.uploadFailed
@@ -246,6 +265,10 @@ final class BackgroundUploadManager: NSObject {
                 // URLSession completion. That IS the relaunched-after-termination state.
                 "lifecycle": "relaunched",
             ], durable: true)
+            // Tell the user NOW — the process was relaunched in background to
+            // learn this; without the notification they discover it whenever
+            // they happen to return.
+            UploadFailureNotifier.notifyUploadDied()
         }
         // Notify ChatStore so it can update the message in the
         // persisted chat record.

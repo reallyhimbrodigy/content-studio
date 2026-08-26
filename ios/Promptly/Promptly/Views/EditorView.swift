@@ -1600,7 +1600,11 @@ struct EditorView: View {
                     case .local(let sourceUrl):
                         pending.sourceType = "local"
                         print("[perf] path=local dual-upload")
-                        await MainActor.run { pending.fileUrl = sourceUrl }
+                        // fileUrl is set ONLY after materialization (below): the
+                        // raw Photos-library URL is unreadable by nsurlsessiond
+                        // (build-94 lesson), so a provisional assignment here
+                        // poisons any consumer that races the copy/compress —
+                        // and the size-telemetry read at failure time.
                         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
 
                         // Sharp thumbnail from the real video frames.
@@ -1915,7 +1919,8 @@ struct EditorView: View {
                         return (pending.uploadProgress, key, mb, life)
                     }
                     var failProps: [String: Any] = [
-                        "mechanism": Self.uploadFailureMechanism(error),
+                        "mechanism": (error is CompressorError || error is CocoaError)
+                            ? "materialize_failed" : Self.uploadFailureMechanism(error),
                         "pct_complete": pctAtFailure,
                         "elapsed_ms": Int(Date().timeIntervalSince(uploadStartedAt) * 1000),
                         "error_desc": String(error.localizedDescription.prefix(120)),
