@@ -23,7 +23,7 @@ struct SecondPaywallView: View {
     @State private var didPurchaseHere = false
 
     private var packages: [Package] {
-        subscription.offerings?.current?.availablePackages ?? []
+        SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
 
     // MARK: Personalised copy (Q1 audience + Q2 intents feed this)

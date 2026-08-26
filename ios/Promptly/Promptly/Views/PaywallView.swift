@@ -300,7 +300,7 @@ struct PaywallView: View {
             ?? subscription.offerings?[SubscriptionService.defaultOfferingId] else {
             return nil
         }
-        return offering.availablePackages
+        return SubscriptionService.sortedByDuration(offering.availablePackages)
     }
 
     /// Short, stable key for the paywall's trigger reason — travels as the

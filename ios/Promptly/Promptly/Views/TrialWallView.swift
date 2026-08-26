@@ -28,7 +28,7 @@ struct TrialWallView: View {
 
     // ── Derived ──────────────────────────────────────────────────────────────
     private var packages: [Package] {
-        subscription.offerings?.current?.availablePackages ?? []
+        SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
     private var billedPrice: String {
         selectedPackage?.storeProduct.localizedPriceString ?? "—"

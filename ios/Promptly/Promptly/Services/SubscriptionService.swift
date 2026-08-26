@@ -257,6 +257,33 @@ final class SubscriptionService: ObservableObject {
     /// Returns true on success (entitlement granted), false otherwise.
     /// Sets `lastError` for the UI to surface on cancellation / failure.
     /// Funnel plan key: weekly / monthly / yearly (from the package type).
+    /// Canonical package order for EVERY purchase surface: duration
+    /// DESCENDING (Annual → Monthly → Weekly, unknowns last). Ruled
+    /// 2026-08-26 after the identifier check: our packages use the standard
+    /// $rc_ types (plan props resolve to yearly/monthly/weekly, zero
+    /// "other"), but availablePackages returns the offering's ATTACHMENT
+    /// order — RC returned weekly first, and every surface pins both the
+    /// pre-selection and the BEST VALUE badge to `.first`. Sorting client-
+    /// side removes the dashboard-order dependency entirely; the yearly
+    /// anchor ($33.33/mo) plus this ordering is the whole reorder ask.
+    static func sortedByDuration(_ packages: [Package]) -> [Package] {
+        func rank(_ t: PackageType) -> Int {
+            switch t {
+            case .lifetime: return 0
+            case .annual: return 1
+            case .sixMonth: return 2
+            case .threeMonth: return 3
+            case .twoMonth: return 4
+            case .monthly: return 5
+            case .weekly: return 6
+            default: return 7
+            }
+        }
+        return packages.enumerated()
+            .sorted { (rank($0.element.packageType), $0.offset) < (rank($1.element.packageType), $1.offset) }
+            .map(\.element)
+    }
+
     func planKey(_ pkg: Package) -> String {
         switch pkg.packageType {
         case .annual: return "yearly"

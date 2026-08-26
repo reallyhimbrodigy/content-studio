@@ -34,7 +34,7 @@ struct FirstLaunchPaywallView: View {
     @State private var didPurchaseHere = false
 
     private var packages: [Package] {
-        subscription.offerings?.current?.availablePackages ?? []
+        SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
 
     var body: some View {
