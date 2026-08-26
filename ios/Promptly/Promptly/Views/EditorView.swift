@@ -1618,22 +1618,65 @@ struct EditorView: View {
                         // Background URLSession requires app-accessible
                         // file URLs — Photos-library URLs work via
                         // foreground sessions but fail in nsurlsessiond.
-                        let materializedSourceUrl: URL
-                        if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
-                            // Quality-preserving copy. ~1-2s for 80 MB
-                            // on local SSD; needed so the background
-                            // session can read after the app suspends.
-                            // App-owned durable storage (NOT temp) so the source
-                            // survives an app-kill mid-upload and the background /
-                            // cross-launch retry always has bytes to send. Cleaned
-                            // on upload-confirm below + a launch-time orphan sweep.
-                            let tmp = UploadStorage.newFile()
-                            try FileManager.default.copyItem(at: sourceUrl, to: tmp)
-                            materializedSourceUrl = tmp
-                            print("[perf] compress skipped (copy-only)")
-                        } else {
-                            materializedSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
-                            print("[perf] compressed → tmp")
+                        // RESOLUTION HARDENING (2026-08-26): 46.3% of readable
+                        // picker losses are PHAsset materialization failures, and
+                        // a share of source_file_missing_precreate is the same
+                        // defect wearing an upload mechanism. .local is chosen by
+                        // a no-network resolve, but the file can still be an
+                        // optimized-storage placeholder (or get evicted between
+                        // resolve and copy, seconds later) — a plain copyItem
+                        // cannot download, so it throws or clones a placeholder.
+                        // The repair: on ANY materialization failure — a throw OR
+                        // a zero-byte staged file — re-materialize through
+                        // PHAssetResourceIO (download-capable, durable, throws
+                        // honestly), the same machinery the .stream branch trusts.
+                        func stagedSizeOK(_ url: URL) -> Bool {
+                            let sz = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+                            return sz > 0
+                        }
+                        var materializedSourceUrl: URL
+                        do {
+                            if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
+                                let tmp = UploadStorage.newFile()
+                                try FileManager.default.copyItem(at: sourceUrl, to: tmp)
+                                materializedSourceUrl = tmp
+                                print("[perf] compress skipped (copy-only)")
+                            } else {
+                                materializedSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
+                                print("[perf] compressed → tmp")
+                            }
+                            // A created-but-empty file is a failure, not a success —
+                            // the zero-byte class must never reach the uploader.
+                            guard stagedSizeOK(materializedSourceUrl) else {
+                                throw CompressorError.exportFailed("staged file is empty")
+                            }
+                        } catch {
+                            // Fallback: durable download from the asset's own video
+                            // resource. Recovery is tracked so the effect read can
+                            // measure exactly how much of the 46.3% this closes.
+                            print("[materialize] primary failed (\(error.localizedDescription)) — PHAssetResourceIO fallback")
+                            let resources = PHAssetResource.assetResources(for: video.asset)
+                            let preferredTypes: [PHAssetResourceType] = [.fullSizeVideo, .video, .pairedVideo]
+                            guard let resource = preferredTypes.compactMap({ t in
+                                resources.first(where: { $0.type == t })
+                            }).first else {
+                                Analytics.track("picker_asset_unresolved", props: [
+                                    "stage": "materialize_fallback_no_resource",
+                                ], durable: true)
+                                throw error
+                            }
+                            let durable = UploadStorage.newFile()
+                            try await PHAssetResourceIO.write(resource: resource, to: durable) { _ in }
+                            guard stagedSizeOK(durable) else {
+                                Analytics.track("picker_asset_unresolved", props: [
+                                    "stage": "materialize_fallback_empty",
+                                ], durable: true)
+                                throw CompressorError.exportFailed("fallback download empty")
+                            }
+                            Analytics.track("picker_asset_unresolved", props: [
+                                "stage": "materialize_fallback_recovered",
+                            ], durable: true)
+                            materializedSourceUrl = durable
                         }
                         await MainActor.run { pending.fileUrl = materializedSourceUrl }
 
