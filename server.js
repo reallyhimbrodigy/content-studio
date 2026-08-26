@@ -3009,7 +3009,13 @@ const server = http.createServer((req, res) => {
         }
 
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
-        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 3600);
+        // Part-URL presign: 7 days (was 3600s — the Aug-24 spike's mechanism:
+        // resume window expired = 51.3% of spike failures vs 26.8% baseline, with
+        // error_domain EMPTY on 100% because there IS no transport error — the
+        // 1h window killed backgrounded uploads by deadline, not by network.
+        // The single-PUT door already presigns 604800; the parts asymmetry was
+        // the defect. SigV4 caps at 7d. Client resumeTTL follows (6.5d margin).
+        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 604800);
         const publicUrl = s3.getPublicUrl(key);
         serverFunnel(authUser.id, 'upload_url_requested', { path: 'multipart' }); // server-truth upload attempt
         warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
