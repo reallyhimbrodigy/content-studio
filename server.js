@@ -3508,6 +3508,12 @@ const server = http.createServer((req, res) => {
           // the __smoke_event_allowlist cert scans app-* branches, so the emitters on
           // app-uns-instrumentation already fail the deploy gate without this.
           'picker_opened', 'picker_result', 'picker_asset_unresolved',
+          // Conversion build 2026-08-27 (post-235, seven flag-gated surfaces):
+          // allowlisted on main BEFORE the branch emitters ship (standing law).
+          'onboarding_v2_step', 'push_primer_viewed', 'push_primer_accepted',
+          'push_primer_declined', 'annual_dollar_line_shown', 'offer_line_shown',
+          'paywall_personalization_shown', 'paywall_suppressed_bad_render',
+          'purchase_blocked_unidentified', 'render_transparency_viewed',
           // Referral program (conversion workstream; schema live 2026-08-21):
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
