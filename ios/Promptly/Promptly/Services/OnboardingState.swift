@@ -41,6 +41,18 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var yearlyFrameFixEnabled = false
     @Published private(set) var uploadFailNotifyEnabled = false
 
+    /// Conversion build 2026-08-27 (post-235): seven surfaces around the
+    /// moment of desire, EACH behind its own server flag, default off —
+    /// arming order stays a ruling after 235's read.
+    @Published private(set) var attributionGateEnabled = false
+    @Published private(set) var onboardingV2Enabled = false
+    @Published private(set) var renderTransparencyEnabled = false
+    @Published private(set) var exportGatePersonalizationEnabled = false
+    @Published private(set) var badRenderSuppressorEnabled = false
+    @Published private(set) var annualDollarLineEnabled = false
+    @Published private(set) var offerSurfacingEnabled = false
+    @Published private(set) var pushPrimerEnabled = false
+
     /// Show-once: set when the first-launch wall is dismissed or purchased
     /// through. @Published so the root ZStack re-branches the moment it flips.
     @Published var hasSeenFirstLaunchPaywall: Bool =
@@ -89,6 +101,22 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(firstSessionAutopickerEnabled, forKey: "first_session_autopicker_enabled")
             UserDefaults.standard.set(yearlyFrameFixEnabled, forKey: "yearly_frame_fix_enabled")
             UserDefaults.standard.set(uploadFailNotifyEnabled, forKey: "upload_fail_notify_enabled")
+            attributionGateEnabled = (obj?["attribution_gate"] as? String) == "on"
+            onboardingV2Enabled = (obj?["onboarding_v2"] as? String) == "on"
+            renderTransparencyEnabled = (obj?["render_transparency"] as? String) == "on"
+            exportGatePersonalizationEnabled = (obj?["exportgate_personalization"] as? String) == "on"
+            badRenderSuppressorEnabled = (obj?["bad_render_suppressor"] as? String) == "on"
+            annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
+            offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
+            pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
+            UserDefaults.standard.set(attributionGateEnabled, forKey: "attribution_gate_enabled")
+            UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
+            UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")
+            UserDefaults.standard.set(exportGatePersonalizationEnabled, forKey: "exportgate_personalization_enabled")
+            UserDefaults.standard.set(badRenderSuppressorEnabled, forKey: "bad_render_suppressor_enabled")
+            UserDefaults.standard.set(annualDollarLineEnabled, forKey: "annual_dollar_line_enabled")
+            UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
+            UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -101,8 +129,34 @@ final class OnboardingState: ObservableObject {
             firstSessionAutopickerEnabled = UserDefaults.standard.bool(forKey: "first_session_autopicker_enabled")
             yearlyFrameFixEnabled = UserDefaults.standard.bool(forKey: "yearly_frame_fix_enabled")
             uploadFailNotifyEnabled = UserDefaults.standard.bool(forKey: "upload_fail_notify_enabled")
+            attributionGateEnabled = UserDefaults.standard.bool(forKey: "attribution_gate_enabled")
+            onboardingV2Enabled = UserDefaults.standard.bool(forKey: "onboarding_v2_enabled")
+            renderTransparencyEnabled = UserDefaults.standard.bool(forKey: "render_transparency_enabled")
+            exportGatePersonalizationEnabled = UserDefaults.standard.bool(forKey: "exportgate_personalization_enabled")
+            badRenderSuppressorEnabled = UserDefaults.standard.bool(forKey: "bad_render_suppressor_enabled")
+            annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
+            offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
+            pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
         }
     }
+
+    #if DEBUG
+    /// Sim-proof harness: force a conversion-build flag on locally
+    /// (screenshots of dark surfaces without a server flip). DEBUG only.
+    func debugForceFlag(_ key: String) {
+        switch key {
+        case "attribution_gate": attributionGateEnabled = true
+        case "onboarding_v2": onboardingV2Enabled = true
+        case "render_transparency": renderTransparencyEnabled = true
+        case "exportgate_personalization": exportGatePersonalizationEnabled = true
+        case "bad_render_suppressor": badRenderSuppressorEnabled = true
+        case "annual_dollar_line": annualDollarLineEnabled = true
+        case "offer_surfacing": offerSurfacingEnabled = true
+        case "push_primer": pushPrimerEnabled = true
+        default: break
+        }
+    }
+    #endif
 
     // ── Language (KEPT from the removed quiz — it is the only quiz step Zac
     // preserved). Sets the APP UI language via the String Catalog: persisted to
