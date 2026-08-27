@@ -13,6 +13,8 @@ import SwiftUI
 ///       1  failure card (credit note + one-tap retry)
 ///       2  paywall (feature list — copy audit)
 ///       3  upgrade wall (trial-wall bullets — copy audit)
+///       4  paywall + AUTO purchase invoke after 3s (sandbox E2E-to-sheet)
+///       5  upgrade wall + AUTO purchase invoke after 3s (sandbox E2E-to-sheet)
 ///
 /// Never compiled into Release; no effect without the launch argument.
 struct PayoffSnapshotHarnessView: View {
@@ -25,10 +27,33 @@ struct PayoffSnapshotHarnessView: View {
             case 1: labeled("FAILURE — credit note + one-tap retry") { failureBubble }
             case 2: PaywallView(isPresented: .constant(true), reason: .manual)
             case 3: TrialWallView(context: .door, onPassed: {})
+            case 4: PaywallView(isPresented: .constant(true), reason: .manual)
+                .task { await autoInvokePurchase() }
+            case 5: TrialWallView(context: .door, onPassed: {})
+                .task { await autoInvokePurchase() }
             default: labeled("§6 RESULT — video · post package · Share hero") { resultBubble }
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// Sandbox purchase E2E (pre-submit check, 2026-08-26): waits for offerings,
+    /// then drives SubscriptionService.purchase on the computed default
+    /// selection — the same call the CTA makes — so a screenshot captures
+    /// whatever Apple's sandbox does next (sheet / sign-in / error alert).
+    /// Proves the purchase path is wired end-to-end from BOTH surfaces.
+    private func autoInvokePurchase() async {
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        let sub = SubscriptionService.shared
+        let pkgs = SubscriptionService.sortedByDuration(
+            sub.offerings?.current?.availablePackages ?? [])
+        guard let pkg = PlanSavings.defaultSelection(in: pkgs) else {
+            print("[snapshotE2E] NO PACKAGES — offerings empty")
+            return
+        }
+        print("[snapshotE2E] invoking purchase: \(pkg.identifier)")
+        let ok = await sub.purchase(pkg)
+        print("[snapshotE2E] purchase returned ok=\(ok) err=\(sub.lastError ?? "nil")")
     }
 
     private func labeled<V: View>(_ title: String, @ViewBuilder _ content: () -> V) -> some View {

@@ -38,6 +38,81 @@ struct PROBadge: View {
     }
 }
 
+// MARK: - PlanSavings (computed from live storefront prices — never hardcoded)
+
+/// The discount badge + pre-selection math (paywall rebuild, 2026-08-26).
+/// % off = 1 − (yearly_price / (12 × monthly_price)), FLOORED — rounding up
+/// would overstate the savings, which is a claim about money, not a display
+/// nicety. Prices are the same live per-territory StoreProduct decimals the
+/// yearly/12 anchor already uses; no literals, no flags.
+enum PlanSavings {
+    static func annual(in packages: [Package]) -> Package? {
+        packages.first { $0.packageType == .annual }
+    }
+    static func monthly(in packages: [Package]) -> Package? {
+        packages.first { $0.packageType == .monthly }
+    }
+
+    /// Whole-percent saving of the annual plan vs 12 months of the monthly
+    /// plan, floored. Nil when either plan is missing, the monthly price is
+    /// zero, or the computed saving is under 1% (no badge for a non-deal).
+    static func percentOff(in packages: [Package]) -> Int? {
+        guard let a = annual(in: packages), let m = monthly(in: packages) else { return nil }
+        let yearly = (a.storeProduct.price as NSDecimalNumber).doubleValue
+        let monthly12 = (m.storeProduct.price as NSDecimalNumber).doubleValue * 12.0
+        guard monthly12 > 0 else { return nil }
+        let pct = Int(((1.0 - yearly / monthly12) * 100.0).rounded(.down))
+        return pct >= 1 ? pct : nil
+    }
+
+    /// Pre-selection follows the SAME computed comparison as the badge
+    /// (closes the Aug-18 item): the annual plan is pre-selected only when
+    /// it carries a genuine computed saving; otherwise fall back to the
+    /// offering's own order.
+    static func defaultSelection(in packages: [Package]) -> Package? {
+        if percentOff(in: packages) != nil, let a = annual(in: packages) { return a }
+        return packages.first
+    }
+}
+
+// MARK: - PaywallFeatureChecklist (the reference's 5-item checkmark list)
+
+/// The five Pro bullets, shared by BOTH purchase surfaces (sheet + wall) so
+/// the claim list can never diverge. Copy is the currently-approved live
+/// phrasing — the fifth line reuses the exportGate subtitle's own claim
+/// ("Pro saves and shares every video"), no new marketing copy. Checkmark
+/// rows per the reference layout; white ink, no gold (2026-08-26 rebuild).
+struct PaywallFeatureChecklist: View {
+    static let features: [String] = [
+        String(localized: "Unlimited renders"),
+        String(localized: "Upload up to 10 videos at a time"),
+        String(localized: "Unlimited AI chats"),
+        String(localized: "Re-edit any finished video"),
+        String(localized: "Save and share every video"),
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Self.features, id: \.self) { text in
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 24, height: 24)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(.black)
+                    }
+                    Text(text)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 // MARK: - Paywall
 
 /// Pro paywall sheet. Presented when the user hits a daily limit or taps
@@ -237,11 +312,11 @@ struct PaywallView: View {
             // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
             Analytics.track("upgrade_wall_viewed", props: (["context": reasonKey] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             await subscription.refreshOfferings()
-            // Default selection: the offering's FIRST package (position 0).
-            // Order is owned by the RevenueCat offering (config, no build), so
-            // the client obeys whatever sequence the offering returns.
+            // Pre-selection follows the computed savings comparison (the same
+            // live-price math as the badge — Aug-18 item closed), not the
+            // offering's position order.
             if let pkgs = currentPackages {
-                selectedPackage = pkgs.first
+                selectedPackage = PlanSavings.defaultSelection(in: pkgs)
             }
         }
         .onChange(of: subscription.isPro) { _, isPro in
@@ -260,18 +335,10 @@ struct PaywallView: View {
 
     // MARK: - Sub-views
 
+    // Pure black (2026-08-26 rebuild): the cream-tinted fade was the last
+    // gold-family element on the ground.
     private var backdrop: some View {
-        ZStack {
-            Color.black
-            LinearGradient(
-                colors: [
-                    Color(red: 0.96, green: 0.89, blue: 0.74).opacity(0.08),
-                    Color.black,
-                    Color.black,
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-        }
+        Color.black
     }
 
     // The brand mark, not a crown (conversion workstream item 2): a paywall
@@ -283,30 +350,7 @@ struct PaywallView: View {
     }
 
     private var featureList: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            featureRow(icon: "infinity", text: "Unlimited renders")
-            featureRow(icon: "square.stack.3d.up.fill", text: "Upload up to 10 videos at a time")
-            featureRow(icon: "bubble.left.and.bubble.right.fill", text: "Unlimited AI chats")
-            featureRow(icon: "arrow.uturn.left", text: "Re-edit any finished video")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(PromptlyGold.gradient)
-                    .frame(width: 26, height: 26)
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.black)
-            }
-            Text(text)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-            Spacer()
-        }
+        PaywallFeatureChecklist()
     }
 
     private var currentPackages: [Package]? {
@@ -368,6 +412,9 @@ struct PaywallView: View {
                 packageRow(pkg)
             }
         }
+        // Headroom for the annual card's badge, which overhangs its top edge
+        // (reference layout) — without this the first card's badge clips.
+        .padding(.top, 6)
     }
 
     /// Fix 1 anchor for a yearly plan. Prefers RevenueCat's own localized
@@ -382,7 +429,7 @@ struct PaywallView: View {
             HStack(spacing: 12) {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(PromptlyGold.gradient)
+                    .foregroundColor(.white)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Or get Pro free")
                         .font(.system(size: 15, weight: .semibold))
@@ -421,17 +468,25 @@ struct PaywallView: View {
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
-        let intervalText: String = {
+        // Reference structure: bare-noun label + optional anchor subline on the
+        // left, the billed price + unit on the right. The billed amount stays
+        // the most prominent number on the row (the standing honesty law —
+        // the yearly_frame_fix prominence is now unconditional layout).
+        let unitText: String = {
             switch pkg.packageType {
-            case .annual: return "per year"
-            case .monthly: return "per month"
-            case .weekly: return "per week"
+            case .annual: return String(localized: "year")
+            case .monthly: return String(localized: "month")
+            case .weekly: return String(localized: "week")
             default: return ""
             }
         }()
-        // Badge the offering's FIRST package (position 0) — order is config-owned
-        // by the RevenueCat offering, so whatever it returns first is "BEST VALUE".
-        let savingsLabel: String? = pkg.identifier == currentPackages?.first?.identifier ? "BEST VALUE" : nil
+        // The discount badge is COMPUTED at render time from the same live
+        // per-territory prices as the yearly/12 anchor — floor(1 − y/(12·m)),
+        // never a hardcoded string, and only on the annual row when the
+        // saving is real (2026-08-26 rebuild).
+        let pctOff: Int? = (pkg.packageType == .annual)
+            ? (currentPackages.flatMap { PlanSavings.percentOff(in: $0) })
+            : nil
 
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -442,73 +497,61 @@ struct PaywallView: View {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.2), lineWidth: 2)
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.25), lineWidth: 2)
                         .frame(width: 22, height: 22)
                     if isSelected {
                         Circle()
-                            .fill(PromptlyGold.gradient)
+                            .fill(Color.white)
                             .frame(width: 12, height: 12)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        // Our OWN plan label — NEVER StoreKit's localizedTitle
-                        // (which can carry "(Promptly Pro)" suffixes / ASC naming
-                        // quirks). One canonical product, "Promptly Pro"; the row
-                        // just names the interval. ASC display-name edits are now
-                        // cosmetic. (build 216)
-                        Text(pkg.packageType == .annual ? "Yearly"
-                             : pkg.packageType == .monthly ? "Monthly"
-                             : pkg.packageType == .weekly ? "Weekly"
-                             : "Promptly Pro")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                        if let savingsLabel {
-                            Text(savingsLabel)
-                                .font(.system(size: 9, weight: .heavy))
-                                .tracking(0.6)
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(PromptlyGold.gradient))
-                        }
-                    }
-                    // yearly_frame_fix (2026-08-26): 61% of ALL cancellations
-                    // come from the yearly SKU — the felt frame (monthly
-                    // anchor) and the sheet's charge differ 12×. With the knob
-                    // on, the REAL total leads on the annual row: the sheet
-                    // number becomes a number the user already accepted.
-                    Text("\(priceText) \(intervalText)")
-                        .font(.system(
-                            size: (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? 15 : 13,
-                            weight: (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? .semibold : .regular))
-                        .foregroundColor(.white.opacity(
-                            (onboardingStateRef.yearlyFrameFixEnabled && pkg.packageType == .annual) ? 0.95 : 0.7))
-                    // RE-RULED 2026-08-22: the annual anchor reads MONTHLY, not
-                    // per-week. Apple's sheet restates the full $399.99 at
-                    // commitment — a per-week anchor maximises the perceived gap
-                    // at that exact moment (yearly = 56 of 99 sheet-cancels).
-                    // $33.33/mo · billed yearly is the honest minimal-gap frame.
-                    // The WEEKLY SKU's own line stays per-week (its native unit).
+                    // Our OWN plan label — NEVER StoreKit's localizedTitle
+                    // (which can carry "(Promptly Pro)" suffixes / ASC naming
+                    // quirks). Bare nouns per the reference. (build 216 rule)
+                    Text(pkg.packageType == .annual ? "Year"
+                         : pkg.packageType == .monthly ? "Month"
+                         : pkg.packageType == .weekly ? "Week"
+                         : "Promptly Pro")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                    // RE-RULED 2026-08-22: the annual anchor reads MONTHLY —
+                    // the honest minimal-gap frame against Apple's sheet.
                     // Storefront-derived (RC per-month or ÷12), no literals.
                     if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(PromptlyGold.solid)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
                     }
                 }
                 Spacer()
+                // LAW: the billed amount is the big number on every row.
+                Text("\(priceText)/\(unitText)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.95))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.08 : 0.04))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08), lineWidth: isSelected ? 1.5 : 0.5)
+                    .stroke(isSelected ? Color.white : Color.white.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
             )
+            .overlay(alignment: .topTrailing) {
+                if let pctOff {
+                    Text("\(pctOff)% OFF")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.4)
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white))
+                        .offset(x: -12, y: -9)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -650,7 +693,7 @@ struct AbandonRecoveryOverlay: View {
                         VStack(spacing: 2) {
                             Text("Or get Pro free")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(PromptlyGold.solid)
+                                .foregroundColor(.white)
                             Text("Invite 3 friends who make a video — get a week of Pro")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.6))
@@ -680,11 +723,12 @@ struct ProCelebrationView: View {
 
     var body: some View {
         ZStack {
-            // Dark ground with a gold-tinted top fade — the Pro visual language.
+            // Pure black ground (2026-08-26 rebuild — no gold on any paywall
+            // surface); the celebration keeps a faint neutral top glow.
             ZStack {
                 Color.black
                 LinearGradient(
-                    colors: [PromptlyGold.solid.opacity(0.14), .black, .black],
+                    colors: [Color.white.opacity(0.06), .black, .black],
                     startPoint: .top, endPoint: .bottom
                 )
             }
@@ -715,7 +759,7 @@ struct ProCelebrationView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: item.icon)
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(PromptlyGold.gradient)
+                                    .foregroundColor(.white)
                                     .frame(width: 22)
                                 Text(item.text)
                                     .font(.system(size: 15, weight: .medium))
