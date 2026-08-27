@@ -3332,6 +3332,25 @@ const server = http.createServer((req, res) => {
       yearly_frame_fix: String(process.env.YEARLY_FRAME_FIX || '') === '1' ? 'on' : 'off',
       // ARMED by default (shipped-today order 2026-08-27): a failed upload must tell the user when it's known. Env 0 disables.
       upload_fail_notify: String(process.env.UPLOAD_FAIL_NOTIFY || '1') === '1' ? 'on' : 'off',
+      // Conversion build 2026-08-27 (post-235, coordinator-ordered): seven
+      // surfaces around the moment of desire, EACH its own flag, default OFF —
+      // arming order stays a ruling after 235's revenue-per-wall-view read.
+      //   attribution_gate          — resurrected "how did you hear" question in the LIVE first-session path
+      //   onboarding_v2             — <=4 screens, ends at the picker, content-type question feeds vibe prefill
+      //   render_transparency       — stage-truthful progress feed during the render wait (never fake stages)
+      //   exportgate_personalization— export gate shows the video's own thumbnail + named ask
+      //   bad_render_suppressor     — thin/passthrough render => NO paywall at the gate
+      //   annual_dollar_line        — "$X/wk billed annually — save $Y vs weekly", live StoreKit decimals, floored
+      //   offer_surfacing           — StoreKit2 paid intro + iOS18 win-back rendering (display-only until ASC offers exist; NEVER a trial)
+      //   push_primer               — post-first-delivery pre-permission primer; native prompt only on active tap
+      attribution_gate: String(process.env.ATTRIBUTION_GATE || '') === '1' ? 'on' : 'off',
+      onboarding_v2: String(process.env.ONBOARDING_V2 || '') === '1' ? 'on' : 'off',
+      render_transparency: String(process.env.RENDER_TRANSPARENCY || '') === '1' ? 'on' : 'off',
+      exportgate_personalization: String(process.env.EXPORTGATE_PERSONALIZATION || '') === '1' ? 'on' : 'off',
+      bad_render_suppressor: String(process.env.BAD_RENDER_SUPPRESSOR || '') === '1' ? 'on' : 'off',
+      annual_dollar_line: String(process.env.ANNUAL_DOLLAR_LINE || '') === '1' ? 'on' : 'off',
+      offer_surfacing: String(process.env.OFFER_SURFACING || '') === '1' ? 'on' : 'off',
+      push_primer: String(process.env.PUSH_PRIMER || '') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
