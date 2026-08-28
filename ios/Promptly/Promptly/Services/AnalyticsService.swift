@@ -75,6 +75,12 @@ enum Analytics {
         let anon = anonUserId
         var enrichedProps = props
         enrichedProps["install_id"] = installId
+        // app_version rides BOTH sinks (2026-08-27). It was added only to the
+        // PostHog dictionary below — AFTER this payload is serialized — so
+        // every row in our own analytics_events table has been version-blind
+        // since birth. That is why a phased release cannot be read from the
+        // DB: wall views and purchases can't be segmented to the new build.
+        enrichedProps["app_version"] = version
         let propsData: Data = (JSONSerialization.isValidJSONObject(enrichedProps)
             ? (try? JSONSerialization.data(withJSONObject: enrichedProps)) : nil) ?? Data("{}".utf8)
 
