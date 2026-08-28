@@ -104,7 +104,7 @@ function loadEnvLocal() {
   };
   const accepted = byOutcome.accepted || [];
   const lastAccepted = lastNonZero(accepted);
-  const hoursSince = lastAccepted
+  let hoursSince = lastAccepted
     ? (Date.now() - new Date(lastAccepted).getTime()) / 36e5
     : Infinity;
 
@@ -150,8 +150,27 @@ function loadEnvLocal() {
                 `(${(ratio * 100).toFixed(0)}% acceptance).`);
     process.exit(0);
   }
-  if (hoursSince <= STALE_HOURS) {
-    console.log(`   -> an event DID get through recently, but only ${acc24} of ${acc24 + rl24}.`);
+  // Refine "hours since accepted" from the HOURLY series. The 30d series is
+  // daily, so it can only ever say "sometime today" — which printed as
+  // "accepted NOTHING for 19h" on a day that had already accepted 7 events.
+  // A number that contradicts the line above it teaches the reader to trust
+  // neither.
+  const accHourly = (r24.body && r24.body.groups || [])
+    .find((g) => g.by.outcome === 'accepted');
+  const ivH = (r24.body && r24.body.intervals) || [];
+  if (accHourly && ivH.length) {
+    const ser = accHourly.series['sum(quantity)'] || [];
+    for (let i = ser.length - 1; i >= 0; i--) {
+      if (ser[i] > 0) {
+        hoursSince = (Date.now() - new Date(ivH[i]).getTime()) / 36e5;
+        break;
+      }
+    }
+    console.log(`   -> refined from hourly data: ${hoursSince.toFixed(1)}h since an accepted event`);
+  }
+
+  if (acc24 > 0) {
+    console.log(`   -> ${acc24} event(s) DID get through, but only ${acc24} of ${acc24 + rl24}.`);
     console.log('      Treating that as dark: a trickle through a closed gate is not an open gate.');
   }
 
@@ -208,13 +227,23 @@ function loadEnvLocal() {
         console.error(`     Not a key-level limit (no client key carries one).`);
         console.error(`     errors quota: reserved=${errs.reserved} usage=${errs.usage} ` +
                       `usageExceeded=${errs.usageExceeded} onDemandBudget=${errs.onDemandBudget}`);
-        if (Number(errs.onDemandBudget) === 0) {
-          console.error('     CAUSE: the errors category has NO on-demand budget allocated, so the');
-          console.error('     moment the reserved quota is spent there is zero overflow capacity and');
-          console.error('     every subsequent event is refused. An org-wide on-demand maximum does');
-          console.error('     NOT imply a per-category allocation — that is what made this look like');
-          console.error('     a healthy account while crash reporting was dark for two weeks.');
-          console.error('     Owner action: allocate on-demand budget to `errors`.');
+        // NOTE (corrected 2026-08-28): do NOT read errs.onDemandBudget === 0 as
+        // "no allocation". Under budgetMode "shared" EVERY category reports 0,
+        // including categories with zero usage — the shared pool is what
+        // applies. Reading that field as a per-category allocation produced a
+        // confident, wrong diagnosis once already.
+        const od = (cr.body || {}).onDemandBudgets || {};
+        console.error(`     on-demand: mode=${od.budgetMode} enabled=${od.enabled} ` +
+                      `max=${od.sharedMaxBudget ?? (cr.body || {}).onDemandMaxSpend} used=${od.onDemandSpendUsed}`);
+        if (od.enabled && Number(errs.usage) < Number(errs.reserved) && errs.usageExceeded === false) {
+          console.error('     CONTRADICTION: Sentry is refusing with a usage-exceeded reason while its');
+          console.error('     own quota readout says usage is UNDER the reserve and not exceeded.');
+          console.error('     Nothing in the account explains the refusal — this needs the Sentry');
+          console.error('     dashboard or support, not a config change on our side. If the billing');
+          console.error('     period reset recently, enforcement may simply lag; re-check before escalating.');
+        } else if (!od.enabled) {
+          console.error('     CAUSE: on-demand/pay-as-you-go is DISABLED, so a spent reserve has no');
+          console.error('     overflow. Owner action: enable it.');
         } else {
           console.error('     CAUSE: reserved quota spent and on-demand did not absorb it.');
         }
