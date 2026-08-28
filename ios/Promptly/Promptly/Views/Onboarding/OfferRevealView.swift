@@ -177,6 +177,16 @@ enum OfferReveal {
     /// The first package carrying a PAID introductory offer. Free-trial offers
     /// are excluded by the freemium law, so a trial-only product reads as "no
     /// offer" and the reveal is skipped entirely.
+    ///
+    /// ANNUAL FALL-THROUGH — HELD PENDING ZAC'S RULING (2026-08-27). Offers
+    /// are configured on MONTHLY only (175 territories; Yearly and Weekly
+    /// have none). Today an annual-leaning user therefore falls through to
+    /// the monthly offer: a real, honestly-priced offer, but a plan switch.
+    /// If the ruling is "don't switch their plan", THIS is the one seam to
+    /// change — take the pre-selected package as a parameter and return nil
+    /// when it carries no offer, which routes into the same graceful skip as
+    /// no-offer-at-all (the view's onAppear guard). Behaviour is unchanged
+    /// until then; nothing here is dead code.
     static func package(in packages: [Package]) -> Package? {
         packages.first { pkg in
             guard let d = pkg.storeProduct.introductoryDiscount else { return false }

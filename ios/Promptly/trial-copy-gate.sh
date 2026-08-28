@@ -9,7 +9,14 @@
 #      laws both forbid on a product that charges immediately.
 #   2. StoreKit `localizedTitle` CODE reads — plan labels are OUR bare nouns,
 #      never ASC product names (the Jul-24 rule; regression closed 2026-08-26).
-#   3. COUNTDOWN TIMERS and FAKE SCARCITY (ruled 2026-08-27: "never build a
+#   3. LITERAL PERCENTAGE / FRACTION price claims. Every discount number
+#      must be COMPUTED from the live per-territory StoreKit prices and
+#      floored — a hardcoded "half price" or "50% off" is false wherever
+#      Apple's price points land the intro elsewhere (measured 2026-08-27:
+#      HUN and POL sit at 40% off, QAT at 57%). Interpolated claims like
+#      "\(pct)% off" are FINE — the ban is on literal digits and worded
+#      fractions, which are claims we cannot keep in 175 territories.
+#   4. COUNTDOWN TIMERS and FAKE SCARCITY (ruled 2026-08-27: "never build a
 #      countdown timer; real-scarcity copy only"). Bans the countdown UI
 #      primitives on paywall/gate surfaces AND manufactured-urgency copy
 #      ("offer ends in", "expires in", "only N left", "limited time",
@@ -33,6 +40,9 @@ TITLE_RE='localizedTitle'
 # Countdown/scarcity: UI primitives (a countdown needs a repeating clock bound
 # to a deadline) + the manufactured-urgency phrase set.
 SCARCITY_COPY_RE='offer ends|ends in [0-9]|expires in|only [0-9]+ (left|remaining|spots?|seats?)|limited time|limited offer|hurry|act now|last chance|don.t miss out'
+# Literal price-percentage claims. A digit immediately before % is literal;
+# an interpolation renders as \(name)% and never matches this.
+PERCENT_RE='[0-9]+ ?% ?(off|discount|cheaper|savings?)|half[- ]?(price|off)|quarter[- ]?price|third off'
 SCARCITY_UI_RE='countdown|timeRemaining|secondsRemaining|expiresAt|deadline'
 
 # Strip // line comments and /* */ block comments while preserving line count
@@ -84,6 +94,14 @@ while IFS= read -r -d '' f; do
     done <<< "$hits"
   fi
 
+  hits="$(printf '%s\n' "$stripped" | grep -nEi "$PERCENT_RE" || true)"
+  if [ -n "$hits" ]; then
+    violations=1
+    while IFS= read -r h; do
+      echo "LITERAL %       $f:$h"
+    done <<< "$hits"
+  fi
+
   hits="$(printf '%s\n' "$stripped" | grep -nEi "$SCARCITY_COPY_RE" || true)"
   if [ -n "$hits" ]; then
     violations=1
@@ -109,9 +127,9 @@ done < <(find "$SRC" -name '*.swift' -print0)
 
 if [ "$violations" -ne 0 ]; then
   echo ""
-  echo "trial-copy-gate: FAILED — trial copy, localizedTitle reads, countdown UI, or fake-scarcity copy found (see lines above)."
+  echo "trial-copy-gate: FAILED — trial copy, localizedTitle reads, literal-percentage claims, countdown UI, or fake-scarcity copy found (see lines above)."
   exit 1
 fi
 
-echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no countdown timers, no fake scarcity."
+echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity."
 exit 0
