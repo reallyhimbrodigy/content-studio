@@ -40,6 +40,56 @@ if (smokes.length === 0) {
   process.exit(1);
 }
 
+// ── STALE-TREE ASSERTION (2026-08-28) ───────────────────────────────────────
+// A gate is only as true as the tree it read.
+//
+// The incident: __smoke_event_allowlist.js compared client-emitted analytics
+// events against the allowlist in the WORKING TREE's server.js. The allowlist
+// lives on main; the emits live on app-* client branches that run ~100 commits
+// behind on that file. Run from a client branch, it judged today's emits
+// against a months-old allowlist and reported 25 live events as "dropped". The
+// database refuted it instantly — picker_opened had 5,616 rows while the gate
+// called it dropped. And the obvious response to that failure (add the 25 names
+// to the stale file) would, on merge, have REVERTED 22 allowlist entries.
+//
+// A gate that cries wolf is worse than no gate: it invites a destructive fix.
+// So rather than trust each of 50 smokes to remember, assert it ONCE here, in
+// the single runner they all pass through. Any smoke reasoning about server.js
+// is now guaranteed a tree that is not behind the trunk.
+//
+// Advisory when the trunk is unreachable (a shallow CI checkout legitimately
+// has no origin/main); hard failure only when we can SEE that we are behind.
+(() => {
+  const { execFileSync: run } = require('child_process');
+  const git = (args) => run('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let behind = null;
+  for (const ref of ['origin/main', 'main']) {
+    try {
+      // Commits reachable from the trunk but not from HEAD, touching server.js
+      // or lib/ — the artifacts these smokes actually reason about.
+      behind = git(['rev-list', '--count', `HEAD..${ref}`, '--', 'server.js', 'lib']);
+      if (behind !== null) { var usedRef = ref; break; }
+    } catch { /* ref absent — try the next */ }
+  }
+  if (behind === null) {
+    console.log('ℹ tree-freshness: no trunk ref available (shallow checkout) — cannot verify. Not a pass.');
+    return;
+  }
+  const n = Number(behind);
+  if (!Number.isFinite(n)) {
+    console.log('ℹ tree-freshness: unreadable rev-list result — cannot verify.');
+    return;
+  }
+  if (n > 0) {
+    console.error(`❌ STALE TREE — this checkout is ${n} commit(s) behind ${usedRef} on server.js/lib.`);
+    console.error('   Every smoke below would judge server behaviour from an out-of-date file,');
+    console.error('   which is exactly how 25 live analytics events were reported as dropped.');
+    console.error('   Rebase or run the gates from the trunk.');
+    process.exit(1);
+  }
+  console.log(`✓ tree-freshness: up to date with ${usedRef} on server.js/lib.`);
+})();
+
 // Clear first: a previous build's PASSING receipt must never survive beside a
 // build that has not earned one (that is the shape in which `gate` would lie
 // green — worse than reporting nothing).
