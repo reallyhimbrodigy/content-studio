@@ -35,6 +35,7 @@ const path = require('path');
 const https = require('https');
 
 const ORG = 'promptly-s9';
+const PROJECT = 'promptly-ios';
 const PROJECT_ID = '4511288247320576';
 const STALE_HOURS = 24;
 
@@ -158,8 +159,34 @@ function loadEnvLocal() {
     const [cause, n] = suspects[0];
     console.error(`  Dominant non-accepted outcome: ${cause} (${n} in 30d).`);
     if (cause === 'rate_limited') {
-      console.error('  -> Quota exhausted. Events are reaching Sentry and being refused.');
-      console.error('     Owner action: raise the plan/quota, or cut inbound volume at the source.');
+      console.error('  -> Events are reaching Sentry and being REFUSED.');
+      // Name WHICH refusal. "rate_limited" spans three different problems with
+      // three different owners, and the 2026-08-15 outage was the third one --
+      // which the first two diagnoses would have missed entirely.
+      const kr = await getJSON('sentry.io', `/api/0/projects/${ORG}/${PROJECT}/keys/`,
+                               { Authorization: `Bearer ${token}` });
+      const keyLimited = (kr.body || []).filter((k) => k.rateLimit);
+      if (keyLimited.length) {
+        console.error(`     CAUSE: a DSN-level rate limit on client key '${keyLimited[0].name}':`);
+        console.error(`     ${JSON.stringify(keyLimited[0].rateLimit)}. Raise or remove it in project settings.`);
+      } else {
+        const cr = await getJSON('sentry.io', `/api/0/customers/${ORG}/`,
+                                 { Authorization: `Bearer ${token}` });
+        const errs = ((cr.body || {}).categories || {}).errors || {};
+        console.error(`     Not a key-level limit (no client key carries one).`);
+        console.error(`     errors quota: reserved=${errs.reserved} usage=${errs.usage} ` +
+                      `usageExceeded=${errs.usageExceeded} onDemandBudget=${errs.onDemandBudget}`);
+        if (Number(errs.onDemandBudget) === 0) {
+          console.error('     CAUSE: the errors category has NO on-demand budget allocated, so the');
+          console.error('     moment the reserved quota is spent there is zero overflow capacity and');
+          console.error('     every subsequent event is refused. An org-wide on-demand maximum does');
+          console.error('     NOT imply a per-category allocation — that is what made this look like');
+          console.error('     a healthy account while crash reporting was dark for two weeks.');
+          console.error('     Owner action: allocate on-demand budget to `errors`.');
+        } else {
+          console.error('     CAUSE: reserved quota spent and on-demand did not absorb it.');
+        }
+      }
     } else if (cause === 'filtered') {
       console.error('  -> Inbound filters are discarding events. Check project filter settings.');
     } else if (cause === 'invalid') {
