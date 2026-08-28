@@ -3351,6 +3351,10 @@ const server = http.createServer((req, res) => {
       annual_dollar_line: String(process.env.ANNUAL_DOLLAR_LINE || '') === '1' ? 'on' : 'off',
       offer_surfacing: String(process.env.OFFER_SURFACING || '') === '1' ? 'on' : 'off',
       push_primer: String(process.env.PUSH_PRIMER || '') === '1' ? 'on' : 'off',
+      // Amendment 2026-08-27: the export gate as TWO pages (benefit case
+      // written against the stated content type, then plans + price). Its own
+      // flag so its contribution is readable separately.
+      exportgate_two_page: String(process.env.EXPORTGATE_TWO_PAGE || '') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -3514,6 +3518,7 @@ const server = http.createServer((req, res) => {
           'push_primer_declined', 'annual_dollar_line_shown', 'offer_line_shown',
           'paywall_personalization_shown', 'paywall_suppressed_bad_render',
           'purchase_blocked_unidentified', 'render_transparency_viewed',
+          'exportgate_benefit_viewed', 'exportgate_benefit_continue',
           // Referral program (conversion workstream; schema live 2026-08-21):
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
