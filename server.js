@@ -4546,6 +4546,17 @@ const server = http.createServer((req, res) => {
             props,
           }).then(() => {}).catch(() => {});
         };
+        // WHY the reason codes are recorded (2026-08-28): asked to split
+        // auto-renew-off subscribers into user-cancelled vs billing-failure vs
+        // refund, we could not. We stored rc_type only, and rc_type is exactly
+        // the field that does NOT separate them: RevenueCat reports a failed
+        // payment and a deliberate unsubscribe BOTH as CANCELLATION, with
+        // cancel_reason ('UNSUBSCRIBE' | 'BILLING_ERROR' | 'CUSTOMER_SUPPORT' |
+        // 'DEVELOPER_INITIATED' | 'PRICE_INCREASE' | 'UNKNOWN') carrying the
+        // distinction. Recording the discriminating field, not another
+        // consistent one. grace_period_expiration_at_ms is kept because
+        // recoverable churn is only recoverable while that window is open.
+        const rcReasons = require('./lib/rc-webhook-reasons').rcReasons;
         const expected = process.env.REVENUECAT_WEBHOOK_AUTH || '';
         if (!expected) {
           console.warn('[RevenueCat] webhook called but REVENUECAT_WEBHOOK_AUTH not set');
@@ -4571,6 +4582,7 @@ const server = http.createServer((req, res) => {
           outcome: 'received',
           rc_type: String(event.type || '').toUpperCase().slice(0, 40) || null,
           app_user_id: String(event.app_user_id || '').slice(0, 64) || null,
+          ...rcReasons(event),
         });
 
         const type = String(event.type || '').toUpperCase();
