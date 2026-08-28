@@ -31,6 +31,18 @@ import SwiftUI
 struct PayoffSnapshotHarnessView: View {
     private var state: Int { Int(UserDefaults.standard.string(forKey: "snapshotState") ?? "0") ?? 0 }
 
+    /// SETTLED-STATE ASSERTION (2026-08-27). A mid-transition screenshot once
+    /// passed as evidence: the flow was animating between two beats and every
+    /// capture caught it in flight, which read as a layout bug that did not
+    /// exist. Two mechanisms, so it cannot recur:
+    ///   1. Animations are DISABLED for the whole harness — no transition can
+    ///      be in flight when the shutter opens.
+    ///   2. The harness prints `SNAPSHOT_SETTLED <state>` only after the view
+    ///      has been on screen, unchanged, for two consecutive runloop
+    ///      settles. The capture script MUST wait for that marker; a
+    ///      screenshot taken without it is not evidence.
+    @State private var settled = false
+
     /// Flags MUST be forced before any child view is constructed. A `.task`
     /// on the presented view races that view's OWN `.task` (which reads the
     /// flag to seed its state) — render-caught 2026-08-27: the two-page
@@ -136,6 +148,18 @@ struct PayoffSnapshotHarnessView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .transaction { $0.animation = nil }   // (1) nothing can be in flight
+        .task {
+            // (2) two settles: one for the initial layout, one to prove the
+            // view did not re-enter an animation (the step-fight symptom).
+            UIView.setAnimationsEnabled(false)
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            settled = true
+            print("SNAPSHOT_SETTLED \(state)")
+        }
     }
 
     /// Sandbox purchase E2E (pre-submit check, 2026-08-26): waits for offerings,

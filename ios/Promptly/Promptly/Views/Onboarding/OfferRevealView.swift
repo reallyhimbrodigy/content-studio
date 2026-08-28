@@ -47,7 +47,8 @@ struct OfferRevealView: View {
                     AnimatedPromptlyMark(size: 72, halo: true)
                         .padding(.bottom, 22)
 
-                    Text(String(localized: "Your first subscription is half price"))
+                    Text(offerPackage.map { OfferReveal.headline(for: $0) }
+                         ?? String(localized: "Your first subscription"))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
@@ -91,7 +92,9 @@ struct OfferRevealView: View {
                     } label: {
                         Group {
                             if isPurchasing { ProgressView().tint(.black) }
-                            else { Text(String(localized: "Claim half price")).font(.system(size: 17, weight: .bold)) }
+                            else { Text(offerPackage.map { OfferReveal.ctaLabel(for: $0) }
+                                        ?? String(localized: "Continue"))
+                                        .font(.system(size: 17, weight: .bold)) }
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity).frame(height: 56)
@@ -125,6 +128,17 @@ struct OfferRevealView: View {
             }
         }
         .onAppear {
+            // Render-caught 2026-08-27: with no offer on any package this
+            // screen showed a discount headline, no price, and a DISABLED
+            // CTA — a promise it could not keep. If offerings have settled
+            // and carry no paid intro offer, leave immediately; the flow
+            // treats that exactly like a decline (straight to the picker).
+            if !subscription.isLoadingOfferings, offerPackage == nil {
+                Analytics.track("offer_reveal_skipped",
+                                props: ["context": "onboarding_v2", "reason": "no_offer_at_render"])
+                onDecline()
+                return
+            }
             Analytics.track("offer_reveal_viewed",
                             props: ["context": "onboarding_v2",
                                     "has_offer": offerPackage != nil,
@@ -173,6 +187,39 @@ enum OfferReveal {
     /// True when there is something real to reveal. The flow consults this —
     /// no offer means the beat is skipped, never faked.
     static func isAvailable(in packages: [Package]) -> Bool { package(in: packages) != nil }
+
+    /// Whole-percent discount of the intro price against the standard price,
+    /// FLOORED — the same discipline as the annual badge: rounding a money
+    /// claim up overstates it. Nil when either price is missing.
+    static func percentOff(for pkg: Package) -> Int? {
+        guard let intro = pkg.storeProduct.introductoryDiscount,
+              intro.paymentMode != .freeTrial else { return nil }
+        let std = (pkg.storeProduct.price as NSDecimalNumber).doubleValue
+        let off = (intro.price as NSDecimalNumber).doubleValue
+        guard std > 0, off < std else { return nil }
+        let pct = Int(((1.0 - off / std) * 100.0).rounded(.down))
+        return pct >= 1 ? pct : nil
+    }
+
+    /// The headline states the REAL discount, computed per territory. It used
+    /// to hardcode "half price" — false wherever Apple's price points land
+    /// the intro at 40% off (HUN, POL) rather than 50%.
+    static func headline(for pkg: Package) -> String {
+        guard let pct = percentOff(for: pkg) else {
+            return String(localized: "Your first subscription")
+        }
+        switch pkg.packageType {
+        case .annual:  return String(localized: "Your first year is \(pct)% off")
+        case .monthly: return String(localized: "Your first month is \(pct)% off")
+        case .weekly:  return String(localized: "Your first week is \(pct)% off")
+        default:       return String(localized: "Your first subscription is \(pct)% off")
+        }
+    }
+
+    static func ctaLabel(for pkg: Package) -> String {
+        guard let pct = percentOff(for: pkg) else { return String(localized: "Continue") }
+        return String(localized: "Claim \(pct)% off")
+    }
 
     /// "Then <standard>/month — cancel anytime" style line, entirely from the
     /// store's own strings. Real scarcity only: the honest constraint is that

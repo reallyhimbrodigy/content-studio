@@ -148,39 +148,66 @@ extension OnboardingQuestion {
         propKey: "audience"
     )
 
-    /// Q2 — the ONLY question that still feeds the edit (see the flow's
-    /// editorial-cost note). Its answer becomes the composer prefill.
+    /// Q2 — content type AND editing register in ONE question (ruled
+    /// 2026-08-27, recovering the editorial signal the restructure had cost).
+    /// Keys are "type:style" so a single answer feeds both the prefill (style
+    /// shapes the vibe text) and every content-type consumer (which parses
+    /// the prefix). "other" carries no style — a blank composer, as before.
     static let videoTypeV2 = OnboardingQuestion(
         step: .intent,
         title: String(localized: "What kind of videos do you make?"),
         subtitle: String(localized: "We'll start you on a matching style."),
         options: [
-            ("talkinghead", String(localized: "Talking head")),
-            ("podcast", String(localized: "Podcast clips")),
-            ("vlogs", String(localized: "Vlogs")),
-            ("promo", String(localized: "Product or promo")),
+            ("podcast:fast", String(localized: "Podcast clips — fast cuts")),
+            ("podcast:clean", String(localized: "Podcast clips — clean and minimal")),
+            ("talkinghead:punchy", String(localized: "Talking head — punchy")),
+            ("talkinghead:clean", String(localized: "Talking head — clean and minimal")),
+            ("vlogs:cinematic", String(localized: "Vlogs — cinematic")),
+            ("promo:punchy", String(localized: "Product or promo — punchy")),
             ("other", String(localized: "Other")),
         ],
         event: "onboarding_v2_step",
         propKey: "video_type"
     )
 
+    /// The content-type half of a Q2 key ("podcast:fast" -> "podcast").
+    static func contentTypeV2(_ key: String?) -> String? {
+        guard let key, key != "other" else { return nil }
+        return key.split(separator: ":").first.map(String.init)
+    }
+    /// The style half ("podcast:fast" -> "fast"). nil when unstyled.
+    static func styleV2(_ key: String?) -> String? {
+        guard let key, key.contains(":") else { return nil }
+        return key.split(separator: ":").dropFirst().first.map(String.init)
+    }
+
     /// Q2 answer → the vibe the editor opens on (the prefill bridge
-    /// EditorView consumes once). nil = blank composer, today's behaviour.
+    /// EditorView consumes once), composed from BOTH halves of the key so the
+    /// style register survives into `vibe_input`. nil = blank composer.
     static func vibeV2(forVideoType key: String?) -> String? {
-        switch key {
-        case "podcast":     return "podcast clips, best moments, punchy captions"
-        case "talkinghead": return "talking-head clean-up, tight cuts, clean captions"
-        case "vlogs":       return "vlog cut-down, keep the story moving, punchy captions"
-        case "promo":       return "product promo, hook first, punchy captions"
-        default:            return nil   // "other" / skipped → blank composer
+        guard let type = contentTypeV2(key) else { return nil }
+        var parts: [String] = []
+        switch type {
+        case "podcast":     parts.append("podcast clips, best moments")
+        case "talkinghead": parts.append("talking-head clean-up")
+        case "vlogs":       parts.append("vlog cut-down, keep the story moving")
+        case "promo":       parts.append("product promo, hook first")
+        default: break
         }
+        switch styleV2(key) {
+        case "fast":      parts.append("fast cuts, high energy, punchy captions")
+        case "clean":     parts.append("clean and minimal, restrained captions")
+        case "punchy":    parts.append("punchy pacing, bold captions")
+        case "cinematic": parts.append("cinematic pacing, documentary feel")
+        default: break
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
     /// Human label for Q2 — used by the render-wait header and the export
     /// gate's benefit page. nil when skipped, so callers stay generic.
     static func makingLabelV2(_ key: String?) -> String? {
-        switch key {
+        switch contentTypeV2(key) {
         case "podcast":     return String(localized: "podcast")
         case "talkinghead": return String(localized: "talking-head")
         case "vlogs":       return String(localized: "vlog")
