@@ -134,13 +134,17 @@ struct OnboardingQuestionView: View {
     let onContinue: (_ pickedKeys: [String]) -> Void
 
     @State private var selected: [String] = []
-    #if DEBUG
     /// Motion-proof only: selects this option and continues, on a delay, via
     /// the SAME state changes a real tap makes — so a screen recording shows
     /// the real selection spring, the real Continue enable, and the real
     /// beat transition. Synthetic INPUT, genuine animation.
+    ///
+    /// Declared in BOTH configurations on purpose. It was DEBUG-only while the
+    /// call site was not, so this compiled in Debug and failed in Release —
+    /// invisible to every simulator build and caught only at archive. Only the
+    /// `.task` that acts on this is DEBUG-gated; in Release it is an unused
+    /// nil default.
     var autoDriveKey: String? = nil
-    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Required questions gate Continue on a selection; the optional one never does.
     private var canContinue: Bool { isOptional || !selected.isEmpty }

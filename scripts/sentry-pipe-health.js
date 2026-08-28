@@ -208,13 +208,23 @@ function loadEnvLocal() {
         console.error(`     Not a key-level limit (no client key carries one).`);
         console.error(`     errors quota: reserved=${errs.reserved} usage=${errs.usage} ` +
                       `usageExceeded=${errs.usageExceeded} onDemandBudget=${errs.onDemandBudget}`);
-        if (Number(errs.onDemandBudget) === 0) {
-          console.error('     CAUSE: the errors category has NO on-demand budget allocated, so the');
-          console.error('     moment the reserved quota is spent there is zero overflow capacity and');
-          console.error('     every subsequent event is refused. An org-wide on-demand maximum does');
-          console.error('     NOT imply a per-category allocation — that is what made this look like');
-          console.error('     a healthy account while crash reporting was dark for two weeks.');
-          console.error('     Owner action: allocate on-demand budget to `errors`.');
+        // NOTE (corrected 2026-08-28): do NOT read errs.onDemandBudget === 0 as
+        // "no allocation". Under budgetMode "shared" EVERY category reports 0,
+        // including categories with zero usage — the shared pool is what
+        // applies. Reading that field as a per-category allocation produced a
+        // confident, wrong diagnosis once already.
+        const od = (cr.body || {}).onDemandBudgets || {};
+        console.error(`     on-demand: mode=${od.budgetMode} enabled=${od.enabled} ` +
+                      `max=${od.sharedMaxBudget ?? (cr.body || {}).onDemandMaxSpend} used=${od.onDemandSpendUsed}`);
+        if (od.enabled && Number(errs.usage) < Number(errs.reserved) && errs.usageExceeded === false) {
+          console.error('     CONTRADICTION: Sentry is refusing with a usage-exceeded reason while its');
+          console.error('     own quota readout says usage is UNDER the reserve and not exceeded.');
+          console.error('     Nothing in the account explains the refusal — this needs the Sentry');
+          console.error('     dashboard or support, not a config change on our side. If the billing');
+          console.error('     period reset recently, enforcement may simply lag; re-check before escalating.');
+        } else if (!od.enabled) {
+          console.error('     CAUSE: on-demand/pay-as-you-go is DISABLED, so a spent reserve has no');
+          console.error('     overflow. Owner action: enable it.');
         } else {
           console.error('     CAUSE: reserved quota spent and on-demand did not absorb it.');
         }

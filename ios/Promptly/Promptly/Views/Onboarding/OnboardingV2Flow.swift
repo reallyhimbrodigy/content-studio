@@ -41,11 +41,15 @@ struct OnboardingV2Flow: View {
     /// back-step from the leading edge. Without it every advance reads the
     /// same and the flow has no sense of place.
     @State private var goingForward = true
-    #if DEBUG
     /// `-motionProof YES` walks the flow so a screen recording can evidence
     /// motion the still-frame harness deliberately cannot.
+    ///
+    /// NOT wrapped in `#if DEBUG`, deliberately. It was, and the call sites
+    /// below were not — so this file compiled only in Debug and the break was
+    /// invisible to every simulator build. A launch-argument check that always
+    /// returns false in production is far cheaper than a configuration-specific
+    /// compile error discovered at archive time.
     private var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
-    #endif
 
     private var packages: [Package] {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])

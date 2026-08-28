@@ -24,10 +24,10 @@ struct VideoTypeQuestionView: View {
     let onSkip: () -> Void
     /// Reports the compound key, or [] when skipped.
     let onContinue: (_ pickedKeys: [String]) -> Void
-    #if DEBUG
     /// Motion-proof: drives (type, style) through the same state a tap sets.
+    /// Declared in both configurations so call sites compile in Release; only
+    /// the `.task` that acts on it is DEBUG-only.
     var autoDrive: (type: String, style: String?)? = nil
-    #endif
 
     @State private var type: String?
     @State private var style: String?
