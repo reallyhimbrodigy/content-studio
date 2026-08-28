@@ -240,7 +240,11 @@ struct SecondPaywallView: View {
             guard let pkg = selectedPackage, !isPurchasing else { return }
             isPurchasing = true
             Task {
-                let ok = await subscription.purchase(pkg)
+                // Surface stamp. Without it this screen's purchases land in the
+                // canonical revenue-per-wall-view read with no surface at all —
+                // silently absent from the by-surface cut rather than visibly
+                // wrong, which is the harder failure to notice.
+                let ok = await subscription.purchase(pkg, context: "second_paywall")
                 isPurchasing = false
                 if ok { withAnimation { didPurchaseHere = true } }
             }
