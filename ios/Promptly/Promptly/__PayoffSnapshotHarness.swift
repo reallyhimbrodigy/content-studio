@@ -27,6 +27,20 @@ import SwiftUI
 ///          Requires: signed-in sim with ≥1 chat AND notification permission
 ///          notDetermined (fresh install or `xcrun simctl privacy ... reset`).
 ///
+/// `-motionProof YES` — PERMANENT, not scaffolding (ruled 2026-08-27).
+/// The settled-state assertion below deliberately kills animation so a
+/// still can never catch a transition mid-flight; that makes this harness
+/// structurally incapable of evidencing motion. `-motionProof` suppresses
+/// the suppression and auto-drives the flow through the SAME state changes
+/// a tap makes, for `xcrun simctl io booted recordVideo`. It earned its
+/// keep on day one: the recording caught a personalisation bug (compound
+/// Q2 keys read raw) that every still-frame proof had passed over, because
+/// video exercises the flow end-to-end where a hand-posed still cannot.
+///
+///   xcrun simctl io booted recordVideo -f out.mp4 &
+///   xcrun simctl launch booted app.usepromptly.ios \
+///     -snapshotPayoff YES -snapshotState 11 -motionProof YES
+///
 /// Never compiled into Release; no effect without the launch argument.
 struct PayoffSnapshotHarnessView: View {
     private var state: Int { Int(UserDefaults.standard.string(forKey: "snapshotState") ?? "0") ?? 0 }

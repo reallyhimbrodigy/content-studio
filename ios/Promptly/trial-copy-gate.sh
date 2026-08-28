@@ -132,4 +132,7 @@ if [ "$violations" -ne 0 ]; then
 fi
 
 echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity."
-exit 0
+
+# The reader-enumeration check runs from here so ONE invocation covers both:
+# a separate script nobody remembers to run is not a gate.
+bash "$DIR/compound-key-gate.sh"
