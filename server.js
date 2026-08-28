@@ -3573,7 +3573,17 @@ const server = http.createServer((req, res) => {
           // RETENTION:
           'session_started',
           'save_cta_shown',
-        ]);
+                  // OFFER-REVEAL FUNNEL (2026-08-28). `offer_reveal_viewed` is the
+          // DENOMINATOR for every reveal read — without it "reveal → purchase"
+          // cannot be computed in SQL at all. `skipped` is what separates "no
+          // real offer existed on the products" from "the user declined", which
+          // are opposite conclusions about the same empty result. Allowlisted
+          // BEFORE the onboarding_v2 flag flips, so the funnel is never
+          // half-blind for its first cohort.
+          'offer_reveal_viewed',
+          'offer_reveal_declined',
+          'offer_reveal_skipped',
+]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
           return;
