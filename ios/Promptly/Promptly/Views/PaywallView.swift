@@ -1,5 +1,6 @@
 import SwiftUI
 import RevenueCat
+import StoreKit
 
 /// Cream → gold gradient used across all Pro-themed UI. Anchors the
 /// premium feel without going gaudy. Used on PROBadge, paywall CTAs,
@@ -73,6 +74,36 @@ enum PlanSavings {
         if percentOff(in: packages) != nil, let a = annual(in: packages) { return a }
         return packages.first
     }
+
+    static func weekly(in packages: [Package]) -> Package? {
+        packages.first { $0.packageType == .weekly }
+    }
+
+    /// annual_dollar_line: the deal stated in money, under the %-badge —
+    /// "$X.XX/wk billed annually — save $Y vs weekly". X = annual ÷ 52 via the
+    /// PRODUCT'S OWN formatter; Y = (52 × weekly − annual) FLOORED to a whole
+    /// currency unit (rounding a savings claim up would overstate money) and
+    /// formatted with the same formatter. Nil unless a weekly package exists
+    /// AND the annual plan is genuinely cheaper — no line for a non-deal, no
+    /// hardcoded currency or amounts anywhere.
+    static func annualDollarLine(in packages: [Package]) -> String? {
+        guard let a = annual(in: packages), let w = weekly(in: packages),
+              let formatter = a.storeProduct.priceFormatter else { return nil }
+        let annualPrice = a.storeProduct.price
+        let weekly52 = w.storeProduct.price * 52
+        guard annualPrice > 0, weekly52 > annualPrice else { return nil }
+        let perWeek = annualPrice / 52
+        let saved = NSDecimalNumber(decimal: weekly52 - annualPrice)
+            .rounding(accordingToBehavior: floorToWholeCurrency)
+        guard let perWeekText = formatter.string(from: perWeek as NSDecimalNumber),
+              let savedText = formatter.string(from: saved) else { return nil }
+        return String(localized: "\(perWeekText)/wk billed annually — save \(savedText) vs weekly")
+    }
+
+    /// FLOOR to whole currency units for the savings claim (never round up).
+    private static let floorToWholeCurrency = NSDecimalNumberHandler(
+        roundingMode: .down, scale: 0, raiseOnExactness: false,
+        raiseOnOverflow: false, raiseOnUnderflow: false, raiseOnDivideByZero: false)
 }
 
 // MARK: - PaywallFeatureChecklist (the reference's 5-item checkmark list)
@@ -125,6 +156,11 @@ struct PaywallFeatureChecklist: View {
 struct PaywallView: View {
     @Binding var isPresented: Bool
     let reason: PaywallReason
+    /// exportgate_personalization: the blocked video's identity for an
+    /// `.exportGate` presentation. Injected directly by the snapshot harness;
+    /// live presentations read the routed copy off AppState (set by
+    /// `presentPaywall(_:exportContext:)`). Nil → generic header, today's copy.
+    var exportContextOverride: ExportGatePaywallContext? = nil
 
     private var title: String {
         switch reason {
@@ -134,7 +170,14 @@ struct PaywallView: View {
         case .manual:       return String(localized: "Unlock Promptly Pro")
         case .lumen:        return String(localized: "Unlock Promptly Pro")
         case .concurrency:  return String(localized: "One video at a time on Free")
-        case .exportGate:   return String(localized: "You're out of free saves")
+        case .exportGate:
+            // exportgate_personalization: the named ask — THEIR video, by name
+            // when onboarding captured one. Flag off = today's copy, byte-identical.
+            if onboardingStateRef.exportGatePersonalizationEnabled {
+                if let noun = exportContentNoun { return String(localized: "Save your \(noun)") }
+                return String(localized: "Save your edit")
+            }
+            return String(localized: "You're out of free saves")
         }
     }
     private var subtitle: String {
@@ -159,6 +202,7 @@ struct PaywallView: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var onboardingStateRef = OnboardingState.shared
     @ObservedObject private var referralsRef = ReferralService.shared
+    @ObservedObject private var appStateRef = AppState.shared
     @State private var selectedPackage: Package?
     @State private var isPurchasing = false
     @State private var showError = false
@@ -174,16 +218,37 @@ struct PaywallView: View {
     /// NOTHING afterward. Honest recovery: no charge was made, same offer.
     @State private var showAbandonRecovery = false
 
+    /// exportgate_two_page (amendment 2026-08-27): page 1 is the BENEFIT case
+    /// written against the user's stated content type; page 2 is plans+price.
+    /// Only ever true for `.exportGate` with the flag on — every other
+    /// presentation is single-page, exactly as today.
+    @State private var showingBenefitPage = false
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             backdrop.ignoresSafeArea()
 
+            if showingBenefitPage {
+                exportBenefitPage
+            } else {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
 
-                    proCrown
-                        .padding(.bottom, 20)
+                    // exportgate_personalization: the blocked video's OWN
+                    // thumbnail replaces the brand mark — the user is buying
+                    // back THEIR video, so show it. Flag off (or no thumbnail
+                    // routed) = the brand mark, exactly as today.
+                    if onboardingStateRef.exportGatePersonalizationEnabled,
+                       reason == .exportGate,
+                       let thumbStr = exportContext?.thumbnailUrl,
+                       let thumbUrl = URL(string: thumbStr) {
+                        blockedVideoThumb(thumbUrl)
+                            .padding(.bottom, 20)
+                    } else {
+                        proCrown
+                            .padding(.bottom, 20)
+                    }
 
                     Text(title)
                         .font(.system(size: 28, weight: .bold))
@@ -198,6 +263,24 @@ struct PaywallView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                         .padding(.top, 10)
+
+                    // offer_surfacing (b), iOS 18+: the store carries win-back
+                    // offers on a plan here and this account bought before but
+                    // isn't Pro now — say welcome back. Display-only: RC applies
+                    // any offer the account is actually eligible for at purchase.
+                    if onboardingStateRef.offerSurfacingEnabled, let winBack = winBackLine {
+                        Text(winBack)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.top, 12)
+                            .onAppear {
+                                Analytics.track("offer_line_shown", props: [
+                                    "context": reasonKey, "kind": "win_back",
+                                ])
+                            }
+                    }
 
                     Spacer().frame(height: 32)
 
@@ -281,6 +364,7 @@ struct PaywallView: View {
                     .padding(.bottom, 36)
                 }
             }
+            }
 
             if showAbandonRecovery {
                 AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
@@ -310,7 +394,22 @@ struct PaywallView: View {
         .task {
             // UPGRADE-funnel entry — same canonical event the TrialWallView fires,
             // so both paywall surfaces feed one funnel. `reason`/`context` segments them.
+            // exportgate_two_page: the benefit case comes first, price second.
+            // Any other reason, or the flag off → single page, as today.
+            if onboardingStateRef.exportGateTwoPageEnabled, reason == .exportGate {
+                showingBenefitPage = true
+            }
             Analytics.track("upgrade_wall_viewed", props: (["context": reasonKey] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
+            // exportgate_personalization view-beat: the personalized ask
+            // actually rendered — segments the export funnel by personalized
+            // vs generic header (and whether the thumbnail/name landed).
+            if onboardingStateRef.exportGatePersonalizationEnabled, reason == .exportGate {
+                Analytics.track("paywall_personalization_shown", props: [
+                    "context": "export_gate",
+                    "has_thumbnail": exportContext?.thumbnailUrl != nil,
+                    "named_content": exportContentNoun != nil,
+                ])
+            }
             await subscription.refreshOfferings()
             // Pre-selection follows the computed savings comparison (the same
             // live-price math as the badge — Aug-18 item closed), not the
@@ -333,6 +432,112 @@ struct PaywallView: View {
         }
     }
 
+    // MARK: - Export gate, page 1 (exportgate_two_page)
+
+    /// The benefit case BEFORE any price — written against the user's own
+    /// stated content type where onboarding captured one, generic where it
+    /// didn't. No countdown, no scarcity: the only urgency named here is the
+    /// real one (this video is finished and waiting).
+    private var exportBenefitPage: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                Spacer().frame(height: 72)
+
+                if let thumbStr = exportContext?.thumbnailUrl,
+                   let thumbUrl = URL(string: thumbStr) {
+                    blockedVideoThumb(thumbUrl).padding(.bottom, 22)
+                } else {
+                    proCrown.padding(.bottom, 22)
+                }
+
+                Text(benefitHeadline)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    // Render-caught 2026-08-27: a personalised headline is
+                    // longer than the generic one ("Keep every podcast clip
+                    // you make") and ran off BOTH edges — the page's VStack
+                    // had no width constraint, so children sized to content.
+                    // Wrap + a small floor keeps every localisation inside.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .minimumScaleFactor(0.85)
+                    .padding(.horizontal, 28)
+
+                Text(String(localized: "Your edit is finished and waiting."))
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 10)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(benefitLines, id: \.self) { line in
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle().fill(Color.white).frame(width: 24, height: 24)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .heavy))
+                                    .foregroundColor(.black)
+                            }
+                            Text(line)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 30)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    Analytics.track("exportgate_benefit_continue",
+                                    props: ["context": "export_gate",
+                                            "content_type": onboardingStateRef.v2Making ?? "unknown"])
+                    withAnimation(.easeInOut(duration: 0.22)) { showingBenefitPage = false }
+                } label: {
+                    Text(String(localized: "See plans"))
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity).frame(height: 56)
+                        .background(Color.white, in: Capsule())
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 34)
+                .padding(.bottom, 40)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .onAppear {
+            Analytics.track("exportgate_benefit_viewed",
+                            props: ["context": "export_gate",
+                                    "content_type": onboardingStateRef.v2Making ?? "unknown"])
+        }
+    }
+
+    private var benefitHeadline: String {
+        if let noun = exportContentNoun { return String(localized: "Keep every \(noun) you make") }
+        return String(localized: "Keep every edit you make")
+    }
+
+    /// Benefits in the user's own terms. The content-type line leads when we
+    /// have one; the rest is the approved claim set, unchanged.
+    private var benefitLines: [String] {
+        var lines: [String] = []
+        switch onboardingStateRef.v2Making {
+        case "podcast":
+            lines.append(String(localized: "Turn every episode into clips, unlimited"))
+        case "talkinghead":
+            lines.append(String(localized: "Turn every take into a finished cut, unlimited"))
+        default:
+            lines.append(String(localized: "Unlimited renders"))
+        }
+        lines.append(String(localized: "Save and share every video"))
+        lines.append(String(localized: "Re-edit any finished video"))
+        lines.append(String(localized: "Upload up to 10 videos at a time"))
+        return lines
+    }
+
     // MARK: - Sub-views
 
     // Pure black (2026-08-26 rebuild): the cream-tinted fade was the last
@@ -347,6 +552,54 @@ struct PaywallView: View {
     // halo instead of the gold glow.
     private var proCrown: some View {
         AnimatedPromptlyMark(size: 76, halo: true)
+    }
+
+    /// The blocked video's context: the harness's direct injection wins, else
+    /// the copy AppState routed with the `.exportGate` presentation.
+    private var exportContext: ExportGatePaywallContext? {
+        exportContextOverride ?? appStateRef.exportGateContext
+    }
+
+    /// The user's own content type from the onboarding intent (the same raw
+    /// keys SecondPaywallView personalizes on) — names the export-gate ask
+    /// ("Save your highlight reel"). Nil when onboarding captured nothing.
+    private var exportContentNoun: String? {
+        // Render-caught 2026-08-27: this read ONLY the wall flow's `intents`,
+        // so a user who came through onboarding v2 (which writes v2Making)
+        // could never get a personalised gate — the two flows write different
+        // fields and the money surface knew one. v2 answer wins; the wall
+        // flow's answer remains the fallback.
+        if let v2 = OnboardingQuestion.makingLabelV2(onboardingStateRef.v2Making) {
+            switch v2 {
+            case "podcast": return String(localized: "podcast clip")
+            default:        return String(localized: "talking-head edit")
+            }
+        }
+        switch onboardingStateRef.intents.first {
+        case "viral":       return String(localized: "viral clip")
+        case "promo":       return String(localized: "promo")
+        case "storytime":   return String(localized: "story")
+        case "talkinghead": return String(localized: "talking-head edit")
+        case "highlights":  return String(localized: "highlight reel")
+        default:            return nil
+        }
+    }
+
+    /// The blocked video's own thumbnail (exportgate_personalization) — a
+    /// portrait card where the brand mark normally sits. A load failure
+    /// degrades to a neutral placeholder, never an error state.
+    private func blockedVideoThumb(_ url: URL) -> some View {
+        AsyncImage(url: url) { phase in
+            if let image = phase.image {
+                image.resizable().scaledToFill()
+            } else {
+                Color.white.opacity(0.06)
+            }
+        }
+        .frame(width: 96, height: 150)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Color.white.opacity(0.15), lineWidth: 0.5))
     }
 
     private var featureList: some View {
@@ -465,6 +718,66 @@ struct PaywallView: View {
         return nil
     }
 
+    /// offer_surfacing (a): the PAID introductory offer this product actually
+    /// carries, stated in the store's own numbers. Nil when there is none — and
+    /// unconditionally nil for `.freeTrial` offers (freemium law: no
+    /// trial-phrased surface, ever). Display-only; RC applies whatever offer
+    /// the account is eligible for at purchase, so the flow is unchanged.
+    private func introOfferLine(for pkg: Package) -> String? {
+        guard let offer = pkg.storeProduct.introductoryDiscount,
+              offer.paymentMode != .freeTrial else { return nil }
+        let price = offer.localizedPriceString
+        let span = offerSpan(offer.subscriptionPeriod, count: offer.numberOfPeriods)
+        switch offer.paymentMode {
+        case .payAsYouGo:
+            // Recurring intro price, per period, for the first N periods.
+            return String(localized: "Intro price: \(price)/\(offerNoun(offer.subscriptionPeriod)) for your first \(span)")
+        default:
+            // payUpFront: one intro charge covering the whole span.
+            return String(localized: "Intro price: \(price) for your first \(span)")
+        }
+    }
+
+    /// Bare period noun — our OWN copy, never StoreKit metadata.
+    private func offerNoun(_ period: RevenueCat.SubscriptionPeriod) -> String {
+        switch period.unit {
+        case .day:   return String(localized: "day")
+        case .week:  return String(localized: "week")
+        case .month: return String(localized: "month")
+        case .year:  return String(localized: "year")
+        }
+    }
+
+    /// Total span of an intro offer ("3 months" / "month") from the store's
+    /// own period × numberOfPeriods — never a hand-written duration.
+    private func offerSpan(_ period: RevenueCat.SubscriptionPeriod, count: Int) -> String {
+        let total = period.value * max(count, 1)
+        switch period.unit {
+        case .day:   return total == 1 ? String(localized: "day") : String(localized: "\(total) days")
+        case .week:  return total == 1 ? String(localized: "week") : String(localized: "\(total) weeks")
+        case .month: return total == 1 ? String(localized: "month") : String(localized: "\(total) months")
+        case .year:  return total == 1 ? String(localized: "year") : String(localized: "\(total) years")
+        }
+    }
+
+    /// offer_surfacing (b): a "Welcome back" beat when (iOS 18+) an offering
+    /// product carries win-back offers AND this account has purchased before
+    /// but isn't Pro now. Client-side "lapsed" = prior transactions on the RC
+    /// customer with no active entitlement; per-user offer ELIGIBILITY stays
+    /// Apple's call at purchase time — this only states that offers exist.
+    private var winBackLine: String? {
+        guard #available(iOS 18.0, *) else { return nil }
+        guard !subscription.effectiveIsPro,
+              subscription.lastCustomerInfo?.allPurchasedProductIdentifiers.isEmpty == false,
+              let packages = currentPackages,
+              packages.contains(where: { pkg in
+                  guard let subInfo = pkg.storeProduct.sk2Product?.subscription else { return false }
+                  return !subInfo.winBackOffers.isEmpty
+              })
+        else { return nil }
+        return String(localized: "Welcome back — your plan has an offer waiting")
+    }
+
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -491,8 +804,9 @@ struct PaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
-            // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
+            // UPGRADE-funnel: plan chosen (weekly/monthly/yearly). `context`
+            // names the surface, same key the purchase_* terminals carry.
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": reasonKey].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
@@ -522,6 +836,36 @@ struct PaywallView: View {
                         Text(monthly)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.65))
+                    }
+                    // annual_dollar_line: the deal in dollars, computed from
+                    // the SAME live storefront prices as the badge (weekly must
+                    // exist AND annual genuinely cheaper — else no line).
+                    if pkg.packageType == .annual,
+                       onboardingStateRef.annualDollarLineEnabled,
+                       let dollarLine = currentPackages.flatMap({ PlanSavings.annualDollarLine(in: $0) }) {
+                        Text(dollarLine)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .onAppear {
+                                Analytics.track("annual_dollar_line_shown", props: ["context": reasonKey])
+                            }
+                    }
+                    // offer_surfacing (a, display-only): state the PAID intro
+                    // offer the product actually carries — export gate only,
+                    // month/year rows only. Free-trial offers never render.
+                    if onboardingStateRef.offerSurfacingEnabled,
+                       reason == .exportGate,
+                       pkg.packageType == .annual || pkg.packageType == .monthly,
+                       let offerLine = introOfferLine(for: pkg) {
+                        Text(offerLine)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
+                            .onAppear {
+                                Analytics.track("offer_line_shown", props: [
+                                    "context": "export_gate", "kind": "intro",
+                                    "plan": subscription.planKey(pkg),
+                                ])
+                            }
                     }
                 }
                 Spacer()
@@ -562,7 +906,7 @@ struct PaywallView: View {
             guard let pkg = selectedPackage else { return }
             didPurchaseHere = true
             Task {
-                let ok = await subscription.purchase(pkg)
+                let ok = await subscription.purchase(pkg, context: reasonKey)
                 if ok {
                     await UsageService.shared.refresh()
                     // Show the confirmation screen (Fix 3) instead of dismissing.

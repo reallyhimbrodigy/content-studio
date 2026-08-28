@@ -22,6 +22,7 @@ struct TrialWallView: View {
     let onPassed: () -> Void
 
     @ObservedObject private var subscription = SubscriptionService.shared
+    @ObservedObject private var onboardingStateRef = OnboardingState.shared
     @State private var selectedPackage: Package?
     @State private var showAbandonRecovery = false
     @State private var confirmed: SubscriptionService.PurchaseConfirmation?
@@ -126,8 +127,9 @@ struct TrialWallView: View {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     selectedPackage = pkg
-                    // UPGRADE-funnel: plan chosen (weekly/monthly/yearly).
-                    Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
+                    // UPGRADE-funnel: plan chosen (weekly/monthly/yearly). `context`
+                    // names the surface, same key the purchase_* terminals carry.
+                    Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": contextKey].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
                 } label: {
                     // Reference structure (2026-08-26 rebuild): radio + bare-noun
                     // label + anchor subline left, billed price right, computed
@@ -144,6 +146,19 @@ struct TrialWallView: View {
                                 Text("that's \(m)/month, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
+                            }
+                            // annual_dollar_line: the deal in dollars — same
+                            // live storefront math as PaywallView's row (weekly
+                            // must exist AND annual genuinely cheaper).
+                            if pkg.packageType == .annual,
+                               onboardingStateRef.annualDollarLineEnabled,
+                               let dollarLine = PlanSavings.annualDollarLine(in: packages) {
+                                Text(dollarLine)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .onAppear {
+                                        Analytics.track("annual_dollar_line_shown", props: ["context": contextKey])
+                                    }
                             }
                         }
                         Spacer()
@@ -238,7 +253,7 @@ struct TrialWallView: View {
     // path. This handler only drives the UI off the boolean result.
     private func buy() async {
         guard let pkg = selectedPackage else { return }
-        let ok = await subscription.purchase(pkg)
+        let ok = await subscription.purchase(pkg, context: contextKey)
         if ok {
             if let c = subscription.lastConfirmation {
                 withAnimation { confirmed = c }

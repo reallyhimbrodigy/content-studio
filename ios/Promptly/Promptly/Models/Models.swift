@@ -542,6 +542,7 @@ final class AppState: ObservableObject {
         sidebarOpen = false
         selectedTab = 0
         paywallReason = nil
+        exportGateContext = nil
         composerFocusToken &+= 1
     }
 
@@ -570,10 +571,41 @@ final class AppState: ObservableObject {
     func presentWall() { wallPresented = true }
     func dismissWall() { wallPresented = false }
 
+    /// The blocked video's identity for an `.exportGate` paywall
+    /// (exportgate_personalization). Set by `presentPaywall` when the reason is
+    /// `.exportGate` (nil from call sites that don't know the video — the
+    /// paywall then falls back to the generic header) and cleared on dismissal
+    /// so a later paywall can never inherit a stale thumbnail.
+    @Published private(set) var exportGateContext: ExportGatePaywallContext?
+
     /// Present the paywall now (wedge-proof). Use from a trigger with no blocking
     /// modal on screen; if a stale reason is stuck (a sheet that never actually
     /// presented), this re-drives so the request can't be silently muted.
-    func presentPaywall(_ reason: PaywallReason) {
+    ///
+    /// `exportContext` (`.exportGate` only): what the export surface knows about
+    /// the blocked video — its thumbnail for the personalized ask, and (when the
+    /// caller holds both durations) the passthrough signal the bad-render
+    /// suppressor gates on. Defaulted so every existing call site is unchanged.
+    func presentPaywall(_ reason: PaywallReason, exportContext: ExportGatePaywallContext? = nil) {
+        if case .exportGate = reason {
+            // bad_render_suppressor: a render the client can MEASURE as a
+            // passthrough (see ExportGatePaywallContext.isPassthroughRender) is
+            // the wrong moment to ask for money — skip the wall entirely and
+            // record the suppression. Flag off, or no duration signal from the
+            // caller = present exactly as today. NOTE: un-blocking the save
+            // itself is the exporter/server's half — this site only owns the ask.
+            // assumeIsolated is safe here: both .exportGate call sites hop to
+            // the main actor first (MessageBubble's MainActor.run), and this
+            // method mutates @Published state so main is already a requirement.
+            let suppressorOn = MainActor.assumeIsolated {
+                OnboardingState.shared.badRenderSuppressorEnabled
+            }
+            if suppressorOn, exportContext?.isPassthroughRender == true {
+                Analytics.track("paywall_suppressed_bad_render", props: ["context": "export_gate"])
+                return
+            }
+            exportGateContext = exportContext
+        }
         trackFreeLimitHit(reason)
         paywallRouting.request(reason)
         mirrorPaywallRouting()
@@ -681,6 +713,7 @@ final class AppState: ObservableObject {
     /// Call when the paywall sheet is dismissed (user closed it) so the router
     /// stays in sync and anything queued behind it is promoted.
     func dismissPaywall() {
+        exportGateContext = nil
         paywallRouting.dismissed()
         mirrorPaywallRouting()
     }
@@ -697,6 +730,33 @@ final class AppState: ObservableObject {
         } else {
             paywallReason = paywallRouting.reason
         }
+    }
+}
+
+/// What the export surface KNOWS about the blocked video at the moment the
+/// export gate 402s — threaded into `AppState.presentPaywall(_:exportContext:)`
+/// and consumed by PaywallView (the personalized `.exportGate` header) and the
+/// bad-render suppressor. Every field is optional: absent data personalizes
+/// nothing and suppresses nothing (the paywall renders exactly as today).
+struct ExportGatePaywallContext: Equatable {
+    /// `ChatMessage.thumbnailUrl` of the video whose save/share was gated.
+    var thumbnailUrl: String? = nil
+    /// Source-clip and delivered-render durations in seconds, when the export
+    /// surface holds BOTH. Feed `isPassthroughRender`; either absent → no
+    /// signal, never a guess.
+    var sourceDuration: Double? = nil
+    var renderDuration: Double? = nil
+
+    /// bad_render_suppressor's ONLY honest client-side thinness signal: a
+    /// render whose duration is ≈ the source's reads as a passthrough (nothing
+    /// was cut). The client holds no cut/segment counts — `postPackage` is
+    /// prose — so duration-vs-duration is the one measurable proxy. Requires
+    /// BOTH durations; partial data never fabricates a verdict.
+    static let passthroughDurationRatio = 0.97
+    var isPassthroughRender: Bool {
+        guard let source = sourceDuration, let render = renderDuration,
+              source > 0, render > 0 else { return false }
+        return render / source >= Self.passthroughDurationRatio
     }
 }
 

@@ -24,6 +24,7 @@ final class PushService {
     private let lastTokenKey = "promptly.pushService.lastDeviceToken"
     private let askedKey = "promptly.pushService.didAskForPermission"
     private let softOfferedKey = "promptly.pushService.didOfferSoftPrompt"
+    private let primerOfferedKey = "promptly.pushService.didOfferDeliveryPrimer"
 
     /// True if we've shown the system permission dialog at least once. Used
     /// to avoid asking twice (after a denial we shouldn't keep prompting —
@@ -52,6 +53,48 @@ final class PushService {
     /// Mark the pre-permission explainer as shown (called on either button).
     func markSoftPromptOffered() {
         UserDefaults.standard.set(true, forKey: softOfferedKey)
+    }
+
+    /// True once the post-first-delivery primer sheet has claimed its one
+    /// showing on this install (either outcome, including swipe-down).
+    var didOfferDeliveryPrimer: Bool {
+        UserDefaults.standard.bool(forKey: primerOfferedKey)
+    }
+
+    /// Conversion build (flag: push_primer): the post-first-delivery soft ask
+    /// — a SHEET (PushPrimerView), not the alert, at the moment the user's
+    /// FIRST rendered video becomes visible. Called from ChatStore.scheduleSave
+    /// the instant a message flips to completed-with-video. All gating lives
+    /// here:
+    ///   - flag off → no-op, byte-identical to today;
+    ///   - once per install (`didOfferDeliveryPrimer`);
+    ///   - never after the legacy explainer or the in-app system ask
+    ///     (`shouldOfferSoftPrompt` covers both);
+    ///   - never when the OS-level permission is already granted or denied —
+    ///     checked against notificationSettings before presenting.
+    /// Both guards are claimed SYNCHRONOUSLY — including markSoftPromptOffered()
+    /// — because EditorView's completion sink checks shouldOfferSoftPrompt on
+    /// the line right after the persist call that got us here; claiming now is
+    /// what stops the legacy alert and this sheet stacking on the same beat.
+    /// "Not now" / swipe is forever-quiet (a second ask only via a future flag).
+    func maybeOfferDeliveryPrimer() {
+        guard OnboardingState.shared.pushPrimerEnabled else { return }
+        guard !didOfferDeliveryPrimer, shouldOfferSoftPrompt else { return }
+        UserDefaults.standard.set(true, forKey: primerOfferedKey)
+        markSoftPromptOffered()
+        Task { @MainActor in
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            // Granted/denied at the OS level (e.g. flipped in Settings without
+            // an in-app ask): nothing to soft-ask for. The claimed guards stay
+            // claimed — the OS state can't return to notDetermined on this
+            // install, so the primer is correctly spent.
+            guard settings.authorizationStatus == .notDetermined else { return }
+            // Let the reveal land first — the video flips in as this fires,
+            // and the ask should read as a response to the payoff, not an
+            // interruption of it.
+            try? await Task.sleep(for: .seconds(0.9))
+            PushPrimerPresenter.present()
+        }
     }
 
     /// The token we last successfully registered with the server. Used to

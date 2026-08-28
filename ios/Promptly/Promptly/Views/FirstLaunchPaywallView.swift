@@ -182,7 +182,8 @@ struct FirstLaunchPaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
+            // `context` names the surface, same key the purchase_* terminals carry.
+            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": "first_launch"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -245,7 +246,7 @@ struct FirstLaunchPaywallView: View {
             guard let pkg = selectedPackage, !isPurchasing else { return }
             isPurchasing = true
             Task {
-                let ok = await subscription.purchase(pkg)
+                let ok = await subscription.purchase(pkg, context: "first_launch")
                 isPurchasing = false
                 if ok { withAnimation { didPurchaseHere = true } }
                 // Cancel/failure: stay put — the X remains the exit.

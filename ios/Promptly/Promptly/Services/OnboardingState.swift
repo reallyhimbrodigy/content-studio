@@ -52,6 +52,10 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var annualDollarLineEnabled = false
     @Published private(set) var offerSurfacingEnabled = false
     @Published private(set) var pushPrimerEnabled = false
+    /// Amendment 2026-08-27: the export gate as TWO pages (benefits written
+    /// against the stated content type, then plans + price). Its own flag so
+    /// its contribution is readable separately from the personalization.
+    @Published private(set) var exportGateTwoPageEnabled = false
 
     /// Show-once: set when the first-launch wall is dismissed or purchased
     /// through. @Published so the root ZStack re-branches the moment it flips.
@@ -60,6 +64,19 @@ final class OnboardingState: ObservableObject {
         didSet {
             UserDefaults.standard.set(hasSeenFirstLaunchPaywall,
                                       forKey: "first_launch_paywall_seen")
+        }
+    }
+
+    /// Show-once guard for the ATTRIBUTION ASK (attribution resurrection).
+    /// ANY disposition — answer or skip, from the standalone gate OR
+    /// onboarding v2's shared beat — sets it, so no flag combination can ever
+    /// re-nag the question. @Published so the root ZStack re-branches the
+    /// moment it flips (same contract as hasSeenFirstLaunchPaywall above).
+    @Published var hasSeenAttributionGate: Bool =
+        UserDefaults.standard.bool(forKey: "attribution_gate_seen") {
+        didSet {
+            UserDefaults.standard.set(hasSeenAttributionGate,
+                                      forKey: "attribution_gate_seen")
         }
     }
 
@@ -109,6 +126,7 @@ final class OnboardingState: ObservableObject {
             annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
             offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
+            exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             UserDefaults.standard.set(attributionGateEnabled, forKey: "attribution_gate_enabled")
             UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
             UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")
@@ -117,6 +135,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(annualDollarLineEnabled, forKey: "annual_dollar_line_enabled")
             UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
             UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
+            UserDefaults.standard.set(exportGateTwoPageEnabled, forKey: "exportgate_two_page_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -137,6 +156,7 @@ final class OnboardingState: ObservableObject {
             annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
             offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
+            exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
         }
     }
 
@@ -153,6 +173,7 @@ final class OnboardingState: ObservableObject {
         case "annual_dollar_line": annualDollarLineEnabled = true
         case "offer_surfacing": offerSurfacingEnabled = true
         case "push_primer": pushPrimerEnabled = true
+        case "exportgate_two_page": exportGateTwoPageEnabled = true
         default: break
         }
     }
@@ -198,6 +219,46 @@ final class OnboardingState: ObservableObject {
         didSet {
             UserDefaults.standard.set(step.rawValue, forKey: "onboarding_step")
             Analytics.track("onboarding_step", props: ["step": step.rawValue])
+        }
+    }
+
+    // ── Onboarding v2 flow position (the `onboarding_v2` knob) ──────────────
+    // OnboardingV2Flow's beats — its OWN enum + persistence key so it can
+    // never collide with the wall flow's `step` above. MAX FOUR beats, ends
+    // at the picker, NO paywall anywhere in the flow (that placement was
+    // removed for cause).
+    enum V2Step: String, Codable {
+        case language     // beat 1: app language (LanguageSelectionView, reused)
+        case platform     // beat 2: primary platform (amendment 2026-08-27)
+        case making       // beat 3: "What are you making?" → content type
+        case style        // beat 4: "Whose editing style do you like?"
+        case attribution  // beat 5: the shared attribution ask
+        case signin       // beat 6: Sign in with Apple (skipped when authed)
+        case done         // → the picker (PromptlyApp re-branches)
+    }
+
+    /// V2 survey answers (amendment 2026-08-27). Kept separate from the wall
+    /// flow's audience/intent so neither flow can clobber the other. All three
+    /// feed the composer prefill; `platform` and `making` also personalise the
+    /// render-wait copy and the export gate's benefit page.
+    @Published var v2Platform: String?
+    @Published var v2Making: String?
+    @Published var v2Style: String?
+
+    @Published var v2Step: V2Step = .language {
+        didSet {
+            UserDefaults.standard.set(v2Step.rawValue, forKey: "onboarding_v2_step")
+            Analytics.track("onboarding_v2_step", props: ["step": v2Step.rawValue, "context": "onboarding_v2"])
+        }
+    }
+
+    /// Seed the last-known v2 beat (kill-resume) — same contract as
+    /// `restore()` below; OnboardingV2Flow re-derives the right entry from
+    /// auth + completion in its onAppear.
+    func restoreV2() {
+        if let raw = UserDefaults.standard.string(forKey: "onboarding_v2_step"),
+           let s = V2Step(rawValue: raw) {
+            v2Step = s
         }
     }
 
@@ -255,6 +316,11 @@ final class OnboardingState: ObservableObject {
         if let intent { settings["intent"] = intent }
         if !intents.isEmpty { settings["intents"] = intents }
         if let attribution { settings["attribution"] = attribution }
+        // V2 survey (amendment 2026-08-27) — segmentable alongside the wall
+        // flow's keys; the server merges additively.
+        if let v2Platform { settings["v2_platform"] = v2Platform }
+        if let v2Making { settings["v2_making"] = v2Making }
+        if let v2Style { settings["v2_style"] = v2Style }
         guard !settings.isEmpty,
               let token = AuthService.shared.accessToken,
               let url = URL(string: "https://usepromptly.app/api/profile/settings"),

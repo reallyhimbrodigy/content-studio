@@ -293,6 +293,38 @@ struct PromptlyApp: App {
         return true
     }
 
+    /// Conversion build (post-235) — ATTRIBUTION RESURRECTION. The question
+    /// flow hangs off wall_enforcement, which is OFF and coupled to the server
+    /// billing gates, so `onboarding_attribution` has fired ZERO times ever.
+    /// This is the question with no flow around it: ONE skippable screen at
+    /// the first-session moment (same population as the first-launch paywall —
+    /// new installs, pre-auth; shown just BEFORE that wall so the two knobs
+    /// coexist), at most once per install, never blocks the session.
+    /// STANDS DOWN when onboarding_v2 is on (that flow CONTAINS the question)
+    /// or when the wall flow is armed (its Q3 already asks it).
+    private var showAttributionGate: Bool {
+        guard onboarding.attributionGateEnabled,
+              !onboarding.onboardingV2Enabled,
+              onboarding.wallOnboardingEnabled != true,
+              !onboarding.hasSeenAttributionGate,
+              !auth.isAuthenticated else { return false }
+        return true
+    }
+
+    /// Conversion build (post-235) — ONBOARDING V2: language → making →
+    /// attribution → sign-in; ends at the picker, NO paywall in the flow.
+    /// Same guard shape as the wall branch above, incl. the GRANDFATHER rule.
+    /// PRECEDENCE: when on, v2 SUPERSEDES the standalone attribution gate
+    /// (see showAttributionGate) and outranks the wall-onboarding branch —
+    /// its ZStack slot sits above showWallOnboarding. Knob off = today's
+    /// branches, byte-for-byte.
+    private var showOnboardingV2: Bool {
+        guard onboarding.onboardingV2Enabled,
+              !onboarding.hasCompletedOnboarding else { return false }
+        if auth.isAuthenticated && !onboarding.startedFlow { return false }
+        return true
+    }
+
     /// LaunchView must remain on screen long enough for its entrance
     /// animation to complete and the brand moment to register. Without
     /// this gate, a fast auth.checkSession() resolve (~300ms on a warm
@@ -314,8 +346,16 @@ struct PromptlyApp: App {
                     // floor. Non-dismissible by design.
                     UpdateRequiredView()
                         .transition(.opacity)
+                } else if showAttributionGate {
+                    // Standalone attribution ask (one screen; the flip of
+                    // hasSeenAttributionGate re-branches, so onDone is empty).
+                    AttributionAskView(context: "attribution_gate", onDone: {})
+                        .transition(.opacity)
                 } else if showFirstLaunchPaywall {
                     FirstLaunchPaywallView()
+                        .transition(.opacity)
+                } else if showOnboardingV2 {
+                    OnboardingV2Flow()
                         .transition(.opacity)
                 } else if showWallOnboarding {
                     OnboardingFlow()
@@ -355,6 +395,7 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenFirstLaunchPaywall)
+            .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenAttributionGate)
             // Referral intake: a ?ref=CODE on ANY URL that reaches the app
             // (custom scheme today; universal links when provisioned) persists
             // pre-auth and claims at sign-in. Non-referral URLs are ignored.
@@ -365,7 +406,18 @@ struct PromptlyApp: App {
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.
             .onChange(of: auth.isAuthenticated) { _, authed in
-                if authed { AppState.shared.landOnChat() }
+                if authed {
+                    AppState.shared.landOnChat()
+                    // Attribution resurrection: an answer given PRE-AUTH (both
+                    // new surfaces ask before sign-in) can't reach
+                    // profile_settings (no token yet) — re-fire the
+                    // best-effort persist the moment auth lands. Flag-guarded:
+                    // inert while both surfaces are dark.
+                    if onboarding.attributionGateEnabled || onboarding.onboardingV2Enabled,
+                       onboarding.attribution != nil {
+                        onboarding.persistAnswersToProfile()
+                    }
+                }
                 else { AppState.shared.clearNavForSignOut() }
             }
             .onChange(of: scenePhase) { previous, phase in

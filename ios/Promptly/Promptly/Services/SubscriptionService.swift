@@ -254,10 +254,15 @@ final class SubscriptionService: ObservableObject {
         }
     }
 
-    /// Purchase a package. Called from PaywallView.
+    /// Purchase a package. Called from every purchase surface.
     /// Returns true on success (entitlement granted), false otherwise.
     /// Sets `lastError` for the UI to surface on cancellation / failure.
     /// Funnel plan key: weekly / monthly / yearly (from the package type).
+    /// `context` names the SURFACE that initiated the buy (PaywallView's
+    /// reasonKey / TrialWallView's contextKey / "first_launch") and is stamped
+    /// on the purchase_* terminals so the funnel can attribute every buy to
+    /// its trigger without a join back to upgrade_wall_viewed. Defaulted so
+    /// call sites that predate the stamp still compile (and land unstamped).
     /// Canonical package order for EVERY purchase surface: duration
     /// DESCENDING (Annual → Monthly → Weekly, unknowns last). Ruled
     /// 2026-08-26 after the identifier check: our packages use the standard
@@ -309,7 +314,7 @@ final class SubscriptionService: ObservableObject {
     }
 
     @discardableResult
-    func purchase(_ package: Package) async -> Bool {
+    func purchase(_ package: Package, context: String? = nil) async -> Bool {
         guard initialized else { return false }
         // ROOT-CAUSE GUARD (2026-07-26): never purchase under an anonymous RC
         // id. With a signed-in user, RC must be aliased to them FIRST — else the
@@ -320,10 +325,12 @@ final class SubscriptionService: ObservableObject {
             let ok = await ensureIdentified()
             if !ok {
                 lastError = "We couldn't verify your account. Please try again in a moment."
-                Analytics.track("purchase_blocked_unidentified", props: [
+                var blockedProps: [String: Any] = [
                     "plan": planKey(package),
                     "product": package.storeProduct.productIdentifier,
-                ])
+                ]
+                if let context { blockedProps["context"] = context }
+                Analytics.track("purchase_blocked_unidentified", props: blockedProps)
                 return false
             }
         }
@@ -342,6 +349,9 @@ final class SubscriptionService: ObservableObject {
             "currency": package.storeProduct.currencyCode ?? "",
             "price": "\(package.storeProduct.price)",
         ]
+        // Surface stamp: rides sfProps so purchase_started AND both terminals
+        // (purchase_completed / purchase_failed) carry the same context.
+        if let context { sfProps["context"] = context }
         if let sf = await Storefront.current {
             sfProps["storefront"] = sf.countryCode
             sfProps["storefront_id"] = sf.id

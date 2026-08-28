@@ -3,6 +3,10 @@ import AVKit
 import Photos
 
 struct MessageBubble: View {
+    /// render_transparency: one `render_transparency_viewed` per job, not per
+    /// SwiftUI body pass (the bubble re-renders on every progress tick).
+    static var transparencySeen = Set<String>()
+
     let message: ChatMessage
     /// 225 item 2: drives the blinking streaming caret (toggled only while
     /// message.isStreaming; see the assistant text block's .task).
@@ -298,6 +302,21 @@ struct MessageBubble: View {
             // status — completed/complete, failed/error, canceled/cancelled,
             // needs_input/needs_clarification — stops the spinner.
             if let status = message.jobStatus, !JobLifecycle.isTerminal(status), !showProgressive {
+                // render_transparency (amendment 2026-08-27): name the user's
+                // OWN job above the stage feed, from the v2 survey answers
+                // where they exist. The stage list below is unchanged and
+                // remains the only claim about pipeline state.
+                if OnboardingState.shared.renderTransparencyEnabled,
+                   status != "needs_input" {
+                    RenderTransparencyHeader()
+                        .onAppear {
+                            guard let jid = message.jobId,
+                                  !MessageBubble.transparencySeen.contains(jid) else { return }
+                            MessageBubble.transparencySeen.insert(jid)
+                            Analytics.track("render_transparency_viewed",
+                                            props: ["context": "render_wait"])
+                        }
+                }
                 if let timeline = message.stageTimeline {
                     // §5 plan preview: reflect the user's vibe + what Promptly is
                     // making, so the multi-minute wait reads as a craft in progress

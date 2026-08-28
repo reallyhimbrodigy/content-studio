@@ -158,6 +158,28 @@ final class ChatStore: ObservableObject {
         let title = explicitTitle ?? Chat.deriveTitle(from: messages)
         pendingSaves[chatId] = (messages: messages, title: title)
 
+        // Post-first-delivery push primer (flag: push_primer; inert off). A
+        // message flipping to completed-WITH-video in this save, versus the
+        // prior local snapshot, is the first moment a delivered render is
+        // visible to the user — every completion sink (SSE finish beat, the
+        // legacy cache-then-flip, the reconcile heal, off-screen heals via
+        // updateStoredMessage) persists through here, so this is the one
+        // choke point. Must run BEFORE the snapshot below is overwritten,
+        // and synchronously, so the legacy explainer check on the caller's
+        // next line already sees the primer's claim (no double ask on the
+        // same beat). PushService owns every other gate (once per install,
+        // OS permission state).
+        if OnboardingState.shared.pushPrimerEnabled,
+           let prior = chats.first(where: { $0.id == chatId })?.messages {
+            let delivered: (SerializedMessage) -> Bool = {
+                $0.jobStatus == "completed" && ($0.renderedVideoUrl != nil || $0.hlsManifestUrl != nil)
+            }
+            let priorDelivered = Set(prior.filter(delivered).map(\.id))
+            if messages.contains(where: { delivered($0) && !priorDelivered.contains($0.id) }) {
+                PushService.shared.maybeOfferDeliveryPrimer()
+            }
+        }
+
         // Reflect the new title + message snapshot locally immediately so
         // the sidebar updates without waiting for the server.
         if let idx = chats.firstIndex(where: { $0.id == chatId }) {
