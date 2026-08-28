@@ -3236,6 +3236,9 @@ struct EditorView: View {
         // Wait for the presigned URL (seconds — the presign, not the transfer).
         // Bounded, so a stuck/slow presign falls through to the coordinator, which
         // owns the full retry / ceiling / dead-upload-fast-fail logic.
+        // countdown-ok: an upload SETTLE deadline for a polling loop — no user
+        // ever sees this number. The banned thing is a visible timer counting
+        // down an offer; this is how long we wait for bytes to land.
         let deadline = Date().addingTimeInterval(30)
         while video.uploadedUrl == nil && !video.uploadFailed && !Task.isCancelled && Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))

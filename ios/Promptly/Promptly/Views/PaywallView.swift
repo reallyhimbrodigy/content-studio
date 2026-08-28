@@ -33,7 +33,7 @@ struct PROBadge: View {
             .padding(.vertical, compact ? 2 : 3)
             .background(
                 Capsule(style: .continuous)
-                    .fill(PromptlyGold.gradient)
+                    .fill(Color.white)
             )
             .accessibilityLabel("Pro feature")
     }

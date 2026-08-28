@@ -124,6 +124,13 @@ struct OfferRevealView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 32)
 
+                    // SECONDARY PLAN LINE. The yearly stays the hero; this
+                    // offers the monthly intro to someone who will not commit
+                    // to a year. It sits BELOW the primary CTA and ABOVE
+                    // "Decline offer" — a real alternative, not an equal, and
+                    // never louder than the plan being sold.
+                    secondaryMonthlyLine
+
                     // The escape hatch: a text link, never an X (an X invites
                     // an accidental dismissal of a one-time reveal).
                     Button {
@@ -193,6 +200,55 @@ struct OfferRevealView: View {
     /// deliberately slower and lower-contrast than the price landing, so it
     /// never competes with the number it is introducing. Reduce Motion gets
     /// the badge with a fixed glow and no pulse.
+    /// The monthly alternative, or NOTHING.
+    ///
+    /// Both the price and the percentage are read live from the monthly
+    /// product's own `introductoryDiscount` and floored — never typed, never
+    /// derived from the yearly. If the monthly package is absent, carries no
+    /// paid intro offer, or its intro is not genuinely cheaper in this
+    /// territory, this renders NOTHING rather than falling back to a default.
+    /// A default here would be a price claim we did not read from the store,
+    /// which is the one thing this screen must never do — and a wrong second
+    /// price is worse than no second price, because it is the line a hesitant
+    /// user is most likely to act on.
+    @ViewBuilder
+    private var secondaryMonthlyLine: some View {
+        if let m = monthlyAlternative,
+           let intro = m.storeProduct.introductoryDiscount,
+           let pct = OfferReveal.percentOff(for: m) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                isPurchasing = true
+                Task {
+                    let ok = await subscription.purchase(m, context: "offer_reveal_secondary")
+                    isPurchasing = false
+                    if ok { onPurchased() }
+                }
+            } label: {
+                // Price string comes from StoreKit's own formatter — we never
+                // compose a currency string ourselves.
+                Text("\(String(localized: "Or start monthly for")) \(intro.localizedPriceString) (\(pct)% \(String(localized: "off")))")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.75))
+                    .underline()
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
+            .disabled(isPurchasing)
+            .padding(.top, 16)
+            .padding(.horizontal, 24)
+        }
+    }
+
+    /// The monthly package, only when it carries a genuinely cheaper paid
+    /// intro AND is not already the plan being sold above.
+    private var monthlyAlternative: Package? {
+        guard offerPackage?.packageType != .monthly else { return nil }
+        guard let m = packages.first(where: { $0.packageType == .monthly }) else { return nil }
+        return OfferReveal.isRealOffer(m) ? m : nil
+    }
+
     private var oneTimeBadge: some View {
         Text(String(localized: "ONE TIME OFFER"))
             .font(.system(size: 12, weight: .heavy))

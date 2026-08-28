@@ -203,7 +203,7 @@ struct FirstLaunchPaywallView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(PromptlyGold.gradient)
+                .foregroundStyle(Color.white)
                 .frame(width: 24)
             Text(text)
                 .font(.system(size: 15))
@@ -226,10 +226,10 @@ struct FirstLaunchPaywallView: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.2), lineWidth: 2)
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.2), lineWidth: 2)
                         .frame(width: 22, height: 22)
                     if isSelected {
-                        Circle().fill(PromptlyGold.gradient).frame(width: 12, height: 12)
+                        Circle().fill(Color.white).frame(width: 12, height: 12)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -247,7 +247,7 @@ struct FirstLaunchPaywallView: View {
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(PromptlyGold.gradient))
+                                .background(Capsule().fill(Color.white))
                         }
                     }
                     Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
@@ -258,7 +258,7 @@ struct FirstLaunchPaywallView: View {
                     if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(PromptlyGold.solid)
+                            .foregroundColor(.white.opacity(0.55))
                     }
                 }
                 Spacer()
@@ -271,7 +271,7 @@ struct FirstLaunchPaywallView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08),
+                    .stroke(isSelected ? Color.white : Color.white.opacity(0.08),
                             lineWidth: isSelected ? 1.5 : 0.5)
             )
             .contentShape(Rectangle())

@@ -110,19 +110,44 @@ while IFS= read -r -d '' f; do
     done <<< "$hits"
   fi
 
-  # Countdown UI primitives are banned on the money surfaces specifically —
-  # elsewhere (upload deadlines, resume TTLs) they are legitimate mechanics.
-  case "$f" in
-    *Paywall*|*TrialWall*|*ExportGate*|*Offer*)
-      hits="$(printf '%s\n' "$stripped" | grep -nEi "$SCARCITY_UI_RE" || true)"
-      if [ -n "$hits" ]; then
-        violations=1
-        while IFS= read -r h; do
-          echo "COUNTDOWN UI    $f:$h"
-        done <<< "$hits"
-      fi
-      ;;
-  esac
+  # ── COUNTDOWN UI — DEFAULT-DENY across every Swift file ───────────────────
+  # Was scoped to filenames matching *Paywall*|*TrialWall*|*ExportGate*|*Offer*,
+  # which is the allowlist shape the standing rule warns about: it governs the
+  # surfaces you remembered, so a money screen with a name nobody predicted
+  # ships a countdown and the gate says PASS. Now every file is checked.
+  #
+  # PRECISION FIRST, THEN DEFAULT-DENY. Unscoping the old pattern as-written
+  # would have flagged eleven files of pure GCD noise — asyncAfter(deadline:)
+  # is Swift's scheduling API, not a countdown — and a gate that is wrong ten
+  # times out of eleven trains you to skim past the one real hit. So the
+  # unambiguous language form is stripped before matching. That is precision,
+  # not an exemption.
+  #
+  # A genuine non-UI use of the remaining vocabulary (an upload settle
+  # deadline, a resume TTL) is exempted BY COMMENT — `countdown-ok: <reason>`
+  # on the line or the line above — so every exemption is visible, local, and
+  # carries its justification, rather than being implied by a filename.
+  scan="$(printf '%s\n' "$stripped" | sed 's/asyncAfter(deadline:/asyncAfter(SCHEDULED:/g')"
+  hits="$(printf '%s\n' "$scan" | grep -nEi "$SCARCITY_UI_RE" || true)"
+  if [ -n "$hits" ]; then
+    while IFS= read -r h; do
+      [ -z "$h" ] && continue
+      ln="${h%%:*}"
+      prev=$((ln - 1))
+      # Look for the exemption in the RAW file, not in $scan: $scan is
+      # comment-STRIPPED, so an exemption comment is invisible there and could
+      # never be honoured. Checked over a small window above the hit, because a
+      # real justification runs to more than one line.
+      lo=$((ln - 4)); [ "$lo" -lt 1 ] && lo=1
+      window="$(sed -n "${lo},${ln}p" "$f")"
+      case "$window" in
+        *countdown-ok:*) continue ;;
+      esac
+      violations=1
+      echo "COUNTDOWN UI    $f:$h"
+      echo "                (exempt a legitimate non-UI use with a 'countdown-ok: <reason>' comment)"
+    done <<< "$hits"
+  fi
 done < <(find "$SRC" -name '*.swift' -print0)
 
 if [ "$violations" -ne 0 ]; then

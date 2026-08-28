@@ -147,9 +147,9 @@ struct SecondPaywallView: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.2), lineWidth: 2)
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.2), lineWidth: 2)
                         .frame(width: 22, height: 22)
-                    if isSelected { Circle().fill(PromptlyGold.gradient).frame(width: 12, height: 12) }
+                    if isSelected { Circle().fill(Color.white).frame(width: 12, height: 12) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
@@ -163,7 +163,7 @@ struct SecondPaywallView: View {
                                 .font(.system(size: 9, weight: .heavy)).tracking(0.6)
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Capsule().fill(PromptlyGold.gradient))
+                                .background(Capsule().fill(Color.white))
                         }
                     }
                     Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
@@ -172,7 +172,7 @@ struct SecondPaywallView: View {
                     if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(PromptlyGold.solid)
+                            .foregroundColor(.white.opacity(0.55))
                     }
                 }
                 Spacer()
@@ -181,7 +181,7 @@ struct SecondPaywallView: View {
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(isSelected ? 0.08 : 0.04)))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? PromptlyGold.solid : Color.white.opacity(0.08),
+                .stroke(isSelected ? Color.white : Color.white.opacity(0.08),
                         lineWidth: isSelected ? 1.5 : 0.5))
             .contentShape(Rectangle())
         }
@@ -199,7 +199,7 @@ struct SecondPaywallView: View {
             HStack(spacing: 14) {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(PromptlyGold.gradient)
+                    .foregroundStyle(Color.white)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Or get Pro free")
@@ -218,7 +218,7 @@ struct SecondPaywallView: View {
                     // "doesn't arrive".
                     Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends have made a video")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(PromptlyGold.solid)
+                        .foregroundColor(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "square.and.arrow.up")
