@@ -60,15 +60,15 @@ if [ "${core_count:-0}" -lt 2 ]; then
   fail=1
 fi
 
-# ── 3. the NEW-USER surfaces may not spell a claim themselves ───────────────
-# Scope is deliberate. These are the two screens a new user sees back-to-back
-# before any value, and they are the pair that drifted. The legacy
-# PaywallFeatureChecklist / ProCelebrationView carry separately-approved live
-# phrasing ("Unlimited renders", "Upload up to 10 at once") and are NOT merged
-# here — changing approved live copy is a ruling, not a refactor. That
-# inconsistency is reported, not silently rewritten.
-GOVERNED="Views/FirstLaunchPaywallView.swift Views/Onboarding/OfferRevealView.swift"
-
+# ── 3. NO file may spell a claim except the shared source ───────────────────
+# DEFAULT-DENY, not an allowlist. This gate previously governed a named list of
+# surfaces and PASSED while SecondPaywallView still spelled "Unlimited videos,
+# no daily cap" — because that file was not on the list. An allowlist gate only
+# catches the surfaces you remembered, which is the same failure as a gate that
+# reads the wrong tree: it reports green about the part it looked at.
+#
+# Now every Swift file is checked, so a NEW surface that respells a claim is
+# caught the day it is written rather than the day someone notices the drift.
 CLAIMS=$(grep -oE 'String\(localized: "[^"]+"\)' "$SOURCE_OF_TRUTH" | sed 's/String(localized: "//; s/")$//')
 if [ -z "$CLAIMS" ]; then
   echo "benefits-parity: FAILED — parsed ZERO claims out of ProBenefits.swift."
@@ -76,21 +76,21 @@ if [ -z "$CLAIMS" ]; then
   exit 1
 fi
 
-for rel in $GOVERNED; do
-  f="$SRC/$rel"
-  [ -f "$f" ] || { echo "benefits-parity: FAILED — governed surface missing: $rel"; fail=1; continue; }
-  # Strip comment lines before matching: a doc comment that EXPLAINS the rule
-  # (and necessarily quotes a claim) is not a forked claim.
+while IFS= read -r f; do
+  [ "$f" = "$SOURCE_OF_TRUTH" ] && continue
+  # Comment lines may quote a claim while explaining the rule.
   body=$(grep -vE '^[[:space:]]*(//|/\*|\*)' "$f")
   while IFS= read -r claim; do
     [ -z "$claim" ] && continue
     if printf '%s' "$body" | grep -qF "$claim"; then
-      echo "FORKED CLAIM   $rel spells a benefit that belongs to ProBenefits:"
+      echo "FORKED CLAIM   ${f#"$SRC/"} spells a benefit that belongs to ProBenefits:"
       echo "                 \"$claim\""
       fail=1
     fi
   done <<< "$CLAIMS"
-done
+done < <(find "$SRC" -name '*.swift')
+
+GOVERNED="Views/FirstLaunchPaywallView.swift Views/Onboarding/OfferRevealView.swift Views/PaywallView.swift"
 
 # ── 4. and they must actually RENDER the shared list ────────────────────────
 # Without this, a surface could pass rule 3 by simply showing no benefits.

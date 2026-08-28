@@ -114,13 +114,12 @@ enum PlanSavings {
 /// ("Pro saves and shares every video"), no new marketing copy. Checkmark
 /// rows per the reference layout; white ink, no gold (2026-08-26 rebuild).
 struct PaywallFeatureChecklist: View {
-    static let features: [String] = [
-        String(localized: "Unlimited renders"),
-        String(localized: "Upload up to 10 videos at a time"),
-        String(localized: "Unlimited AI chats"),
-        String(localized: "Re-edit any finished video"),
-        String(localized: "Save and share every video"),
-    ]
+    /// Reads ProBenefits — this screen owns NO list. It used to spell its own
+    /// five claims, which is how "Unlimited renders" here drifted against
+    /// "Unlimited videos, no daily cap" on the first-launch paywall and
+    /// "Unlimited videos, every day" on the celebration screen: three
+    /// phrasings of one promise, on three screens of one purchase.
+    static var features: [String] { ProBenefits.core.map(\.text) }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Self.features, id: \.self) { text in
@@ -522,21 +521,19 @@ struct PaywallView: View {
 
     /// Benefits in the user's own terms. The content-type line leads when we
     /// have one; the rest is the approved claim set, unchanged.
+    /// The export gate's personalised benefits — from ProBenefits, like every
+    /// other surface.
+    ///
+    /// This was the THIRD copy of the same claims, and it is the one worth
+    /// naming: the shared source already existed and two surfaces already read
+    /// it, so the pitch looked unified while this list quietly went on spelling
+    /// "Unlimited renders" and its own variant of the personalised opener. A
+    /// shared component that two surfaces read and a third duplicates is the
+    /// original defect with an extra hop — and harder to see, because the
+    /// existence of the shared file reads as proof the problem was solved.
     private var benefitLines: [String] {
-        var lines: [String] = []
-        // Same raw-key defect as the reveal: parse the content-type half.
-        switch OnboardingQuestion.contentTypeV2(onboardingStateRef.v2Making) {
-        case "podcast":
-            lines.append(String(localized: "Turn every episode into clips, unlimited"))
-        case "talkinghead":
-            lines.append(String(localized: "Turn every take into a finished cut, unlimited"))
-        default:
-            lines.append(String(localized: "Unlimited renders"))
-        }
-        lines.append(String(localized: "Save and share every video"))
-        lines.append(String(localized: "Re-edit any finished video"))
-        lines.append(String(localized: "Upload up to 10 videos at a time"))
-        return lines
+        ProBenefits.lines(audience: onboardingStateRef.audience,
+                          videoType: onboardingStateRef.v2Making)
     }
 
     // MARK: - Sub-views
@@ -1059,12 +1056,10 @@ struct ProCelebrationView: View {
     let price: String
     let onContinue: () -> Void
 
-    private let unlocked: [(icon: String, text: String)] = [
-        ("infinity", "Unlimited videos, every day"),
-        ("arrow.uturn.left", "Re-edit any finished video"),
-        ("bubble.left.and.bubble.right.fill", "Unlimited AI chats"),
-        ("square.stack.3d.up.fill", "Upload up to 10 at once"),
-    ]
+    /// A PREFIX of the shared list, never a hand-picked subset — the order in
+    /// ProBenefits is the pitch priority, so the top four here are the same top
+    /// four the user was just sold, in the same words.
+    private var unlocked: [ProBenefits.Benefit] { ProBenefits.top(4) }
 
     var body: some View {
         ZStack {

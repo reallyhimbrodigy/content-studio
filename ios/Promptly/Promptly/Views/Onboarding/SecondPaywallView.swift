@@ -45,7 +45,9 @@ struct SecondPaywallView: View {
         case "business": return "On-brand videos without hiring an editor"
         case "creator":  return "Post daily without burning out"
         case "event":    return "Recaps ready before the event ends"
-        default:         return "Unlimited videos, no daily cap"
+        // The generic fallback is the headline claim itself — taken from the
+        // shared source, not respelled. This line was the fourth copy of it.
+        default:         return ProBenefits.core[0].text
         }
     }
 

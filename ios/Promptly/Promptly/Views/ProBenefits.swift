@@ -24,8 +24,39 @@ enum ProBenefits {
         var id: String { text }
     }
 
-    /// The canonical claims, in pitch order. Adding a claim here adds it
-    /// EVERYWHERE. This is the only place a Pro benefit string may be written.
+    /// The canonical claims, IN PITCH ORDER. Adding a claim here adds it
+    /// everywhere. This is the only place a Pro benefit string may be written.
+    ///
+    /// ── UNIFICATION, prepared 2026-08-28, PENDING ZAC'S RULING ──────────────
+    /// Four surfaces each owned a list, and they disagreed three ways about the
+    /// same product:
+    ///
+    ///   unlimited videos  "Unlimited videos, no daily cap"   (this file)
+    ///                     "Unlimited renders"                (main paywall)
+    ///                     "Unlimited videos, every day"      (celebration)
+    ///   upload ten        "Upload up to 10 videos at a time" (2 surfaces)
+    ///                     "Upload up to 10 at once"          (celebration)
+    ///
+    /// Worse than the wording: the COVERAGE gaps. The two screens a new user
+    /// sees never mentioned "Unlimited AI chats" or "Save and share every
+    /// video" at all, and the main paywall never mentioned that captions, cuts
+    /// and graphics are automatic — which is the actual product.
+    ///
+    /// The three decisions, isolated here so changing one is a one-line edit:
+    ///   1. "Unlimited videos, no daily cap" over "Unlimited renders" —
+    ///      "renders" is our vocabulary, not the user's, and the daily cap is
+    ///      the specific thing Pro removes.
+    ///   2. "Upload up to 10 videos at a time" — the majority spelling, and it
+    ///      says what "at once" leaves ambiguous.
+    ///   3. The set is the UNION of all four lists, so no surface can make a
+    ///      claim another one contradicts.
+    ///
+    /// Surfaces that need a shorter list take a PREFIX of this array rather
+    /// than picking their own subset. That is what keeps a compact screen
+    /// consistent with a long one instead of merely shorter: the order is the
+    /// pitch priority, so the first three claims are the three best claims
+    /// everywhere, and a surface can never elevate a minor benefit above a
+    /// major one or omit something the screen before it promised.
     static let core: [Benefit] = [
         Benefit(icon: "infinity",
                 text: String(localized: "Unlimited videos, no daily cap")),
@@ -35,7 +66,15 @@ enum ProBenefits {
                 text: String(localized: "Re-edit any finished video")),
         Benefit(icon: "square.stack.3d.up.fill",
                 text: String(localized: "Upload up to 10 videos at a time")),
+        Benefit(icon: "bubble.left.and.bubble.right.fill",
+                text: String(localized: "Unlimited AI chats")),
+        Benefit(icon: "square.and.arrow.down",
+                text: String(localized: "Save and share every video")),
     ]
+
+    /// The first `n` claims, for surfaces with less room. Never a hand-picked
+    /// subset — see the note on `core`.
+    static func top(_ n: Int) -> [Benefit] { Array(core.prefix(max(0, n))) }
 
     /// The same claim SET, with the first two lines rewritten in the user's own
     /// terms from Q1 (who the videos are for) and Q2 (what kind). A skipped
