@@ -33,6 +33,8 @@ struct OfferRevealView: View {
     /// weight a beat after the headline — rather than simply being present
     /// when the screen appears.
     @State private var priceLanded = false
+    /// Drives the badge's breathing glow (see `oneTimeBadge`).
+    @State private var glowing = false
 
     private var packages: [Package] {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
@@ -40,7 +42,12 @@ struct OfferRevealView: View {
 
     /// The package whose product actually carries a PAID intro offer. Nil →
     /// nothing to reveal (see `OfferReveal.isAvailable`).
-    private var offerPackage: Package? { OfferReveal.package(in: packages) }
+    /// The plan the user is already leaning on — the same computed
+    /// pre-selection the paywall uses, so the reveal never switches them.
+    private var preferredPackage: Package? { PlanSavings.defaultSelection(in: packages) }
+    private var offerPackage: Package? {
+        OfferReveal.package(in: packages, preferring: preferredPackage)
+    }
 
     var body: some View {
         ZStack {
@@ -60,6 +67,10 @@ struct OfferRevealView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .minimumScaleFactor(0.85)
                         .padding(.horizontal, 28)
+
+                    if offerPackage != nil {
+                        oneTimeBadge.padding(.top, 18)
+                    }
 
                     if let pkg = offerPackage {
                         priceBlock(pkg)
@@ -156,6 +167,13 @@ struct OfferRevealView: View {
                           : .spring(response: 0.5, dampingFraction: 0.72).delay(0.12)) {
                 priceLanded = true
             }
+            #if DEBUG
+            for p in packages {
+                let d = p.storeProduct.introductoryDiscount
+                print("[offerDiag] \(p.packageType) std=\(p.storeProduct.price) intro=\(d.map { "\($0.price) mode=\($0.paymentMode.rawValue)" } ?? "NONE") real=\(OfferReveal.isRealOffer(p))")
+            }
+            print("[offerDiag] preferred=\(String(describing: preferredPackage?.packageType)) chosen=\(String(describing: offerPackage?.packageType))")
+            #endif
             Analytics.track("offer_reveal_viewed",
                             props: ["context": "onboarding_v2",
                                     "has_offer": offerPackage != nil,
@@ -163,6 +181,41 @@ struct OfferRevealView: View {
                                     "video_type": onboarding.v2VideoType ?? "skipped"])
         }
     }
+
+    /// "ONE TIME OFFER" — literally true, which is the only reason it passes
+    /// the fake-scarcity ban: Apple enforces introductory-offer eligibility
+    /// once per account, so this is a statement of fact, not manufactured
+    /// urgency. No deadline is claimed anywhere, because we do not control
+    /// one; the honest scarcity is the eligibility itself.
+    ///
+    /// The glow BREATHES (a slow opacity/blur pulse) rather than sitting
+    /// static, so it reads as the most alive thing on screen — but it is
+    /// deliberately slower and lower-contrast than the price landing, so it
+    /// never competes with the number it is introducing. Reduce Motion gets
+    /// the badge with a fixed glow and no pulse.
+    private var oneTimeBadge: some View {
+        Text(String(localized: "ONE TIME OFFER"))
+            .font(.system(size: 12, weight: .heavy))
+            .tracking(1.4)
+            .foregroundColor(.black)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(Color.white)
+                    .shadow(color: .white.opacity(reduceMotion ? 0.45 : glowStrength),
+                            radius: reduceMotion ? 10 : glowRadius)
+                    .shadow(color: .white.opacity(reduceMotion ? 0.2 : glowStrength * 0.5),
+                            radius: reduceMotion ? 18 : glowRadius * 2.2)
+            )
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                    glowing = true
+                }
+            }
+    }
+    private var glowStrength: Double { glowing ? 0.75 : 0.3 }
+    private var glowRadius: CGFloat { glowing ? 16 : 7 }
 
     /// Struck-through standard price beside the live intro price. Both strings
     /// come from the store; we format neither.
@@ -204,16 +257,37 @@ enum OfferReveal {
     /// when it carries no offer, which routes into the same graceful skip as
     /// no-offer-at-all (the view's onAppear guard). Behaviour is unchanged
     /// until then; nothing here is dead code.
-    static func package(in packages: [Package]) -> Package? {
-        packages.first { pkg in
-            guard let d = pkg.storeProduct.introductoryDiscount else { return false }
-            return d.paymentMode != .freeTrial
-        }
+    /// `preferred` is the plan the user is already leaning on (the paywall's
+    /// computed pre-selection). Yearly offers now exist in all 175
+    /// territories, so an annual-leaning user must see the ANNUAL offer —
+    /// never be switched to a monthly one. Falls back to any offered plan
+    /// only when the preferred one carries none.
+    static func package(in packages: [Package], preferring preferred: Package? = nil) -> Package? {
+        if let preferred, isRealOffer(preferred) { return preferred }
+        return packages.first(where: isRealOffer)
+    }
+
+    /// An offer is REAL only if it is a paid offer that is genuinely CHEAPER
+    /// than the standard price.
+    ///
+    /// That last clause is not paranoia: the 2026-08-27 territory sweep found
+    /// Indonesia's yearly intro configured at 17,499,000 IDR against a
+    /// 3,499,000 standard — an "offer" 5x the regular price, from a digit
+    /// shift in ASC. Without this guard the reveal would have shown an
+    /// Indonesian user a struck-through 3,499,000 beside a larger "discount"
+    /// price. A store-side typo must never become a client-side lie.
+    static func isRealOffer(_ pkg: Package) -> Bool {
+        guard let d = pkg.storeProduct.introductoryDiscount,
+              d.paymentMode != .freeTrial else { return false }
+        return (d.price as NSDecimalNumber).doubleValue
+             < (pkg.storeProduct.price as NSDecimalNumber).doubleValue
     }
 
     /// True when there is something real to reveal. The flow consults this —
     /// no offer means the beat is skipped, never faked.
-    static func isAvailable(in packages: [Package]) -> Bool { package(in: packages) != nil }
+    static func isAvailable(in packages: [Package], preferring preferred: Package? = nil) -> Bool {
+        package(in: packages, preferring: preferred) != nil
+    }
 
     /// Whole-percent discount of the intro price against the standard price,
     /// FLOORED — the same discipline as the annual badge: rounding a money

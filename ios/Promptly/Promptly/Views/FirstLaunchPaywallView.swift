@@ -37,7 +37,25 @@ struct FirstLaunchPaywallView: View {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }
 
-    var body: some View {
+    #if DEBUG
+    private var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
+    #endif
+
+    var body: some View { proofDriven(realBody) }
+
+    #if DEBUG
+    @ViewBuilder private func proofDriven<V: View>(_ v: V) -> some View {
+        v.task {
+            guard motionProof else { return }
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            withAnimation { onboarding.hasSeenFirstLaunchPaywall = true }
+        }
+    }
+    #else
+    @ViewBuilder private func proofDriven<V: View>(_ v: V) -> some View { v }
+    #endif
+
+    private var realBody: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
 

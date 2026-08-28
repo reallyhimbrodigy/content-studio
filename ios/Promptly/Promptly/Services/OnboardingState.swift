@@ -165,6 +165,7 @@ final class OnboardingState: ObservableObject {
     /// (screenshots of dark surfaces without a server flip). DEBUG only.
     func debugForceFlag(_ key: String) {
         switch key {
+        case "first_launch_paywall": firstLaunchPaywallEnabled = true
         case "attribution_gate": attributionGateEnabled = true
         case "onboarding_v2": onboardingV2Enabled = true
         case "render_transparency": renderTransparencyEnabled = true

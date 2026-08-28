@@ -26,15 +26,13 @@ import RevenueCat
 /// real fix for a question that has produced ZERO answers all-time: it was
 /// never in a live path.
 ///
-/// EDITORIAL COST OF THIS RESTRUCTURE (flagged for Zac, not hidden): the
-/// previous cut asked a third question about EDITING STYLE, whose answer fed
-/// the composer prefill — i.e. `vibe_input`, the pipeline's actual editorial
-/// channel. Replacing it with attribution means Q2 (video type) is now the
-/// ONLY question feeding the edit. Attribution is a marketing input; it
-/// changes no pixel of the output. If the edit's opening quality matters more
-/// than channel attribution, the fix is to fold style descriptors into Q2's
-/// options (e.g. "podcast clips — fast cuts" vs "podcast clips — clean") so
-/// one question carries both signals; that is a one-array change here.
+/// EDITORIAL SIGNAL (the cost this restructure incurred, and how it was
+/// repaid): replacing the old style question with attribution left Q2 as the
+/// ONLY question feeding the edit — attribution is a marketing input and
+/// changes no pixel of the output. Q2 therefore carries BOTH signals: it asks
+/// content type, and offers editing style as a separate optional control on
+/// the same screen (see VideoTypeQuestionView). Both halves are encoded into
+/// one stored key so `vibeV2` can compose the prefill from each.
 struct OnboardingV2Flow: View {
     @StateObject private var state = OnboardingState.shared
     @ObservedObject private var subscription = SubscriptionService.shared
@@ -73,16 +71,15 @@ struct OnboardingV2Flow: View {
                 }, autoDriveKey: motionProof ? "clients" : nil)
 
             case .videoType:
-                OnboardingQuestionView(question: .videoTypeV2,
-                                       progress: (2, 3), onSkip: {},
-                                       onContinue: { picked in
+                VideoTypeQuestionView(progress: (2, 3), onSkip: {},
+                                      onContinue: { picked in
                     record(step: "video_type", value: picked.first) { state.v2VideoType = $0 }
                     // The ONE question that still feeds the edit: its answer
                     // becomes the composer prefill → vibe_input on the render.
                     state.preselectedVibe = OnboardingQuestion.vibeV2(forVideoType: picked.first)
                     goingForward = true
                     state.v2Step = .attribution
-                }, autoDriveKey: motionProof ? "podcast:fast" : nil)
+                }, autoDrive: motionProof ? ("podcast", "fast") : nil)
 
             case .attribution:
                 AttributionAskView(context: "onboarding_v2", progress: (3, 3)) {
@@ -127,7 +124,11 @@ struct OnboardingV2Flow: View {
     /// After Q3: the reveal only runs when there is a REAL offer to reveal and
     /// the user has not already subscribed on screen one.
     private func advanceFromAttribution() {
-        if subscription.isPro || !OfferReveal.isAvailable(in: packages) {
+        // The reveal honours the plan the user is already leaning on: yearly
+        // offers now exist in all 175 territories, so an annual-leaning user
+        // sees the ANNUAL offer rather than being switched to a monthly one.
+        let preferred = PlanSavings.defaultSelection(in: packages)
+        if subscription.isPro || !OfferReveal.isAvailable(in: packages, preferring: preferred) {
             Analytics.track("offer_reveal_skipped",
                             props: ["context": "onboarding_v2",
                                     "reason": subscription.isPro ? "already_pro" : "no_offer_on_products"])
@@ -181,27 +182,14 @@ extension OnboardingQuestion {
         propKey: "audience"
     )
 
-    /// Q2 — content type AND editing register in ONE question (ruled
-    /// 2026-08-27, recovering the editorial signal the restructure had cost).
-    /// Keys are "type:style" so a single answer feeds both the prefill (style
-    /// shapes the vibe text) and every content-type consumer (which parses
-    /// the prefix). "other" carries no style — a blank composer, as before.
-    static let videoTypeV2 = OnboardingQuestion(
-        step: .intent,
-        title: String(localized: "What kind of videos do you make?"),
-        subtitle: String(localized: "We'll start you on a matching style."),
-        options: [
-            ("podcast:fast", String(localized: "Podcast clips — fast cuts")),
-            ("podcast:clean", String(localized: "Podcast clips — clean and minimal")),
-            ("talkinghead:punchy", String(localized: "Talking head — punchy")),
-            ("talkinghead:clean", String(localized: "Talking head — clean and minimal")),
-            ("vlogs:cinematic", String(localized: "Vlogs — cinematic")),
-            ("promo:punchy", String(localized: "Product or promo — punchy")),
-            ("other", String(localized: "Other")),
-        ],
-        event: "onboarding_v2_step",
-        propKey: "video_type"
-    )
+    // Q2 has NO OnboardingQuestion entry: it is not a plain option list.
+    // It asks content type AND offers editing style as a second, optional
+    // control, so it owns its own view (VideoTypeQuestionView). The Cartesian
+    // product that used to live here — "Podcast clips — fast cuts",
+    // "Podcast clips — clean and minimal", "Talking head — punchy"... —
+    // repeated every noun, grew with each style, and asked two questions
+    // through one control. It was deleted, not left dormant, so it cannot be
+    // rewired by a later reader. The stored key shape is unchanged.
 
     /// The content-type half of a Q2 key ("podcast:fast" -> "podcast").
     static func contentTypeV2(_ key: String?) -> String? {

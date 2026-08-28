@@ -286,7 +286,29 @@ struct PromptlyApp: App {
     /// Knob-gated (/api/health.first_launch_paywall, default OFF = dark).
     /// Authenticated users never see it (they're past first launch by
     /// definition — the grandfather rule the wall-onboarding branch also uses).
+    #if DEBUG
+    /// `-motionProof` records the ENTIRE sequence in one take — paywall,
+    /// three questions, reveal — from a cold launch. Zac reviewed a take
+    /// that began at question one and was missing its first screen and two
+    /// of three questions; that is not a reviewable artifact. The override
+    /// only relaxes the AUTH precondition (a proof sim is signed in); every
+    /// other gate below still applies.
+    var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
+    /// One take, every time: clear the show-once stamps so the recording
+    /// always starts at screen one.
+    static func motionProofReset() {
+        let d = UserDefaults.standard
+        d.set(false, forKey: "first_launch_paywall_seen")
+        d.set(false, forKey: "onboarding_completed")
+        d.set(false, forKey: "attribution_gate_seen")
+        d.set("audience", forKey: "onboarding_v2_step")
+    }
+    #endif
+
     private var showFirstLaunchPaywall: Bool {
+        #if DEBUG
+        if motionProof { return !onboarding.hasSeenFirstLaunchPaywall }
+        #endif
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
               !auth.isAuthenticated else { return false }
@@ -319,6 +341,9 @@ struct PromptlyApp: App {
     /// its ZStack slot sits above showWallOnboarding. Knob off = today's
     /// branches, byte-for-byte.
     private var showOnboardingV2: Bool {
+        #if DEBUG
+        if motionProof { return !onboarding.hasCompletedOnboarding }
+        #endif
         guard onboarding.onboardingV2Enabled,
               !onboarding.hasCompletedOnboarding else { return false }
         if auth.isAuthenticated && !onboarding.startedFlow { return false }
@@ -405,6 +430,11 @@ struct PromptlyApp: App {
             // Post-auth landing reset (build 217): every sign-in lands on chat
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.
+            .onAppear {
+                #if DEBUG
+                if motionProof { Self.motionProofReset(); OnboardingState.shared.debugForceFlag("first_launch_paywall"); OnboardingState.shared.debugForceFlag("onboarding_v2") }
+                #endif
+            }
             .onChange(of: auth.isAuthenticated) { _, authed in
                 if authed {
                     AppState.shared.landOnChat()
