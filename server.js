@@ -3583,6 +3583,13 @@ const server = http.createServer((req, res) => {
           'offer_reveal_viewed',
           'offer_reveal_declined',
           'offer_reveal_skipped',
+          // UPLOAD_NEVER_STARTED's reporting path (2026-08-28). This is the
+          // ONLY record that a pick died before becoming a job — there is no
+          // server-side trace of that failure by construction, so dropping this
+          // event returns the product's largest failure class to being
+          // completely unmeasurable. Carries error_code/error_subcode/
+          // error_cause in the worker's shape so both codebases union.
+          'upload_never_started',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
