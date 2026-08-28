@@ -1,5 +1,39 @@
 import SwiftUI
 
+// MARK: - Onboarding motion vocabulary (2026-08-27)
+//
+// One spring, used everywhere in this flow, so screens feel like one product
+// rather than five independently-tuned animations. Every value here is
+// interruptible by construction (SwiftUI springs retarget mid-flight) and no
+// animation ever gates a tap: selection commits on touch-down feedback via a
+// ButtonStyle, never inside a completion handler.
+enum OnboardingMotion {
+    /// The house spring — quick enough to feel responsive at 60/120Hz,
+    /// damped enough not to wobble.
+    static let spring = Animation.spring(response: 0.38, dampingFraction: 0.82)
+    /// Selection/press: shorter, snappier.
+    static let snap = Animation.spring(response: 0.26, dampingFraction: 0.7)
+    /// Reduce Motion substitute: the state change still READS, it just
+    /// doesn't travel. Never "no animation at all" — an instant swap is its
+    /// own kind of jarring.
+    static let reduced = Animation.easeInOut(duration: 0.18)
+
+    static func step(_ reduce: Bool) -> Animation { reduce ? reduced : spring }
+    static func tap(_ reduce: Bool) -> Animation { reduce ? reduced : snap }
+}
+
+/// Press feedback that can never block input: the scale lives in the button
+/// STYLE, driven by `configuration.isPressed`, so the gesture is never
+/// waiting on an animation to finish.
+struct OnboardingPressStyle: ButtonStyle {
+    var reduceMotion: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1.0)
+            .animation(OnboardingMotion.tap(reduceMotion), value: configuration.isPressed)
+    }
+}
+
 /// One onboarding question — single-select chips, Skip top-right, and a Continue
 /// that stays DISABLED until a choice is made. Three of these back-to-back
 /// (audience → intent → attribution) are the entire onboarding after signup,
@@ -100,6 +134,16 @@ struct OnboardingQuestionView: View {
     let onContinue: (_ pickedKeys: [String]) -> Void
 
     @State private var selected: [String] = []
+    #if DEBUG
+    /// Motion-proof only: selects this option and continues, on a delay, via
+    /// the SAME state changes a real tap makes — so a screen recording shows
+    /// the real selection spring, the real Continue enable, and the real
+    /// beat transition. Synthetic INPUT, genuine animation.
+    var autoDriveKey: String? = nil
+    #endif
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Required questions gate Continue on a selection; the optional one never does.
+    private var canContinue: Bool { isOptional || !selected.isEmpty }
 
     var body: some View {
         ZStack {
@@ -122,6 +166,10 @@ struct OnboardingQuestionView: View {
                                 Capsule().fill(Color.white.opacity(0.12))
                                 Capsule().fill(Color.white)
                                     .frame(width: geo.size.width * CGFloat(p.index) / CGFloat(max(p.total, 1)))
+                                    // The bar travels between beats; without
+                                    // this it teleports and the flow reads as
+                                    // five unrelated screens.
+                                    .animation(OnboardingMotion.step(reduceMotion), value: p.index)
                             }
                         }
                         .frame(width: 120, height: 4)
@@ -171,18 +219,32 @@ struct OnboardingQuestionView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .foregroundStyle(!isOptional && selected.isEmpty ? .white.opacity(0.4) : .black)
+                        .foregroundStyle(canContinue ? .black : .white.opacity(0.4))
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(!isOptional && selected.isEmpty ? Color.white.opacity(0.12) : Color.white)
+                                .fill(canContinue ? Color.white : Color.white.opacity(0.12))
                         )
+                        // Enabling is an EVENT, not a colour swap: the button
+                        // rises to full size and settles as the answer lands.
+                        .scaleEffect(canContinue ? 1.0 : 0.97)
+                        .animation(OnboardingMotion.step(reduceMotion), value: canContinue)
                 }
-                .disabled(!isOptional && selected.isEmpty)
+                .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
+                .disabled(!canContinue)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
             .frame(maxWidth: .infinity)
         }
+        #if DEBUG
+        .task {
+            guard let key = autoDriveKey else { return }
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            withAnimation(OnboardingMotion.tap(reduceMotion)) { selected = [key] }
+            try? await Task.sleep(nanoseconds: 1_100_000_000)
+            onContinue(selected)
+        }
+        #endif
     }
 
     private func chip(_ key: String, _ label: String) -> some View {
@@ -203,13 +265,16 @@ struct OnboardingQuestionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
-                }
+                // The check springs in rather than blinking on — the one
+                // moment the user is told "yes, that one".
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.white)
+                    .scaleEffect(isSelected ? 1 : 0.4)
+                    .opacity(isSelected ? 1 : 0)
             }
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity, minHeight: 56)
+            .animation(OnboardingMotion.tap(reduceMotion), value: isSelected)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.16 : 0.07))
@@ -219,5 +284,6 @@ struct OnboardingQuestionView: View {
                     .stroke(Color.white.opacity(isSelected ? 0.9 : 0.0), lineWidth: 1.5)
             )
         }
+        .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
     }
 }

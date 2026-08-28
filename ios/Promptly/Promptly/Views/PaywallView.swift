@@ -524,7 +524,8 @@ struct PaywallView: View {
     /// have one; the rest is the approved claim set, unchanged.
     private var benefitLines: [String] {
         var lines: [String] = []
-        switch onboardingStateRef.v2Making {
+        // Same raw-key defect as the reveal: parse the content-type half.
+        switch OnboardingQuestion.contentTypeV2(onboardingStateRef.v2Making) {
         case "podcast":
             lines.append(String(localized: "Turn every episode into clips, unlimited"))
         case "talkinghead":

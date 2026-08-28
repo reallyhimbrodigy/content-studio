@@ -38,6 +38,16 @@ import RevenueCat
 struct OnboardingV2Flow: View {
     @StateObject private var state = OnboardingState.shared
     @ObservedObject private var subscription = SubscriptionService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Beats carry DIRECTION: forward slides in from the trailing edge, a
+    /// back-step from the leading edge. Without it every advance reads the
+    /// same and the flow has no sense of place.
+    @State private var goingForward = true
+    #if DEBUG
+    /// `-motionProof YES` walks the flow so a screen recording can evidence
+    /// motion the still-frame harness deliberately cannot.
+    private var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
+    #endif
 
     private var packages: [Package] {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
@@ -55,26 +65,37 @@ struct OnboardingV2Flow: View {
             switch state.v2Step {
             case .audience:
                 OnboardingQuestionView(question: .audienceV2,
-                                       progress: (1, 3), onSkip: {}) { picked in
+                                       progress: (1, 3), onSkip: {},
+                                       onContinue: { picked in
                     record(step: "audience", value: picked.first) { state.v2Audience = $0 }
+                    goingForward = true
                     state.v2Step = .videoType
-                }
+                }, autoDriveKey: motionProof ? "clients" : nil)
 
             case .videoType:
                 OnboardingQuestionView(question: .videoTypeV2,
-                                       progress: (2, 3), onSkip: {}) { picked in
+                                       progress: (2, 3), onSkip: {},
+                                       onContinue: { picked in
                     record(step: "video_type", value: picked.first) { state.v2VideoType = $0 }
                     // The ONE question that still feeds the edit: its answer
                     // becomes the composer prefill → vibe_input on the render.
                     state.preselectedVibe = OnboardingQuestion.vibeV2(forVideoType: picked.first)
+                    goingForward = true
                     state.v2Step = .attribution
-                }
+                }, autoDriveKey: motionProof ? "podcast:fast" : nil)
 
             case .attribution:
                 AttributionAskView(context: "onboarding_v2", progress: (3, 3)) {
                     state.persistAnswersToProfile()
                     advanceFromAttribution()
                 }
+                #if DEBUG
+                .task {
+                    guard motionProof else { return }
+                    try? await Task.sleep(nanoseconds: 1_600_000_000)
+                    advanceFromAttribution()
+                }
+                #endif
 
             case .reveal:
                 OfferRevealView(onDecline: { complete() }, onPurchased: { complete() })
@@ -83,6 +104,8 @@ struct OnboardingV2Flow: View {
                 Color.black.ignoresSafeArea()
             }
         }
+        .transition(beatTransition)
+        .animation(OnboardingMotion.step(reduceMotion), value: state.v2Step)
         .onAppear {
             Analytics.track("onboarding_v2_step", props: ["step": "start", "context": "onboarding_v2"])
             state.markFlowStarted()
@@ -90,6 +113,15 @@ struct OnboardingV2Flow: View {
             if state.hasCompletedOnboarding { state.v2Step = .done }
             if packages.isEmpty { Task { await subscription.refreshOfferings() } }
         }
+    }
+
+    /// Directional slide, or a plain crossfade under Reduce Motion (the
+    /// change still reads; it just doesn't travel).
+    private var beatTransition: AnyTransition {
+        if reduceMotion { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
     /// After Q3: the reveal only runs when there is a REAL offer to reveal and
@@ -101,6 +133,7 @@ struct OnboardingV2Flow: View {
                                     "reason": subscription.isPro ? "already_pro" : "no_offer_on_products"])
             complete()
         } else {
+            goingForward = true
             state.v2Step = .reveal
         }
     }

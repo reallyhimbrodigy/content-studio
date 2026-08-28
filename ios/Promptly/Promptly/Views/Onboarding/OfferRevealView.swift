@@ -27,7 +27,12 @@ struct OfferRevealView: View {
 
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPurchasing = false
+    /// The price is the payload of this screen. It LANDS — settles in with
+    /// weight a beat after the headline — rather than simply being present
+    /// when the screen appears.
+    @State private var priceLanded = false
 
     private var packages: [Package] {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
@@ -57,7 +62,10 @@ struct OfferRevealView: View {
                         .padding(.horizontal, 28)
 
                     if let pkg = offerPackage {
-                        priceBlock(pkg).padding(.top, 22)
+                        priceBlock(pkg)
+                            .padding(.top, 22)
+                            .scaleEffect(priceLanded || reduceMotion ? 1 : 0.88)
+                            .opacity(priceLanded ? 1 : 0)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -100,6 +108,7 @@ struct OfferRevealView: View {
                         .frame(maxWidth: .infinity).frame(height: 56)
                         .background(Color.white, in: Capsule())
                     }
+                    .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
                     .disabled(offerPackage == nil || isPurchasing)
                     .padding(.horizontal, 24)
                     .padding(.top, 32)
@@ -138,6 +147,14 @@ struct OfferRevealView: View {
                                 props: ["context": "onboarding_v2", "reason": "no_offer_at_render"])
                 onDecline()
                 return
+            }
+            // The landing is the whole point of the beat, so it runs on a
+            // short delay after the screen settles — and is a plain fade
+            // under Reduce Motion.
+            withAnimation(reduceMotion
+                          ? OnboardingMotion.reduced
+                          : .spring(response: 0.5, dampingFraction: 0.72).delay(0.12)) {
+                priceLanded = true
             }
             Analytics.track("offer_reveal_viewed",
                             props: ["context": "onboarding_v2",
@@ -248,7 +265,11 @@ enum OfferReveal {
     /// Falls back to the approved generic claims when a question was skipped.
     static func benefitLines(audience: String?, videoType: String?) -> [String] {
         var lines: [String] = []
-        switch videoType {
+        // Render-caught 2026-08-27 (motion recording): Q2 keys became
+        // "type:style" when style was folded in, so switching on the RAW key
+        // silently fell through to the generic line — the personalised
+        // benefit disappeared without any error. Parse the content half.
+        switch OnboardingQuestion.contentTypeV2(videoType) {
         case "podcast":     lines.append(String(localized: "Every episode into clips, unlimited"))
         case "talkinghead": lines.append(String(localized: "Every take into a finished cut, unlimited"))
         case "vlogs":       lines.append(String(localized: "Every vlog cut and captioned, unlimited"))

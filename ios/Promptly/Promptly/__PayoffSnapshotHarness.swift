@@ -42,6 +42,7 @@ struct PayoffSnapshotHarnessView: View {
     ///      settles. The capture script MUST wait for that marker; a
     ///      screenshot taken without it is not evidence.
     @State private var settled = false
+    static var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
 
     /// Flags MUST be forced before any child view is constructed. A `.task`
     /// on the presented view races that view's OWN `.task` (which reads the
@@ -148,11 +149,13 @@ struct PayoffSnapshotHarnessView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .transaction { $0.animation = nil }   // (1) nothing can be in flight
+        // (1) nothing can be in flight — EXCEPT under -motionProof, whose
+        // whole purpose is to record the motion this assertion suppresses.
+        .transaction { if !Self.motionProof { $0.animation = nil } }
         .task {
             // (2) two settles: one for the initial layout, one to prove the
             // view did not re-enter an animation (the step-fight symptom).
-            UIView.setAnimationsEnabled(false)
+            if !Self.motionProof { UIView.setAnimationsEnabled(false) }
             await Task.yield()
             try? await Task.sleep(nanoseconds: 400_000_000)
             await Task.yield()
