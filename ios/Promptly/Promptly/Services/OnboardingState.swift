@@ -245,6 +245,24 @@ final class OnboardingState: ObservableObject {
     /// render-wait copy and the export gate's benefit page.
     @Published var v2Audience: String?
     @Published var v2VideoType: String?
+
+    /// The plan the user actually PRE-SELECTED on the first-launch paywall.
+    ///
+    /// Added 2026-08-28. The paywall held its selection in local `@State`, so
+    /// the moment that screen went away the choice was gone, and the offer
+    /// reveal fell back to `PlanSavings.defaultSelection` — the DEFAULT, not the
+    /// user's pick. A user who deliberately tapped Monthly and dismissed was
+    /// then shown an annual offer. It looked correct in testing only because
+    /// the default happens to be annual, so the two agreed by coincidence on
+    /// the one path anyone exercised.
+    ///
+    /// Stored as the RevenueCat package identifier, and resolved back to a live
+    /// `Package` at read time — never persist a price or a plan name, both of
+    /// which change per storefront and per offering revision.
+    @Published var preselectedPlanID: String? {
+        didSet { UserDefaults.standard.set(preselectedPlanID, forKey: Self.preselectedPlanKey) }
+    }
+    static let preselectedPlanKey = "preselected_plan_id"
     /// Back-compat alias: the render-wait header and export gate read the
     /// content-type answer under its old name.
     var v2Making: String? { v2VideoType }
@@ -263,6 +281,12 @@ final class OnboardingState: ObservableObject {
         if let raw = UserDefaults.standard.string(forKey: "onboarding_v2_step"),
            let s = V2Step(rawValue: raw) {
             v2Step = s
+        }
+        // The paywall and the reveal are separate screens in separate launches'
+        // worth of state; without this the user's plan choice does not survive
+        // the trip between them.
+        if preselectedPlanID == nil {
+            preselectedPlanID = UserDefaults.standard.string(forKey: Self.preselectedPlanKey)
         }
     }
 

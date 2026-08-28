@@ -44,7 +44,7 @@ struct OfferRevealView: View {
     /// nothing to reveal (see `OfferReveal.isAvailable`).
     /// The plan the user is already leaning on — the same computed
     /// pre-selection the paywall uses, so the reveal never switches them.
-    private var preferredPackage: Package? { PlanSavings.defaultSelection(in: packages) }
+    private var preferredPackage: Package? { OfferReveal.preferredPackage(in: packages) }
     private var offerPackage: Package? {
         OfferReveal.package(in: packages, preferring: preferredPackage)
     }
@@ -209,13 +209,21 @@ struct OfferRevealView: View {
             )
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                // 0.85s, not 1.6s. At 1.6 the pulse was slower than a resting
+                // breath and read as ambient light rather than as something
+                // live — you had to watch the badge to notice it moving at all.
+                withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
                     glowing = true
                 }
             }
     }
-    private var glowStrength: Double { glowing ? 0.75 : 0.3 }
-    private var glowRadius: CGFloat { glowing ? 16 : 7 }
+    // Trough-to-peak is what makes a pulse legible in peripheral vision, and it
+    // was 0.3->0.75 (2.5x) on a 7->16pt radius: too narrow to catch the eye
+    // beside a large price. Now ~7x on opacity and ~5x on radius, so the badge
+    // is the second thing seen after the number without ever being brighter
+    // than it.
+    private var glowStrength: Double { glowing ? 0.95 : 0.14 }
+    private var glowRadius: CGFloat { glowing ? 22 : 4 }
 
     /// Struck-through standard price beside the live intro price. Both strings
     /// come from the store; we format neither.
@@ -289,17 +297,48 @@ enum OfferReveal {
         package(in: packages, preferring: preferred) != nil
     }
 
+    /// The plan the user actually pre-selected on the paywall, resolved back to
+    /// a live Package; the default selection when they never saw a paywall.
+    ///
+    /// This is the ONE resolver. OnboardingV2Flow uses it to decide whether to
+    /// show the reveal at all, and OfferRevealView uses it to decide what to
+    /// render — if those two computed the preference separately they could
+    /// disagree, and the flow would show a screen the view then declines to
+    /// fill.
+    @MainActor
+    static func preferredPackage(in packages: [Package]) -> Package? {
+        if let id = OnboardingState.shared.preselectedPlanID,
+           let picked = packages.first(where: { $0.identifier == id }) {
+            return picked
+        }
+        return PlanSavings.defaultSelection(in: packages)
+    }
+
+    /// The largest discount we will ever CLAIM, whatever the store says.
+    ///
+    /// Ruled 2026-08-28. Apple's price points do not land on clean fractions:
+    /// the same "50% off" intro resolves to 49.65% in one territory and 52% in
+    /// another, purely from rounding to the nearest local price point. Claiming
+    /// the 52% would be a different promise per country for the same offer, and
+    /// the number the campaign is built around is 50. So we cap the CLAIM at 50
+    /// and let the real price do the talking above it — a user who gets 52% off
+    /// is told 50% and receives more, which is the only direction this error is
+    /// allowed to run.
+    static let maxClaimedPercent = 50
+
     /// Whole-percent discount of the intro price against the standard price,
-    /// FLOORED — the same discipline as the annual badge: rounding a money
-    /// claim up overstates it. Nil when either price is missing.
+    /// FLOORED and then CAPPED at `maxClaimedPercent`. Never rounds up: a money
+    /// claim rounded up is overstated, and 49.65% presented as "50%" would be a
+    /// claim the receipt does not support. Nil when either price is missing.
     static func percentOff(for pkg: Package) -> Int? {
         guard let intro = pkg.storeProduct.introductoryDiscount,
               intro.paymentMode != .freeTrial else { return nil }
         let std = (pkg.storeProduct.price as NSDecimalNumber).doubleValue
         let off = (intro.price as NSDecimalNumber).doubleValue
         guard std > 0, off < std else { return nil }
-        let pct = Int(((1.0 - off / std) * 100.0).rounded(.down))
-        return pct >= 1 ? pct : nil
+        let floored = Int(((1.0 - off / std) * 100.0).rounded(.down))
+        guard floored >= 1 else { return nil }
+        return min(floored, maxClaimedPercent)
     }
 
     /// The headline states the REAL discount, computed per territory. It used
@@ -335,29 +374,11 @@ enum OfferReveal {
         }
     }
 
-    /// Benefits in the user's OWN terms, from Q1 (who for) and Q2 (what kind).
-    /// Falls back to the approved generic claims when a question was skipped.
+    /// Benefits in the user's OWN terms. The CLAIMS live in ProBenefits; this
+    /// only asks for the personalised variant. Before 2026-08-28 this function
+    /// owned its own list and the first-launch paywall owned a different one,
+    /// which is how they drifted apart without anything noticing.
     static func benefitLines(audience: String?, videoType: String?) -> [String] {
-        var lines: [String] = []
-        // Render-caught 2026-08-27 (motion recording): Q2 keys became
-        // "type:style" when style was folded in, so switching on the RAW key
-        // silently fell through to the generic line — the personalised
-        // benefit disappeared without any error. Parse the content half.
-        switch OnboardingQuestion.contentTypeV2(videoType) {
-        case "podcast":     lines.append(String(localized: "Every episode into clips, unlimited"))
-        case "talkinghead": lines.append(String(localized: "Every take into a finished cut, unlimited"))
-        case "vlogs":       lines.append(String(localized: "Every vlog cut and captioned, unlimited"))
-        case "promo":       lines.append(String(localized: "Every promo cut and captioned, unlimited"))
-        default:            lines.append(String(localized: "Unlimited renders"))
-        }
-        switch audience {
-        case "clients":        lines.append(String(localized: "Turn around client work the same day"))
-        case "small_business": lines.append(String(localized: "Keep your business posting without an editor"))
-        case "employer":       lines.append(String(localized: "Ship team video without a production queue"))
-        default:               lines.append(String(localized: "Re-edit any finished video"))
-        }
-        lines.append(String(localized: "Save and share every video"))
-        lines.append(String(localized: "Upload up to 10 videos at a time"))
-        return lines
+        ProBenefits.lines(audience: audience, videoType: videoType)
     }
 }

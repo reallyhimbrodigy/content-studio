@@ -1,0 +1,103 @@
+#!/bin/bash
+# benefits-parity-gate.sh — THE SHARED-CLAIM CHECK (2026-08-28).
+#
+# THE DEFECT THIS LOCKS OUT:
+#   "Upload up to 10 videos at a time" was listed on the offer reveal and
+#   MISSING from the first-launch paywall — the two screens a new user sees
+#   back-to-back made different promises about the same product. It was not a
+#   typo. FirstLaunchPaywallView hard-coded three benefitRow(...) calls inline
+#   while OfferReveal.benefitLines built four somewhere else. The two lists
+#   shared nothing, so they could not help but drift, and nothing could detect
+#   it: each file read perfectly on its own.
+#
+# THE RULE:
+#   A Pro benefit claim may be WRITTEN in exactly one place — ProBenefits.swift.
+#   Every surface renders that list. A screen that spells a claim itself has, by
+#   definition, forked the pitch.
+#
+# Proven both directions: re-inline a claim in a paywall view and this fails;
+# remove it and it passes.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+SRC="$DIR/Promptly"
+SOURCE_OF_TRUTH="$SRC/Views/ProBenefits.swift"
+fail=0
+
+if [ ! -f "$SOURCE_OF_TRUTH" ]; then
+  echo "benefits-parity: FAILED — ProBenefits.swift is missing; there is no shared source."
+  exit 1
+fi
+
+# ── 1. the claim that actually went missing must be IN the shared source ─────
+if ! grep -q "Upload up to 10 videos at a time" "$SOURCE_OF_TRUTH"; then
+  echo "benefits-parity: FAILED — the shared source no longer lists"
+  echo "  'Upload up to 10 videos at a time'. That claim disappearing from one"
+  echo "  surface is the exact defect this gate exists for."
+  fail=1
+fi
+
+# ── 2. the tail must be structurally inherited, not re-listed ────────────────
+# personalised() must START from core and substitute, so the claim SET and its
+# length are invariant. If it ever builds a fresh array, the tail can drift
+# again and this gate would not notice.
+if ! grep -qE "var out = core" "$SOURCE_OF_TRUTH"; then
+  echo "benefits-parity: FAILED — personalised() must start from \`var out = core\`"
+  echo "  and substitute by index. Building a fresh list re-opens the drift."
+  fail=1
+fi
+
+# ── 3. the NEW-USER surfaces may not spell a claim themselves ───────────────
+# Scope is deliberate. These are the two screens a new user sees back-to-back
+# before any value, and they are the pair that drifted. The legacy
+# PaywallFeatureChecklist / ProCelebrationView carry separately-approved live
+# phrasing ("Unlimited renders", "Upload up to 10 at once") and are NOT merged
+# here — changing approved live copy is a ruling, not a refactor. That
+# inconsistency is reported, not silently rewritten.
+GOVERNED="Views/FirstLaunchPaywallView.swift Views/Onboarding/OfferRevealView.swift"
+
+CLAIMS=$(grep -oE 'String\(localized: "[^"]+"\)' "$SOURCE_OF_TRUTH" | sed 's/String(localized: "//; s/")$//')
+if [ -z "$CLAIMS" ]; then
+  echo "benefits-parity: FAILED — parsed ZERO claims out of ProBenefits.swift."
+  echo "  An empty parse is a failed read, not an empty list."
+  exit 1
+fi
+
+for rel in $GOVERNED; do
+  f="$SRC/$rel"
+  [ -f "$f" ] || { echo "benefits-parity: FAILED — governed surface missing: $rel"; fail=1; continue; }
+  # Strip comment lines before matching: a doc comment that EXPLAINS the rule
+  # (and necessarily quotes a claim) is not a forked claim.
+  body=$(grep -vE '^[[:space:]]*(//|/\*|\*)' "$f")
+  while IFS= read -r claim; do
+    [ -z "$claim" ] && continue
+    if printf '%s' "$body" | grep -qF "$claim"; then
+      echo "FORKED CLAIM   $rel spells a benefit that belongs to ProBenefits:"
+      echo "                 \"$claim\""
+      fail=1
+    fi
+  done <<< "$CLAIMS"
+done
+
+# ── 4. and they must actually RENDER the shared list ────────────────────────
+# Without this, a surface could pass rule 3 by simply showing no benefits.
+for rel in $GOVERNED; do
+  f="$SRC/$rel"
+  if ! grep -q "ProBenefits" "$f"; then
+    echo "NOT WIRED      $rel does not reference ProBenefits — it shows no shared claims at all."
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "benefits-parity: FAILED — a Pro benefit is written outside ProBenefits.swift."
+  echo "Render the shared list instead. Two screens that each own a copy of the"
+  echo "pitch will drift, and the drift is invisible in review because each file"
+  echo "reads correctly by itself."
+  exit 1
+fi
+
+n=$(printf '%s\n' "$CLAIMS" | grep -c . || true)
+echo "benefits-parity: PASS — all $n Pro claims live only in ProBenefits.swift."
+exit 0

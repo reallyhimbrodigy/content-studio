@@ -127,7 +127,7 @@ struct OnboardingV2Flow: View {
         // The reveal honours the plan the user is already leaning on: yearly
         // offers now exist in all 175 territories, so an annual-leaning user
         // sees the ANNUAL offer rather than being switched to a monthly one.
-        let preferred = PlanSavings.defaultSelection(in: packages)
+        let preferred = OfferReveal.preferredPackage(in: packages)
         if subscription.isPro || !OfferReveal.isAvailable(in: packages, preferring: preferred) {
             Analytics.track("offer_reveal_skipped",
                             props: ["context": "onboarding_v2",

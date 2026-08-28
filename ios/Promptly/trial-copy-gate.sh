@@ -136,3 +136,4 @@ echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no liter
 # The reader-enumeration check runs from here so ONE invocation covers both:
 # a separate script nobody remembers to run is not a gate.
 bash "$DIR/compound-key-gate.sh"
+bash "$DIR/benefits-parity-gate.sh"

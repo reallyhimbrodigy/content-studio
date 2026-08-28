@@ -296,12 +296,35 @@ struct PromptlyApp: App {
     var motionProof: Bool { ProcessInfo.processInfo.arguments.contains("-motionProof") }
     /// One take, every time: clear the show-once stamps so the recording
     /// always starts at screen one.
+    ///
+    /// FIXED 2026-08-28, and the bug is worth stating because it made the
+    /// harness lie. This used to write ONLY to UserDefaults. But
+    /// `OnboardingState.hasSeenFirstLaunchPaywall` is initialised FROM
+    /// UserDefaults when the singleton is constructed, which happens before
+    /// this runs — so after any previous run had completed the flow, the
+    /// in-memory value was already `true`, the root branch skipped the paywall,
+    /// and the recording silently started at question one. It looked like a
+    /// clean take. The first proof run on a fresh simulator passed, every run
+    /// after it quietly lost screen one, and nothing failed.
+    ///
+    /// So reset the LIVE state, not just the persisted copy. The defaults
+    /// writes stay for the next cold launch; the in-memory assignments are what
+    /// make THIS launch start at screen one.
+    @MainActor
     static func motionProofReset() {
         let d = UserDefaults.standard
         d.set(false, forKey: "first_launch_paywall_seen")
         d.set(false, forKey: "onboarding_completed")
         d.set(false, forKey: "attribution_gate_seen")
         d.set("audience", forKey: "onboarding_v2_step")
+        d.removeObject(forKey: OnboardingState.preselectedPlanKey)
+
+        let s = OnboardingState.shared
+        s.hasSeenFirstLaunchPaywall = false
+        s.hasCompletedOnboarding = false
+        s.hasSeenAttributionGate = false
+        s.preselectedPlanID = nil
+        s.v2Step = .audience
     }
     #endif
 

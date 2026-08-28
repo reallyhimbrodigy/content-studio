@@ -164,20 +164,37 @@ struct FirstLaunchPaywallView: View {
             // Canonical shared paywall-impression funnel; context segments it.
             Analytics.track("upgrade_wall_viewed", props: (["context": "first_launch"] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
             if packages.isEmpty { await subscription.refreshOfferings() }
-            if selectedPackage == nil { selectedPackage = packages.first }
+            if selectedPackage == nil {
+                selectedPackage = packages.first
+                // Record the DEFAULT too: a user who never taps has still been
+                // shown a pre-selected plan, and the reveal must match what
+                // they actually saw highlighted.
+                OnboardingState.shared.preselectedPlanID = packages.first?.identifier
+            }
         }
         .onChange(of: subscription.offerings?.current?.availablePackages.count ?? 0) { _, _ in
-            if selectedPackage == nil { selectedPackage = packages.first }
+            if selectedPackage == nil {
+                selectedPackage = packages.first
+                // Record the DEFAULT too: a user who never taps has still been
+                // shown a pre-selected plan, and the reveal must match what
+                // they actually saw highlighted.
+                OnboardingState.shared.preselectedPlanID = packages.first?.identifier
+            }
         }
     }
 
     // MARK: - Pieces
 
+    /// Reads ProBenefits.core — this screen owns NO list of its own. It used to
+    /// hard-code three rows while the offer reveal built four, so the two
+    /// screens a new user sees back-to-back promised different things about the
+    /// same product ("Upload up to 10 videos at a time" was on the reveal and
+    /// missing here). A shared source is the only fix that stays fixed.
     private var benefits: some View {
         VStack(alignment: .leading, spacing: 12) {
-            benefitRow(icon: "infinity", text: "Unlimited videos, no daily cap")
-            benefitRow(icon: "captions.bubble.fill", text: "Captions, cuts and graphics — automatic")
-            benefitRow(icon: "arrow.uturn.left", text: "Re-edit any finished video")
+            ForEach(ProBenefits.core) { b in
+                benefitRow(icon: b.icon, text: b.text)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -200,6 +217,9 @@ struct FirstLaunchPaywallView: View {
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPackage = pkg
+            // Survive this screen: the offer reveal later honours THIS choice
+            // rather than the default plan.
+            OnboardingState.shared.preselectedPlanID = pkg.identifier
             // `context` names the surface, same key the purchase_* terminals carry.
             Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": "first_launch"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {

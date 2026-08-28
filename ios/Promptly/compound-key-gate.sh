@@ -32,10 +32,24 @@ SRC="$DIR/Promptly"
 # Fields whose stored values are "a:b" shaped.
 COMPOUND_KEYS='v2VideoType|v2Making'
 # Functions that parse them. Reading through any of these is correct.
-PARSERS='contentTypeV2|styleV2|makingLabelV2|vibeV2'
+# Reading the key is also safe when a file HANDS it to a component that parses
+# it. ProBenefits is such a boundary — it takes videoType: and resolves it via
+# contentTypeV2 internally. That delegation is verified below rather than
+# trusted: if ProBenefits ever stops parsing, this gate fails loudly instead of
+# quietly licensing every caller.
+PARSERS='contentTypeV2|styleV2|makingLabelV2|vibeV2|ProBenefits'
+PARSING_BOUNDARY="$SRC/Views/ProBenefits.swift"
 # Files exempt from the rule: where the key is DEFINED or WRITTEN, and the
 # proof harness which seeds values directly.
 EXEMPT='OnboardingState.swift|__PayoffSnapshotHarness.swift'
+
+# The delegation boundary must really parse, or naming it would be a loophole.
+if [ ! -f "$PARSING_BOUNDARY" ] || ! grep -qE 'contentTypeV2' "$PARSING_BOUNDARY"; then
+  echo "compound-key-gate: FAILED — ProBenefits.swift is accepted as a parsing"
+  echo "boundary but no longer calls contentTypeV2. Every file that delegates to"
+  echo "it would be reading a compound key raw."
+  exit 1
+fi
 
 violations=0
 while IFS= read -r -d '' f; do
