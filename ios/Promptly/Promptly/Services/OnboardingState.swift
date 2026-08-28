@@ -227,13 +227,14 @@ final class OnboardingState: ObservableObject {
     // never collide with the wall flow's `step` above. MAX FOUR beats, ends
     // at the picker, NO paywall anywhere in the flow (that placement was
     // removed for cause).
+    /// Restructured 2026-08-27 to the verified Captions sequence. Screen one
+    /// (the full-price paywall) is NOT a step here — it is the existing
+    /// FirstLaunchPaywallView branch above this flow in PromptlyApp.
     enum V2Step: String, Codable {
-        case language     // beat 1: app language (LanguageSelectionView, reused)
-        case platform     // beat 2: primary platform (amendment 2026-08-27)
-        case making       // beat 3: "What are you making?" → content type
-        case style        // beat 4: "Whose editing style do you like?"
-        case attribution  // beat 5: the shared attribution ask
-        case signin       // beat 6: Sign in with Apple (skipped when authed)
+        case audience     // Q1: who are you making videos for?
+        case videoType    // Q2: what kind of videos? (the one that feeds vibe)
+        case attribution  // Q3: how did you hear about us? (gate merged in)
+        case reveal       // the offer reveal (skipped when no real offer)
         case done         // → the picker (PromptlyApp re-branches)
     }
 
@@ -241,11 +242,13 @@ final class OnboardingState: ObservableObject {
     /// flow's audience/intent so neither flow can clobber the other. All three
     /// feed the composer prefill; `platform` and `making` also personalise the
     /// render-wait copy and the export gate's benefit page.
-    @Published var v2Platform: String?
-    @Published var v2Making: String?
-    @Published var v2Style: String?
+    @Published var v2Audience: String?
+    @Published var v2VideoType: String?
+    /// Back-compat alias: the render-wait header and export gate read the
+    /// content-type answer under its old name.
+    var v2Making: String? { v2VideoType }
 
-    @Published var v2Step: V2Step = .language {
+    @Published var v2Step: V2Step = .audience {
         didSet {
             UserDefaults.standard.set(v2Step.rawValue, forKey: "onboarding_v2_step")
             Analytics.track("onboarding_v2_step", props: ["step": v2Step.rawValue, "context": "onboarding_v2"])
@@ -318,9 +321,8 @@ final class OnboardingState: ObservableObject {
         if let attribution { settings["attribution"] = attribution }
         // V2 survey (amendment 2026-08-27) — segmentable alongside the wall
         // flow's keys; the server merges additively.
-        if let v2Platform { settings["v2_platform"] = v2Platform }
-        if let v2Making { settings["v2_making"] = v2Making }
-        if let v2Style { settings["v2_style"] = v2Style }
+        if let v2Audience { settings["v2_audience"] = v2Audience }
+        if let v2VideoType { settings["v2_video_type"] = v2VideoType }
         guard !settings.isEmpty,
               let token = AuthService.shared.accessToken,
               let url = URL(string: "https://usepromptly.app/api/profile/settings"),

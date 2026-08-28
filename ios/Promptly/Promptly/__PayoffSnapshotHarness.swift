@@ -42,14 +42,25 @@ struct PayoffSnapshotHarnessView: View {
         let o = OnboardingState.shared
         switch n {
         case 6:  o.debugForceFlag("attribution_gate"); o.hasSeenAttributionGate = false
-        case 7, 8, 11, 12: o.debugForceFlag("onboarding_v2")
+        case 7, 8, 11, 12, 15:
+            o.debugForceFlag("onboarding_v2")
+            // Render-caught 2026-08-27: setting v2Step from .task fought the
+            // flow's own restoreV2() on appear, so the view animated between
+            // two beats forever and every screenshot caught a frozen
+            // mid-transition. Seed the PERSISTED key instead — restoreV2()
+            // then restores exactly the beat under proof, with nothing to
+            // fight.
+            UserDefaults.standard.set(
+                ["7": "videoType", "8": "attribution", "11": "audience",
+                 "12": "videoType", "15": "reveal"][String(n)] ?? "audience",
+                forKey: "onboarding_v2_step")
         case 13:
             o.debugForceFlag("render_transparency")
-            o.v2Making = "podcast"; o.v2Platform = "tiktok"
+            o.v2VideoType = "podcast"
         case 14:
             o.debugForceFlag("exportgate_two_page")
             o.debugForceFlag("exportgate_personalization")
-            o.v2Making = "podcast"
+            o.v2VideoType = "podcast"
         default: break
         }
     }
@@ -78,12 +89,10 @@ struct PayoffSnapshotHarnessView: View {
                     // .task runs after the flow's onAppear/restoreV2, so this
                     // forced beat wins. The didSet fires its analytics event in
                     // the harness — same as OnboardingProofHarness behavior.
-                    OnboardingState.shared.v2Step = .making
                 }
             case 8: OnboardingV2Flow()
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
-                    OnboardingState.shared.v2Step = .attribution
                 }
             case 9: labeled("PUSH PRIMER — pure view (live = 360pt sheet)") {
                     PushPrimerView(onAccept: {}, onDecline: {})
@@ -98,28 +107,31 @@ struct PayoffSnapshotHarnessView: View {
             case 11: OnboardingV2Flow()
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
-                    OnboardingState.shared.v2Step = .platform
                 }
             case 12: OnboardingV2Flow()
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
-                    OnboardingState.shared.v2Step = .style
+                }
+            case 15: OnboardingV2Flow()
+                .task {
+                    OnboardingState.shared.debugForceFlag("onboarding_v2")
                 }
             case 13: labeled("RENDER TRANSPARENCY — survey-personalised header over the live stage feed") {
                     MessageBubble(message: Self.renderingMock)
                 }
                 .task {
                     OnboardingState.shared.debugForceFlag("render_transparency")
-                    OnboardingState.shared.v2Making = "podcast"
-                    OnboardingState.shared.v2Platform = "tiktok"
+                    OnboardingState.shared.v2VideoType = "podcast"
                 }
             case 14: PaywallView(isPresented: .constant(true), reason: .exportGate,
                                  exportContextOverride: Self.exportCtxMock)
                 .task {
                     OnboardingState.shared.debugForceFlag("exportgate_two_page")
                     OnboardingState.shared.debugForceFlag("exportgate_personalization")
-                    OnboardingState.shared.v2Making = "podcast"
+                    OnboardingState.shared.v2VideoType = "podcast"
                 }
+            case 16: OnboardingQuestionView(question: .audienceV2,
+                                            progress: (1, 3), onSkip: {}) { _ in }
             default: labeled("§6 RESULT — video · post package · Share hero") { resultBubble }
             }
         }

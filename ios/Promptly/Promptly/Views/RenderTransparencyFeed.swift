@@ -28,27 +28,15 @@ struct RenderTransparencyHeader: View {
     /// contributes ONLY the line nothing else says: whose job this is.
     @ObservedObject private var onboarding = OnboardingState.shared
 
-    /// "Cutting your podcast clip for TikTok" / "Cutting your video" —
-    /// composed ONLY from answers the user actually gave.
+    /// "Cutting your podcast clip" / "Cutting your video" — composed ONLY
+    /// from the answer the user actually gave. (The platform question was
+    /// dropped in the 2026-08-27 restructure; the header names the content
+    /// type or stays generic.)
     private var line: String {
-        let making = OnboardingQuestion.makingLabelV2(onboarding.v2Making)
-        let platform = Self.platformLabel(onboarding.v2Platform)
-        switch (making, platform) {
-        case let (m?, p?): return String(localized: "Cutting your \(m) clip for \(p)")
-        case let (m?, nil): return String(localized: "Cutting your \(m) clip")
-        case let (nil, p?): return String(localized: "Cutting your video for \(p)")
-        default:            return String(localized: "Cutting your video")
+        if let m = OnboardingQuestion.makingLabelV2(onboarding.v2Making) {
+            return String(localized: "Cutting your \(m) clip")
         }
-    }
-
-    static func platformLabel(_ key: String?) -> String? {
-        switch key {
-        case "tiktok":   return String(localized: "TikTok")
-        case "reels":    return String(localized: "Reels")
-        case "shorts":   return String(localized: "Shorts")
-        case "linkedin": return String(localized: "LinkedIn")
-        default:         return nil   // "multi" / skipped → no platform clause
-        }
+        return String(localized: "Cutting your video")
     }
 
     var body: some View {

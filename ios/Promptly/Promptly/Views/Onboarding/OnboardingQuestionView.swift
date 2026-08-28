@@ -105,6 +105,12 @@ struct OnboardingQuestionView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // Render-caught 2026-08-27: this column had no width bound, so a
+            // longer option label ("Clients (agency or freelance)") widened
+            // the whole screen and the centred content ran off BOTH edges —
+            // the title read "ho are you making videos for?". Bounding the
+            // column to the container is the fix; it is inert for the short
+            // labels the wall flow uses.
             VStack(alignment: .leading, spacing: 0) {
                 // Progress + Skip. Skip is always available on required
                 // questions (the escape); on the optional one Continue already
@@ -175,6 +181,7 @@ struct OnboardingQuestionView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -193,14 +200,16 @@ struct OnboardingQuestionView: View {
                 Text(label)
                     .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.white)
                 }
             }
             .padding(.horizontal, 18)
-            .frame(height: 56)
+            .frame(maxWidth: .infinity, minHeight: 56)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.16 : 0.07))
