@@ -137,3 +137,4 @@ echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no liter
 # a separate script nobody remembers to run is not a gate.
 bash "$DIR/compound-key-gate.sh"
 bash "$DIR/benefits-parity-gate.sh"
+bash "$DIR/uns-reporting-gate.sh"

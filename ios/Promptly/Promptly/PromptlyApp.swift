@@ -454,6 +454,25 @@ struct PromptlyApp: App {
             // with the composer focused; sign-out clears the nav so it can't
             // persist a stale Account/Library sheet into the next session.
             .onAppear {
+                // Report every pick a PREVIOUS session left unresolved. Must run at
+                // launch: the app dying mid-upload is itself one of the
+                // hypotheses, so an in-memory-only report would be lost exactly
+                // when it matters most.
+                UploadOutcomeReporter.shared.sweepOnLaunch()
+                #if DEBUG
+                // -unsProof: exercise the terminal emit path end-to-end without
+                // needing a real failing upload on a real network.
+                if ProcessInfo.processInfo.arguments.contains("-unsProof") {
+                    let a = UUID(), b = UUID()
+                    UploadOutcomeReporter.shared.recordPick(id: a, sizeMB: 12.5)
+                    UploadOutcomeReporter.shared.recordPick(id: b, sizeMB: 40.0)
+                    // b uploaded fine but was never sent — the split under test.
+                    UploadOutcomeReporter.shared.recordUploadSettled(id: b, srcKey: "sources/demo-b.mp4")
+                    UploadOutcomeReporter.shared._debugMarkAllRecordsStale()
+                    UploadOutcomeReporter.shared.sweepOnLaunch()
+                    print("[unsProof] records remaining after sweep = \(UploadOutcomeReporter.shared._debugRecordCount)")
+                }
+                #endif
                 #if DEBUG
                 if motionProof { Self.motionProofReset(); OnboardingState.shared.debugForceFlag("first_launch_paywall"); OnboardingState.shared.debugForceFlag("onboarding_v2") }
                 #endif

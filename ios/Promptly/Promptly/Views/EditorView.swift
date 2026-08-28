@@ -1543,6 +1543,10 @@ struct EditorView: View {
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
         pending.isLoading = false
+        // Open this pick's outcome record. Without it, a pick that never
+        // becomes a job row leaves no trace anywhere — which is exactly how
+        // 473 of 593 stuck users came to emit nothing at all.
+        UploadOutcomeReporter.shared.recordPick(id: pending.id, sizeMB: nil)
 
         // Thumbnail comes from the Photos cache immediately — local, no
         // iCloud bytes needed. Tile shows up the instant the picker
@@ -1822,6 +1826,8 @@ struct EditorView: View {
                                 // dispatcher gates on `sourceUploadCompleted` so a slow
                                 // upload can't trigger a job that 404s the worker.
                                 pending.sourceUploadCompleted = true
+                            UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
+                                UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
                             }
                             print("[perf] source upload complete (background)")
                             return resolvedPub
@@ -1879,7 +1885,10 @@ struct EditorView: View {
                             }
                         )
                         try? FileManager.default.removeItem(at: durableSource)
-                        await MainActor.run { pending.sourceUploadCompleted = true }
+                        await MainActor.run {
+                            pending.sourceUploadCompleted = true
+                            UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
+                        }
                         publicUrl = streamResolvedPub
                         print(String(format: "[perf] stream→durable+bg done %.2fs", Date().timeIntervalSince(uploadStart)))
 

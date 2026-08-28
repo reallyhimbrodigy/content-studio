@@ -164,6 +164,13 @@ final class JobDispatchCoordinator {
                     sourceDuration: pendingVideo.sourceDuration
                 )
                 print("[dispatch-coord] success jobId=\(jobId) attempt=\(attempt)")
+                // Resolved: a job row exists, so this pick is no longer an
+                // unexplained outcome. Closing the record here (rather than at
+                // upload completion) is what makes "uploaded but never sent"
+                // observable at all.
+                await MainActor.run {
+                    UploadOutcomeReporter.shared.recordDispatched(id: pendingVideo.id)
+                }
                 return .success(jobId: jobId)
             } catch {
                 if Task.isCancelled { return .cancelled }
