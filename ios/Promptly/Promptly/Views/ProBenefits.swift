@@ -60,7 +60,7 @@ enum ProBenefits {
             default:            return nil
             }
         }()
-        if let made { out[0] = Benefit(icon: out[0].icon, text: made) }
+        substitute(0, with: made, in: &out)
 
         // Slot 1 — who it is for.
         let who: String? = {
@@ -71,9 +71,24 @@ enum ProBenefits {
             default:               return nil
             }
         }()
-        if let who { out[1] = Benefit(icon: out[1].icon, text: who) }
+        substitute(1, with: who, in: &out)
 
         return out
+    }
+
+    /// Replace slot `i`'s TEXT, keeping its icon. Bounds-checked on purpose.
+    ///
+    /// The raw `out[0] = ...` this replaces was safe only because `core`
+    /// happens to hold four entries. But `core` is the one place claims are
+    /// meant to be edited — that is the entire point of it — so a future
+    /// trim to a single claim would have crashed the first screen of the app
+    /// for every new user, from a change that looks like pure copy. A
+    /// hard-coded index into an intentionally-editable list is a trap with a
+    /// delay on it. Out of range now simply means "no personalisation",
+    /// which degrades to the generic claim rather than terminating.
+    private static func substitute(_ i: Int, with text: String?, in list: inout [Benefit]) {
+        guard let text, list.indices.contains(i) else { return }
+        list[i] = Benefit(icon: list[i].icon, text: text)
     }
 
     /// Text-only convenience for surfaces that render their own row style.

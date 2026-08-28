@@ -47,6 +47,19 @@ if ! grep -qE "var out = core" "$SOURCE_OF_TRUTH"; then
   fail=1
 fi
 
+# ── 2b. the shared list must hold the slots personalisation writes into ─────
+# personalised() substitutes slots 0 and 1. That is bounds-checked in Swift, so
+# a short list degrades to the generic claim rather than crashing — but a core
+# of fewer than two entries would silently disable personalisation everywhere,
+# which is a defect the compiler cannot see.
+core_count=$(sed -n '/static let core: \[Benefit\] = \[/,/^    \]/p' "$SOURCE_OF_TRUTH" | grep -c 'Benefit(icon:')
+if [ "${core_count:-0}" -lt 2 ]; then
+  echo "benefits-parity: FAILED — ProBenefits.core holds ${core_count:-0} claim(s);"
+  echo "  personalised() writes slots 0 and 1, so fewer than two silently"
+  echo "  disables personalisation on every surface."
+  fail=1
+fi
+
 # ── 3. the NEW-USER surfaces may not spell a claim themselves ───────────────
 # Scope is deliberate. These are the two screens a new user sees back-to-back
 # before any value, and they are the pair that drifted. The legacy
