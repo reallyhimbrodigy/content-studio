@@ -118,9 +118,41 @@ function loadEnvLocal() {
   }
   console.log(`   -> hours since Sentry last ACCEPTED an event: ${hoursSince === Infinity ? 'never in window' : hoursSince.toFixed(1)}`);
 
-  if (hoursSince <= STALE_HOURS) {
-    console.log(`sentry-pipe: PASS — events accepted within the last ${STALE_HOURS}h.`);
+  // ACCEPTANCE RATIO, not mere presence.
+  //
+  // Caught by this check's own first run (2026-08-28): exactly ONE event was
+  // accepted in 24h while 58 were refused in the same window, and "hours since
+  // last accepted" duly dropped to 16 — so a rule of "at least one accepted
+  // event" reported a healthy pipe while 98% of traffic was still being thrown
+  // away. A trickle through a closed gate is not an open gate. Health is the
+  // SHARE that gets through, which is also what makes recovery unambiguous:
+  // when the quota genuinely frees, acceptance goes to ~100%, not to one.
+  // Fetch a real 24h window. The series above is DAILY over 30 days, so
+  // slicing 24 elements off it would measure 24 DAYS — which is exactly the
+  // mistake that first made this ratio read 29% instead of 2%.
+  const qs24 = new URLSearchParams({
+    field: 'sum(quantity)', category: 'error', groupBy: 'outcome',
+    statsPeriod: '24h', interval: '1h', project: PROJECT_ID,
+  });
+  const r24 = await getJSON('sentry.io', `/api/0/organizations/${ORG}/stats_v2/?${qs24}`,
+                            { Authorization: `Bearer ${token}` });
+  const day = {};
+  for (const g of (r24.body && r24.body.groups) || []) {
+    day[g.by.outcome] = (g.series['sum(quantity)'] || []).reduce((a, b) => a + b, 0);
+  }
+  const acc24 = day.accepted || 0;
+  const rl24 = day.rate_limited || 0;
+  const ratio = (acc24 + rl24) > 0 ? acc24 / (acc24 + rl24) : 1;
+  console.log(`   -> last 24h: accepted=${acc24} rate_limited=${rl24} acceptance=${(ratio * 100).toFixed(1)}%`);
+
+  if (hoursSince <= STALE_HOURS && ratio >= 0.5) {
+    console.log(`sentry-pipe: PASS — events accepted within the last ${STALE_HOURS}h ` +
+                `(${(ratio * 100).toFixed(0)}% acceptance).`);
     process.exit(0);
+  }
+  if (hoursSince <= STALE_HOURS) {
+    console.log(`   -> an event DID get through recently, but only ${acc24} of ${acc24 + rl24}.`);
+    console.log('      Treating that as dark: a trickle through a closed gate is not an open gate.');
   }
 
   // ── 2. Is the app actually being used? A quiet app is not a dead pipe. ────
