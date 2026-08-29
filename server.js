@@ -3277,6 +3277,46 @@ const server = http.createServer((req, res) => {
   // deploy-sanity pass can assert prod is running the commit we just pushed —
   // added after a blueprint-sync failure raised the question "is prod even
   // rolling new commits?" and nothing could answer it from outside.
+  // ── APPLE APP SITE ASSOCIATION ─────────────────────────────────────────────
+  // Referral attribution was measured at 0% ALL TIME: 57 users shared a link,
+  // 14 opened one, ZERO were ever attributed. Not a leak — a closed circuit.
+  // The share URL is https://usepromptly.app/?ref=CODE, but no AASA was served
+  // (404) and the app declared no associated-domains, so that link could never
+  // open the app. Not after a fresh install, and not even for users who already
+  // had it. ReferralService's own header said "universal links when the
+  // entitlement + AASA ship" — they never shipped.
+  //
+  // Apple's requirements, each of which has broken this for someone before:
+  //   • served over HTTPS with NO redirect (Apple does not follow them)
+  //   • Content-Type: application/json
+  //   • at /.well-known/apple-app-site-association (root path kept for older iOS)
+  //
+  // SCOPED TO REFERRAL LINKS ONLY. A bare "/" match would make every marketing
+  // page open the app, which is a worse bug than the one being fixed — so the
+  // component matches only URLs actually carrying a ?ref= code.
+  if ((parsed.pathname === '/.well-known/apple-app-site-association'
+       || parsed.pathname === '/apple-app-site-association') && req.method === 'GET') {
+    const body = JSON.stringify({
+      applinks: {
+        details: [
+          {
+            appIDs: ['8KT9332327.app.usepromptly.ios'],
+            components: [
+              { '/': '/', '?': { ref: '?*' }, comment: 'referral invite links only' },
+            ],
+          },
+        ],
+      },
+    });
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+      'Cache-Control': 'public, max-age=3600',
+    });
+    res.end(body);
+    return;
+  }
+
   if (parsed.pathname === '/api/health' && req.method === 'GET') {
     return sendJson(res, 200, {
       ok: true,
