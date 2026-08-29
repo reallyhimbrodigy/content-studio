@@ -70,19 +70,43 @@ fi
 echo "  ASSOCIATED_DOMAINS enabled on the App ID ✓"
 
 # ── 3. PRESENT in the profile the signed product carries? ───────────────────
-# Only checkable once something has been signed. Absence of an artifact is not
-# a pass — it is an unchecked leg, and it says so.
-APP=$(ls -dt "$DIR"/../../*.xcarchive/Products/Applications/*.app \
-             /private/tmp/claude-501/*/*/scratchpad/*.xcarchive/Products/Applications/*.app 2>/dev/null | head -1)
-if [ -z "$APP" ] || [ ! -d "$APP" ]; then
-  echo "  no signed product found yet — profile leg UNCHECKED (re-run after archiving)."
+# READ THE EXPORTED IPA, NOT THE ARCHIVE. They are different artifacts: the
+# archive is signed BEFORE the export step re-signs for distribution, so its
+# entitlements are the development ones. Reading the archive here reported
+# `aps-environment: development` on a build that ships `production` — a false
+# alarm that looks exactly like a real finding. The IPA is what Apple receives.
+#
+# Absence of an artifact is NOT a pass — it is an unchecked leg, and it says so.
+IPA=$(ls -t /private/tmp/claude-501/*/*/scratchpad/export*/Promptly.ipa \
+             "$DIR"/../../export*/Promptly.ipa 2>/dev/null | head -1)
+if [ -z "$IPA" ] || [ ! -f "$IPA" ]; then
+  echo "  no exported IPA found — profile leg UNCHECKED (re-run after the next archive+export)."
   exit 0
 fi
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+if ! unzip -q "$IPA" -d "$WORK" 2>/dev/null; then
+  echo "  could not read $IPA — profile leg UNCHECKED."
+  exit 0
+fi
+APP=$(ls -d "$WORK"/Payload/*.app 2>/dev/null | head -1)
 PROF="$APP/embedded.mobileprovision"
-if [ ! -f "$PROF" ]; then
-  echo "  signed product has no embedded profile — profile leg UNCHECKED."
+if [ -z "$APP" ] || [ ! -f "$PROF" ]; then
+  echo "  exported IPA carries no embedded profile — profile leg UNCHECKED."
   exit 0
 fi
+
+# A STALE artifact cannot answer this. The most recent IPA may predate both the
+# entitlement and the capability — build 237 does — and failing on it would be
+# blocking the next cut with evidence from the last one. That is the cry-wolf
+# shape: the gate would be red before anyone had a chance to make it green.
+if [ "$ENTS" -nt "$IPA" ]; then
+  echo "  the newest exported IPA predates the entitlement change — STALE, profile leg UNCHECKED."
+  echo "  (that IPA was built before associated-domains existed; re-run after the next export.)"
+  exit 0
+fi
+echo "  reading the EXPORTED IPA: $(basename "$(dirname "$(dirname "$IPA")")")/$(basename "$IPA")"
 if security cms -D -i "$PROF" 2>/dev/null | grep -q "com.apple.developer.associated-domains"; then
   echo "  embedded provisioning profile carries the entitlement ✓"
   echo "associated-domains-gate: PASS — declared, enabled, and provisioned."
@@ -90,7 +114,7 @@ if security cms -D -i "$PROF" 2>/dev/null | grep -q "com.apple.developer.associa
 fi
 echo ""
 echo "associated-domains-gate: FAILED — the App ID has the capability, but the"
-echo "  provisioning profile embedded in the signed product does NOT carry it."
-echo "  The profile predates the capability. Regenerate it (or archive with"
-echo "  -allowProvisioningUpdates) so the shipped build can actually receive links."
+echo "  profile embedded in the SHIPPED IPA does not carry it. The profile predates"
+echo "  the capability. Re-archive with -allowProvisioningUpdates so the regenerated"
+echo "  profile is embedded, or the build ships unable to receive referral links."
 exit 1
