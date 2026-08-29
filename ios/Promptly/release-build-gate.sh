@@ -24,6 +24,9 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Provisioning must be real before the archive, not just declared in source.
+bash "$DIR/associated-domains-gate.sh" || exit 1
+
 echo "release-build-gate: compiling Release (the configuration the archive uses)…"
 OUT=$(mktemp)
 if xcodebuild -project "$DIR/Promptly.xcodeproj" -scheme Promptly \

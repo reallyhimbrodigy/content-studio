@@ -8,5 +8,19 @@
 	</array>
 	<key>aps-environment</key>
 	<string>production</string>
+	<!-- Universal links for referral invites (2026-08-29).
+
+	     Without this, https://usepromptly.app/?ref=CODE cannot open the app at
+	     all — not after a fresh install, and not even for a user who already
+	     has it. That is why referral attribution measured 0% ALL TIME: 57
+	     users shared a link, 14 opened one, zero were ever attributed.
+
+	     This is the CLIENT half. The server half (the AASA at
+	     /.well-known/apple-app-site-association) shipped in 551bc59 and is
+	     live. Either half alone attributes nobody. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:usepromptly.app</string>
+	</array>
 </dict>
 </plist>

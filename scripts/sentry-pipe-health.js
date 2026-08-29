@@ -104,7 +104,7 @@ function loadEnvLocal() {
   };
   const accepted = byOutcome.accepted || [];
   const lastAccepted = lastNonZero(accepted);
-  const hoursSince = lastAccepted
+  let hoursSince = lastAccepted
     ? (Date.now() - new Date(lastAccepted).getTime()) / 36e5
     : Infinity;
 
@@ -150,8 +150,27 @@ function loadEnvLocal() {
                 `(${(ratio * 100).toFixed(0)}% acceptance).`);
     process.exit(0);
   }
-  if (hoursSince <= STALE_HOURS) {
-    console.log(`   -> an event DID get through recently, but only ${acc24} of ${acc24 + rl24}.`);
+  // Refine "hours since accepted" from the HOURLY series. The 30d series is
+  // daily, so it can only ever say "sometime today" — which printed as
+  // "accepted NOTHING for 19h" on a day that had already accepted 7 events.
+  // A number that contradicts the line above it teaches the reader to trust
+  // neither.
+  const accHourly = (r24.body && r24.body.groups || [])
+    .find((g) => g.by.outcome === 'accepted');
+  const ivH = (r24.body && r24.body.intervals) || [];
+  if (accHourly && ivH.length) {
+    const ser = accHourly.series['sum(quantity)'] || [];
+    for (let i = ser.length - 1; i >= 0; i--) {
+      if (ser[i] > 0) {
+        hoursSince = (Date.now() - new Date(ivH[i]).getTime()) / 36e5;
+        break;
+      }
+    }
+    console.log(`   -> refined from hourly data: ${hoursSince.toFixed(1)}h since an accepted event`);
+  }
+
+  if (acc24 > 0) {
+    console.log(`   -> ${acc24} event(s) DID get through, but only ${acc24} of ${acc24 + rl24}.`);
     console.log('      Treating that as dark: a trickle through a closed gate is not an open gate.');
   }
 
