@@ -46,7 +46,29 @@ function sentryToken() {
   return m ? m[1] : null;
 }
 
+// TEST HOOK. This gate had a bug that only a run against contrived data would
+// have caught — its live behaviour looked fine every single day until ~22h into
+// the UTC day. An unverifiable gate is how that survives. With
+// SENTRY_PIPE_FIXTURE set to a JSON file, both API reads are served from it, so
+// the dark path can be exercised without waiting for a real outage.
+function fixture() {
+  const f = process.env.SENTRY_PIPE_FIXTURE;
+  if (!f) return null;
+  try { return JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch { return null; }
+}
+
 function getJSON(host, pathname, headers) {
+  const fx = fixture();
+  // Only the SENTRY reads are stubbed. The Supabase liveness read must stay
+  // real, because the dark verdict depends on the app actually having been
+  // busy — stubbing it too would let a fixture prove a conclusion the check is
+  // designed not to reach on its own.
+  if (fx && host === 'sentry.io') {
+    const key = pathname.includes('/keys/') ? 'keys'
+      : pathname.includes('/customers/') ? 'customer'
+      : pathname.includes('statsPeriod=24h') ? 'h24' : 'd30';
+    return Promise.resolve({ status: 200, body: fx[key] !== undefined ? fx[key] : (key === 'keys' ? [] : {}), headers: {} });
+  }
   return new Promise((resolve) => {
     https.get({ host, path: pathname, headers }, (res) => {
       let d = '';
@@ -116,7 +138,13 @@ function loadEnvLocal() {
     const ln = lastNonZero(byOutcome[k]);
     console.log(`   ${k.padEnd(16)} ${String(v).padStart(8)}   last non-zero: ${ln ? ln.slice(0, 10) : 'never'}`);
   }
-  console.log(`   -> hours since Sentry last ACCEPTED an event: ${hoursSince === Infinity ? 'never in window' : hoursSince.toFixed(1)}`);
+  // COARSE, and labelled as such. `intervals` here are DAILY, so this is
+  // "hours since the START of the last day that accepted anything" — which
+  // climbs toward 24 through every UTC day and resets at midnight, whether or
+  // not events are arriving. It is refined from hourly data below, BEFORE any
+  // pass/fail decision uses it. Printing it unqualified is what made a healthy
+  // pipe read as 22.5h stale.
+  console.log(`   -> last accepted DAY bucket opened: ${hoursSince === Infinity ? 'never in window' : hoursSince.toFixed(1) + 'h ago (day-resolution)'}`);
 
   // ACCEPTANCE RATIO, not mere presence.
   //
@@ -145,28 +173,46 @@ function loadEnvLocal() {
   const ratio = (acc24 + rl24) > 0 ? acc24 / (acc24 + rl24) : 1;
   console.log(`   -> last 24h: accepted=${acc24} rate_limited=${rl24} acceptance=${(ratio * 100).toFixed(1)}%`);
 
-  if (hoursSince <= STALE_HOURS && ratio >= 0.5) {
-    console.log(`sentry-pipe: PASS — events accepted within the last ${STALE_HOURS}h ` +
-                `(${(ratio * 100).toFixed(0)}% acceptance).`);
-    process.exit(0);
-  }
-  // Refine "hours since accepted" from the HOURLY series. The 30d series is
-  // daily, so it can only ever say "sometime today" — which printed as
-  // "accepted NOTHING for 19h" on a day that had already accepted 7 events.
-  // A number that contradicts the line above it teaches the reader to trust
-  // neither.
+  // REFINE BEFORE DECIDING. This block used to sit AFTER the pass/fail branch,
+  // so the decision was made on the day-resolution number and the accurate one
+  // was only ever printed on the way to failing. That is backwards: the gate
+  // would report the pipe DARK at ~24h into any UTC day while acceptance sat at
+  // 100% and the accepted total was still climbing. A health check that cries
+  // dark on a healthy pipe is worse than no check — it trains everyone to
+  // ignore the one reading that has to be trusted.
   const accHourly = (r24.body && r24.body.groups || [])
     .find((g) => g.by.outcome === 'accepted');
   const ivH = (r24.body && r24.body.intervals) || [];
+  let refined = false;
   if (accHourly && ivH.length) {
     const ser = accHourly.series['sum(quantity)'] || [];
     for (let i = ser.length - 1; i >= 0; i--) {
       if (ser[i] > 0) {
-        hoursSince = (Date.now() - new Date(ivH[i]).getTime()) / 36e5;
+        // Hourly buckets are open intervals: an event at 22:59 lands in the
+        // 22:00 bucket. Measure from the bucket's END so recency is never
+        // overstated by up to an hour.
+        hoursSince = Math.max(0, (Date.now() - (new Date(ivH[i]).getTime() + 36e5)) / 36e5);
+        refined = true;
         break;
       }
     }
-    console.log(`   -> refined from hourly data: ${hoursSince.toFixed(1)}h since an accepted event`);
+  }
+  if (refined) {
+    console.log(`   -> hours since last accepted event (hourly resolution): ${hoursSince.toFixed(1)}`);
+  } else if (acc24 > 0) {
+    // 24h total is non-zero but no hourly bucket carries it: the series is
+    // lagging, not the pipe. Trust the total, and say why.
+    hoursSince = 0;
+    console.log(`   -> ${acc24} accepted in 24h but no hourly bucket populated yet ` +
+                '(outcome series lag). Treating recency as current, not stale.');
+  } else {
+    console.log('   -> nothing accepted in the last 24h; recency stands at day resolution.');
+  }
+
+  if (hoursSince <= STALE_HOURS && ratio >= 0.5) {
+    console.log(`sentry-pipe: PASS — events accepted within the last ${STALE_HOURS}h ` +
+                `(${(ratio * 100).toFixed(0)}% acceptance).`);
+    process.exit(0);
   }
 
   if (acc24 > 0) {
@@ -216,7 +262,12 @@ function loadEnvLocal() {
       // which the first two diagnoses would have missed entirely.
       const kr = await getJSON('sentry.io', `/api/0/projects/${ORG}/${PROJECT}/keys/`,
                                { Authorization: `Bearer ${token}` });
-      const keyLimited = (kr.body || []).filter((k) => k.rateLimit);
+      // Array.isArray, not `|| []`: that guards null but NOT the object Sentry
+      // returns on an error, so a bad response here used to throw and take the
+      // whole check down — on the DARK path, the one that has to survive.
+      // Failing to name the cause is acceptable; crashing instead of reporting
+      // dark is not.
+      const keyLimited = (Array.isArray(kr.body) ? kr.body : []).filter((k) => k && k.rateLimit);
       if (keyLimited.length) {
         console.error(`     CAUSE: a DSN-level rate limit on client key '${keyLimited[0].name}':`);
         console.error(`     ${JSON.stringify(keyLimited[0].rateLimit)}. Raise or remove it in project settings.`);
