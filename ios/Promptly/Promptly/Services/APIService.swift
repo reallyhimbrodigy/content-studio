@@ -416,7 +416,7 @@ class APIService {
     func chatActions(message: String, videoUrl: String? = nil, proxyVideoUrl: String? = nil) async throws -> ChatActionResult {
         var request = await authorizedRequest("/api/chat/actions", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["message": message]
+        var body: [String: Any] = ["message": message, "reply_language": AppLanguage.current]
         if let videoUrl { body["video_url"] = videoUrl }
         if let proxyVideoUrl { body["proxy_video_url"] = proxyVideoUrl }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
@@ -454,6 +454,11 @@ class APIService {
         request.httpBody = try JSONEncoder().encode([
             "original_job_id": originalJobId,
             "change_request": changeRequest,
+            // The REPLY follows the user; the captions follow the content. This
+            // is the app's UI language (device, or the account override), not
+            // the clip's detected_language — a Hindi reader editing an English
+            // clip wants an answer in Hindi and captions in English.
+            "reply_language": AppLanguage.current,
         ])
 
         let (data, response) = try await requestData(request)
@@ -1437,7 +1442,8 @@ class APIService {
     /// server is unaffected (the client gates sending on the chat_media knob).
     func chat(message: String, history: [[String: String]], media: [[String: Any]]? = nil) async throws -> ChatReply {
         var request = await authorizedRequest("/api/chat", method: "POST")
-        var payload: [String: Any] = ["message": message, "history": history]
+        var payload: [String: Any] = ["message": message, "history": history,
+                                      "reply_language": AppLanguage.current]
         if let media, !media.isEmpty { payload["media"] = media }
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
