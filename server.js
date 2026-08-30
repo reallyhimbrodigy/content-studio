@@ -3365,6 +3365,12 @@ const server = http.createServer((req, res) => {
       postrender_referral: String(process.env.POSTRENDER_REFERRAL || '') === '1' ? 'on' : 'off',
       abandon_referral: String(process.env.ABANDON_REFERRAL || '') === '1' ? 'on' : 'off',
       ambient_wall_referral: String(process.env.AMBIENT_WALL_REFERRAL || '') === '1' ? 'on' : 'off',
+      // The SECOND-paywall referral row. It had no flag at all until
+      // 2026-08-29 — it shipped live to every wall-onboarding user while its
+      // three siblings sat dark, and it was the only one showing a progress
+      // promise ("0 of 3 friends have made a video") against attribution that
+      // has measured 0% all-time. Defaults OFF like the rest.
+      second_paywall_referral: String(process.env.SECOND_PAYWALL_REFERRAL || '') === '1' ? 'on' : 'off',
       postrender_save_cta: String(process.env.POSTRENDER_SAVE_CTA || '') === '1' ? 'on' : 'off',
       chat_media: String(process.env.CHAT_MEDIA || '') === '1' ? 'on' : 'off',
       // ARMED by default (ruled 2026-08-26 — the audit's #1 cliff, 1,611 users). Env can still disable with FIRST_SESSION_AUTOPICKER=0.

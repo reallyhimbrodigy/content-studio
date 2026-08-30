@@ -1,40 +1,47 @@
 #!/usr/bin/env node
 'use strict';
-// PROMOTIONAL-GRANT VERIFICATION — runs SERVER-SIDE, where the key already is.
+// PROMOTIONAL-GRANT VERIFICATION — v2 path, runs SERVER-SIDE.
 //
-// Deliberately not runnable from a laptop: REVENUECAT_SECRET_KEY should exist
-// in as few places as possible, so this reads it from the environment it is
-// already in rather than being handed a copy. Run it in the Render shell.
+// Deliberately not runnable from a laptop: REVENUECAT_SECRET_KEY should exist in
+// as few places as possible, so this reads it from the environment it is already
+// in. Run it in the Render shell.
 //
-// THE QUESTION IT ANSWERS. The referral reward will be granted as a RevenueCat
-// promotional entitlement. RevenueCat's docs do not state whether a promotional
-// grant emits a webhook. That matters more than it sounds: if it does NOT, then
-// `profiles.tier` never flips, the user is entitled at RevenueCat and free in
-// our app, and they see nothing for a referral they earned. That is an
-// entitlement orphan created by design — the exact class the purchase verifier
-// exists to catch, arriving through a new door.
+// WHY v2 AND NOT v1. The first version of this script targeted
+// POST /v1/subscribers/{id}/entitlements/{id}/promotional — the endpoint every
+// "grant promotional access" doc points at. That would have failed on auth and
+// looked like a broken integration. Our key is a **v2** key (.env.example:
+// "RevenueCat REST *v2* API key … starts with sk_"), the code authenticates
+// `Authorization: Bearer` against https://api.revenuecat.com/v2, and RevenueCat
+// states v1 and v2 keys are not interchangeable. The v2 equivalent is:
 //
-// Three legs, same as the purchase verifier:
-//   1. GRANT     RevenueCat accepts the promotional grant
-//   2. WEBHOOK   an event reaches /api/revenuecat/webhook (or provably does not)
-//   3. ENTITLED  RevenueCat itself reports the entitlement active
+//   POST /v2/projects/{project_id}/customers/{customer_id}/actions/grant_entitlement
+//   POST /v2/projects/{project_id}/customers/{customer_id}/actions/revoke_granted_entitlement
 //
-// SAFETY: grants to a synthetic app_user_id that is not a real profile, and
-// revokes at the end. It never touches a paying customer.
+// ONE RUN ANSWERS THREE THINGS, each of which independently blocks the build:
+//   SCOPE    does this key carry customer_information:customers:read_write, or
+//            is it read-only? A read-only key fails identically on either API
+//            version, so "wrong version" and "wrong scope" look the same until
+//            you separate them — this reports the status code verbatim.
+//   SHAPE    what the endpoint actually accepts. The body is printed on any 4xx
+//            rather than guessed at.
+//   WEBHOOK  does a grant emit an event? RevenueCat's docs do not say. If it
+//            does not, profiles.tier never flips and a user earns a reward they
+//            cannot see — an entitlement orphan created by design.
 //
-//   Usage:  node scripts/verify-promotional-grant.js [entitlement_id]
-//   Needs:  REVENUECAT_SECRET_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// SAFETY: operates on a synthetic customer id, never a real subscriber, and
+// revokes at the end.
 
 const https = require('https');
 
 const KEY = process.env.REVENUECAT_SECRET_KEY;
+const PROJECT = process.env.REVENUECAT_PROJECT_ID;
 const ENT = process.argv[2] || 'pro';
 const SUPA = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 const UID = `promo-verify-${Date.now()}`;
 
-if (!KEY) {
-  console.error('CANNOT RUN — REVENUECAT_SECRET_KEY is not in this environment.');
+if (!KEY || !PROJECT) {
+  console.error('CANNOT RUN — REVENUECAT_SECRET_KEY / REVENUECAT_PROJECT_ID not in this environment.');
   console.error('  Run this on the server (Render shell), not locally. That is the point.');
   process.exit(2);
 }
@@ -46,11 +53,12 @@ function rc(method, path, body) {
       host: 'api.revenuecat.com', path, method,
       headers: {
         Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json',
+        Accept: 'application/json',
         ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
       },
     }, (r) => {
       let d = ''; r.on('data', (c) => (d += c));
-      r.on('end', () => { let j = {}; try { j = d ? JSON.parse(d) : {}; } catch { j = { raw: d.slice(0, 300) }; }
+      r.on('end', () => { let j = {}; try { j = d ? JSON.parse(d) : {}; } catch { j = { raw: d.slice(0, 400) }; }
         resolve({ status: r.statusCode, body: j }); });
     });
     req.on('error', (e) => resolve({ status: 0, body: { err: e.message } }));
@@ -58,7 +66,6 @@ function rc(method, path, body) {
     req.end();
   });
 }
-
 function supa(path) {
   return new Promise((resolve) => {
     if (!SUPA || !SUPA_KEY) return resolve(null);
@@ -70,62 +77,68 @@ function supa(path) {
     }).on('error', () => resolve(null));
   });
 }
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const base = `/v2/projects/${encodeURIComponent(PROJECT)}`;
 
 (async () => {
-  const endMs = Date.now() + 24 * 3600e3;
-  console.log(`synthetic subscriber: ${UID}`);
-  console.log(`entitlement: ${ENT}   grant until: ${new Date(endMs).toISOString()}`);
+  console.log(`project: ${PROJECT}   entitlement: ${ENT}   synthetic customer: ${UID}`);
 
-  // ── LEG 1: grant ──────────────────────────────────────────────────────────
-  // end_time_ms is the current form; the `duration` strings are deprecated.
-  let r = await rc('POST', `/v1/subscribers/${encodeURIComponent(UID)}/entitlements/${encodeURIComponent(ENT)}/promotional`,
-                   { end_time_ms: endMs });
-  console.log(`\nLEG 1 GRANT      HTTP ${r.status}`);
-  if (r.status >= 300) {
-    console.error(`  FAILED: ${JSON.stringify(r.body).slice(0, 300)}`);
-    console.error('  If this is 404, the entitlement identifier is wrong — check the RC dashboard.');
+  // ── 0. is the project reachable under this key at all? ────────────────────
+  let r = await rc('GET', `${base}`);
+  console.log(`\nPROJECT REACHABLE   HTTP ${r.status}`);
+  if (r.status === 401 || r.status === 403) {
+    console.error('  The key cannot even read the project. Everything below would fail for the');
+    console.error('  same reason, so stop here: this is an auth/scope problem, not a grant problem.');
     process.exit(1);
   }
-  console.log('  granted ✓');
 
-  // ── LEG 3 first (it is instant): does RC itself report it active? ─────────
-  r = await rc('GET', `/v1/subscribers/${encodeURIComponent(UID)}`);
-  const ents = (r.body && r.body.subscriber && r.body.subscriber.entitlements) || {};
-  const active = ents[ENT];
-  console.log(`\nLEG 3 ENTITLED   HTTP ${r.status}`);
-  console.log(active
-    ? `  RevenueCat reports '${ENT}' active until ${active.expires_date} ✓`
-    : `  RevenueCat does NOT report '${ENT}' — grant did not take effect`);
+  // ── 1. SCOPE + SHAPE: attempt the grant ───────────────────────────────────
+  const endMs = Date.now() + 24 * 3600e3;
+  r = await rc('POST', `${base}/customers/${encodeURIComponent(UID)}/actions/grant_entitlement`,
+               { entitlement_id: ENT, end_time_ms: endMs });
+  console.log(`\nGRANT               HTTP ${r.status}`);
+  if (r.status === 403) {
+    console.error('  403 — the key lacks customer_information:customers:read_write.');
+    console.error('  SCOPE problem, not an API-version problem. Mint a key with write scope.');
+    console.error(`  body: ${JSON.stringify(r.body).slice(0, 300)}`);
+    process.exit(1);
+  }
+  if (r.status >= 300) {
+    console.error(`  body: ${JSON.stringify(r.body).slice(0, 500)}`);
+    console.error('  Not a 403, so the key has scope — this is a SHAPE problem. Use the error');
+    console.error('  above to correct the request body; do not guess at it.');
+    process.exit(1);
+  }
+  console.log('  granted ✓  (key carries write scope, body shape accepted)');
 
-  // ── LEG 2: did a webhook reach us? ────────────────────────────────────────
-  // This is the unknown. Poll our own sink for a row naming this subscriber.
-  console.log('\nLEG 2 WEBHOOK    polling our sink for 90s…');
+  // ── 2. ENTITLED: does RC itself report it? ────────────────────────────────
+  r = await rc('GET', `${base}/customers/${encodeURIComponent(UID)}`);
+  console.log(`\nENTITLED            HTTP ${r.status}`);
+  console.log(`  ${JSON.stringify(r.body).slice(0, 300)}`);
+
+  // ── 3. WEBHOOK: the unknown that decides whether the reward is visible ────
+  console.log('\nWEBHOOK             polling our sink for 90s…');
   let hook = null;
   for (let i = 0; i < 18; i++) {
     await sleep(5000);
-    const rows = await supa(`analytics_events?event=eq.rc_webhook_received&select=props,created_at&order=created_at.desc&limit=40`);
-    if (rows && rows.length) {
-      hook = rows.find((x) => JSON.stringify(x.props || {}).includes(UID));
-      if (hook) break;
-    }
+    const rows = await supa('analytics_events?event=eq.rc_webhook_received&select=props,created_at&order=created_at.desc&limit=40');
+    if (rows && rows.length) { hook = rows.find((x) => JSON.stringify(x.props || {}).includes(UID)); if (hook) break; }
     process.stdout.write('.');
   }
   console.log('');
   if (hook) {
-    console.log(`  webhook ARRIVED: ${JSON.stringify(hook.props)}`);
-    console.log('  -> a promotional grant DOES emit a webhook. The normal tier path applies.');
+    console.log(`  ARRIVED: ${JSON.stringify(hook.props)}`);
+    console.log('  -> a grant DOES emit a webhook; the normal tier path applies and the reward is visible.');
   } else {
-    console.log('  NO webhook within 90s.');
-    console.log('  -> a promotional grant does NOT reliably emit one. Consequence: profiles.tier');
-    console.log('     will not flip on its own, so the referral MUST write the grant to our own');
-    console.log('     entitlement fields too, or rely on the grant-only self-heal to reconcile on');
-    console.log('     the next gated request. Do not ship the reward assuming the webhook exists.');
+    console.log('  NONE within 90s.');
+    console.log('  -> a grant does NOT reliably emit one. The referral must therefore write our own');
+    console.log('     entitlement fields at grant time, or rely on the grant-only self-heal to');
+    console.log('     reconcile on the next gated request. Do not ship assuming the webhook exists —');
+    console.log('     a reward the user cannot see is worse than no reward.');
   }
 
   // ── cleanup ───────────────────────────────────────────────────────────────
-  r = await rc('POST', `/v1/subscribers/${encodeURIComponent(UID)}/entitlements/${encodeURIComponent(ENT)}/revoke_promotionals`);
-  console.log(`\ncleanup revoke   HTTP ${r.status} ${r.status < 300 ? '✓' : JSON.stringify(r.body).slice(0, 160)}`);
-  console.log('\nVERDICT: leg 2 is the answer we needed — see above.');
+  r = await rc('POST', `${base}/customers/${encodeURIComponent(UID)}/actions/revoke_granted_entitlement`,
+               { entitlement_id: ENT });
+  console.log(`\ncleanup revoke      HTTP ${r.status} ${r.status < 300 ? '✓' : JSON.stringify(r.body).slice(0, 200)}`);
 })();
