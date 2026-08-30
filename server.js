@@ -3277,6 +3277,115 @@ const server = http.createServer((req, res) => {
   // deploy-sanity pass can assert prod is running the commit we just pushed —
   // added after a blueprint-sync failure raised the question "is prod even
   // rolling new commits?" and nothing could answer it from outside.
+  // ── REFERRAL RECONCILE ───────────────────────────────────────────────────
+  // The payout path. Until now the loop was CLAIM-ONLY: a referral could be
+  // created and could never qualify or pay, because qualify_referral and
+  // grant_referral_reward were revoked from `authenticated` (correctly — they
+  // were exploitable) and nothing called them as service_role. Closing the
+  // claim path while the payout path is dead is the worst ordering, and the
+  // invite link is about to work for the first time.
+  //
+  // TRUSTS NOTHING IT IS TOLD. The referrer is taken from the auth token, never
+  // the body. Qualification is decided by whether the referred user actually
+  // has a completed render — never by referrals.qualified_at, which is a flag
+  // that was until recently settable by any authenticated caller.
+  if (parsed.pathname === '/api/referral/reconcile' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
+        const user = await requireSupabaseUser(req).catch(() => null);
+        if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        const referrerId = user.id;
+
+        const { reconcile } = require('./lib/referral-reconcile');
+        const { endTimeMs, CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
+
+        const { data: refs } = await supabaseAdmin
+          .from('referrals').select('id, referred_id, qualified_at, counted_at')
+          .eq('referrer_id', referrerId);
+        const rows = refs || [];
+        if (!rows.length) return sendJson(res, 200, { ok: true, days: 0, reason: 'no_referrals' });
+
+        // The fact the payout rests on, read directly rather than trusted.
+        const ids = rows.map((r) => r.referred_id).filter(Boolean);
+        const { data: jobs } = await supabaseAdmin
+          .from('video_jobs').select('user_id').in('user_id', ids).eq('status', 'completed');
+        const withRender = new Set((jobs || []).map((j) => j.user_id));
+
+        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+        const { data: grants } = await supabaseAdmin
+          .from('referral_rewards').select('days_granted').eq('user_id', referrerId).gte('granted_at', since);
+        const grantedInWindow = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+        const priorCounted = rows.filter((r) => r.counted_at).length;
+
+        const decision = reconcile({
+          referrerId, referrals: rows, referredWithRender: withRender, priorCounted, grantedInWindow,
+        });
+
+        // Qualified-with-no-render is a FINDING, not noise: it would mean
+        // qualification became reachable by something other than finishing a
+        // video. Recorded whether or not anything is granted.
+        const suspicious = decision.rejected.filter((r) => r.reason === 'qualified_without_render');
+        if (suspicious.length) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'referral_qualified_without_render', platform: 'server', app_version: 'server',
+            user_id: referrerId, props: { count: suspicious.length },
+          }).then(() => {}).catch(() => {});
+        }
+
+        if (decision.days <= 0) {
+          return sendJson(res, 200, {
+            ok: true, days: 0, reason: decision.reason,
+            eligible: decision.eligible.length, capped: decision.cap.capped,
+          });
+        }
+
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('pro_until').eq('id', referrerId).maybeSingle();
+        const beforeIso = prof?.pro_until || null;
+        const fromMs = Math.max(Date.now(), beforeIso ? new Date(beforeIso).getTime() : 0);
+        const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
+
+        // LEDGER FIRST, provider_ok false. A row exists either way, so a failed
+        // grant is visible rather than absent — absence and failure are
+        // otherwise the same nothing.
+        const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
+          user_id: referrerId, days_granted: decision.days,
+          pro_until_before: beforeIso, pro_until_after: untilIso,
+          referral_ids: decision.eligible.map((e) => e.referred_id),
+          provider: 'db', provider_ok: false,
+        }).select('id').maybeSingle();
+
+        const { error: upErr } = await supabaseAdmin
+          .from('profiles').update({ tier: 'pro', pro_until: untilIso }).eq('id', referrerId);
+
+        if (!upErr && ledger?.id) {
+          await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
+          await supabaseAdmin.from('referrals')
+            .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
+            .eq('referrer_id', referrerId)
+            .in('referred_id', decision.eligible.map((e) => e.referred_id));
+        }
+
+        supabaseAdmin.from('analytics_events').insert({
+          event: 'referral_reward_granted', platform: 'server', app_version: 'server',
+          user_id: referrerId,
+          props: { days: decision.days, capped: decision.cap.capped,
+                   withheld: decision.cap.withheld, cap: CAP_DAYS_PER_30D, provider_ok: !upErr },
+        }).then(() => {}).catch(() => {});
+
+        return sendJson(res, 200, {
+          ok: !upErr, days: decision.days, pro_until: untilIso,
+          capped: decision.cap.capped, withheld: decision.cap.withheld,
+        });
+      } catch (err) {
+        console.error('[referral/reconcile] error', err);
+        return sendJson(res, 500, { ok: false, error: 'reconcile_failed' });
+      }
+    })();
+    return;
+  }
+
   // ── APPLE APP SITE ASSOCIATION ─────────────────────────────────────────────
   // Referral attribution was measured at 0% ALL TIME: 57 users shared a link,
   // 14 opened one, ZERO were ever attributed. Not a leak — a closed circuit.
@@ -3592,6 +3701,11 @@ const server = http.createServer((req, res) => {
           // thereby lifting that rate — was unmeasurable. Allowlisted before the
           // surfaces arm, so the first cohort is not half-blind.
           'referral_shown',
+          // Per-Apple-ID intro-offer eligibility check (2026-08-30). Carries
+          // eligible/checked so "nobody is eligible" is distinguishable from
+          // "we never asked" — the difference between a correct absence of
+          // discount claims and a broken eligibility fetch.
+          'intro_eligibility_checked',
           // Transport-error mirror (HTTPClientError diagnosis, 2026-08-22): the
           // iOS Sentry SDK auto-captures URLSession 5xx (enableCaptureFailedRequests
           // default-on) into a class we cannot query programmatically; this event
