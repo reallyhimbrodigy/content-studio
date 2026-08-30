@@ -328,13 +328,29 @@ struct PromptlyApp: App {
     }
     #endif
 
+    /// AFTER SIGNUP, not before (2026-08-30).
+    ///
+    /// This guard read `!auth.isAuthenticated` — the paywall showed ONLY to
+    /// signed-out users, deliberately, as a deferred-auth design. A real-install
+    /// trace showed the consequence: session_started → signup_start → the whole
+    /// funnel → offer_reveal → onboarding_completed → signup_complete, with
+    /// picker_opened the FIRST event carrying a user_id. The entire funnel and
+    /// the paid offer ran inside the signup window, so every funnel event was
+    /// anonymous and unjoinable, and any purchase taken there landed on an
+    /// anonymous RevenueCat identity needing aliasing — the known
+    /// no_profile_matched failure.
+    ///
+    /// Three things this fixes at once: funnel events carry a real user_id so
+    /// the canonical join can attribute them; a purchase is made under an
+    /// identified RC customer; and the order matches the standing ruling —
+    /// onboarding after signup, ending at the picker.
     private var showFirstLaunchPaywall: Bool {
         #if DEBUG
         if motionProof { return !onboarding.hasSeenFirstLaunchPaywall }
         #endif
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
-              !auth.isAuthenticated else { return false }
+              auth.isAuthenticated else { return false }
         return true
     }
 
@@ -347,12 +363,16 @@ struct PromptlyApp: App {
     /// coexist), at most once per install, never blocks the session.
     /// STANDS DOWN when onboarding_v2 is on (that flow CONTAINS the question)
     /// or when the wall flow is armed (its Q3 already asks it).
+    /// Moved after signup with the rest of the sequence (2026-08-30). It stands
+    /// down whenever v2 is armed — which is now always — so this is currently
+    /// unreachable; inverting it anyway means the one path that could re-admit
+    /// an anonymous funnel event cannot do so if v2 is ever turned off.
     private var showAttributionGate: Bool {
         guard onboarding.attributionGateEnabled,
               !onboarding.onboardingV2Enabled,
               onboarding.wallOnboardingEnabled != true,
               !onboarding.hasSeenAttributionGate,
-              !auth.isAuthenticated else { return false }
+              auth.isAuthenticated else { return false }
         return true
     }
 
@@ -367,9 +387,14 @@ struct PromptlyApp: App {
         #if DEBUG
         if motionProof { return !onboarding.hasCompletedOnboarding }
         #endif
+        // Same inversion as the paywall above: the flow runs AFTER signup so its
+        // steps carry a user_id. The old `startedFlow` clause existed to let a
+        // user who began pre-auth finish post-auth — with the sequence moved
+        // wholly after signup there is no pre-auth beginning to carry over, and
+        // keeping it would re-admit exactly the anonymous window being closed.
         guard onboarding.onboardingV2Enabled,
-              !onboarding.hasCompletedOnboarding else { return false }
-        if auth.isAuthenticated && !onboarding.startedFlow { return false }
+              !onboarding.hasCompletedOnboarding,
+              auth.isAuthenticated else { return false }
         return true
     }
 
