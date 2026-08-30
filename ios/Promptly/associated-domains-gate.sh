@@ -101,9 +101,23 @@ fi
 # entitlement and the capability — build 237 does — and failing on it would be
 # blocking the next cut with evidence from the last one. That is the cry-wolf
 # shape: the gate would be red before anyone had a chance to make it green.
-if [ "$ENTS" -nt "$IPA" ]; then
-  echo "  the newest exported IPA predates the entitlement change — STALE, profile leg UNCHECKED."
-  echo "  (that IPA was built before associated-domains existed; re-run after the next export.)"
+# STALENESS BY BUILD NUMBER, not by file mtime.
+#
+# The first version compared the entitlements file's mtime against the IPA's.
+# That is defeated by anything that touches either file — including a `touch`
+# during a negative-control run of this very gate, which made a stale IPA look
+# fresh and produced a FAILED verdict about a build that was never meant to
+# carry the entitlement. A gate whose correctness depends on filesystem
+# timestamps is a gate that lies after any routine file operation.
+#
+# The build number is the semantic fact: an IPA is only evidence about the
+# version it actually contains.
+WANT_BUILD=$(grep -m1 -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$DIR/Promptly.xcodeproj/project.pbxproj" | grep -o '[0-9]*')
+IPA_BUILD=$(unzip -p "$IPA" 'Payload/*.app/Info.plist' 2>/dev/null \
+            | plutil -extract CFBundleVersion raw - 2>/dev/null || echo "")
+if [ -z "$IPA_BUILD" ] || [ "$IPA_BUILD" != "$WANT_BUILD" ]; then
+  echo "  newest IPA is build ${IPA_BUILD:-unknown}, current source is build ${WANT_BUILD}."
+  echo "  A different build cannot answer this — profile leg UNCHECKED until build ${WANT_BUILD} is exported."
   exit 0
 fi
 echo "  reading the EXPORTED IPA: $(basename "$(dirname "$(dirname "$IPA")")")/$(basename "$IPA")"
