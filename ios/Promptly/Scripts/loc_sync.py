@@ -98,6 +98,27 @@ def conversion_surfaces():
             g = type2file.get(t)
             if g:
                 seen.add(g)
+
+    # …AND every file that RENDERS a conversion copy holder.
+    #
+    # Walking down from the flows is only half the relation. EditorView hosts
+    # the post-render referral card — it reads ReferralCopy.offer and is the
+    # `postrender` share source — but nothing in the paywall or onboarding
+    # flows references EditorView, so the downward walk never reaches it and
+    # its own copy ("Love it? Get Pro free", "Invite", "Get more usage") sat
+    # outside the gate. Same defect as the one that shipped, found the same
+    # way: by reading the screen rather than trusting the rule.
+    #
+    # So a file that renders the shared copy is a conversion surface by that
+    # fact alone, wherever it lives. This is the upward direction of the same
+    # principle — a string reaches a money-or-invite moment — and it needs no
+    # maintenance, because a new surface must reference one of these holders
+    # to show the copy at all.
+    COPY_HOLDERS = ("ReferralCopy", "ProBenefits", "TrialCopy")
+    for f, body in code.items():
+        if any(h + "." in body for h in COPY_HOLDERS):
+            seen.add(f)
+
     return {os.path.basename(f) for f in seen}
 
 
