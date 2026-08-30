@@ -71,3 +71,22 @@ test('cold-load per class: every stored failure copy is display-safe', () => {
   // Path A intentionally still trips the filter (generic on device) until Wave 2:
   assert.equal(looksTechnicalToiOS(stored[2]), true, 'Path A pending Wave 2 by design');
 });
+
+// ── WORKER-CODE COVERAGE (2026-08-30, localization) ───────────────────────────
+// The app overrides the worker's user_message by error_code so the words live
+// in the iOS String Catalog. A code the worker EMITS but this table does not
+// MAP resolves to null, the caller falls back to the worker's free text, and a
+// Hindi or Arabic reader gets English. Nothing errors — that is why it needs a
+// test. These five are the codes handler.py emits alongside a user_message.
+test('every worker-emitted error_code maps to server copy', () => {
+  for (const code of ['TIER_CONCURRENCY_LIMIT', 'SAMPLE_MISSING',
+                      'SAMPLE_UNREADABLE', 'NOT_TALKING_HEAD', 'CORE_ERROR']) {
+    const copy = require('../lib/failure-copy').rejectionCopy(code);
+    assert.ok(copy, `${code} is emitted by the worker but maps to NOTHING — the ` +
+                    `app falls back to the worker's English free text`);
+    assert.ok(copy.length > 40, `${code} copy is too short to be the real sentence`);
+  }
+  // CONTROL — the lookup must be able to MISS, or the assertions above are vacuous.
+  assert.strictEqual(require('../lib/failure-copy').rejectionCopy('NOT_A_REAL_CODE_XYZ'), null,
+    'an unmapped code must return null; if everything maps, this test proves nothing');
+});
