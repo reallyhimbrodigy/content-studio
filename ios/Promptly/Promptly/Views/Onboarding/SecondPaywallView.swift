@@ -5,7 +5,11 @@ import RevenueCat
 /// questions + the results wall, before the app. The copy is fed by Q1/Q2 —
 /// that is the point of asking them. The third option is the REFERRAL (ruled
 /// 2026-08-21: it replaces the first-month discount as the alternative to
-/// paying): invite 3 friends who each finish a first video → 7 days of Pro.
+/// paying): a day of Pro for each person you invite who finishes a first video,
+/// three days plus a bonus at three. Copy lives in ReferralCopy — this file
+/// spells none of it. Re-laddered 2026-08-29: the old shape stated a quota of
+/// three before the user had shared once, so a first successful invite paid
+/// nothing and the loop never taught itself.
 ///
 /// SKU order comes from the RevenueCat OFFERING (annual first + pre-selected,
 /// weekly second — dashboard-owned, reversible without a build); both SKUs
@@ -205,7 +209,7 @@ struct SecondPaywallView: View {
                     Text("Or get Pro free")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("Invite 3 friends who make a video — get a week of Pro")
+                    Text(ReferralCopy.offer)
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)

@@ -44,6 +44,26 @@ SCARCITY_COPY_RE='offer ends|ends in [0-9]|expires in|only [0-9]+ (left|remainin
 # an interpolation renders as \(name)% and never matches this.
 PERCENT_RE='[0-9]+ ?% ?(off|discount|cheaper|savings?)|half[- ]?(price|off)|quarter[- ]?price|third off'
 SCARCITY_UI_RE='countdown|timeRemaining|secondsRemaining|expiresAt|deadline'
+# TWO-SIDED REFERRAL — an App Review rejection, not a preference (2026-08-29).
+#
+# Apple permits rewarding the REFERRER. Rewarding the REFEREE — the person who
+# receives the invite — for downloading or registering is non-compliant under
+# guideline 3.2.2, which targets incentivised installs. Developers have been
+# rejected for two-sided rewards even when the referee's reward only paid out on
+# subscribe. Two-sided is also the industry default, so it WILL be proposed
+# again in good faith by someone who has seen it everywhere else; this ban is
+# here so that conversation happens at the gate rather than at App Review.
+#
+# Matches copy promising the invited person something ("they get", "your friend
+# gets", "you both get"), and the invite-quota framing we banned separately.
+TWO_SIDED_RE='(they|your friend|the person you invite|whoever you invite|you both|both of you) (get|gets|receive|receives|earn|earns)|gift (them|your friend)|free .{0,20}for (them|your friend)'
+# INVITE-QUOTA framing — a separate ban with a separate reason, kept separate.
+# "Invite 3 friends" is not an App Review problem; it is a conversion one. It
+# states a quota before the user has shared even once, so the first share reads
+# as a third of a reward rather than a reward. The ladder exists precisely so
+# the FIRST successful invite pays. Merging this into the two-sided ban would
+# put a rejection risk and a copy preference under one label and one fix.
+INVITE_QUOTA_RE='invite [0-9]+ friends?|[0-9]+ (friends?|people) (to|who)|refer [0-9]+'
 
 # Strip // line comments and /* */ block comments while preserving line count
 # and string literals (a quote-aware scan, so "https://…" inside a string never
@@ -110,6 +130,24 @@ while IFS= read -r -d '' f; do
     done <<< "$hits"
   fi
 
+  hits="$(printf '%s\n' "$stripped" | grep -nEi "$TWO_SIDED_RE" || true)"
+  if [ -n "$hits" ]; then
+    violations=1
+    while IFS= read -r h; do
+      echo "TWO-SIDED REF   $f:$h"
+      echo "                (rewarding the INVITED person is an App Review rejection — referrer only)"
+    done <<< "$hits"
+  fi
+
+  hits="$(printf '%s\n' "$stripped" | grep -nEi "$INVITE_QUOTA_RE" || true)"
+  if [ -n "$hits" ]; then
+    violations=1
+    while IFS= read -r h; do
+      echo "INVITE QUOTA    $f:$h"
+      echo "                (states a quota before the first share; the ladder pays from invite one)"
+    done <<< "$hits"
+  fi
+
   # ── COUNTDOWN UI — DEFAULT-DENY across every Swift file ───────────────────
   # Was scoped to filenames matching *Paywall*|*TrialWall*|*ExportGate*|*Offer*,
   # which is the allowlist shape the standing rule warns about: it governs the
@@ -156,7 +194,7 @@ if [ "$violations" -ne 0 ]; then
   exit 1
 fi
 
-echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity."
+echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity, no two-sided referral, no invite quotas."
 
 # The reader-enumeration check runs from here so ONE invocation covers both:
 # a separate script nobody remembers to run is not a gate.

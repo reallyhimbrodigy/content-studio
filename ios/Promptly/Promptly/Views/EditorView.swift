@@ -4100,7 +4100,7 @@ private struct PostRenderReferralCard: View {
                 Text("Love it? Get Pro free")
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.white)
-                Text("Invite 3 friends who make a video — get a week of Pro")
+                Text(ReferralCopy.offer)
                     .font(.system(size: 11.5))
                     .foregroundColor(.white.opacity(0.65))
                     .lineLimit(1)
