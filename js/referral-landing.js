@@ -63,34 +63,60 @@
     return n;
   }
 
+  // Theme tokens for the overlay, resolved by the OS rather than hardcoded.
+  //
+  // This panel used to be `background:#000;color:#fff` with every nested colour
+  // written as rgba(255,255,255,…). The site itself is NOT permanently dark:
+  // css/theme.css defaults `--bg-body` to #ffffff and only switches under
+  // `prefers-color-scheme: dark`, and the page declares `color-scheme: light
+  // dark`, so a light-mode visitor got a black full-screen slab and light
+  // browser chrome around it. Injected as a stylesheet with a dark media query
+  // rather than computed once in JS, so it follows a mid-session OS change.
+  function injectStyles() {
+    if (doc.getElementById('promptly-ref-style')) return;
+    var s = doc.createElement('style');
+    s.id = 'promptly-ref-style';
+    s.textContent =
+      '#promptly-ref-overlay{' +
+        '--ref-bg:#ffffff;--ref-fg:#111111;--ref-dim:rgba(17,17,17,0.62);' +
+        '--ref-faint:rgba(17,17,17,0.45);--ref-panel:rgba(17,17,17,0.04);' +
+        '--ref-line:rgba(17,17,17,0.14);--ref-btn-bg:#111111;--ref-btn-fg:#ffffff;}' +
+      '@media (prefers-color-scheme: dark){#promptly-ref-overlay{' +
+        '--ref-bg:#0a0a0a;--ref-fg:#ffffff;--ref-dim:rgba(255,255,255,0.75);' +
+        '--ref-faint:rgba(255,255,255,0.55);--ref-panel:rgba(255,255,255,0.07);' +
+        '--ref-line:rgba(255,255,255,0.18);--ref-btn-bg:#ffffff;--ref-btn-fg:#000000;}}';
+    doc.head.appendChild(s);
+  }
+
   function showOverlay() {
     if (doc.getElementById('promptly-ref-overlay')) return;
+    injectStyles();
     var overlay = el('div',
-      'position:fixed;inset:0;z-index:99999;background:#000;color:#fff;display:flex;' +
+      'position:fixed;inset:0;z-index:99999;background:var(--ref-bg);color:var(--ref-fg);display:flex;' +
       'flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;' +
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;');
     overlay.id = 'promptly-ref-overlay';
 
     var close = el('button',
       'position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:18px;' +
-      'background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border:none;' +
+      'background:var(--ref-panel);color:var(--ref-faint);border:none;' +
       'font-size:16px;cursor:pointer;', '✕');
     close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', function () { overlay.remove(); });
     overlay.appendChild(close);
 
     overlay.appendChild(el('div',
-      'font-size:15px;letter-spacing:0.14em;color:rgba(255,255,255,0.55);' +
+      'font-size:15px;letter-spacing:0.14em;color:var(--ref-faint);' +
       'text-transform:uppercase;margin-bottom:10px;', 'You’re invited to'));
     overlay.appendChild(el('div', 'font-size:34px;font-weight:800;margin-bottom:26px;', 'Promptly'));
 
     // The code — large, and the whole block is tap-to-copy.
     var codeWrap = el('button',
-      'background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.18);' +
-      'border-radius:16px;padding:18px 30px;cursor:pointer;color:#fff;margin-bottom:8px;');
+      'background:var(--ref-panel);border:1px solid var(--ref-line);' +
+      'border-radius:16px;padding:18px 30px;cursor:pointer;color:var(--ref-fg);margin-bottom:8px;');
     codeWrap.setAttribute('aria-label', 'Copy referral code ' + CODE.split('').join(' '));
     var codeText = el('div', 'font-size:40px;font-weight:800;letter-spacing:0.22em;', CODE);
-    var copyHint = el('div', 'font-size:13px;color:rgba(255,255,255,0.5);margin-top:6px;', 'Tap to copy');
+    var copyHint = el('div', 'font-size:13px;color:var(--ref-faint);margin-top:6px;', 'Tap to copy');
     codeWrap.appendChild(codeText);
     codeWrap.appendChild(copyHint);
     codeWrap.addEventListener('click', function () {
@@ -113,22 +139,27 @@
     overlay.appendChild(codeWrap);
 
     overlay.appendChild(el('div',
-      'font-size:15px;color:rgba(255,255,255,0.75);max-width:340px;line-height:1.5;margin:18px 0 6px;',
-      'Talk to Promptly like an editor — captions, cuts and graphics, done for you. ' +
-      'Invite 3 friends who make a video and get a week of Pro.'));
+      'font-size:15px;color:var(--ref-dim);max-width:340px;line-height:1.5;margin:18px 0 6px;',
+      // Says nothing about a reward. This panel is read by the person being
+      // INVITED, and promising them anything for installing is the two-sided
+      // shape guideline 3.2.2 rejects. It also used to read "Invite 3 friends
+      // who make a video and get a week of Pro" — a quota the ladder was built
+      // to remove, describing a reward we no longer grant, addressed to the
+      // wrong person. The product claim alone is the stronger opening anyway.
+      'Talk to Promptly like an editor — captions, cuts and graphics, done for you.'));
     overlay.appendChild(el('div',
-      'font-size:14px;color:rgba(255,255,255,0.55);margin-bottom:26px;',
+      'font-size:14px;color:var(--ref-faint);margin-bottom:26px;',
       'Enter this code when you sign up.'));
 
     var store = el('a',
-      'display:block;background:#fff;color:#000;font-size:17px;font-weight:700;' +
+      'display:block;background:var(--ref-btn-bg);color:var(--ref-btn-fg);font-size:17px;font-weight:700;' +
       'border-radius:16px;padding:16px 44px;text-decoration:none;margin-bottom:14px;',
       'Get Promptly on the App Store');
     store.href = APP_STORE_URL;
     overlay.appendChild(store);
 
     var open = el('a',
-      'display:block;color:rgba(255,255,255,0.6);font-size:14px;text-decoration:none;',
+      'display:block;color:var(--ref-dim);font-size:14px;text-decoration:none;',
       'Already have Promptly? Open the app');
     open.href = SCHEME_URL;
     overlay.appendChild(open);
