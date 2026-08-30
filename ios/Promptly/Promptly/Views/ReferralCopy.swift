@@ -55,4 +55,41 @@ enum ReferralCopy {
             ? String(localized: "You earned a day of Pro")
             : String(localized: "You earned \(days) days of Pro")
     }
+
+    // MARK: - The shared message
+
+    /// The message body, as approved. Deliberately says nothing about a reward:
+    ///
+    ///  • No "download it here" — iMessage, WhatsApp and every other target
+    ///    already render the link as a rich bubble, so the instruction is noise
+    ///    that pushes the actual claim further down the message.
+    ///  • No "counts toward my free week". It tells the recipient they are doing
+    ///    the sender a favour, which is a weaker opening than the product claim
+    ///    on its own, and it is the clause that would make this read two-sided.
+    ///  • Nothing is offered to the recipient, which is what keeps the loop
+    ///    referrer-only and compliant under guideline 3.2.2 (see rule 1 above).
+    ///
+    /// "ChatGPT" stays literal in every translation. It is the comparison that
+    /// does the explaining — substituting a local equivalent (or transliterating
+    /// it) loses the one reference the reader already understands.
+    static let shareBody = String(localized: "It's like ChatGPT for video editing — you tell it what you want and it edits the whole thing. Captions, cuts, graphics, all of it.")
+
+    /// The invite URL for a code. UPPERCASED at the source: `claim_referral`
+    /// resolves codes with `upper(trim(p_code))`, and the landing page echoes
+    /// the code back for the paste path, so a lower-case code that survives the
+    /// round trip would still resolve — but it would be shown to the user in a
+    /// form that does not match what we tell them their code is.
+    static func shareURL(code: String) -> URL? {
+        let c = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !c.isEmpty else { return nil }
+        return URL(string: "https://usepromptly.app/?ref=\(c)")
+    }
+
+    /// Body + link, the ONE assembly point. Every surface shares this; none
+    /// composes its own, which is what stopped four files drifting apart before.
+    /// The link goes on its own line so the rich preview attaches to it cleanly.
+    static func shareMessage(code: String) -> String {
+        guard let url = shareURL(code: code) else { return shareBody }
+        return "\(shareBody)\n\n\(url.absoluteString)"
+    }
 }

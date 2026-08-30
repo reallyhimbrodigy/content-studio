@@ -37,6 +37,15 @@ struct AccountView: View {
     @State private var showFeedbackSheet = false
     @State private var feedbackText = ""
     @State private var feedbackSent = false
+    @State private var showLanguagePicker = false
+    /// Mirrors AppLanguage.override so the row updates the moment a choice is
+    /// made. `nil` = follow the device, which is the shipped default.
+    @State private var languageOverride: String? = AppLanguage.override
+
+    private var languageRowValue: String {
+        if let code = languageOverride { return AppLanguage.label(for: code) }
+        return "\(String(localized: "System")) (\(AppLanguage.label(for: AppLanguage.deviceResolved)))"
+    }
 
     var body: some View {
         NavigationStack {
@@ -80,6 +89,14 @@ struct AccountView: View {
                     // ── SETTINGS ──
                     settingsGroup("Settings") {
                         cardRow("Change password") { showPasswordReset = true }
+                        cardDivider
+                        // Value reads "System (हिन्दी)" when following the device
+                        // so the row states BOTH that nothing is overridden and
+                        // what the device actually resolved to — otherwise a user
+                        // seeing "System" cannot tell which language that is.
+                        cardRow(String(localized: "Language"), value: languageRowValue) {
+                            showLanguagePicker = true
+                        }
                         cardDivider
                         cardRow("Notifications") { openSystemSettings() }
                     }
@@ -199,6 +216,83 @@ struct AccountView: View {
             }
             .sheet(isPresented: $showFeedbackSheet) {
                 feedbackSheet
+            }
+            .sheet(isPresented: $showLanguagePicker) {
+                languagePickerSheet
+            }
+        }
+    }
+
+    // MARK: - Language
+
+    /// An OVERRIDE, not the mechanism. "System" is first and is the default:
+    /// iOS already matches the device's preferred languages against the twelve
+    /// we ship, and that path works. This exists for the user whose phone is in
+    /// one language and who wants the app in another — a common case where a
+    /// shared or work device is not set to the owner's first language.
+    ///
+    /// Each row is labelled in its OWN script, so someone who cannot read the
+    /// current UI language can still find theirs.
+    private var languagePickerSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    languageRow(code: nil,
+                                label: String(localized: "System"),
+                                detail: AppLanguage.label(for: AppLanguage.deviceResolved))
+                } footer: {
+                    Text("Follows your device language. Change it in iOS Settings.")
+                }
+                Section {
+                    ForEach(AppLanguage.supported, id: \.code) { lang in
+                        languageRow(code: lang.code, label: lang.label, detail: nil)
+                    }
+                } footer: {
+                    // Said plainly rather than left for the user to discover.
+                    // The change genuinely lands on the next launch: almost all
+                    // of this app's copy is String(localized:), which resolves
+                    // against the bundle chosen at process start. Claiming an
+                    // instant switch would mean a part-translated screen.
+                    if AppLanguage.overridePendingRestart {
+                        Text("Reopen Promptly to finish switching language.")
+                    } else {
+                        Text("Takes effect the next time you open Promptly.")
+                    }
+                }
+            }
+            .navigationTitle(String(localized: "Language"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Done")) { showLanguagePicker = false }
+                }
+            }
+        }
+    }
+
+    private func languageRow(code: String?, label: String, detail: String?) -> some View {
+        Button {
+            AppLanguage.override = code
+            languageOverride = code
+            Analytics.track("language_changed", props: [
+                "language": code ?? "system",
+                "resolved": AppLanguage.current,
+                "source": "account",
+            ])
+            showLanguagePicker = false
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                    if let detail {
+                        Text(detail).font(.system(size: 12)).foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                if languageOverride == code {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .semibold))
+                }
             }
         }
     }

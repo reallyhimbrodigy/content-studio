@@ -58,17 +58,28 @@ struct OnboardingQuestion {
 
     // MARK: - The three questions
 
+    // `title`/`subtitle`/`label` are plain `String`, NOT LocalizedStringKey, so
+    // a bare literal here is invisible to the compiler's string extractor and
+    // can never localize — it renders English in every language and no
+    // catalog-only check can see it, because the key never reaches the catalog.
+    // That is exactly how Q3 shipped English-only to twelve localized markets.
+    // Every user-visible literal in these specs is wrapped.
+    //
+    // Brand names are wrapped too rather than special-cased: it keeps the gate
+    // default-deny with no exemption list. They are translated as themselves —
+    // brands are not transliterated, so an Arabic reader sees "TikTok".
+
     static let audience = OnboardingQuestion(
         step: .audience,
-        title: "Who are you making videos for?",
-        subtitle: "So Promptly can tailor the edit.",
+        title: String(localized: "Who are you making videos for?"),
+        subtitle: String(localized: "So Promptly can tailor the edit."),
         options: [
-            ("self", "Myself / my brand"),
-            ("business", "A business"),
-            ("clients", "Clients"),
-            ("creator", "A creator audience"),
-            ("event", "An event"),
-            ("trying", "Just trying it out"),
+            ("self", String(localized: "Myself / my brand")),
+            ("business", String(localized: "A business")),
+            ("clients", String(localized: "Clients")),
+            ("creator", String(localized: "A creator audience")),
+            ("event", String(localized: "An event")),
+            ("trying", String(localized: "Just trying it out")),
         ],
         event: "onboarding_audience",
         propKey: "audience"
@@ -76,15 +87,15 @@ struct OnboardingQuestion {
 
     static let intent = OnboardingQuestion(
         step: .intent,
-        title: "What do you want to make?",
-        subtitle: "We'll start you on a matching style.",
+        title: String(localized: "What do you want to make?"),
+        subtitle: String(localized: "We'll start you on a matching style."),
         options: [
-            ("viral", "Viral / hype"),
-            ("promo", "Sales / promo"),
-            ("storytime", "Storytime"),
-            ("talkinghead", "Talking-head clean-up"),
-            ("highlights", "Highlights / recap"),
-            ("unsure", "Not sure yet"),
+            ("viral", String(localized: "Viral / hype")),
+            ("promo", String(localized: "Sales / promo")),
+            ("storytime", String(localized: "Storytime")),
+            ("talkinghead", String(localized: "Talking-head clean-up")),
+            ("highlights", String(localized: "Highlights / recap")),
+            ("unsure", String(localized: "Not sure yet")),
         ],
         event: "onboarding_intent",
         propKey: "intent"
@@ -92,16 +103,16 @@ struct OnboardingQuestion {
 
     static let attribution = OnboardingQuestion(
         step: .attribution,
-        title: "How did you hear about us?",
+        title: String(localized: "How did you hear about us?"),
         subtitle: nil,
         options: [
-            ("tiktok", "TikTok"),
-            ("instagram", "Instagram"),
-            ("youtube", "YouTube"),
-            ("friend", "A friend"),
-            ("appstore", "App Store search"),
-            ("reddit_x", "Reddit / X"),
-            ("other", "Other"),
+            ("tiktok", String(localized: "TikTok")),
+            ("instagram", String(localized: "Instagram")),
+            ("youtube", String(localized: "YouTube")),
+            ("friend", String(localized: "A friend")),
+            ("appstore", String(localized: "App Store search")),
+            ("reddit_x", String(localized: "Reddit / X")),
+            ("other", String(localized: "Other")),
         ],
         event: "onboarding_attribution",
         propKey: "attribution"

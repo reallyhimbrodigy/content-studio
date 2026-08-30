@@ -227,7 +227,16 @@ struct OfferRevealView: View {
             } label: {
                 // Price string comes from StoreKit's own formatter — we never
                 // compose a currency string ourselves.
-                Text("\(String(localized: "Or start monthly for")) \(intro.localizedPriceString) (\(pct)% \(String(localized: "off")))")
+                //
+                // ONE key, not fragments. This line used to be assembled from
+                // "Or start monthly for" + price + "(" + pct + "% " + "off" + ")",
+                // which is unlocalizable: every language puts the price, the
+                // number and the discount word in a different order, and Arabic
+                // and Urdu reverse the run direction around the parenthetical.
+                // A translator handed the fragment "off" has no sentence to
+                // place it in. Interpolated as a whole sentence, the translator
+                // moves %@ and %lld wherever their grammar needs them.
+                Text(String(localized: "Or start monthly for \(intro.localizedPriceString) (\(pct)% off)"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white.opacity(0.75))
                     .underline()

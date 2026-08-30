@@ -59,22 +59,22 @@ enum TrialCopy {
 
     // MARK: - Post-purchase confirmation (replaces the silent dismiss)
 
-    static let confirmationTitle = "You're Pro"
+    static let confirmationTitle = String(localized: "You're Pro")
 
     /// The unified post-purchase celebration title. One line, one voice — shared
     /// by every purchase surface (paywall sheet + upgrade wall) via
     /// ProCelebrationView so the "moment" reads identically no matter which
     /// surface triggered the buy.
-    static let proMomentTitle = "You're on Promptly Pro"
+    static let proMomentTitle = String(localized: "You're on Promptly Pro")
 
     /// A direct purchase (no trial): name the exact recurring charge and the
     /// honest renewal note. `price` is the full localized price from StoreKit.
     static func confirmationBody(price: String) -> String {
-        "You're all set — \(price) auto-renews until you cancel in Settings."
+        String(localized: "You're all set — \(price) auto-renews until you cancel in Settings.")
     }
 
     // MARK: - Fineprint (the required auto-renew disclosure)
 
     /// The legally required auto-renew disclosure. No trial, so no reminder line.
-    static let fineprint = "Auto-renews until cancelled. Cancel anytime in Settings."
+    static let fineprint = String(localized: "Auto-renews until cancelled. Cancel anytime in Settings.")
 }
