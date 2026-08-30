@@ -91,7 +91,6 @@ struct SecondPaywallView: View {
                             // Flag-gated 2026-08-29. Was unconditional.
                             if onboarding.secondPaywallReferralEnabled {
                                 referralRow
-                                    .onAppear { ReferralService.shared.trackImpression(source: "paywall2") }
                             }
                         }
                         .padding(.horizontal, 24)
@@ -201,10 +200,24 @@ struct SecondPaywallView: View {
     /// The referral option — visually parallel to the SKUs but NOT part of the
     /// radio selection (it must never wedge the buy button). Tapping opens the
     /// share sheet; progress shows qualified friends toward the reward.
+    /// The impression fires from INSIDE this row, not from its mount sites.
+    ///
+    /// It used to be an `.onAppear` on the mount, and this row is mounted
+    /// TWICE — once with packages present, once in the offerings-unavailable
+    /// branch. Only the first carried it, so the second rendered the full row,
+    /// offer and progress line, with no `referral_shown`. Its share button
+    /// takes the default `source`, "paywall2", so those shares landed in a
+    /// bucket whose denominator excluded their own views: paywall2's share
+    /// RATE read high by exactly the amount offerings were failing. That is
+    /// the number the ladder is judged on.
+    ///
+    /// Anchored on the view's own root — the pattern AbandonRecoveryOverlay
+    /// already uses across its three mounts — a third mount cannot be added
+    /// without instrumentation, because there is no mount-site step to forget.
     private var referralRow: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            Task { await referrals.presentShareSheet() }
+            Task { await referrals.presentShareSheet(source: "paywall2") }
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: "person.2.fill")
@@ -246,6 +259,7 @@ struct SecondPaywallView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear { referrals.trackImpression(source: "paywall2") }
     }
 
     private var ctaButton: some View {
