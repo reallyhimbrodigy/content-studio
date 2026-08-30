@@ -35,6 +35,13 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var postrenderReferralEnabled = false
     @Published private(set) var abandonReferralEnabled = false
     @Published private(set) var ambientWallReferralEnabled = false
+    /// The referral row on the SECOND paywall. Added 2026-08-29 because it was
+    /// the only referral surface with NO flag at all — it shipped live to every
+    /// wall-onboarding user while its three siblings sat dark, and it is the
+    /// one that showed a progress promise ("0 of 3 friends have made a video")
+    /// against attribution that has been 0% all-time. A promise the pipeline
+    /// cannot keep is worse than no surface.
+    @Published private(set) var secondPaywallReferralEnabled = false
     @Published private(set) var postrenderSaveCtaEnabled = false
     @Published private(set) var chatMediaEnabled = false
     @Published private(set) var firstSessionAutopickerEnabled = false
@@ -105,6 +112,7 @@ final class OnboardingState: ObservableObject {
             postrenderReferralEnabled = (obj?["postrender_referral"] as? String) == "on"
             abandonReferralEnabled = (obj?["abandon_referral"] as? String) == "on"
             ambientWallReferralEnabled = (obj?["ambient_wall_referral"] as? String) == "on"
+            secondPaywallReferralEnabled = (obj?["second_paywall_referral"] as? String) == "on"
             postrenderSaveCtaEnabled = (obj?["postrender_save_cta"] as? String) == "on"
             chatMediaEnabled = (obj?["chat_media"] as? String) == "on"
             firstSessionAutopickerEnabled = (obj?["first_session_autopicker"] as? String) == "on"
@@ -113,6 +121,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(postrenderReferralEnabled, forKey: "postrender_referral_enabled")
             UserDefaults.standard.set(abandonReferralEnabled, forKey: "abandon_referral_enabled")
             UserDefaults.standard.set(ambientWallReferralEnabled, forKey: "ambient_wall_referral_enabled")
+            UserDefaults.standard.set(secondPaywallReferralEnabled, forKey: "second_paywall_referral_enabled")
             UserDefaults.standard.set(postrenderSaveCtaEnabled, forKey: "postrender_save_cta_enabled")
             UserDefaults.standard.set(chatMediaEnabled, forKey: "chat_media_enabled")
             UserDefaults.standard.set(firstSessionAutopickerEnabled, forKey: "first_session_autopicker_enabled")

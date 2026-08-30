@@ -88,7 +88,8 @@ struct SecondPaywallView: View {
                             ForEach(packages, id: \.identifier) { pkg in
                                 packageRow(pkg)
                             }
-                            referralRow   // THIRD, after the SKUs — the alternative to paying
+                            // Flag-gated 2026-08-29. Was unconditional.
+                            if onboarding.secondPaywallReferralEnabled { referralRow }
                         }
                         .padding(.horizontal, 24)
                         .entrance(delay: 0.18)
@@ -96,7 +97,9 @@ struct SecondPaywallView: View {
                         ProgressView().tint(.white).padding(.vertical, 30)
                     } else {
                         // Offerings unavailable: the referral option still stands.
-                        referralRow.padding(.horizontal, 24)
+                        if onboarding.secondPaywallReferralEnabled {
+                            referralRow.padding(.horizontal, 24)
+                        }
                     }
 
                     Spacer().frame(height: 20)
@@ -220,7 +223,10 @@ struct SecondPaywallView: View {
                     // promise that pays out days later has to say what ticks
                     // the counter, or the first cohort learns the reward
                     // "doesn't arrive".
-                    Text("\(min(referrals.qualifiedCount, ReferralService.rewardTarget)) of \(ReferralService.rewardTarget) friends have made a video")
+                    // No denominator: a target reintroduces the quota the
+                    // ladder exists to remove, and this one counted toward a
+                    // reward nobody could reach while attribution was 0%.
+                    Text(ReferralCopy.progress(referrals.qualifiedCount))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.55))
                 }
