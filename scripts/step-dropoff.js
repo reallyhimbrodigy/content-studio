@@ -5,11 +5,22 @@
 //
 // ── TWO THINGS DISCOVERY CHANGED, both load-bearing ──────────────────────────
 //
-// 1. THE VIDEO-TYPE STEP HAS TWO SPELLINGS. `onboarding_v2_step` emits both
-//    `videoType` (67 events) and `video_type` (40), from the SAME builds, for
-//    the same beat. Keying on either alone splits one step into two and invents
-//    a drop-off that is pure naming. They are merged here. This is a client bug
-//    worth fixing at the emitter, but the read must not lie in the meantime.
+// 1. ARRIVAL AND ANSWER WERE THE SAME ROW. `onboarding_v2_step` is emitted from
+//    TWO places: the v2Step didSet (arriving at a beat) and record() (answering
+//    it). Before the 2026-08-30 emitter fix both wrote only `step`, so for Q1
+//    arrival and answer were both literally "audience" and indistinguishable.
+//    Q2 only LOOKED like a naming bug — the enum spells it `videoType`, the
+//    answer seam `video_type` — which is the same collision wearing two names.
+//
+//    An earlier revision of THIS script merged videoType/video_type as
+//    "two spellings of one step". That was wrong: it conflated entering a
+//    question with answering it, which is exactly the drop-off being measured.
+//
+//    The emitter now carries `phase` ("arrive" | "answer" | "skip") and one
+//    snake_case `step` per beat. This read is era-aware: rows WITH a phase use
+//    it; legacy rows fall back to the old shape, where `videoType` means arrive
+//    and `video_type` means answer, and Q1 is reported as AMBIGUOUS rather than
+//    guessed at.
 //
 // 2. SKIP IS A SEPARATE STEP VALUE, NOT A FLAG. The skip of a question arrives
 //    as its own step (`audience_skip`, `video_type_skip`) rather than a
@@ -19,14 +30,19 @@
 //    not report them, NOT because nobody skipped. The report says so rather
 //    than printing a flattering zero.
 //
-//    There is NO `attribution_skip` in any build. Q3's skip is unmeasurable.
+//    `attribution_skip` DOES exist, but was emitted on `onboarding_step` — the
+//    legacy wall-flow event — while every other beat reports on
+//    `onboarding_v2_step`. So Q3's skip was instrumented to a name this funnel
+//    never read, which looked identical to "not instrumented". It is now
+//    emitted on both; rows before 2026-08-30 remain only on the legacy event.
 //
 // ── WHAT CANNOT BE CUT ───────────────────────────────────────────────────────
-// LANGUAGE. There is no language or locale field on any event in the entire
-// table — `language_selected` has 0 rows and no prop key matches /lang|locale/.
-// The app's UI language is therefore NOT recoverable from analytics today. The
-// language cut is reported as UNINSTRUMENTED rather than approximated from
-// territory, which would be a different variable wearing its name.
+// LANGUAGE, for rows before 2026-08-30. No language or locale field existed on
+// any event, so the twelve-language translation work could not be measured at
+// all. `session_started` now carries `language` (+ `language_is_override`), so
+// the cut becomes real once a build with that emitter has adoption. Until then
+// it is reported as UNINSTRUMENTED rather than approximated from territory,
+// which is a different variable wearing this one's name.
 //
 // ── ABANDONMENT ──────────────────────────────────────────────────────────────
 // Absence IS the signal. An install whose last funnel event is step N dropped
@@ -62,12 +78,14 @@ async function all(event, since) {
 const STEPS = [
   { key: 'session_started',    ev: 'session_started' },
   { key: 'onboarding:start',   ev: 'onboarding_v2_step', step: ['start'] },
+  // `arrive`/`answer` list the step values that mean each phase in LEGACY rows.
+  // Rows carrying props.phase use that instead — see phaseOf().
   { key: 'Q1 audience',        ev: 'onboarding_v2_step', step: ['audience', 'audience_skip'],
-    answer: ['audience'], skip: ['audience_skip'] },
+    arrive: [], answer: ['audience'], skip: ['audience_skip'], ambiguousLegacy: true },
   { key: 'Q2 video_type',      ev: 'onboarding_v2_step', step: ['videoType', 'video_type', 'video_type_skip'],
-    answer: ['videoType', 'video_type'], skip: ['video_type_skip'] },
-  { key: 'Q3 attribution',     ev: 'onboarding_v2_step', step: ['attribution'],
-    answer: ['attribution'], skip: [] },            // no attribution_skip exists in any build
+    arrive: ['videoType'], answer: ['video_type'], skip: ['video_type_skip'] },
+  { key: 'Q3 attribution',     ev: 'onboarding_v2_step', step: ['attribution', 'attribution_skip'],
+    arrive: [], answer: ['attribution'], skip: ['attribution_skip'], ambiguousLegacy: true },
   { key: 'reveal',             ev: 'onboarding_v2_step', step: ['reveal'] },
   { key: 'offer_reveal_viewed', ev: 'offer_reveal_viewed' },
   { key: 'plan_selected',      ev: 'plan_selected' },
@@ -121,9 +139,10 @@ function skipReport(steps, journeys, label) {
     const a = journeys.filter((j) => j.kinds[s.key] && j.kinds[s.key].answered).length;
     const k = journeys.filter((j) => j.kinds[s.key] && j.kinds[s.key].skipped).length;
     const tot = a + k;
-    if (!s.skip.length) { console.log(`  ${s.key.padEnd(22)} answered ${String(a).padStart(5)}   skip NOT INSTRUMENTED (no *_skip step value exists)`); continue; }
+    const amb = journeys.filter((j) => j.kinds[s.key] && j.kinds[s.key].ambiguous).length;
     console.log(`  ${s.key.padEnd(22)} answered ${String(a).padStart(5)}   skipped ${String(k).padStart(5)}` +
-      `   skip-rate ${tot ? (100 * k / tot).toFixed(1) + '%' : '—'}`);
+      `   skip-rate ${tot ? (100 * k / tot).toFixed(1) + '%' : '—'}` +
+      (amb ? `   +${amb} LEGACY-AMBIGUOUS (arrive/answer collided pre-fix; excluded)` : ''));
   }
   console.log('  NOTE: *_skip step values are emitted ONLY by 1.3.19 (237) and later.');
   console.log('        Earlier builds report 0 skips because they cannot report one, not because none happened.');
@@ -153,10 +172,17 @@ function skipReport(steps, journeys, label) {
       if (!j.build) j.build = r.app_version;
       if (!j.terr) j.terr = r.territory;
       if (s.answer) {
-        const v = (r.props || {}).step;
-        j.kinds[s.key] = j.kinds[s.key] || { answered: false, skipped: false };
-        if (s.answer.includes(v)) j.kinds[s.key].answered = true;
-        if (s.skip.includes(v)) j.kinds[s.key].skipped = true;
+        const p = r.props || {}, v = p.step;
+        j.kinds[s.key] = j.kinds[s.key] || { answered: false, skipped: false, ambiguous: false };
+        if (p.phase) {
+          // Post-fix rows: trust the phase, it is unambiguous.
+          if (p.phase === 'answer') j.kinds[s.key].answered = true;
+          if (p.phase === 'skip') j.kinds[s.key].skipped = true;
+        } else {
+          if (s.skip.includes(v)) j.kinds[s.key].skipped = true;
+          else if (s.answer.includes(v) && s.ambiguousLegacy) j.kinds[s.key].ambiguous = true;
+          else if (s.answer.includes(v)) j.kinds[s.key].answered = true;
+        }
       }
     }
   }
