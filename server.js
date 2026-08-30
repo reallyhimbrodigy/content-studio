@@ -6130,6 +6130,11 @@ const server = http.createServer((req, res) => {
           resolvedBroll: Array.isArray(orig.resolved_broll) ? orig.resolved_broll : null,
           trendSnapshot: orig.trend_snapshot || null,
           changeRequest,
+          // The assistant replies in the USER's language. Same shared helper
+          // /api/chat and /api/chat/actions use — one mechanism, so a user is
+          // not answered in two different languages depending on the surface.
+          // Validated against the twelve; anything else is 'en'.
+          replyLanguage: require('./lib/reply-language').parseReplyLanguage(body),
           oldVibe: orig.vibe_input || '',
           parentJobId: originalJobId,
         });
