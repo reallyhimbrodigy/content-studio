@@ -44,6 +44,22 @@ for fn in showFirstLaunchPaywall showOnboardingV2 showAttributionGate; do
   fi
 done
 
+# ── AND NEVER TO AN EXISTING SUBSCRIBER ─────────────────────────────────────
+# This became possible only BECAUSE of the reordering this gate enforces. While
+# the surfaces were gated on `!auth.isAuthenticated`, a signed-out user had no
+# known Pro status and the case could not arise. Requiring auth opened it: a
+# paying subscriber would be sold what they already pay for, once per install.
+# The fix for one defect created the other, so both are asserted together.
+for fn in showFirstLaunchPaywall showOnboardingV2; do
+  block=$(awk "/private var ${fn}: Bool \{/,/^    \}/" "$APP")
+  [ -n "$block" ] || continue
+  if ! printf '%s' "$block" | grep -q 'isPro'; then
+    echo "SELLS TO A SUBSCRIBER  $fn does not exclude !subscription.isPro"
+    echo "                       an existing Pro user would be shown an upsell"
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "post-signup-funnel: FAILED — the funnel would run before signup again."

@@ -83,6 +83,48 @@ final class SubscriptionService: ObservableObject {
     @Published var isLoadingOfferings: Bool = false
     @Published var offeringsError: String?
 
+    /// INTRO-OFFER ELIGIBILITY, per product, for THIS Apple ID.
+    ///
+    /// `storeProduct.introductoryDiscount` describes the PRODUCT's offer. It says
+    /// nothing about whether this user may receive it. Apple allows one intro
+    /// offer per Apple ID per subscription group, for ever — so a returning user
+    /// who already used theirs is charged FULL PRICE at the sheet no matter what
+    /// we render. Reading the product alone means showing "50% off · $145.99" to
+    /// someone Apple will charge $289.99: a false money claim on the money
+    /// surface, which is the exact class the percentage gate exists to prevent.
+    ///
+    /// Keyed by productIdentifier. Absent = not yet fetched, which is treated as
+    /// INELIGIBLE by `isEligibleForIntro` — fail closed, never claim on unknown.
+    @Published private(set) var introEligibility: [String: Bool] = [:]
+
+    /// True only when RevenueCat has affirmatively said this Apple ID may
+    /// receive the product's introductory offer.
+    ///
+    /// Deliberately fails CLOSED: unknown, unfetched, and error all return
+    /// false. Under-promising costs a discount we could have shown; over-
+    /// promising charges someone double what the screen said.
+    func isEligibleForIntro(_ product: StoreProduct) -> Bool {
+        introEligibility[product.productIdentifier] == true
+    }
+
+    /// Fetch eligibility for every product in the current offering. Cheap, and
+    /// it must complete before any discount claim renders.
+    func refreshIntroEligibility() async {
+        guard initialized else { return }
+        let ids = (offerings?.current?.availablePackages ?? []).map { $0.storeProduct.productIdentifier }
+        guard !ids.isEmpty else { return }
+        let result = await Purchases.shared.checkTrialOrIntroDiscountEligibility(productIdentifiers: ids)
+        var map: [String: Bool] = [:]
+        for (pid, elig) in result {
+            // `.eligible` ONLY. `.unknown` and `.noIntroOfferExists` are not a
+            // licence to claim a discount.
+            map[pid] = (elig.status == .eligible)
+        }
+        introEligibility = map
+        let n = map.values.filter { $0 }.count
+        Analytics.track("intro_eligibility_checked", props: ["eligible": n, "checked": map.count])
+    }
+
     /// Post-purchase confirmation payload. Set on a successful purchase so the
     /// paywall shows a real confirmation screen (the exact recurring charge)
     /// instead of the old silent dismiss. FREEMIUM — no trial, just the price.
@@ -232,6 +274,9 @@ final class SubscriptionService: ObservableObject {
             let offering = result.current ?? result[Self.defaultOfferingId]
             let count = offering?.availablePackages.count ?? 0
             Analytics.track("offerings_loaded", props: ["count": count])
+            // Eligibility rides the same load: a discount claim must never be
+            // able to render before we know whether this Apple ID can have it.
+            await refreshIntroEligibility()
             if count == 0 {
                 // Fetch succeeded but there is nothing to sell here. Surface it
                 // as a visible failure state, not a spinner, and flag it as a

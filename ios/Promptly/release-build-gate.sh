@@ -29,8 +29,18 @@ bash "$DIR/associated-domains-gate.sh" || exit 1
 
 echo "release-build-gate: compiling Release (the configuration the archive uses)…"
 OUT=$(mktemp)
+# Build the way the ARCHIVE builds — including -allowProvisioningUpdates and the
+# ASC key. Without them this gate fails on any newly-added capability, because
+# the local profile has not been regenerated yet: it reports a signing problem
+# as though it were a compile problem, which sends you looking in the wrong
+# place. With them, adding a capability regenerates the profile here rather than
+# at archive time.
 if xcodebuild -project "$DIR/Promptly.xcodeproj" -scheme Promptly \
      -configuration Release -destination "generic/platform=iOS" \
+     -allowProvisioningUpdates \
+     -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_6UXQ2STG2D.p8" \
+     -authenticationKeyID 6UXQ2STG2D \
+     -authenticationKeyIssuerID 64bc4b23-6b09-469c-967c-8a87a619dacb \
      -quiet build > "$OUT" 2>&1; then
   echo "release-build-gate: PASS — Release compiles."
   rm -f "$OUT"; exit 0

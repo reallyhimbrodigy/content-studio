@@ -326,6 +326,7 @@ enum OfferReveal {
     /// territories, so an annual-leaning user must see the ANNUAL offer —
     /// never be switched to a monthly one. Falls back to any offered plan
     /// only when the preferred one carries none.
+    @MainActor
     static func package(in packages: [Package], preferring preferred: Package? = nil) -> Package? {
         if let preferred, isRealOffer(preferred) { return preferred }
         return packages.first(where: isRealOffer)
@@ -340,15 +341,31 @@ enum OfferReveal {
     /// shift in ASC. Without this guard the reveal would have shown an
     /// Indonesian user a struck-through 3,499,000 beside a larger "discount"
     /// price. A store-side typo must never become a client-side lie.
+    @MainActor
     static func isRealOffer(_ pkg: Package) -> Bool {
         guard let d = pkg.storeProduct.introductoryDiscount,
               d.paymentMode != .freeTrial else { return false }
+        // ELIGIBILITY, checked per Apple ID (2026-08-30).
+        //
+        // introductoryDiscount describes the PRODUCT. Apple grants one intro
+        // offer per Apple ID per subscription group, permanently — so a
+        // returning user who already used theirs is charged FULL PRICE at the
+        // sheet regardless of what we draw. Without this check the reveal
+        // showed "49% off · $145.99" to someone Apple then charged $289.99.
+        //
+        // It sits HERE because every claim on this screen — the headline
+        // percentage, the struck price, the CTA label, the secondary monthly
+        // line, and whether the reveal renders at all — already flows through
+        // isRealOffer. One choke point means a new claim cannot be added that
+        // forgets to ask.
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return false }
         return (d.price as NSDecimalNumber).doubleValue
              < (pkg.storeProduct.price as NSDecimalNumber).doubleValue
     }
 
     /// True when there is something real to reveal. The flow consults this —
     /// no offer means the beat is skipped, never faked.
+    @MainActor
     static func isAvailable(in packages: [Package], preferring preferred: Package? = nil) -> Bool {
         package(in: packages, preferring: preferred) != nil
     }
@@ -386,7 +403,10 @@ enum OfferReveal {
     /// FLOORED and then CAPPED at `maxClaimedPercent`. Never rounds up: a money
     /// claim rounded up is overstated, and 49.65% presented as "50%" would be a
     /// claim the receipt does not support. Nil when either price is missing.
+    @MainActor
     static func percentOff(for pkg: Package) -> Int? {
+        // Same eligibility bar as isRealOffer: a percentage is a money claim.
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
         guard let intro = pkg.storeProduct.introductoryDiscount,
               intro.paymentMode != .freeTrial else { return nil }
         let std = (pkg.storeProduct.price as NSDecimalNumber).doubleValue
@@ -400,6 +420,7 @@ enum OfferReveal {
     /// The headline states the REAL discount, computed per territory. It used
     /// to hardcode "half price" — false wherever Apple's price points land
     /// the intro at 40% off (HUN, POL) rather than 50%.
+    @MainActor
     static func headline(for pkg: Package) -> String {
         guard let pct = percentOff(for: pkg) else {
             return String(localized: "Your first subscription")
@@ -412,6 +433,7 @@ enum OfferReveal {
         }
     }
 
+    @MainActor
     static func ctaLabel(for pkg: Package) -> String {
         guard let pct = percentOff(for: pkg) else { return String(localized: "Continue") }
         return String(localized: "Claim \(pct)% off")

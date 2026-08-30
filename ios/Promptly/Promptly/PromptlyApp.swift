@@ -159,6 +159,9 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 @main
 struct PromptlyApp: App {
     @State private var auth = AuthService.shared
+    /// Needed by the paywall/funnel guards: an existing subscriber must never
+    /// be shown either surface.
+    @ObservedObject private var subscription = SubscriptionService.shared
     @UIApplicationDelegateAdaptor(PromptlyAppDelegate.self) private var appDelegate
 
     init() {
@@ -350,7 +353,16 @@ struct PromptlyApp: App {
         #endif
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
-              auth.isAuthenticated else { return false }
+              auth.isAuthenticated,
+              // NEVER to an existing subscriber. This guard became necessary
+              // BECAUSE of the reordering above: while the surface was gated on
+              // `!auth.isAuthenticated`, a signed-out user had no known Pro
+              // status and the case could not arise. Requiring auth to fix
+              // anonymous purchases opened it — a paying subscriber would be
+              // sold what they already pay for, once per install. The fix for
+              // one defect created the other, which is why the user-type matrix
+              // exists rather than spot-checking the happy path.
+              !subscription.isPro else { return false }
         return true
     }
 
@@ -394,7 +406,11 @@ struct PromptlyApp: App {
         // keeping it would re-admit exactly the anonymous window being closed.
         guard onboarding.onboardingV2Enabled,
               !onboarding.hasCompletedOnboarding,
-              auth.isAuthenticated else { return false }
+              auth.isAuthenticated,
+              // Same reasoning as the paywall. The reveal already self-skips for
+              // Pro users, but the three questions would still have run — an
+              // existing subscriber walked through an upsell funnel.
+              !subscription.isPro else { return false }
         return true
     }
 
