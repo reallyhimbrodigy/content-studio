@@ -4038,7 +4038,11 @@ const server = http.createServer((req, res) => {
         const contents = [];
 
         const jobCtx = jobContextLine(recentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '');
+        // reply_language — the assistant answers in the USER's language. Empty
+        // string for English, so the common path stays byte-identical.
+        const _replyLang = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLine = require('./lib/reply-language').replyLanguageInstruction(_replyLang);
+        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '') + _langLine;
 
         // Add conversation history
         for (const h of history.slice(-18)) {
@@ -4257,7 +4261,14 @@ const server = http.createServer((req, res) => {
 
         // Build Gemini contents (same shape as /api/chat).
         const streamJobCtx = jobContextLine(streamRecentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '');
+        // SECOND CONSUMER. /api/chat builds this prompt TWICE — once here for
+        // the streaming path and once above for the non-streaming one. Threading
+        // the language into only one of them would answer the same user in two
+        // languages depending on which path their client took, and the bug
+        // would look like a flaky model rather than a missed call site.
+        const _replyLangS = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLineS = require('./lib/reply-language').replyLanguageInstruction(_replyLangS);
+        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '') + _langLineS;
         const contents = [];
         for (const h of history.slice(-18)) {
           if (h.role === 'user' || h.role === 'assistant') {
