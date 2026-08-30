@@ -1474,7 +1474,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verlängert sich automatisch bis zur Kündigung. Jederzeit in den Einstellungen kündbar."
+            "value": "Automatische Verlängerung. Jederzeit kündbar."
           }
         },
         "es": {
@@ -11541,7 +11541,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bis zu 10 Videos gleichzeitig hochladen"
+            "value": "Bis zu 10 Videos auf einmal"
           }
         },
         "es": {
@@ -14661,6 +14661,10 @@
       }
     },
     "Your video is ready 🎬": {},
+    "Your video is ready!": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Your video is ready. %@. Double tap to watch.": {},
     "Your videos are waiting": {
       "extractionState": "manual",

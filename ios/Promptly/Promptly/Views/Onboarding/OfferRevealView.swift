@@ -143,13 +143,22 @@ struct OfferRevealView: View {
                     }
                     .padding(.top, 18)
 
+                    // The auto-renew disclosure. Spacing is tighter than the
+                    // rest of the screen on purpose: in German this line wraps
+                    // to two lines where English and Hindi take one, and at the
+                    // old 16/40 padding the second line sat below the fold at
+                    // the default scroll position. It was still reachable by
+                    // scrolling, but a required disclosure should not depend on
+                    // the user scrolling to find it in one language and not
+                    // another. Measured on the longest of the twelve.
                     Text(TrialCopy.fineprint)
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 16)
-                        .padding(.bottom, 40)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 12)
+                        .padding(.bottom, 28)
                 }
                 .frame(maxWidth: .infinity)
             }

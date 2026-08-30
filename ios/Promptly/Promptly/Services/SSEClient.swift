@@ -236,7 +236,7 @@ class SSEClient {
                 if job.status == "completed" {
                     self?.onEvent?(SSEEvent(
                         status: "completed", progress: 100, step: "complete",
-                        message: "Your video is ready!", videoUrl: job.rendered_video_url,
+                        message: String(localized: "Your video is ready!"), videoUrl: job.rendered_video_url,
                         hlsManifestUrl: job.hls_manifest_url,
                         thumbnailUrl: job.thumbnail_url, error: nil, final: true,
                         errorCode: nil, userMessage: nil, retryable: nil,
