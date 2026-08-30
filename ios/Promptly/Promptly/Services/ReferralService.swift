@@ -57,14 +57,51 @@ final class ReferralService: ObservableObject {
         }
     }
 
-    /// Manual entry path ("Have a referral code?") — same persistence + claim.
-    func enterCodeManually(_ code: String) {
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        UserDefaults.standard.set(trimmed, forKey: Self.pendingCodeKey)
+    /// The code alphabet, shared with the landing page's validator: A–Z minus
+    /// O/I/L and digits 2–9 (no 0/1), so a code is unambiguous when read aloud
+    /// off a screen and retyped — which is exactly what the fresh-install path
+    /// asks a person to do.
+    static func isValidCode(_ code: String) -> Bool {
+        let c = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard (4...12).contains(c.count) else { return false }
+        return c.allSatisfy { "ABCDEFGHJKMNPQRSTUVWXYZ23456789".contains($0) }
+    }
+
+    /// Manual entry path ("Have an invite code?") — same persistence + claim as
+    /// the link path, deliberately: both funnel into `pendingCodeKey` and are
+    /// redeemed by `claimPendingIfAny` at sign-in, so there is one redemption
+    /// path to reason about rather than two that can diverge.
+    ///
+    /// This existed with ZERO callers until the entry field was built. The
+    /// landing page has been telling recipients to "enter the code at signup"
+    /// while the app had nowhere to enter it — and the fresh-install path is
+    /// the one that carries the volume, because a universal link only opens the
+    /// app for someone who already has it.
+    ///
+    /// UPPERCASED here, not just trimmed. `claim_referral` normalises with
+    /// `upper(trim())` so a lowercase code would still resolve, but the value
+    /// is also what we echo back to the user and what rides on the analytics
+    /// event, and two casings of one code read as two codes.
+    @discardableResult
+    func enterCodeManually(_ code: String) -> Bool {
+        let normalised = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard Self.isValidCode(normalised) else {
+            Analytics.track("referral_code_entry_rejected", props: ["reason": "malformed"])
+            return false
+        }
+        UserDefaults.standard.set(normalised, forKey: Self.pendingCodeKey)
+        Analytics.track("referral_code_entered", props: ["source": "signup", "context": "signup"])
         if AuthService.shared.isAuthenticated {
             Task { await claimPendingIfAny() }
         }
+        return true
+    }
+
+    /// A code is already waiting (link path, or an earlier manual entry). The
+    /// entry field reads this so a recipient whose link DID carry the code is
+    /// shown that it landed, rather than being asked for it a second time.
+    var pendingCode: String? {
+        UserDefaults.standard.string(forKey: Self.pendingCodeKey)
     }
 
     // MARK: - Claim (exactly once, at sign-in)
@@ -118,9 +155,14 @@ final class ReferralService: ObservableObject {
         return code
     }
 
-    static func shareURL(code: String) -> URL {
-        URL(string: "https://usepromptly.app/?ref=\(code)")!
-    }
+    // The link is built by ReferralCopy.shareURL, which is the ONE definition.
+    // A `shareURL` used to live here too, building the string itself with a
+    // force-unwrap and no uppercasing — so the casing contract rested on
+    // whatever `get_or_create_referral_code` happened to return. `claim_referral`
+    // resolves with `upper(trim())` and the landing-page paste path shows the
+    // code to a human, so it must be uppercase where we emit it, not by luck.
+    // Removed rather than kept as a delegating shim: it had no callers left,
+    // and a second name for one thing is how the two drift apart again.
 
     /// A referral surface was SEEN. Without this there is no denominator: all
     /// four surfaces could report shares and none could report a share RATE, so
@@ -142,12 +184,25 @@ final class ReferralService: ObservableObject {
         // canonical revenue-per-wall-view read. `source` is kept because 123
         // existing shares carry it and dropping it would orphan them.
         Analytics.track("referral_share", props: ["source": source, "context": source])
-        let link = Self.shareURL(code: code)
-        // Honest per the schema: the reward (7 days Pro at 3 qualified friends)
-        // goes to the REFERRER — never promise the invitee something the
-        // server doesn't grant.
-        let text = "I edit my videos by just talking to Promptly. Try it with my code — when you make your first video it counts toward my free week of Pro."
-        let activity = UIActivityViewController(activityItems: [text, link], applicationActivities: nil)
+
+        // ONE message, from ReferralCopy. This surface used to spell its own:
+        //   "…when you make your first video it counts toward my free week of Pro."
+        // Two things were wrong with it. It described a reward ladder we no
+        // longer run (a week at three friends; the ladder now pays from the
+        // first qualified invite), so the copy drifted the moment the ladder
+        // changed — exactly the failure ReferralCopy exists to prevent. And it
+        // told the recipient they were doing the sender a favour, which is a
+        // weaker opening than the product claim and is the clause that makes
+        // the message read as two-sided.
+        //
+        // The approved message says nothing about a reward at all, which is
+        // also what keeps the loop referrer-only under guideline 3.2.2.
+        let text = ReferralCopy.shareMessage(code: code)
+        // The link rides INSIDE the message rather than as a second activity
+        // item: shareMessage already places it on its own line so the rich
+        // preview attaches, and passing it twice made some targets paste the
+        // URL a second time under the text.
+        let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         guard let top = AppState.topViewController() else { return }
         if let pop = activity.popoverPresentationController {
             pop.sourceView = top.view

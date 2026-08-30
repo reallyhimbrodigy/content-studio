@@ -22,7 +22,7 @@ Subcommands:
   apply    — write translations from a JSON map into the catalog
   report   — per-language coverage, plus the untranslated set by surface
 """
-import json, os, subprocess, sys, argparse
+import json, os, re, subprocess, sys, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IOS = os.path.dirname(HERE)   # ios/Promptly
@@ -32,27 +32,76 @@ CATALOG = os.path.join(IOS, "Promptly", "Localizable.xcstrings")
 # knownRegions and with AppLanguage.supported; `report` fails if they diverge.
 LANGS = ["ar", "bn", "de", "en", "es", "fr", "hi", "id", "ja", "ne", "pt-BR", "ur"]
 
-# Surfaces where a user is being asked for money or for an invite. A string here
-# that is not in the catalog renders English at the payment moment.
+# ── Which files are conversion surfaces — DERIVED, not listed ────────────────
 #
-# THIS LIST IS THE GATE'S WEAK POINT, and it has already failed once. The first
-# version omitted TrialCopy.swift — a copy holder, not a view — and the
-# auto-renew disclosure under the offer reveal shipped as a bare literal and
-# rendered English inside an otherwise fully-Hindi screen. The gate was green.
-# It was caught by looking at a screenshot, which is not a mechanism.
+# This was a hand-written set of filenames and it was wrong in both directions.
+# It MISSED TrialCopy.swift (a copy holder, not a view), so the auto-renew
+# disclosure shipped as a bare literal and rendered English inside an otherwise
+# fully-Hindi reveal while the gate reported PASS — caught by looking at a
+# screenshot, which is not a mechanism. And 4 of its 17 entries were PHANTOM:
+# UpgradeSheet.swift, ExportGateView.swift and ReferralView.swift name types
+# that do not exist, and ProCelebrationView is defined inside PaywallView.swift
+# rather than a file of its own. A gate that lists files nobody can find is
+# claiming coverage it does not have.
 #
-# So: a file belongs here if its strings can REACH a conversion surface, not
-# only if it draws one. Copy holders (TrialCopy, ProBenefits, ReferralCopy)
-# count. When adding a paywall/onboarding/referral surface, add it here too —
-# `report` prints the per-file key counts to make an omission visible.
-CONVERSION_SURFACES = {
-    "OfferRevealView.swift", "OnboardingV2Flow.swift", "OnboardingQuestionView.swift",
-    "VideoTypeQuestionView.swift", "AttributionAskView.swift", "ProBenefits.swift",
-    "FirstLaunchPaywallView.swift", "PaywallView.swift", "SecondPaywallView.swift",
-    "ReferralCopy.swift", "ReferralView.swift", "ResultsWallView.swift",
-    "TrialCopy.swift", "TrialWallView.swift", "ProCelebrationView.swift",
-    "UpgradeSheet.swift", "ExportGateView.swift",
-}
+# So the set is computed: start from the conversion FLOWS, and take every file
+# they directly reference. Only the entry points are named, and those are the
+# stable part — a flow is added roughly never, while the leaf views and copy
+# holders under it change constantly. A new helper, sheet, or copy file pulled
+# into a paywall is picked up with no edit here, which is precisely the failure
+# that shipped.
+#
+# Depth ONE, deliberately. The transitive closure reaches 77 files — through
+# AppShell into essentially the whole app — which would demand translations for
+# chat, upload and player strings that no one sees while being asked to pay.
+# Depth 1 selects ~25 and covers every real entry the hand list had.
+#
+# Known limit: a surface reached only by a runtime string/enum lookup rather
+# than a direct type reference is invisible to this, as is a flow nobody adds
+# to ENTRY_POINTS. `report --derived` prints the selected set so drift is
+# visible rather than silent.
+
+ENTRY_POINTS = [
+    "FirstLaunchPaywallView", "PaywallView", "SecondPaywallView", "OfferRevealView",
+    "TrialWallView", "OnboardingV2Flow", "OnboardingFlow",
+]
+
+_DECL = re.compile(r"\b(?:struct|class|enum|actor)\s+([A-Z][A-Za-z0-9_]*)")
+_TYPE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
+
+
+def _swift_files():
+    root = os.path.join(IOS, "Promptly")
+    out = subprocess.run(["find", root, "-name", "*.swift"], capture_output=True, text=True)
+    return [f for f in out.stdout.split() if not os.path.basename(f).startswith("__")]
+
+
+def conversion_surfaces():
+    """Basenames of files a user reads while being asked for money or an invite."""
+    type2file, code = {}, {}
+    for f in _swift_files():
+        # Strip line comments: a doc comment that merely NAMES a paywall type
+        # must not drag its file in. The share-message ban and this both care
+        # about shipping code, not prose about it.
+        body = "\n".join(l for l in open(f, errors="ignore").read().splitlines()
+                         if not l.strip().startswith("//"))
+        code[f] = body
+        for m in _DECL.finditer(body):
+            type2file.setdefault(m.group(1), f)
+
+    seen = {type2file[t] for t in ENTRY_POINTS if t in type2file}
+    missing = [t for t in ENTRY_POINTS if t not in type2file]
+    if missing:
+        print(f"  !! entry point(s) not found in the tree: {missing}", file=sys.stderr)
+    for f in list(seen):
+        for t in set(_TYPE.findall(code[f])):
+            g = type2file.get(t)
+            if g:
+                seen.add(g)
+    return {os.path.basename(f) for f in seen}
+
+
+CONVERSION_SURFACES = conversion_surfaces()
 
 
 def find_stringsdata(derived):

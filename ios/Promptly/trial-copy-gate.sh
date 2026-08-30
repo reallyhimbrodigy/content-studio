@@ -188,13 +188,51 @@ while IFS= read -r -d '' f; do
   fi
 done < <(find "$SRC" -name '*.swift' -print0)
 
+# ── THE SHARE MESSAGE EXISTS EXACTLY ONCE ───────────────────────────────────
+# The message a user sends to a friend is the most-copied string in the app —
+# it was duplicated across four files once already, and the copy that was live
+# until now was a FIFTH spelling that sat in ReferralService and promised "a
+# week of Pro at three friends", a ladder we no longer run. It drifted because
+# nothing forced it to have one home.
+#
+# Two checks, because there are two ways to reintroduce the problem:
+#   1. A share sheet built from a string LITERAL. UIActivityViewController with
+#      a literal in its activityItems is a surface spelling its own message.
+#   2. The canonical body appearing anywhere other than ReferralCopy.swift.
+#
+# The ban is on composing the message, not on presenting it: passing
+# ReferralCopy.shareMessage(...) into a share sheet is exactly right.
+CANON_MARKER='like ChatGPT for video editing'
+canon_files="$(grep -rlF "$CANON_MARKER" "$SRC" --include='*.swift' 2>/dev/null || true)"
+canon_count="$(printf '%s\n' "$canon_files" | grep -c . || true)"
+if [ "$canon_count" -gt 1 ]; then
+  violations=1
+  echo "SHARE COPY      the canonical share message appears in more than one file:"
+  printf '                %s\n' $canon_files
+  echo "                (it belongs only in Views/ReferralCopy.swift; render it from there)"
+fi
+
+# A share sheet whose items include a bare literal is a per-surface message.
+while IFS= read -r -d '' f; do
+  case "$f" in *ReferralCopy.swift) continue ;; esac
+  hits="$(grep -nE 'activityItems:\s*\[[^]]*"' "$f" 2>/dev/null || true)"
+  if [ -n "$hits" ]; then
+    while IFS= read -r h; do
+      [ -z "$h" ] && continue
+      violations=1
+      echo "SHARE COPY      $f:$h"
+      echo "                (share sheets must pass ReferralCopy.shareMessage(code:), not a literal)"
+    done <<< "$hits"
+  fi
+done < <(find "$SRC" -name '*.swift' -print0)
+
 if [ "$violations" -ne 0 ]; then
   echo ""
-  echo "trial-copy-gate: FAILED — trial copy, localizedTitle reads, literal-percentage claims, countdown UI, or fake-scarcity copy found (see lines above)."
+  echo "trial-copy-gate: FAILED — trial copy, localizedTitle reads, literal-percentage claims, countdown UI, fake-scarcity copy, or a duplicated share message found (see lines above)."
   exit 1
 fi
 
-echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity, no two-sided referral, no invite quotas."
+echo "trial-copy-gate: PASS — no trial copy, no localizedTitle reads, no literal-percentage claims, no countdown timers, no fake scarcity, no two-sided referral, no invite quotas, share message defined once."
 
 # The reader-enumeration check runs from here so ONE invocation covers both:
 # a separate script nobody remembers to run is not a gate.

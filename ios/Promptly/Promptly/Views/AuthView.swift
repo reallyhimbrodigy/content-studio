@@ -16,6 +16,10 @@ struct AuthView: View {
     /// Without this end-to-end nonce flow, Supabase rejects every Apple
     /// id_token — which is why the previous button "went nowhere."
     @State private var appleRawNonce: String = ""
+    @State private var showInviteField = false
+    @State private var inviteCode = ""
+    @State private var inviteApplied = false
+    @State private var inviteError = false
 
     /// Owns the ASWebAuthenticationSession for Google sign-in. Held so
     /// the session isn't deallocated while the OAuth flow is presenting.
@@ -55,6 +59,8 @@ struct AuthView: View {
                     submitButton
 
                     toggleButton
+
+                    inviteCodeBlock
 
                     Spacer(minLength: 32)
                 }
@@ -131,6 +137,102 @@ struct AuthView: View {
                 .font(.system(size: 30, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
                 .tracking(-0.5)
+        }
+    }
+
+    // MARK: - Invite code (the fresh-install referral path)
+
+    /// A universal link only opens the app for someone who ALREADY has it. The
+    /// population this loop needs — people installing for the first time —
+    /// arrives via the App Store, where the code does not survive: iOS carries
+    /// no deferred-deep-link state and we ship no attribution SDK. The landing
+    /// page holds the code up and tells the recipient to enter it here; until
+    /// now there was nowhere to enter it, so that instruction dead-ended and
+    /// the loop could only ever attribute referrals to existing users.
+    ///
+    /// COLLAPSED BY DEFAULT, and placed below the primary auth actions. This
+    /// screen's job is to get someone signed in; an always-open field here
+    /// competes with that for no benefit to the majority who have no code.
+    @ViewBuilder
+    private var inviteCodeBlock: some View {
+        if let pending = ReferralService.shared.pendingCode {
+            // The link path already worked. Confirm it rather than ask again —
+            // being asked for a code you already supplied reads as a failure.
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.green.opacity(0.8))
+                Text("Invite code \(pending) applied")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        } else if showInviteField {
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    TextField(String(localized: "Invite code"), text: $inviteCode)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled(true)
+                        .textContentType(.oneTimeCode)
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 44)
+                        .background(Color.white.opacity(0.06),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .onChange(of: inviteCode) { _, new in
+                            // Normalise as they type so what they see is what
+                            // is stored and what the landing page showed them.
+                            let up = new.uppercased()
+                            if up != new { inviteCode = up }
+                            inviteError = false
+                        }
+
+                    Button {
+                        if ReferralService.shared.enterCodeManually(inviteCode) {
+                            inviteApplied = true
+                            inviteError = false
+                        } else {
+                            inviteError = true
+                        }
+                    } label: {
+                        Text("Apply")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 18)
+                            .frame(height: 44)
+                            .background(Color.white,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .disabled(inviteCode.isEmpty)
+                    .opacity(inviteCode.isEmpty ? 0.5 : 1)
+                }
+
+                if inviteApplied {
+                    Text("Invite code applied. Sign in to finish.")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(.green.opacity(0.85))
+                } else if inviteError {
+                    // Says what is wrong and what to do, per the house rule on
+                    // error copy — not a bare "invalid".
+                    Text("That code doesn't look right. Check the letters and try again.")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(.orange.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .transition(.opacity)
+        } else {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { showInviteField = true }
+                Analytics.track("referral_code_field_opened",
+                                props: ["source": "signup", "context": "signup"])
+            } label: {
+                Text("Have an invite code?")
+                    .font(.system(size: 13.5))
+                    .foregroundColor(.secondary)
+                    .underline()
+            }
         }
     }
 
