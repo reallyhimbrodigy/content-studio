@@ -3389,18 +3389,35 @@ const server = http.createServer((req, res) => {
       //   annual_dollar_line        — "$X/wk billed annually — save $Y vs weekly", live StoreKit decimals, floored
       //   offer_surfacing           — StoreKit2 paid intro + iOS18 win-back rendering (display-only until ASC offers exist; NEVER a trial)
       //   push_primer               — post-first-delivery pre-permission primer; native prompt only on active tap
-      attribution_gate: String(process.env.ATTRIBUTION_GATE || '') === '1' ? 'on' : 'off',
-      onboarding_v2: String(process.env.ONBOARDING_V2 || '') === '1' ? 'on' : 'off',
-      render_transparency: String(process.env.RENDER_TRANSPARENCY || '') === '1' ? 'on' : 'off',
-      exportgate_personalization: String(process.env.EXPORTGATE_PERSONALIZATION || '') === '1' ? 'on' : 'off',
-      bad_render_suppressor: String(process.env.BAD_RENDER_SUPPRESSOR || '') === '1' ? 'on' : 'off',
-      annual_dollar_line: String(process.env.ANNUAL_DOLLAR_LINE || '') === '1' ? 'on' : 'off',
-      offer_surfacing: String(process.env.OFFER_SURFACING || '') === '1' ? 'on' : 'off',
-      push_primer: String(process.env.PUSH_PRIMER || '') === '1' ? 'on' : 'off',
+      // ── THE NINE, ARMED TOGETHER (2026-08-30) ───────────────────────────
+      // Ruled armed together on release day; only first_launch_paywall was
+      // actually set, which left the funnel in its worst state: users got the
+      // FULL-PRICE ANCHOR on launch and never reached the three questions or
+      // the 50%-off reveal. An anchor without its discount is strictly worse
+      // than no anchor.
+      //
+      // Armed by DEFAULT rather than by Render env, because env changes were
+      // the step that silently did not happen. Each env var still overrides
+      // with '0' for an individual kill.
+      //
+      // KNOWN LIMIT: this only reaches build 236+. The v2 flow does not exist
+      // in 235 and below (51.8% of the fleet in the last 36h), so those users
+      // keep getting the anchor with no reveal available at any flag setting.
+      // /api/health receives no client version, so the flag cannot be served
+      // per-build without a client change — which would face the same adoption
+      // problem it is meant to solve.
+      attribution_gate: String(process.env.ATTRIBUTION_GATE || '1') === '1' ? 'on' : 'off',
+      onboarding_v2: String(process.env.ONBOARDING_V2 || '1') === '1' ? 'on' : 'off',
+      render_transparency: String(process.env.RENDER_TRANSPARENCY || '1') === '1' ? 'on' : 'off',
+      exportgate_personalization: String(process.env.EXPORTGATE_PERSONALIZATION || '1') === '1' ? 'on' : 'off',
+      bad_render_suppressor: String(process.env.BAD_RENDER_SUPPRESSOR || '1') === '1' ? 'on' : 'off',
+      annual_dollar_line: String(process.env.ANNUAL_DOLLAR_LINE || '1') === '1' ? 'on' : 'off',
+      offer_surfacing: String(process.env.OFFER_SURFACING || '1') === '1' ? 'on' : 'off',
+      push_primer: String(process.env.PUSH_PRIMER || '1') === '1' ? 'on' : 'off',
       // Amendment 2026-08-27: the export gate as TWO pages (benefit case
       // written against the stated content type, then plans + price). Its own
       // flag so its contribution is readable separately.
-      exportgate_two_page: String(process.env.EXPORTGATE_TWO_PAGE || '') === '1' ? 'on' : 'off',
+      exportgate_two_page: String(process.env.EXPORTGATE_TWO_PAGE || '1') === '1' ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -3569,6 +3586,12 @@ const server = http.createServer((req, res) => {
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
           'referral_share', 'referral_link_opened', 'referral_claimed',
+          // The DENOMINATOR the referral loop never had (2026-08-29). All four
+          // surfaces could report shares and none could report a share RATE, so
+          // the ladder's entire purpose — making the first invite pay, and
+          // thereby lifting that rate — was unmeasurable. Allowlisted before the
+          // surfaces arm, so the first cohort is not half-blind.
+          'referral_shown',
           // Transport-error mirror (HTTPClientError diagnosis, 2026-08-22): the
           // iOS Sentry SDK auto-captures URLSession 5xx (enableCaptureFailedRequests
           // default-on) into a class we cannot query programmatically; this event
