@@ -46,85 +46,20 @@ create index if not exists referral_rewards_failed_idx
   where provider_ok = false;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- PART 2 — the exploit.
+-- PART 2 — SUPERSEDED, DO NOT APPLY FROM THIS FILE.
 --
--- Today:
---   qualify_referral(p_referred uuid, p_job uuid)
---     update referrals set qualified_at = now(), qualifying_job_id = p_job
---      where referred_id = p_referred and qualified_at is null;
+-- The bodies drafted here were a RECONSTRUCTION from the client call signature,
+-- not the production source, and they were wrong four ways: both functions
+-- RETURN jsonb (these declared void, which CREATE OR REPLACE refuses, rolling
+-- back the whole transaction); upper(trim(p_code)) normalisation was dropped;
+-- the unique_violation handler was swapped for a race-prone `where not exists`;
+-- and the unknown_code / self_referral / already_referred reason codes were
+-- collapsed into silent no-ops.
 --
--- SECURITY DEFINER, executable by `authenticated`, and it verifies nothing. The
--- job id is never checked to exist, to belong to p_referred, or to have
--- completed. Chain: three throwaway accounts, claim_referral on each (the
--- self-referral guard only compares UUIDs, so distinct accounts pass),
--- qualify_referral with any UUID at all, grant_referral_reward(self) — seven
--- days of unmetered Pro for zero renders and zero GPU cost to the attacker.
---
--- The fix verifies the FACT rather than accepting the claim: the job must
--- exist, belong to the referred user, and be completed. That is what
--- qualified_at was always supposed to mean.
+-- The corrected, faithful version is 20260829_referral_part2_corrected.sql.
+-- Applied Parts 1 and 3 from this file remain valid.
 -- ─────────────────────────────────────────────────────────────────────────────
-create or replace function public.qualify_referral(p_referred uuid, p_job uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  -- Identity. auth.uid() is NULL for service_role, which is how the server-side
-  -- reconcile calls this; a logged-in caller may only qualify themselves.
-  if auth.uid() is not null and auth.uid() <> p_referred then
-    raise exception 'not_authorized' using errcode = '42501';
-  end if;
 
-  -- The job must be real, theirs, and finished. All three, or nothing happens.
-  update public.referrals r
-     set qualified_at      = now(),
-         qualifying_job_id = p_job
-   where r.referred_id  = p_referred
-     and r.qualified_at is null
-     and exists (
-       select 1
-         from public.video_jobs j
-        where j.id      = p_job
-          and j.user_id = p_referred
-          and j.status  = 'completed'
-     );
-end;
-$$;
-
--- claim_referral and get_or_create_referral_code ARE called by the shipped
--- client, so they keep EXECUTE — but they must stop accepting an arbitrary
--- caller identity. Guarded rather than revoked, because revoking breaks the
--- live app; qualification and granting are revoked below because nothing calls
--- them.
-create or replace function public.claim_referral(p_referred uuid, p_code text)
-returns void
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  v_referrer uuid;
-begin
-  if auth.uid() is null or auth.uid() <> p_referred then
-    raise exception 'not_authorized' using errcode = '42501';
-  end if;
-
-  select id into v_referrer from public.profiles where referral_code = p_code;
-  if v_referrer is null or v_referrer = p_referred then
-    return;                      -- unknown code, or self-referral: silent no-op
-  end if;
-
-  insert into public.referrals (referrer_id, referred_id, code)
-  select v_referrer, p_referred, p_code
-   where not exists (
-     select 1 from public.referrals where referred_id = p_referred
-   );
-end;
-$$;
-
--- ─────────────────────────────────────────────────────────────────────────────
 -- PART 3 — revoke what nothing calls.
 --
 -- Neither qualify_referral nor grant_referral_reward has a caller anywhere in
