@@ -146,13 +146,20 @@ struct OnboardingV2Flow: View {
     /// One answer seam: emit, store, and treat Skip honestly (a skipped
     /// question stores nothing — never a placeholder value).
     private func record(step: String, value: String?, store: (String) -> Void) {
+        // `phase` distinguishes this from the ARRIVAL event the v2Step didSet
+        // emits for the same beat. Both used to write `step` alone, which made
+        // Q1's arrival and answer the same row. `\(step)_skip` is kept as the
+        // step value so the 23 existing rows on 237 stay comparable, and the
+        // phase is carried alongside for readers that want the clean split.
         if let value {
             store(value)
             Analytics.track("onboarding_v2_step",
-                            props: ["step": step, step: value, "context": "onboarding_v2"])
+                            props: ["step": step, step: value,
+                                    "phase": "answer", "context": "onboarding_v2"])
         } else {
             Analytics.track("onboarding_v2_step",
-                            props: ["step": "\(step)_skip", "context": "onboarding_v2"])
+                            props: ["step": "\(step)_skip",
+                                    "phase": "skip", "context": "onboarding_v2"])
         }
     }
 

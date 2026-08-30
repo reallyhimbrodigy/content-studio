@@ -537,7 +537,18 @@ struct PromptlyApp: App {
                 if phase == .active {
                     if !didStartSession || previous == .background {
                         didStartSession = true
-                        Analytics.track("session_started")
+                        // Carries the UI language so the twelve-language
+                        // translation work is measurable at all. There is no
+                        // language or locale field anywhere else in analytics —
+                        // `language_selected` has zero rows — so before this,
+                        // "did translating the funnel change conversion?" could
+                        // not be asked, only guessed at from territory, which is
+                        // a different variable. `AppLanguage.current` is the
+                        // language actually in force: the device's resolved
+                        // choice, or the account override.
+                        Analytics.track("session_started",
+                                        props: ["language": AppLanguage.current,
+                                                "language_is_override": AppLanguage.override != nil])
                     }
                     // 226 item 7b: on every foreground (and cold launch), touch the
                     // multipart uploader so its background session reconnects, then

@@ -38,6 +38,17 @@ struct AttributionAskView: View {
                 Analytics.track("onboarding_attribution", props: ["attribution": first, "context": context])
                 state.persistAnswersToProfile()
             } else {
+                // Was emitted on `onboarding_step`, the LEGACY wall-flow event,
+                // while every other beat of this flow reports on
+                // `onboarding_v2_step`. So Q3's skip existed but sat in a table
+                // the v2 funnel never reads — it looked like "skip is not
+                // instrumented for Q3" when it was instrumented to the wrong
+                // name. Emitted on BOTH: the v2 event so the funnel can see it,
+                // and the legacy one so the standalone attribution gate's
+                // existing series is not broken mid-flight.
+                Analytics.track("onboarding_v2_step",
+                                props: ["step": "attribution_skip",
+                                        "phase": "skip", "context": context])
                 Analytics.track("onboarding_step", props: ["step": "attribution_skip", "context": context])
             }
             // Any disposition counts as seen — the ask never re-nags.

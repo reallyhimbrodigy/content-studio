@@ -246,6 +246,13 @@ final class OnboardingState: ObservableObject {
         case attribution  // Q3: how did you hear about us? (gate merged in)
         case reveal       // the offer reveal (skipped when no real offer)
         case done         // → the picker (PromptlyApp re-branches)
+
+        /// One name per beat, shared by the arrive and answer emitters. The
+        /// rawValue stays `videoType` because it is persisted in UserDefaults
+        /// and renaming it would strand every mid-flow resume on upgrade.
+        var analyticsName: String {
+            self == .videoType ? "video_type" : rawValue
+        }
     }
 
     /// V2 survey answers (amendment 2026-08-27). Kept separate from the wall
@@ -279,7 +286,21 @@ final class OnboardingState: ObservableObject {
     @Published var v2Step: V2Step = .audience {
         didSet {
             UserDefaults.standard.set(v2Step.rawValue, forKey: "onboarding_v2_step")
-            Analytics.track("onboarding_v2_step", props: ["step": v2Step.rawValue, "context": "onboarding_v2"])
+            // `phase` separates ARRIVING at a beat from ANSWERING it. Without it
+            // the two were indistinguishable: this didSet emitted the enum's
+            // rawValue ("audience") and the answer seam emitted the same literal
+            // ("audience"), so Q1's arrival and its answer collided on one
+            // string and no funnel could tell entered-the-question from
+            // answered-it. Q2 only LOOKED different because the enum spells it
+            // `videoType` while the answer spells it `video_type` — an accident
+            // of naming that read as two steps and hid the same collision.
+            //
+            // `step` is also normalised to snake_case here so one beat has ONE
+            // name across both emitters.
+            Analytics.track("onboarding_v2_step",
+                            props: ["step": v2Step.analyticsName,
+                                    "phase": "arrive",
+                                    "context": "onboarding_v2"])
         }
     }
 
