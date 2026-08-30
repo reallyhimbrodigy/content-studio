@@ -299,6 +299,7 @@ struct PaywallView: View {
                         // ambient_wall_referral (server, default off).
                         if case .manual = reason, onboardingStateRef.ambientWallReferralEnabled {
                             ambientReferralRow
+                                .onAppear { ReferralService.shared.trackImpression(source: "ambient_wall") }
                                 .padding(.horizontal, 24)
                                 .padding(.top, 10)
                         }
@@ -1049,6 +1050,10 @@ struct AbandonRecoveryOverlay: View {
             .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
             .padding(.horizontal, 36)
         }
+        // Impression anchored in the VIEW, not at the call sites: this overlay
+        // is mounted in three places, and a fourth mount must not be able to
+        // ship without a denominator.
+        .onAppear { if onboarding.abandonReferralEnabled { referrals.trackImpression(source: "abandon") } }
     }
 }
 

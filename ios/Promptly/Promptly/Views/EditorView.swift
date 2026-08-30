@@ -117,6 +117,7 @@ struct EditorView: View {
                         PostRenderReferralCard {
                             UserDefaults.standard.set(true, forKey: "postrender_referral_shown")
                         }
+                        .onAppear { ReferralService.shared.trackImpression(source: "postrender") }
                     }
                     // CONTEXTUAL update prompt (version awareness): an upload
                     // just failed AND this build is older than what's live —

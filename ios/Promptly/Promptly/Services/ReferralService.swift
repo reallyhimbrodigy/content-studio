@@ -122,13 +122,26 @@ final class ReferralService: ObservableObject {
         URL(string: "https://usepromptly.app/?ref=\(code)")!
     }
 
+    /// A referral surface was SEEN. Without this there is no denominator: all
+    /// four surfaces could report shares and none could report a share RATE, so
+    /// the ladder's whole purpose — making the first invite pay, and thereby
+    /// lifting the share rate — was unmeasurable.
+    ///
+    /// Fires once per surface per appearance. Carries both keys for the same
+    /// reason presentShareSheet does.
+    func trackImpression(source: String) {
+        Analytics.track("referral_shown", props: ["source": source, "context": source])
+    }
+
     /// Open the system share sheet with the referral link. Reuses the app's
     /// topmost-VC presentation pattern (AppState.topViewController).
     func presentShareSheet(source: String = "paywall2") async {
         guard let code = await getOrCreateCode() else { return }
-        // source segments the surfacing experiments (paywall2 / postrender /
-        // abandon / ambient_wall) — props need no allowlist change.
-        Analytics.track("referral_share", props: ["source": source])
+        // `context` alongside `source`: every other funnel in this app keys on
+        // `context`, so referral was invisible to all of them — including the
+        // canonical revenue-per-wall-view read. `source` is kept because 123
+        // existing shares carry it and dropping it would orphan them.
+        Analytics.track("referral_share", props: ["source": source, "context": source])
         let link = Self.shareURL(code: code)
         // Honest per the schema: the reward (7 days Pro at 3 qualified friends)
         // goes to the REFERRER — never promise the invitee something the

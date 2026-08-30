@@ -89,7 +89,10 @@ struct SecondPaywallView: View {
                                 packageRow(pkg)
                             }
                             // Flag-gated 2026-08-29. Was unconditional.
-                            if onboarding.secondPaywallReferralEnabled { referralRow }
+                            if onboarding.secondPaywallReferralEnabled {
+                                referralRow
+                                    .onAppear { ReferralService.shared.trackImpression(source: "paywall2") }
+                            }
                         }
                         .padding(.horizontal, 24)
                         .entrance(delay: 0.18)
