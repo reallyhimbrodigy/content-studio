@@ -107,6 +107,61 @@ enum ProBenefits {
     ///
     /// Note it substitutes BY INDEX into `core` rather than rebuilding a list:
     /// that is what makes the tail impossible to drift.
+    /// A personalised LEAD LINE for the reveal and paywall headlines.
+    ///
+    /// Sits ABOVE the discount headline and never replaces it. That is
+    /// deliberate: the discount headline is a money claim, computed per
+    /// territory and floored, and it is guarded by the banned-percentage gate.
+    /// Weaving an audience noun into it would put user-derived text inside a
+    /// price claim — the one sentence that must stay exactly what the store
+    /// says. So personalisation is additive and the claim is untouched.
+    ///
+    /// Returns nil when the questions were skipped, which is MOST users: Q2's
+    /// measured skip rate is 59% and Q1's is not yet knowable. A generic
+    /// substitute ("For your videos") would be worse than nothing — it reads as
+    /// personalisation that failed, which is a stronger negative signal than no
+    /// personalisation at all. Nil means the headline simply stands alone.
+    ///
+    /// Interpolation is a single %@ carrying an already-localised noun, so the
+    /// placeholder gate sees one argument and translators can move it freely.
+    static func personalisedLead(audience: String?, videoType: String?) -> String? {
+        // Q2 first — what they MAKE is more specific than who it is for, and
+        // specificity is the whole value of the line.
+        if let noun = contentNoun(videoType: videoType) {
+            return String(localized: "For your \(noun)")
+        }
+        if let who = audienceNoun(audience) {
+            return String(localized: "For \(who)")
+        }
+        return nil
+    }
+
+    /// Q2 → a plural noun phrase. Goes through the compound-key parser, because
+    /// Q2 keys are compound ("podcast:fast") and switching on the raw key
+    /// silently falls through — the defect the compound-key gate exists to stop.
+    private static func contentNoun(videoType: String?) -> String? {
+        guard let t = OnboardingQuestion.contentTypeV2(videoType) else { return nil }
+        switch t {
+        case "podcast":     return String(localized: "podcast clips")
+        case "talkinghead": return String(localized: "talking-head videos")
+        case "vlogs":       return String(localized: "vlogs")
+        case "promo":       return String(localized: "promos")
+        default:            return nil
+        }
+    }
+
+    /// Q1 → who it is for. Only the answers that name a real audience; "just
+    /// trying it out" and "other" deliberately return nil rather than being
+    /// bent into a phrase that would read as a guess.
+    private static func audienceNoun(_ audience: String?) -> String? {
+        switch audience {
+        case "clients":        return String(localized: "client work")
+        case "small_business": return String(localized: "your business")
+        case "employer":       return String(localized: "your team")
+        default:               return nil
+        }
+    }
+
     static func personalised(audience: String?, videoType: String?) -> [Benefit] {
         var out = core
 

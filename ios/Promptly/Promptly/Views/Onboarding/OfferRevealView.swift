@@ -59,6 +59,24 @@ struct OfferRevealView: View {
                     AnimatedPromptlyMark(size: 72, halo: true)
                         .padding(.bottom, 22)
 
+                    // Personalised lead, ABOVE the discount headline and never
+                    // inside it — the headline is a money claim guarded by the
+                    // banned-percentage gate, and user-derived text has no
+                    // business inside the one sentence that must say exactly
+                    // what the store says. Nil when the questions were skipped
+                    // (most users), and nil means it simply is not drawn: a
+                    // generic "For your videos" would read as personalisation
+                    // that failed, which is worse than none.
+                    if onboarding.paywallPersonalizationEnabled,
+                       let lead = ProBenefits.personalisedLead(audience: onboarding.v2Audience,
+                                                               videoType: onboarding.v2VideoType) {
+                        Text(lead)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.bottom, 4)
+                    }
+
                     Text(offerPackage.map { OfferReveal.headline(for: $0) }
                          ?? String(localized: "Your first subscription"))
                         .font(.system(size: 28, weight: .bold))
