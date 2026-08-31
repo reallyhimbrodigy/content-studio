@@ -17,19 +17,39 @@ struct CreditBalanceStrip: View {
     @ObservedObject private var onboarding = OnboardingState.shared
 
     var body: some View {
-        if onboarding.creditsEnabled, let videos = credits.videosRemaining {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.55))
-                Text("\(videos) videos left")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.55))
+        // THE .task MUST HANG OFF THE ALWAYS-PRESENT CONTAINER, not off the
+        // inner HStack. It used to sit inside the `if`, which made this view
+        // structurally incapable of ever drawing: the branch needs
+        // `videosRemaining != nil`, that needs `balance != nil`, and `balance`
+        // is only ever set by `refresh()` — the very call the branch was
+        // gating. balance starts nil, so the condition was false forever, the
+        // .task never ran, and nothing ever set balance. A permanent
+        // self-deadlock that looks exactly like "the flag is off".
+        //
+        // It would have shipped invisible and been debugged as a server
+        // problem. The fix is placement, not logic: read first, then decide
+        // whether to draw.
+        Group {
+            if onboarding.creditsEnabled, let videos = credits.videosRemaining {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                    Text("\(videos) videos left")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .accessibilityElement(children: .combine)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
-            .task { await credits.refresh() }
+        }
+        // Gated on the FLAG only. An unconditional read would call RevenueCat
+        // on every composer appearance for the 100% of users the experiment is
+        // dark for.
+        .task {
+            guard onboarding.creditsEnabled else { return }
+            await credits.refresh()
         }
     }
 }

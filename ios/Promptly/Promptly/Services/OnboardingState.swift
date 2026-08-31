@@ -173,6 +173,19 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
             UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
             UserDefaults.standard.set(exportGateTwoPageEnabled, forKey: "exportgate_two_page_enabled")
+            // The seven experiment flags persist too. They were added without a
+            // cached copy, which is not a cosmetic gap: every flag above is
+            // restored on a failed read, so a /api/health hiccup left THESE
+            // seven — and only these seven — snapping to false mid-session while
+            // their neighbours held. A surface that vanishes on a network blip
+            // reads as a bug to the user and as a flapping denominator to us.
+            UserDefaults.standard.set(creditsEnabled, forKey: "credits_enabled")
+            UserDefaults.standard.set(progressRingEnabled, forKey: "progress_ring_enabled")
+            UserDefaults.standard.set(beforeAfterEnabled, forKey: "before_after_enabled")
+            UserDefaults.standard.set(instantQuestionsEnabled, forKey: "instant_questions_enabled")
+            UserDefaults.standard.set(reverseTrialEnabled, forKey: "reverse_trial_enabled")
+            UserDefaults.standard.set(reverseTrialExpiryEnabled, forKey: "reverse_trial_expiry_enabled")
+            UserDefaults.standard.set(paywallPersonalizationEnabled, forKey: "paywall_personalization_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -194,6 +207,13 @@ final class OnboardingState: ObservableObject {
             offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
+            creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")
+            progressRingEnabled = UserDefaults.standard.bool(forKey: "progress_ring_enabled")
+            beforeAfterEnabled = UserDefaults.standard.bool(forKey: "before_after_enabled")
+            instantQuestionsEnabled = UserDefaults.standard.bool(forKey: "instant_questions_enabled")
+            reverseTrialEnabled = UserDefaults.standard.bool(forKey: "reverse_trial_enabled")
+            reverseTrialExpiryEnabled = UserDefaults.standard.bool(forKey: "reverse_trial_expiry_enabled")
+            paywallPersonalizationEnabled = UserDefaults.standard.bool(forKey: "paywall_personalization_enabled")
         }
     }
 
@@ -212,7 +232,24 @@ final class OnboardingState: ObservableObject {
         case "offer_surfacing": offerSurfacingEnabled = true
         case "push_primer": pushPrimerEnabled = true
         case "exportgate_two_page": exportGateTwoPageEnabled = true
-        default: break
+        // The seven experiment flags. Their absence here was not a small gap —
+        // it meant NONE of them could be turned on anywhere but a live server
+        // flip, so none could be recorded, screenshotted, or reviewed before
+        // shipping. A surface that cannot be seen before it ships is reviewed
+        // by its users.
+        case "credits": creditsEnabled = true
+        case "progress_ring": progressRingEnabled = true
+        case "before_after": beforeAfterEnabled = true
+        case "instant_questions": instantQuestionsEnabled = true
+        case "reverse_trial": reverseTrialEnabled = true
+        case "reverse_trial_expiry": reverseTrialExpiryEnabled = true
+        case "paywall_personalization": paywallPersonalizationEnabled = true
+        // LOUD, not silent. `default: break` meant a mistyped key produced a
+        // run that looked forced and wasn't — the harness would record the dark
+        // state and it would be filed as "the surface doesn't work". A proof
+        // tool that fails quietly is worse than no proof tool.
+        default:
+            assertionFailure("debugForceFlag: unknown flag '\(key)' — nothing was forced.")
         }
     }
     #endif

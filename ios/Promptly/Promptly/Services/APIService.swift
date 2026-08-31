@@ -392,6 +392,83 @@ class APIService {
         return ExportGateDecision.from(status: http.statusCode, body: data)
     }
 
+    // MARK: - Reverse trial (item 5)
+
+    /// POST /api/reverse-trial/grant — 72 hours of Pro on offer-reveal decline.
+    ///
+    /// Every branch of the contract is handled explicitly and NONE of them
+    /// falls through to a generic failure, because the four non-grant outcomes
+    /// mean four different things: 409 is the user having had one already, 400
+    /// is OUR bug, 503 is the machinery being down, and anything else is
+    /// unknown. Collapsing them would produce the one error this feature cannot
+    /// afford — telling an eligible user they are ineligible.
+    func grantReverseTrial() async -> ReverseTrialService.Outcome {
+        var request = await authorizedRequest("/api/reverse-trial/grant", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // device_id is the primary key of reverse_trial_grants server-side, so
+        // it is REQUIRED, not decorative. It is Keychain-persisted (92f1cda)
+        // precisely so a delete-and-reinstall cannot farm a second trial.
+        let body: [String: Any] = ["device_id": Analytics.deviceIdForJoin]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        guard let (data, response) = try? await requestData(request),
+              let http = response as? HTTPURLResponse else {
+            // A transport failure is NOT a refusal. The user is still eligible
+            // and must be able to try again.
+            return .unavailable
+        }
+
+        switch http.statusCode {
+        case 200, 201:
+            struct R: Decodable {
+                let granted: Bool?
+                let already: Bool?
+                let expires_in_seconds: Int?
+            }
+            let r = try? JSONDecoder().decode(R.self, from: data)
+            // 201-new and 200-already render IDENTICALLY, per the contract. The
+            // difference is recorded for analytics and nowhere else — a user
+            // who taps Decline twice must not be shown a different screen the
+            // second time, which would read as the first tap having failed.
+            Analytics.track("reverse_trial_granted", props: [
+                "already": (r?.already ?? false),
+                "status": http.statusCode,
+            ])
+            guard let seconds = r?.expires_in_seconds, seconds > 0 else {
+                // Granted without a duration we can count down from. Do not
+                // invent one from pro_until — a fabricated countdown is worse
+                // than none, because the expiry surface would fire at a moment
+                // the entitlement does not actually end.
+                Analytics.track("reverse_trial_grant_no_duration", props: ["status": http.statusCode], durable: true)
+                return .unavailable
+            }
+            return .granted(expiresInSeconds: seconds)
+
+        case 409:
+            struct E: Decodable { let error: String?; let reason: String? }
+            let e = try? JSONDecoder().decode(E.self, from: data)
+            let raw = e?.reason ?? e?.error ?? ""
+            let reason = ReverseTrialService.Ineligible(rawValue: raw) ?? .unknown
+            Analytics.track("reverse_trial_ineligible", props: ["reason": reason.rawValue])
+            return .ineligible(reason)
+
+        case 400:
+            // We failed to send a key we always have. Durable, because this is
+            // a client defect that would otherwise present as the feature
+            // simply not working for some users.
+            Analytics.track("reverse_trial_device_id_missing", props: [:], durable: true)
+            return .deviceIdMissing
+
+        case 503:
+            Analytics.track("reverse_trial_unavailable", props: ["status": 503])
+            return .unavailable
+
+        default:
+            Analytics.track("reverse_trial_unavailable", props: ["status": http.statusCode])
+            return .unavailable
+        }
+    }
+
     // MARK: - Chat action router (226 item 1)
 
     /// The server's converse-vs-act decision for one chat turn. `.notFound` is the
