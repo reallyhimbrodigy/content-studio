@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-  isRefundEligible, refundJobCharge, sweepRefundLeg, DELETE_DELTA_CAP_MS, CHARGE_MATCH_WINDOW_MS,
+  refundJobCharge, sweepRefundLeg, DELETE_DELTA_CAP_MS, CHARGE_MATCH_WINDOW_MS,
 } = require('../lib/refund-leg');
 
 // ---- minimal supabase-js style fake: select / delete / update + eq/gte/lte/is ----
@@ -43,19 +43,6 @@ const iso = (offMs) => new Date(NOW + offMs).toISOString();
 const T = -3600_000; // base job instant: 1h ago (inside 48h lookback)
 const vj = (o) => ({ parent_job_id: null, reedit_mode: null, refunded_at: null, result: null, status: 'failed', ...o });
 
-// ---- eligibility: single-writer law, WORKER'S ACTUAL KEYS ------------------
-test('eligibility: worker marks only, keyed on error_code (review fix #2)', () => {
-  assert.equal(isRefundEligible({ error_code: 'INTEGRITY_TRIP', designed_rejection: false }), true);
-  assert.equal(isRefundEligible({ error: 'INTEGRITY_TRIP' }), true); // legacy belt
-  assert.equal(isRefundEligible({ error_code: 'CLIP_TOO_LONG', designed_rejection: true }), true);
-  assert.equal(isRefundEligible({ designed_rejection: true }), true);
-  assert.equal(isRefundEligible({ error_code: 'CLIP_TOO_LONG' }), false);
-  assert.equal(isRefundEligible({ error_code: 'RENDER_FFMPEG' }), false);
-  assert.equal(isRefundEligible(null), false);
-  assert.equal(isRefundEligible({}), false);
-  assert.equal(isRefundEligible({ designed_rejection: 'true' }), false);
-  assert.equal(isRefundEligible('CLIP_TOO_LONG'), false); // string result
-});
 
 // ---- MARKER: the deleted-sibling residual is now structurally closed ---------
 test('MARKER: refunded job is claimed one-shot — a DELETED sibling\'s orphan charge is never eaten', async () => {

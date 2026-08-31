@@ -56,7 +56,6 @@ const ALLOW = {
   // drift risk, not a dead feature — two copies of one rule, only one of which
   // has tests — and each is listed so the duplication is visible rather than
   // silently allowlisted.
-  isRefundEligible: 'DUPLICATED: sweepRefundLeg filters parent_job_id/reedit_mode inline instead of calling this',
   isDelivered: 'exported for lib/__smoke_completion_reconcile; the reconciler inlines the column check',
   isRedispatchable: 'exported for tests; orphan-redispatch inlines the predicate',
   ownsKey: 'exported for lib/__smoke_chat_media; chat-media inlines the ownership check',
