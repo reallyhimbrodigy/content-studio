@@ -77,11 +77,50 @@ enum Analytics {
     /// resets when the user's last app from this vendor is removed, so the
     /// minted UUID is persisted as the fallback and, once written, always wins —
     /// a device that resets its IDFV keeps reporting the id it started with.
+    private static let deviceIdKey = "analytics_device_id"
+
+    /// KEYCHAIN-PERSISTED, deliberately — this outlives delete-and-reinstall.
+    ///
+    /// It began as identifierForVendor cached in UserDefaults, which is correct
+    /// for an analytics join key and WRONG for anything that gates an
+    /// entitlement. UserDefaults is destroyed with the app, IDFV resets once the
+    /// last app from this vendor is removed, and the minted fallback is
+    /// per-install by construction — so all three reset on reinstall.
+    ///
+    /// The reverse trial is keyed on this. A once-per-install grant keyed on
+    /// something a reinstall resets is free Pro forever, which is precisely the
+    /// hole the referral revoke closed (three throwaway accounts, a week of
+    /// unmetered Pro). Keychain items survive app deletion, so the key survives
+    /// with them.
+    ///
+    /// MIGRATION PRESERVES CONTINUITY. An install that already has a UserDefaults
+    /// id keeps it and promotes it into the Keychain, so the analytics series
+    /// does not fork at the upgrade. Only a device with neither mints a new one.
+    ///
+    /// HONEST LIMITS: the Keychain does not survive a device erase or a restore
+    /// to a new device without an encrypted backup, and it is per-app-bundle.
+    /// This raises the cost of farming a repeat trial from "delete the app" to
+    /// "wipe the device"; it does not make it impossible. The DB unique
+    /// constraint on device_id is what actually enforces once-per-install — this
+    /// just stops the trivial bypass.
     private static var deviceId: String {
-        let d = UserDefaults.standard
-        if let v = d.string(forKey: "analytics_device_id") { return v }
+        if let v = Keychain.get(deviceIdKey) { return v }
+
+        // Promote an existing UserDefaults id rather than minting over it.
+        if let legacy = UserDefaults.standard.string(forKey: deviceIdKey) {
+            Keychain.set(legacy, for: deviceIdKey)
+            return legacy
+        }
+
         let v = UIDevice.current.identifierForVendor?.uuidString ?? "dev-" + UUID().uuidString
-        d.set(v, forKey: "analytics_device_id")
+        let stored = Keychain.set(v, for: deviceIdKey)
+        // A Keychain write that silently fails is WORSE than never having tried:
+        // we would believe the id durable and key a once-per-install grant on
+        // something that resets. Report it rather than assume success.
+        if !stored {
+            Analytics.track("device_id_keychain_write_failed", props: [:], durable: true)
+        }
+        UserDefaults.standard.set(v, forKey: deviceIdKey)   // fast path for later reads
         return v
     }
 
