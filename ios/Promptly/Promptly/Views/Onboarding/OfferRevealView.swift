@@ -68,7 +68,7 @@ struct OfferRevealView: View {
                     // generic "For your videos" would read as personalisation
                     // that failed, which is worse than none.
                     if onboarding.paywallPersonalizationEnabled,
-                       let lead = ProBenefits.personalisedLead(audience: onboarding.v2Audience,
+                       let lead = PaywallPersonalization.lead(audience: onboarding.v2Audience,
                                                                videoType: onboarding.v2VideoType) {
                         Text(lead)
                             .font(.system(size: 15, weight: .medium))
