@@ -167,6 +167,77 @@
         }
       }
     },
+    "%lld credits refunded — that render didn't count": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تمت إعادة %lld رصيد — لم تُحتسب هذه المعالجة"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ক্রেডিট ফেরত — সেই রেন্ডার গোনা হয়নি"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Credits erstattet — dieser Render zählte nicht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld créditos devueltos: ese render no ha contado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld crédits remboursés — ce rendu n'a pas compté"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld क्रेडिट वापस — वह रेंडर नहीं गिना गया"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld kredit dikembalikan — render itu tidak dihitung"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldクレジットを返却しました。この処理はカウントされません"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld क्रेडिट फिर्ता — त्यो रेन्डर गनिएन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld créditos devolvidos — esse render não contou"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld کریڈٹس واپس — وہ رینڈر شمار نہیں ہوا"
+          }
+        }
+      }
+    },
     "%lld days": {
       "localizations": {
         "ar": {
@@ -584,6 +655,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "ہر ماہ %lld ویڈیوز"
+          }
+        }
+      }
+    },
+    "%lld videos left": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بقي %lld فيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldটি ভিডিও বাকি"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "noch %lld Videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeos restantes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vidéos restantes"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld वीडियो बाकी"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sisa %lld video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残り%lld本"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld भिडियो बाँकी"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "restam %lld vídeos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ویڈیوز باقی"
           }
         }
       }
@@ -12947,6 +13089,77 @@
         }
       }
     },
+    "Pro and Max save and share every video, with no export limit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يحفظ Pro وMax كل فيديو ويشاركانه، بلا حد للتصدير."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro ও Max প্রতিটি ভিডিও সংরক্ষণ ও শেয়ার করে, এক্সপোর্ট সীমা ছাড়াই।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro und Max speichern und teilen jedes Video, ohne Export-Limit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro y Max guardan y comparten cada vídeo, sin límite de exportaciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro et Max enregistrent et partagent chaque vidéo, sans limite d'export."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro और Max हर वीडियो सेव और शेयर करते हैं, बिना एक्सपोर्ट सीमा के।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro dan Max menyimpan dan membagikan setiap video, tanpa batas ekspor."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro と Max はすべての動画を書き出し制限なしで保存・共有できます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro र Max ले हरेक भिडियो निर्यात सीमाविना सुरक्षित र साझा गर्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro e Max salvam e compartilham cada vídeo, sem limite de exportação."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro اور Max ہر ویڈیو کو ایکسپورٹ حد کے بغیر محفوظ اور شیئر کرتے ہیں۔"
+          }
+        }
+      }
+    },
     "Pro feature": {
       "localizations": {
         "ar": {
@@ -13923,6 +14136,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "دوبارہ ایڈٹ ہو رہا ہے"
+          }
+        }
+      }
+    },
+    "Re-editing anything you've already made is still free.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة تحرير أي شيء أنشأته من قبل لا تزال مجانية."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনি আগে যা বানিয়েছেন তা পুনঃসম্পাদনা এখনও বিনামূল্যে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles neu zu bearbeiten, was du schon erstellt hast, bleibt kostenlos."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reeditar lo que ya has creado sigue siendo gratis."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retoucher ce que vous avez déjà créé reste gratuit."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपने जो पहले बनाया है उसे दोबारा एडिट करना अब भी मुफ़्त है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mengedit ulang apa pun yang sudah Anda buat tetap gratis."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すでに作成した動画の再編集は引き続き無料です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंले पहिले बनाएको जुनसुकै पुनः सम्पादन गर्नु अझै निःशुल्क छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reeditar o que você já criou continua grátis."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ نے جو پہلے بنایا ہے اسے دوبارہ ایڈٹ کرنا اب بھی مفت ہے۔"
           }
         }
       }
@@ -22055,6 +22339,77 @@
         }
       }
     },
+    "You're out of credits for now": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نفدت أرصدتك في الوقت الحالي"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপাতত আপনার ক্রেডিট শেষ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Credits sind vorerst aufgebraucht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te has quedado sin créditos por ahora"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous n'avez plus de crédits pour le moment"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़िलहाल आपके क्रेडिट ख़त्म हो गए"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kredit Anda habis untuk saat ini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットを使い切りました"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिलेलाई तपाईंका क्रेडिट सकिए"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus créditos acabaram por enquanto"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فی الحال آپ کے کریڈٹس ختم ہو گئے"
+          }
+        }
+      }
+    },
     "You're out of free chats for today": {
       "localizations": {
         "ar": {
@@ -22402,6 +22757,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی کلپ اب بھی تیار ہے — دوبارہ کوشش کے لیے ٹیپ کریں۔"
+          }
+        }
+      }
+    },
+    "Your credits refresh on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تتجدد أرصدتك في %@"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ক্রেডিট %@-এ নবায়ন হবে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Credits erneuern sich am %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus créditos se renuevan el %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos crédits se renouvellent le %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपके क्रेडिट %@ को नवीनीकृत होंगे"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kredit Anda diperbarui pada %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットは%@に更新されます"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंका क्रेडिट %@ मा नवीकरण हुन्छन्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus créditos renovam em %@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کے کریڈٹس %@ کو تجدید ہوں گے"
           }
         }
       }
@@ -23103,6 +23529,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی اپ لوڈ مکمل نہیں ہوئی"
+          }
+        }
+      }
+    },
+    "Your video is ready — you've used your free export": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الفيديو جاهز — لقد استخدمت التصدير المجاني"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ভিডিও প্রস্তুত — আপনি বিনামূল্যের এক্সপোর্ট ব্যবহার করে ফেলেছেন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Video ist fertig — deinen kostenlosen Export hast du schon genutzt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu vídeo está listo: ya has usado tu exportación gratuita"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre vidéo est prête — vous avez utilisé votre export gratuit"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका वीडियो तैयार है — आपने अपना मुफ़्त एक्सपोर्ट इस्तेमाल कर लिया है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Anda siap — ekspor gratis Anda sudah terpakai"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画が完成しました。無料の書き出しは使用済みです"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको भिडियो तयार छ — तपाईंले निःशुल्क निर्यात प्रयोग गरिसक्नुभयो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu vídeo está pronto — você já usou sua exportação grátis"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی ویڈیو تیار ہے — آپ اپنا مفت ایکسپورٹ استعمال کر چکے ہیں"
           }
         }
       }
