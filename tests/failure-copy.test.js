@@ -79,8 +79,13 @@ test('cold-load per class: every stored failure copy is display-safe', () => {
 // Hindi or Arabic reader gets English. Nothing errors — that is why it needs a
 // test. These five are the codes handler.py emits alongside a user_message.
 test('every worker-emitted error_code maps to server copy', () => {
+  // Derived from an AST sweep of the worker for every error_code emitted
+  // ALONGSIDE a user_message. INTEGRITY_TRIP and MISSING_FIELDS were absent
+  // here until 2026-08-31 — INTEGRITY_TRIP alone is 38 trips / 29 users whose
+  // copy was English-only, and nothing failed to say so.
   for (const code of ['TIER_CONCURRENCY_LIMIT', 'SAMPLE_MISSING',
-                      'SAMPLE_UNREADABLE', 'NOT_TALKING_HEAD', 'CORE_ERROR']) {
+                      'SAMPLE_UNREADABLE', 'NOT_TALKING_HEAD', 'CORE_ERROR',
+                      'INTEGRITY_TRIP', 'MISSING_FIELDS']) {
     const copy = require('../lib/failure-copy').rejectionCopy(code);
     assert.ok(copy, `${code} is emitted by the worker but maps to NOTHING — the ` +
                     `app falls back to the worker's English free text`);
