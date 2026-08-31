@@ -206,6 +206,13 @@ class APIService {
             // reliability fix + deconfounding wait-time. Optional → omitted when nil.
             let source_type: String?
             let source_duration: Double?
+            // The auth-stable device id, carried so the SERVER-emitted
+            // render_started can be joined to the client funnel. Those two
+            // events live in different id spaces today — render_started has
+            // only user_id, the client events only install_id — so the render
+            // tail of every funnel is unjoinable and reads as 0%. Sending it
+            // here is the client half; the server must echo it onto the event.
+            let device_id: String?
         }
         let body = Body(
             video_url: videoUrl,
@@ -216,7 +223,8 @@ class APIService {
             client_job_id: clientJobId,
             supports_progressive: true,
             source_type: sourceType,
-            source_duration: sourceDuration
+            source_duration: sourceDuration,
+            device_id: Analytics.deviceIdForJoin
         )
         request.httpBody = try JSONEncoder().encode(body)
 

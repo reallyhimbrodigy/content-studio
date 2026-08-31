@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import StoreKit
 import RevenueCat
 import PostHog
@@ -54,6 +55,41 @@ enum Analytics {
         return v
     }
 
+    /// A device id that does NOT move across authentication. Emitted on every
+    /// event beside `install_id`.
+    ///
+    /// WHY `install_id` COULD NOT BE THE JOIN KEY. It seeds from RevenueCat's
+    /// `appUserID`, which is `$RCAnonymousID:…` before `Purchases.logIn()` and
+    /// the auth UUID afterwards. The value is cached on first use, so whichever
+    /// side of log-in an install's FIRST tracked event lands on decides its id
+    /// permanently — and the two halves of one device's journey end up in two
+    /// id spaces. Measured: 171 `signup_complete` rows keyed on an anonymous id
+    /// against 1 on a UUID-shaped one, with 256 of 257 UUID-shaped ids matching
+    /// real `profiles` rows.
+    ///
+    /// Every funnel keyed on `install_id` therefore counted one signing-up
+    /// device as two installs — inflating the denominator and deflating every
+    /// conversion rate through it. A 27.3% signup rate and a 41.5%
+    /// "already-uploads-without-auth" finding were both withdrawn on this.
+    ///
+    /// `identifierForVendor` is stable per vendor per device and survives
+    /// log-in, log-out and account switching. It is nil before first unlock and
+    /// resets when the user's last app from this vendor is removed, so the
+    /// minted UUID is persisted as the fallback and, once written, always wins —
+    /// a device that resets its IDFV keeps reporting the id it started with.
+    private static var deviceId: String {
+        let d = UserDefaults.standard
+        if let v = d.string(forKey: "analytics_device_id") { return v }
+        let v = UIDevice.current.identifierForVendor?.uuidString ?? "dev-" + UUID().uuidString
+        d.set(v, forKey: "analytics_device_id")
+        return v
+    }
+
+    /// The auth-stable device id, for callers outside analytics — the render
+    /// dispatch carries it so the server can stamp `render_started` with the
+    /// same key the client funnel uses.
+    static var deviceIdForJoin: String { deviceId }
+
     /// StoreKit's storefront (country + id). Cheap — StoreKit caches it —
     /// so we resolve per-event rather than holding shared mutable state
     /// (which would be a data race across detached tasks).
@@ -75,6 +111,10 @@ enum Analytics {
         let anon = anonUserId
         var enrichedProps = props
         enrichedProps["install_id"] = installId
+        // The auth-stable join key. `install_id` is kept alongside it rather
+        // than replaced: 100k+ historical rows carry only that field, and
+        // dropping it would orphan every series built on them.
+        enrichedProps["device_id"] = deviceId
         // app_version rides BOTH sinks (2026-08-27). It was added only to the
         // PostHog dictionary below — AFTER this payload is serialized — so
         // every row in our own analytics_events table has been version-blind
