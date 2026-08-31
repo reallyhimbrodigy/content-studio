@@ -81,6 +81,8 @@ struct PayoffSnapshotHarnessView: View {
                 ["7": "videoType", "8": "attribution", "11": "audience",
                  "12": "videoType", "15": "reveal"][String(n)] ?? "audience",
                 forKey: "onboarding_v2_step")
+        case 17: o.debugForceFlag("progress_ring")
+        case 18: o.debugForceFlag("before_after")
         case 13:
             o.debugForceFlag("render_transparency")
             o.v2VideoType = "podcast"
@@ -142,6 +144,9 @@ struct PayoffSnapshotHarnessView: View {
             case 15: OnboardingV2Flow()
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
+                }
+            case 17: labeled("RENDER RING — live ramp, cold through completion") {
+                    RingMotionDriver()
                 }
             case 13: labeled("RENDER TRANSPARENCY — survey-personalised header over the live stage feed") {
                     MessageBubble(message: Self.renderingMock)
@@ -259,6 +264,106 @@ struct PayoffSnapshotHarnessView: View {
         t.receive(stepToken: "render")
         m.stageTimeline = t
         return m
+    }
+
+    /// RENDER RING — a LIVE run, not a posed frame.
+    ///
+    /// State 13 already shows a rendering bubble, but its timeline is frozen at
+    /// one token and 42%, which is a still. The ring's entire point is the
+    /// TrickleProgress ramp — a self-driving continuous climb that never mirrors
+    /// backend percentages and never parks at 99%. A static capture cannot
+    /// evidence any of that; it can only show that a circle exists.
+    ///
+    /// So this drives the real thing: a fresh StageTimeline fed real stage
+    /// tokens on a timer, from cold through the finishing beat to completion,
+    /// against the real RenderProgressRing. If the ramp stalls, jumps backwards,
+    /// or sticks at 99, this recording shows it.
+    struct RingMotionDriver: View {
+        @State private var msg: ChatMessage = {
+            var m = ChatMessage(role: .assistant, content: "")
+            m.jobId = "ring-motion"
+            m.jobStatus = "processing"
+            m.jobProgress = 0
+            m.originalVibe = "podcast clips, best moments, fast cuts, high energy"
+            m.stageTimeline = StageTimeline(mode: "full", startWith: "upload_local")
+            // THE RING IS A FRAME, NOT A CIRCLE. Its centre holds the source
+            // clip's own thumbnail — that is the whole idea, the user watching
+            // their own footage being worked on. The first recording of this
+            // had no attachment, so it captured a hollow ring and would have
+            // been reviewed as a hollow ring. A synthetic frame is enough to
+            // prove the composition.
+            m.videoAttachment = VideoAttachment(
+                localUrl: URL(string: "file:///dev/null")!,
+                fileName: "source.mov",
+                thumbnail: Self.syntheticFrame()
+            )
+            return m
+        }()
+        @State private var step = 0
+
+        /// A recognisable stand-in frame. Not a real clip — this is a pacing
+        /// and composition proof, and shipping a real user's footage into a
+        /// review artifact would be worse than a gradient.
+        static func syntheticFrame() -> UIImage {
+            let size = CGSize(width: 240, height: 426)   // 9:16
+            return UIGraphicsImageRenderer(size: size).image { ctx in
+                let cg = ctx.cgContext
+                let colors = [UIColor(red: 0.16, green: 0.14, blue: 0.28, alpha: 1).cgColor,
+                              UIColor(red: 0.55, green: 0.32, blue: 0.24, alpha: 1).cgColor]
+                if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                      colors: colors as CFArray, locations: [0, 1]) {
+                    cg.drawLinearGradient(g, start: .zero,
+                                          end: CGPoint(x: size.width, y: size.height), options: [])
+                }
+                UIColor.white.withAlphaComponent(0.9).setFill()
+                UIBezierPath(ovalIn: CGRect(x: size.width/2 - 26, y: size.height/2 - 26,
+                                            width: 52, height: 52)).fill()
+            }
+        }
+
+        // The authoritative "full" pipeline, in order.
+        private let tokens = ["analyze", "transcribe", "face_detect", "shots", "trend",
+                              "plan", "broll_search", "render", "timing", "captions",
+                              "sfx", "transitions", "encode", "thumbnail", "upload"]
+
+        var body: some View {
+            MessageBubble(message: msg)
+                .task {
+                    // REAL PACING, NOT A SPED-UP FAKE. TricklePacing fills to
+                    // scheduledCap (90) over estimateSeconds (390 = 6.5 min),
+                    // and the backend value is only a CEILING tether — the bar
+                    // never marches ahead of the clock no matter what progress
+                    // arrives. That is the anti-lie design working, and it means
+                    // a 20-second capture shows a ~5% arc that looks frozen.
+                    //
+                    // The first recording made exactly that mistake and read as
+                    // "the ring is stuck". So this runs at honest wall-clock and
+                    // the CAPTURE is time-lapsed instead. Speeding up the video
+                    // is truthful; speeding up the pacing would be proving a
+                    // ring we do not ship.
+                    for (i, token) in tokens.enumerated() {
+                        try? await Task.sleep(for: .milliseconds(11_000))
+                        msg.stageTimeline?.receive(stepToken: token)
+                        // Deliberately NOT a linear sweep to 100. The backend
+                        // feed is lumpy and the ring is supposed to absorb that
+                        // into a smooth climb — a linear driver here would hide
+                        // the exact behaviour under review.
+                        msg.jobProgress = min(96, Int(Double(i + 1) / Double(tokens.count) * 110))
+                        step = i
+                    }
+                    try? await Task.sleep(for: .milliseconds(2_000))
+                    msg.isFinishing = true          // the finishing beat: ring may pass 99
+                    try? await Task.sleep(for: .milliseconds(3_000))
+                    // Completion must come through jobStatus, because that is
+                    // what makes the ring call trickle.complete() and release
+                    // the 99 hard cap. Setting jobProgress alone would leave it
+                    // capped and capture the exact "stuck at 99" defect the ring
+                    // was built to eliminate — proving the bug instead of the fix.
+                    msg.jobStatus = "completed"
+                    msg.jobProgress = 100
+                    print("RING_MOTION_COMPLETE")   // capture script's stop marker
+                }
+        }
     }
 
     static var exportCtxMock: ExportGatePaywallContext {
