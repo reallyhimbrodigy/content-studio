@@ -135,7 +135,21 @@ struct EditorView: View {
                     // + reset countdown, escalating to "Get more usage" at the cap.
                     // Hides itself for Pro. Sits directly above the composer bubble
                     // and inherits the shared gradient below.
-                    UsageMeterStrip { appState.presentPaywall(.manual) }
+                    // ONE METER, NEVER TWO. UsageMeterStrip counts the server's
+                    // daily render quota; CreditBalanceStrip counts RevenueCat's
+                    // monthly credits. They are different accounting systems
+                    // with different numbers, and neither view can see the
+                    // other — so with the credits flag on, a free user would
+                    // read "3 free videos left today" stacked one line above
+                    // "12 videos left" and have no way to know which governs.
+                    // The credits meter REPLACES the daily one while the
+                    // experiment is on, because credits are the model being
+                    // tested; the daily quota returns the moment it is off.
+                    if onboardingState.creditsEnabled {
+                        CreditBalanceStrip()
+                    } else {
+                        UsageMeterStrip { appState.presentPaywall(.manual) }
+                    }
                     inputBar
                 }
                 // Same solid black as the content + nav — no fade scrim (it read

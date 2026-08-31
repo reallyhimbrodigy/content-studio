@@ -284,6 +284,106 @@ final class PromptlyPlayerSession: ObservableObject {
     private var bufferingShowTask: Task<Void, Never>?
     private var endNotificationToken: NSObjectProtocol?
 
+    /// Before/after compare state. The EDIT is the resting item; the source is
+    /// swapped in only while the user holds.
+    private var editItem: AVPlayerItem?
+    private(set) var showingSource = false
+
+    /// Bind the per-ITEM observers. Extracted from `init` so a source swap can
+    /// re-establish them.
+    ///
+    /// THIS IS THE BUG THAT MADE BEFORE/AFTER UNSHIPPABLE. Both observers below
+    /// are bound to a SPECIFIC AVPlayerItem — the KVO to `item.status`, and the
+    /// end notification to `object: item`. They were set once in `init` against
+    /// the item captured there. Any `replaceCurrentItem` therefore left them
+    /// watching an item no longer on screen: the clip silently stopped looping,
+    /// and `duration` froze at the old item's value while the scrubber kept
+    /// reporting against it. Nothing would have crashed and nothing would have
+    /// logged — it would have shipped as "the compare feature makes videos stop
+    /// looping sometimes."
+    ///
+    /// Rebinding on every swap is what makes the swap safe, so the two live
+    /// together and cannot drift apart.
+    private func bindItemObservers(to item: AVPlayerItem) {
+        statusKVO?.invalidate()
+        if let t = endNotificationToken { NotificationCenter.default.removeObserver(t) }
+
+        statusKVO = item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if item.status == .readyToPlay {
+                    let d = item.duration.seconds
+                    if d.isFinite, d > 0 { self.duration = d }
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
+        }
+
+        // Default `actionAtItemEnd = .pause` stops at the end frame. We loop
+        // manually by seeking to zero and resuming when didPlayToEndTime fires.
+        endNotificationToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.player.seek(to: .zero)
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
+    }
+
+    /// Hold-to-compare. Swaps the SOURCE clip in at the current playback
+    /// position and back out again.
+    ///
+    /// POSITION IS PRESERVED AND CLAMPED. The comparison is only meaningful at
+    /// the same moment, so the swapped item seeks to where the other one was.
+    /// The source is longer than the edit, so the edit's time is always valid
+    /// within it; coming BACK the reverse is not true, and seeking past the end
+    /// silently leaves a black frame that reads as a broken video rather than a
+    /// shorter one. Hence the clamp.
+    func setShowingSource(_ show: Bool, sourceUrl: String) {
+        guard show != showingSource else { return }
+        let target: AVPlayerItem
+        if show {
+            guard let u = URL(string: sourceUrl) else { return }
+            editItem = player.currentItem
+            target = AVPlayerItem(url: u)
+        } else {
+            // Restore the ORIGINAL edit item rather than rebuilding it: a fresh
+            // AVPlayerItem would re-buffer from the network on every release,
+            // which turns a hold-and-release into a visible stall.
+            guard let e = editItem else { return }
+            target = e
+        }
+        let t = player.currentTime()
+        let wasPlaying = player.timeControlStatus == .playing
+        player.replaceCurrentItem(with: target)
+        bindItemObservers(to: target)
+        let dur = target.duration
+        let clamped = dur.isNumeric
+            ? CMTimeMinimum(t, CMTimeSubtract(dur, CMTime(value: 1, timescale: 10)))
+            : t
+        player.seek(to: CMTimeMaximum(clamped, .zero), toleranceBefore: .zero, toleranceAfter: .zero)
+        if wasPlaying { player.play() }
+        showingSource = show
+    }
+
+    /// Put the EDIT back before the player returns to the pool.
+    ///
+    /// The player is pooled — acquired on init, released on deinit. If the user
+    /// backgrounds or swipes away mid-hold, the player would go back into the
+    /// pool still holding the SOURCE item, and the next presentation would
+    /// reuse it and play the wrong video. `pause()` does not undo a swap, so
+    /// this must be explicit.
+    func restoreEditIfNeeded() {
+        guard showingSource, let e = editItem else { return }
+        player.replaceCurrentItem(with: e)
+        bindItemObservers(to: e)
+        showingSource = false
+    }
+
     init(item: AVPlayerItem, urlString: String) {
         self.item = item
         self.player = PlayerPool.shared.acquire()
@@ -301,17 +401,7 @@ final class PromptlyPlayerSession: ObservableObject {
             self.currentTime = time.seconds
         }
 
-        statusKVO = item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
-            Task { @MainActor in
-                guard let self else { return }
-                if item.status == .readyToPlay {
-                    let d = item.duration.seconds
-                    if d.isFinite, d > 0 { self.duration = d }
-                    self.player.play()
-                    self.isPlaying = true
-                }
-            }
-        }
+        bindItemObservers(to: item)
 
         // Buffering signal. timeControlStatus is the cleanest source: it
         // tells us whether the player is .playing, .paused, or
@@ -343,19 +433,6 @@ final class PromptlyPlayerSession: ObservableObject {
             }
         }
 
-        // Default `actionAtItemEnd = .pause` stops at the end frame. We
-        // loop manually by seeking to zero and resuming when the
-        // didPlayToEndTime notification fires — short clips, always loop.
-        endNotificationToken = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.player.seek(to: .zero)
-                self.player.play()
-                self.isPlaying = true
-            }
-        }
 
         // Frame strip generation is intentionally skipped — the native
         // AVPlayerViewController surface generates its own high-res
@@ -400,6 +477,13 @@ final class PromptlyPlayerSession: ObservableObject {
         bufferingShowTask?.cancel()
         if let token = endNotificationToken { NotificationCenter.default.removeObserver(token) }
         let p = player
+        // NEVER return a player to the pool holding the SOURCE clip. If the
+        // user swiped away or backgrounded mid-hold, the swap is still in
+        // effect; the pool hands this player to the next presentation, which
+        // would then play the wrong video with no way to explain it. Restoring
+        // the edit item is not enough on its own — the item must be cleared,
+        // because the pool's contract is that a released player carries nothing.
+        if showingSource, let e = editItem { p.replaceCurrentItem(with: e) }
         Task { @MainActor in PlayerPool.shared.release(p) }
     }
 }
@@ -463,6 +547,9 @@ struct PromptlyPlayerView: View {
     let onReedit: (() -> Void)?
     let title: String?
     let posterUrl: String?
+    /// nil when the original clip is unavailable (re-edits, pre-fix renders).
+    /// The compare control is simply absent then.
+    var sourceUrl: String? = nil
 
     @State private var dismissOffset: CGFloat = 0
     @State private var firstFrameReady: Bool = false
@@ -517,6 +604,29 @@ struct PromptlyPlayerView: View {
                 .scaleEffect(1 - min(abs(dismissOffset) / 1500, 0.15), anchor: .center)
                 .offset(y: dismissOffset)
                 .gesture(swipeDownDismiss)
+
+            // Hold-to-compare. Present ONLY when we actually hold the user's
+            // original clip — nil for every re-edit and for renders finished
+            // before the retry-gap fix. A control that 403s into a black frame
+            // is worse than no control, so it is absent rather than broken.
+            if OnboardingState.shared.beforeAfterEnabled, let src = sourceUrl {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        BeforeAfterCompare(isShowingSource: session.showingSource) { show in
+                            session.setShowingSource(show, sourceUrl: src)
+                        }
+                        // Clear of the native transport controls' centre and of
+                        // the top-leading close button, so it steals no taps
+                        // from either.
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 92)
+                    }
+                }
+                .opacity(firstFrameReady ? 1 : 0)
+                .allowsHitTesting(firstFrameReady)
+            }
 
             // The ONE custom affordance over the native player: a close
             // button. iOS gives AVPlayerViewController's inline controls no
@@ -945,14 +1055,15 @@ struct ControlButton: View {
 final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
     let session: PromptlyPlayerSession
 
-    init(session: PromptlyPlayerSession, title: String?, posterUrl: String?, onReedit: (() -> Void)?) {
+    init(session: PromptlyPlayerSession, title: String?, posterUrl: String?, sourceUrl: String? = nil, onReedit: (() -> Void)?) {
         self.session = session
         let placeholder = PromptlyPlayerView(
             session: session,
             onClose: {},
             onReedit: onReedit,
             title: title,
-            posterUrl: posterUrl
+            posterUrl: posterUrl,
+            sourceUrl: sourceUrl
         )
         super.init(rootView: placeholder)
         self.modalPresentationStyle = .fullScreen
@@ -969,7 +1080,8 @@ final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
             },
             onReedit: onReedit,
             title: title,
-            posterUrl: posterUrl
+            posterUrl: posterUrl,
+            sourceUrl: sourceUrl
         )
     }
 

@@ -6,6 +6,12 @@ struct MessageBubble: View {
     /// render_transparency: one `render_transparency_viewed` per job, not per
     /// SwiftUI body pass (the bubble re-renders on every progress tick).
     static var transparencySeen = Set<String>()
+    /// Same contract for the instant question: one impression per job, and one
+    /// `picked` state that survives row recycling. Without this the card would
+    /// re-offer a question the user already answered every time the LazyVStack
+    /// recycled the row — the one failure the surface's own doc calls worse
+    /// than not asking at all.
+    static var instantQuestionSeen = Set<String>()
 
     let message: ChatMessage
     /// 225 item 2: drives the blinking streaming caret (toggled only while
@@ -326,6 +332,52 @@ struct MessageBubble: View {
                         PlanPreviewCard(vibe: vibe)
                             .padding(.bottom, 10)
                     }
+                    // Instant question — asked while the render is in flight, so
+                    // the wait does something. Zero network: the spec is a
+                    // compile-time constant and `spec(forComposerText:)` returns
+                    // nil when the user's own words already state a style, so we
+                    // never ask what they just told us.
+                    //
+                    // HONEST SCOPE, stated because the surface reads as if it
+                    // steers the edit and it does not. There is no path — client
+                    // or server — to apply a vibe fragment to an in-flight job:
+                    // `vibe` is captured by value before dispatch, and the
+                    // re-edit route hard-rejects anything not already completed.
+                    // So this MEASURES intent, it does not change the render. It
+                    // is wired that way deliberately rather than left orphaned,
+                    // because the question worth answering first is whether
+                    // people answer at all — if nobody taps, the plumbing to act
+                    // on the tap is wasted work.
+                    if OnboardingState.shared.instantQuestionsEnabled,
+                       status != "needs_input",
+                       let jobId = message.jobId,
+                       let spec = InstantQuestion.spec(forComposerText: message.originalVibe ?? "") {
+                        InstantQuestionCard(spec: spec) { option in
+                            Analytics.track("instant_question_answered", props: [
+                                "job_id": jobId,
+                                "question_id": spec.id,
+                                "option_id": option.id,
+                                // Recorded so the answer is not mistaken for a
+                                // render input later. If this ever does steer an
+                                // edit, this value changes and the two eras stay
+                                // separable in the data.
+                                "applied": false,
+                            ])
+                        }
+                        .padding(.bottom, 10)
+                        .onAppear {
+                            // Keyed on jobId, not fired from body. The bubble
+                            // re-renders on every progress tick and rows are
+                            // recycled by the LazyVStack, so an undeduped
+                            // impression would count once per frame — the same
+                            // reason `transparencySeen` exists above.
+                            guard !Self.instantQuestionSeen.contains(jobId) else { return }
+                            Self.instantQuestionSeen.insert(jobId)
+                            Analytics.track("instant_question_shown", props: [
+                                "job_id": jobId, "question_id": spec.id,
+                            ])
+                        }
+                    }
                     // FLAG-DARK REBUILD. The ring replaces the bar + bullet
                     // list; the data underneath (StageTimeline, the 17-stage
                     // server feed, TrickleProgress) is identical, so flipping
@@ -425,6 +477,7 @@ struct MessageBubble: View {
                     jobId: message.jobId,
                     title: message.originalVibe,
                     postPackage: message.postPackage,
+                    sourceUrl: message.cachedSourceUrl,
                     onReedit: buildReeditHandler(for: message),
                     onMakeAnother: onMakeAnother,
                     // The inline progressive player already shows the (swapped) video;
@@ -1851,6 +1904,10 @@ struct CompletedVideoView: View {
     /// §6 post package — posting-ready copy (hook / caption / rationale) shown
     /// between the video surface and the action row. nil → nothing rendered.
     let postPackage: PostPackage?
+    /// The user's ORIGINAL clip, for hold-to-compare in the full-screen player.
+    /// nil on every re-edit and on renders finished before the retry-gap fix —
+    /// the compare control is absent in those cases rather than broken.
+    var sourceUrl: String? = nil
     let onReedit: (() -> Void)?
     let onMakeAnother: (() -> Void)?
     /// §5 progressive: when the inline ProgressivePlayerView owns the video surface
@@ -1932,6 +1989,7 @@ struct CompletedVideoView: View {
                     thumbnailUrl: effectiveThumbnailUrl,
                     jobId: jobId,
                     title: title,
+                    sourceUrl: sourceUrl,
                     onReedit: onReedit,
                     onRefreshNeeded: { await self.refreshAndReturnVideoUrl() }
                 )
@@ -2236,6 +2294,13 @@ enum VideoPlayerPresenter {
         thumbnailUrl: String? = nil,
         jobId: String? = nil,
         title: String? = nil,
+        // The user's ORIGINAL clip, for hold-to-compare. Optional and defaulted
+        // because it genuinely is not always available: re-edits never carry it,
+        // and renders finished before the retry-gap fix have nil on reload. The
+        // compare affordance simply does not appear in those cases, which is the
+        // honest behaviour — a compare button that 403s into a black frame is
+        // worse than no compare button.
+        sourceUrl: String? = nil,
         onReedit: (() -> Void)? = nil,
         onRefreshNeeded: (() async -> String?)? = nil
     ) {
@@ -2264,6 +2329,7 @@ enum VideoPlayerPresenter {
                 title: title,
                 posterUrl: thumbnailUrl,
                 jobId: jobId,
+                sourceUrl: sourceUrl,
                 onReedit: onReedit
             )
             return
@@ -2290,13 +2356,14 @@ enum VideoPlayerPresenter {
                 title: title,
                 posterUrl: thumbnailUrl,
                 jobId: jobId,
+                sourceUrl: sourceUrl,
                 onReedit: onReedit
             )
         }
     }
 
     @MainActor
-    private static func doPresent(urlString: String, title: String?, posterUrl: String?, jobId: String?, onReedit: (() -> Void)?) {
+    private static func doPresent(urlString: String, title: String?, posterUrl: String?, jobId: String?, sourceUrl: String? = nil, onReedit: (() -> Void)?) {
         guard let url = URL(string: urlString) else {
             print("[player] FAILED: invalid URL after refresh")
             return
@@ -2314,6 +2381,7 @@ enum VideoPlayerPresenter {
             session: session,
             title: title,
             posterUrl: posterUrl,
+            sourceUrl: sourceUrl,
             onReedit: onReedit
         )
 

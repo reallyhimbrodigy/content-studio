@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 /// Hold to see the original. Release to return to the edit.
 ///
@@ -7,104 +6,79 @@ import AVFoundation
 /// and kept frame-accurate against each other, and on a phone the handle sits
 /// exactly where the thumb already is during playback. Hold-to-compare is one
 /// player, one gesture, and it is the gesture people already know from photo
-/// editors — press to see the original, let go to see the edit. It also makes
-/// the comparison ACTIVE: the user performs the difference rather than reading
-/// a labelled split, which is what makes it feel like proof.
+/// editors. It also makes the comparison ACTIVE: the user performs the
+/// difference rather than reading a labelled split, which is what makes it feel
+/// like proof.
 ///
-/// NO LABELS. The spec asks for nothing competing with the video, and "BEFORE"
-/// / "AFTER" chips are the usual way that gets violated — they sit on top of
-/// the frame, they need translating, and they explain a gesture that explains
-/// itself. The only affordance is a one-time hint, and it retires permanently
-/// once the gesture has been used.
+/// IT LIVES ON THE FULL-SCREEN PLAYER, NOT THE RESULT BUBBLE. The bubble was the
+/// original brief and it is not possible there: `CompletedVideoView` is a static
+/// `AsyncImage` thumbnail with no AVPlayer at all, so a hold gesture would have
+/// swapped the item of a player that is not on screen — a no-op the user could
+/// never see. The comparison also wants the large surface. The flag comment and
+/// this file's analytics context were updated to match reality rather than left
+/// describing the surface we did not build.
 ///
-/// POSITION IS PRESERVED. Swapping sources seeks the original to the edit's
-/// current time, so the comparison is of the SAME MOMENT. Restarting the source
-/// from zero would compare two different instants and prove nothing — the edit
-/// is shorter than its source, so the times do not correspond after the first
-/// cut, and this is honest about that: it clamps rather than pretending.
+/// THIS VIEW OWNS NO PLAYER. It reports hold and release; the player session
+/// performs the swap, because that is where the item observers live and they
+/// must be rebound whenever the item changes. An earlier draft wrapped its own
+/// `PlayerBox` around the AVPlayer, which both shadowed an existing type of that
+/// name and put the swap somewhere that could not maintain the observers.
+///
+/// BOUNDED HIT REGION, DELIBERATELY. The first draft was `Color.clear` across
+/// the whole frame with a zero-threshold long-press. Over
+/// `AVPlayerViewController` that swallows every tap to the native transport
+/// controls and fights the swipe-to-dismiss gesture on the same surface. So the
+/// affordance is an explicit, finite control — which also means the user can see
+/// what to press instead of having to be told a hidden gesture exists.
 struct BeforeAfterCompare: View {
-    let editedUrl: String
-    let sourceUrl: String
-    /// The already-playing edit. Owned by the caller; this view drives it.
-    @ObservedObject var player: PlayerBox
+    let isShowingSource: Bool
+    let onChange: (Bool) -> Void
 
-    @State private var showingSource = false
     @State private var hintShown = UserDefaults.standard.bool(forKey: "before_after_hint_seen")
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(
-                    // minimumDuration 0 so the swap is immediate — a delay here
-                    // reads as lag, not as a deliberate long-press.
-                    LongPressGesture(minimumDuration: 0)
-                        .sequenced(before: DragGesture(minimumDistance: 0))
-                        .onChanged { _ in if !showingSource { swap(toSource: true) } }
-                        .onEnded { _ in swap(toSource: false) }
-                )
-
-            if !hintShown {
-                Text("Hold to see the original")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 14)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-            }
+        HStack(spacing: 7) {
+            Image(systemName: isShowingSource ? "eye.fill" : "rectangle.on.rectangle")
+                .font(.system(size: 13, weight: .semibold))
+            Text(hintShown ? "Original" : "Hold for original")
+                .font(.system(size: 13, weight: .medium))
+                .fixedSize()
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showingSource)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: hintShown)
+        .foregroundColor(.white.opacity(isShowingSource ? 1 : 0.85))
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule().strokeBorder(Color.white.opacity(isShowingSource ? 0.5 : 0.15), lineWidth: 1)
+        )
+        .scaleEffect(isShowingSource ? 0.96 : 1)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isShowingSource)
+        .contentShape(Capsule())
+        .gesture(
+            // minimumDuration 0 so the swap is immediate — a delay here reads as
+            // lag, not as a deliberate long-press.
+            LongPressGesture(minimumDuration: 0)
+                .sequenced(before: DragGesture(minimumDistance: 0))
+                .onChanged { _ in if !isShowingSource { set(true) } }
+                .onEnded { _ in set(false) }
+        )
         .accessibilityElement()
         .accessibilityLabel(Text("Compare with the original"))
         .accessibilityHint(Text("Double tap and hold to see the video before editing"))
         .accessibilityAddTraits(.isButton)
     }
 
-    private func swap(toSource: Bool) {
-        guard toSource != showingSource else { return }
-        showingSource = toSource
+    private func set(_ toSource: Bool) {
+        guard toSource != isShowingSource else { return }
         // The hint has done its job the first time the gesture is used; retire
-        // it permanently rather than showing it on every finished video.
+        // it permanently rather than re-teaching on every finished video.
         if toSource, !hintShown {
             UserDefaults.standard.set(true, forKey: "before_after_hint_seen")
             hintShown = true
         }
         Analytics.track(toSource ? "before_after_held" : "before_after_released",
-                        props: ["context": "result_bubble"])
-        player.swapSource(to: toSource ? sourceUrl : editedUrl)
-    }
-}
-
-/// Thin box around the AVPlayer so the compare view can drive it without
-/// owning its lifecycle — the bubble already created and is already playing it.
-final class PlayerBox: ObservableObject {
-    let player: AVPlayer
-    private var currentUrl: String
-
-    init(player: AVPlayer, url: String) {
-        self.player = player
-        self.currentUrl = url
-    }
-
-    /// Swap the item, preserving position. The source is LONGER than the edit,
-    /// so the edit's time is always valid within it; the reverse is not true,
-    /// hence the clamp on the way back.
-    func swapSource(to url: String) {
-        guard url != currentUrl, let u = URL(string: url) else { return }
-        let t = player.currentTime()
-        let wasPlaying = player.timeControlStatus == .playing
-        let item = AVPlayerItem(url: u)
-        player.replaceCurrentItem(with: item)
-        // Clamp: seeking past the end silently fails and leaves a black frame,
-        // which reads as a broken video rather than as a shorter one.
-        let target = CMTimeMinimum(t, CMTimeSubtract(item.asset.duration, CMTime(value: 1, timescale: 10)))
-        player.seek(to: CMTimeMaximum(target, .zero), toleranceBefore: .zero, toleranceAfter: .zero)
-        if wasPlaying { player.play() }
-        currentUrl = url
+                        props: ["context": "fullscreen_player"])
+        onChange(toSource)
     }
 }
