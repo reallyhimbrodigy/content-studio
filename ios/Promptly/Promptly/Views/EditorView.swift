@@ -152,6 +152,24 @@ struct EditorView: View {
                     }
                     inputBar
                 }
+                // ONE EDIT, SEVEN STRIPS. Everything in this stack — the re-edit
+                // chip, the referral card, the update strip, the vibe pill, the
+                // usage/credit meter, the chip row and the composer itself — is
+                // a child of this VStack, so capping here constrains all of them
+                // together instead of seven separate fixes that could drift.
+                //
+                // The composer was the worst of the set: its only horizontal
+                // constraint was 12pt of padding, so at 1366pt landscape the
+                // bubble rendered ~1342pt across with the "+" pinned hard left
+                // and Send pinned hard right — roughly 1290pt between the two
+                // controls that make up the entire send loop, either side of a
+                // single-line text field. The uncapped Spacers in each strip did
+                // the same to every label and its action.
+                //
+                // A slightly wider column than the 460pt reading measure: this
+                // is a control surface, not prose, and the composer wants room
+                // for a line of text plus three controls.
+                .conversionColumn(680)
                 // Same solid black as the content + nav — no fade scrim (it read
                 // as a band above the composer on-device).
                 .background(Color.black)

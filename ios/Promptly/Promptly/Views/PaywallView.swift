@@ -363,6 +363,12 @@ struct PaywallView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 36)
                 }
+                // The main paywall column. This surface is presented BOTH as a
+                // sheet (an iPad pageSheet is already a ~704pt card) and as a
+                // fullScreenCover, and only the second one gets the whole
+                // window — so the cap has to live on the content, not be
+                // assumed from the presentation.
+                .conversionColumn()
             }
             }
 

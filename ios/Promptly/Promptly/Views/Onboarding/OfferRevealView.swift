@@ -178,7 +178,9 @@ struct OfferRevealView: View {
                         .padding(.top, 12)
                         .padding(.bottom, 28)
                 }
-                .frame(maxWidth: .infinity)
+                // Root cause of the whole surface's iPad stretch: this was the
+                // only width bound on the reveal column.
+                .conversionColumn()
             }
         }
         .onAppear {

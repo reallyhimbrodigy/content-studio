@@ -81,6 +81,7 @@ struct PayoffSnapshotHarnessView: View {
                 ["7": "videoType", "8": "attribution", "11": "audience",
                  "12": "videoType", "15": "reveal"][String(n)] ?? "audience",
                 forKey: "onboarding_v2_step")
+        case 19: o.debugForceFlag("progress_ring")
         case 17: o.debugForceFlag("progress_ring")
         case 18: o.debugForceFlag("before_after")
         case 13:
@@ -145,6 +146,7 @@ struct PayoffSnapshotHarnessView: View {
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
                 }
+            case 19: RingStillView()
             case 17: labeled("RENDER RING — live ramp, cold through completion") {
                     RingMotionDriver()
                 }
@@ -264,6 +266,49 @@ struct PayoffSnapshotHarnessView: View {
         t.receive(stepToken: "render")
         m.stageTimeline = t
         return m
+    }
+
+    /// RENDER RING — STEPPED STILLS.
+    ///
+    /// The live-ramp driver (state 17) cannot be video-recorded: `simctl io
+    /// recordVideo` starves the app's Swift concurrency timers, so the stage
+    /// feed stalls and the ring — correctly — holds. Measured: 180s of
+    /// recording produced ZERO driver ticks, while the identical run without
+    /// recording ticked on schedule.
+    ///
+    /// Stills sidestep it entirely, and they can show the real arc because
+    /// `TrickleProgress.rehydrate(to:)` snaps `displayed` UP to the polled value
+    /// plus its allowed lead on appear. So a view constructed at progress N
+    /// paints at N immediately, with no waiting and no timers to starve. Each
+    /// still is the REAL ring at a real value — not a mock of one.
+    ///
+    ///   -snapshotState 19 -ringProgress 45
+    struct RingStillView: View {
+        private var pct: Int { Int(UserDefaults.standard.string(forKey: "ringProgress") ?? "0") ?? 0 }
+        private static let stageForPct: [(Int, String)] = [
+            (0, "upload_local"), (15, "analyze"), (30, "transcribe"), (45, "shots"),
+            (60, "render"), (75, "captions"), (90, "encode"), (99, "upload"),
+        ]
+        var body: some View {
+            let p = pct
+            var m = ChatMessage(role: .assistant, content: "")
+            m.jobId = "ring-still-\(p)"
+            m.jobStatus = p >= 100 ? "completed" : "processing"
+            m.jobProgress = p
+            m.originalVibe = "podcast clips, best moments, fast cuts, high energy"
+            let t = StageTimeline(mode: "full", startWith: "upload_local")
+            for (threshold, token) in Self.stageForPct where p >= threshold {
+                t.receive(stepToken: token)
+            }
+            m.stageTimeline = t
+            m.isFinishing = p >= 99
+            m.videoAttachment = VideoAttachment(
+                localUrl: URL(string: "file:///dev/null")!,
+                fileName: "source.mov",
+                thumbnail: RingMotionDriver.syntheticFrame()
+            )
+            return MessageBubble(message: m)
+        }
     }
 
     /// RENDER RING — a LIVE run, not a posed frame.

@@ -137,7 +137,7 @@ struct VideoTypeQuestionView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
-            .frame(maxWidth: .infinity)
+            .conversionColumn()
         }
         #if DEBUG
         .task {

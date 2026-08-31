@@ -136,6 +136,22 @@ struct FirstLaunchPaywallView: View {
                     .padding(.top, 18)
                     .padding(.bottom, 40)
                 }
+                // THE PREVIOUSLY-REJECTED DEFECT, on the screen that renders
+                // FIRST. AuthView.swift:72 carries this same pair with the note
+                // that a full-width control "is what Apple flagged in the App
+                // Review rejection of build 151" — but this view is a root
+                // branch reached BEFORE AuthView (PromptlyApp.swift:444), so
+                // with the first_launch_paywall knob on, an iPad reviewer meets
+                // the uncapped version as the app's opening screen and never
+                // reaches the fixed one.
+                //
+                // Two frames, in this order, exactly as AuthView does it: the
+                // first caps the column, the second re-expands the container so
+                // the capped column CENTERS rather than hugging the leading
+                // edge. Capping alone would leave the content pinned left with
+                // dead space to the right — a different kind of broken.
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
             }
 
             // ALWAYS dismissible — the exposure is the point, not a trap.
