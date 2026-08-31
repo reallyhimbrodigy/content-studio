@@ -6597,6 +6597,142 @@ const server = http.createServer((req, res) => {
   // Register an APNs device token for the current user. Idempotent —
   // upserts on the unique token column. Bumps last_seen_at on every call so
   // we can prune long-dead tokens with a cron job later if needed.
+  // ── POST /api/reverse-trial/grant ────────────────────────────────────────
+  // The client CANNOT grant this. grant_referral_reward/qualify_referral were
+  // revoked from `authenticated` after three throwaway accounts took a week of
+  // unmetered Pro; a client-side 72-hour self-grant reopens that hole under a
+  // friendlier name.
+  if (parsed.pathname === '/api/reverse-trial/grant' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'reverse-trial', authUser.id, 10, 3600)) return;
+
+        // GATED ON THE KEYCHAIN BUILD. 241 shipped identifierForVendor cached in
+        // UserDefaults, which does NOT survive reinstall — a grant keyed on it
+        // would re-grant on every delete/reinstall. Ships DARK: with
+        // REVERSE_TRIAL_MIN_BUILD unset the endpoint refuses, so it cannot go
+        // live against 241 by accident.
+        const _minBuild = parseInt(process.env.REVERSE_TRIAL_MIN_BUILD || '', 10);
+        if (!Number.isInteger(_minBuild)) {
+          return sendJson(res, 503, { error: 'reverse_trial_unavailable',
+                                      reason: 'min_build_unset' });
+        }
+        const _bm = String(clientAppVersion(req) || '').match(/\((\d+)\)/);
+        const _build = _bm ? parseInt(_bm[1], 10) : null;
+        if (!Number.isInteger(_build) || _build < _minBuild) {
+          // Refuse rather than grant on a weak key. A trial that leaks on older
+          // builds is worse than one that arrives a cycle late.
+          return sendJson(res, 409, { error: 'build_too_old',
+                                      min_build: _minBuild, build: _build });
+        }
+
+        const body = await readJsonBody(req);
+        const deviceId = String((body && body.device_id) || '').trim();
+        if (!deviceId || deviceId.length < 8 || deviceId.length > 128) {
+          return sendJson(res, 400, { error: 'device_id_required' });
+        }
+
+        // IDEMPOTENT: the PK on device_id is the enforcement. A prior grant
+        // returns the ORIGINAL pro_until — a double-tap on Decline cannot
+        // produce 144 hours.
+        const { data: prior } = await supabaseAdmin
+          .from('reverse_trial_grants')
+          .select('device_id, user_id, granted_at, pro_until')
+          .eq('device_id', deviceId).maybeSingle();
+        if (prior) {
+          if (prior.user_id !== authUser.id) {
+            return sendJson(res, 409, { error: 'already_used',
+                                        device_id_seen_at: prior.granted_at });
+          }
+          return sendJson(res, 200, {
+            granted: true, already: true, pro_until: prior.pro_until,
+            expires_in_seconds: Math.max(0, Math.round(
+              (new Date(prior.pro_until).getTime() - Date.now()) / 1000)),
+          });
+        }
+
+        // 72 HOURS FROM NOW — never calendar days. A decline at 23:50 must get
+        // 72 hours, not eight.
+        const untilIso = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
+
+        // SAME ROLLING-30-DAY CAP the referral grants SUM against. Without this
+        // the two paths together are an uncapped Pro faucet: referrals capped,
+        // trials unbounded, both writing pro_until.
+        const { CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
+        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+        const { data: grants } = await supabaseAdmin
+          .from('referral_rewards').select('days_granted')
+          .eq('user_id', authUser.id).gte('granted_at', since);
+        const used = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+        if (used + 3 > CAP_DAYS_PER_30D) {
+          // REFUSE, never truncate. A one-hour "72-hour trial" reads as broken
+          // rather than generous.
+          return sendJson(res, 409, { error: 'cap_exhausted',
+                                      cap: CAP_DAYS_PER_30D, used });
+        }
+
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('pro_until').eq('id', authUser.id).maybeSingle();
+        const beforeIso = (prof && prof.pro_until) || null;
+
+        // LEDGER FIRST, provider_ok:false — the referral grant's exact sequence,
+        // so a failed grant leaves a visible row instead of nothing.
+        // days_granted:3 is CAP ARITHMETIC; pro_until carries the exact 72h.
+        const { data: ledger } = await supabaseAdmin
+          .from('referral_rewards').insert({
+            user_id: authUser.id, days_granted: 3,
+            pro_until_before: beforeIso, pro_until_after: untilIso,
+            referral_ids: [], provider: 'db', provider_ok: false,
+          }).select('id').maybeSingle();
+
+        // CLAIM THE DEVICE BEFORE GRANTING. The PK insert is the one-shot gate;
+        // if two requests race, the loser gets a duplicate-key error and reads
+        // the winner's row rather than granting twice.
+        const { error: claimErr } = await supabaseAdmin
+          .from('reverse_trial_grants').insert({
+            device_id: deviceId, user_id: authUser.id,
+            pro_until: untilIso, app_build: _build,
+            reward_id: (ledger && ledger.id) || null,
+          });
+        if (claimErr) {
+          const { data: won } = await supabaseAdmin
+            .from('reverse_trial_grants').select('pro_until')
+            .eq('device_id', deviceId).maybeSingle();
+          if (won) {
+            return sendJson(res, 200, {
+              granted: true, already: true, pro_until: won.pro_until,
+              expires_in_seconds: Math.max(0, Math.round(
+                (new Date(won.pro_until).getTime() - Date.now()) / 1000)),
+            });
+          }
+          return sendJson(res, 503, { error: 'grant_unavailable' });
+        }
+
+        const { error: upErr } = await supabaseAdmin
+          .from('profiles').update({ tier: 'pro', pro_until: untilIso })
+          .eq('id', authUser.id);
+        if (!upErr && ledger && ledger.id) {
+          await supabaseAdmin.from('referral_rewards')
+            .update({ provider_ok: true }).eq('id', ledger.id);
+        }
+        // NOTE: no usage_events write and no export marking — the trial must not
+        // consume the free export.
+        console.log('  [reverse-trial] granted userId=%s build=%s until=%s',
+          authUser.id, _build, untilIso);
+        return sendJson(res, 201, {
+          granted: true, already: false, pro_until: untilIso,
+          expires_in_seconds: 72 * 3600,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[reverse-trial] grant failed:', e && e.message);
+        return sendJson(res, 503, { error: 'grant_unavailable' });
+      }
+    })();
+    return;
+  }
+
   // ── GET /api/credits/balance — READ-THROUGH, never cached ────────────────
   // Balance is authoritative at RevenueCat (ruling 4). This does NOT write a DB
   // copy and does NOT fall back to a stored number on failure: a stale balance
