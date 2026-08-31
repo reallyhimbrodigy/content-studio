@@ -164,3 +164,92 @@ test('CONTROL: the stub is actually reached', async () => {
     assert.strictEqual(calls.length, 1, 'debit must make exactly one RC call');
   });
 });
+
+// ── WIRING TESTS ────────────────────────────────────────────────────────────
+// The module can be perfect and the feature still do nothing if it is never
+// called. These assert the SEAMS, because "credits are wired" and "credits
+// exist as a file" look identical from the module's own tests.
+const fs = require('node:fs');
+const path = require('node:path');
+const SRC = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+const LEG = fs.readFileSync(path.join(__dirname, '../lib/refund-leg.js'), 'utf8');
+
+test('the debit runs BEFORE the job insert, and demos are exempt', () => {
+  const iDebit = SRC.indexOf('_credits.debit(authUser.id');
+  const iInsert = SRC.indexOf('const created = await createQueuedVideoJob({');
+  assert.ok(iDebit > 0, 'no debit call in the dispatch path — credits are inert');
+  assert.ok(iInsert > 0);
+  assert.ok(iDebit < iInsert,
+    'debit must precede the insert/spawn; spawn-then-debit spends GPU on a ' +
+    'render the user cannot pay for');
+  const window = SRC.slice(iDebit - 700, iDebit);
+  assert.match(window, /!isDemo/,
+    'a demo is quota-exempt and must be credit-exempt too, or the first-run ' +
+    'sample clip charges the user 10');
+  assert.match(window, /isConfigured\(\)/,
+    'must not attempt a debit when credits are unconfigured');
+});
+
+test('402 carries needed ONLY — never a balance we did not read', () => {
+  const i = SRC.indexOf("error: 'insufficient_credits'");
+  assert.ok(i > 0, 'no insufficient_credits response');
+  const body = SRC.slice(i, i + 260);
+  assert.match(body, /needed:/);
+  assert.doesNotMatch(body, /balance:/,
+    'with no pre-read the server never learns the balance on this path; ' +
+    'promising one is a contract that cannot be kept');
+});
+
+test('an outage does NOT free-render', () => {
+  // SCOPED TO THE DISPATCH REGION. `credits_unavailable` also appears in
+  // /api/credits/balance, so a bare indexOf finds THAT one and validates
+  // against the wrong site — deleting the dispatch branch entirely still went
+  // green until this was scoped. Same family as matching a short token against
+  // unrelated source.
+  const iDebit = SRC.indexOf('_credits.debit(authUser.id');
+  assert.ok(iDebit > 0, 'no debit call — nothing to guard');
+  const region = SRC.slice(iDebit, iDebit + 1800);
+  assert.match(region, /credits_unavailable/,
+    'the dispatch debit has no outage branch — an RC outage would fall ' +
+    'through and spawn a free render');
+  assert.match(region, /503/, 'an outage must refuse, not render for free');
+  assert.match(region, /INSUFFICIENT/,
+    'a refusal must be distinguished from an outage at the dispatch site');
+});
+
+test('the replay path unwinds the debit', () => {
+  assert.match(SRC, /replay unwind refunded/,
+    'a replayed job that kept its debit charges 10 for a render that never runs');
+});
+
+test('the credits refund CLAIMS before calling RC, and unclaims on failure', () => {
+  const iClaim = LEG.indexOf("credits_refunded_at: new Date().toISOString()");
+  const iCall = LEG.indexOf('await credits.credit(userId, amount)');
+  assert.ok(iClaim > 0 && iCall > 0);
+  assert.ok(iClaim < iCall,
+    'claim must precede the RC call; claiming after would drop refunds on a ' +
+    'transient RC error');
+  assert.match(LEG, /credits_refunded_at: null/,
+    'a failed RC call must UNCLAIM so the next sweep retries');
+});
+
+test('a NULL receipt is skipped, not defaulted', () => {
+  assert.match(LEG, /noop-never-debited/,
+    'assuming a default amount would invent credits nobody spent');
+});
+
+test('the refund event carries a CODE, not a sentence', () => {
+  assert.match(LEG, /type: 'credits_refunded'/);
+  assert.match(LEG, /reason_code:/);
+  const i = LEG.indexOf("type: 'credits_refunded'");
+  const payload = LEG.slice(i, i + 300);
+  assert.doesNotMatch(payload, /message:|"You |'You /,
+    'a server-authored sentence renders English to every reader');
+});
+
+test('CONTROL: these seam assertions can fail', () => {
+  // Guards the guards. If the file were empty every indexOf would be -1 and the
+  // assertions above would need to fail, not pass vacuously.
+  assert.ok(SRC.length > 10000 && LEG.length > 2000, 'sources actually loaded');
+  assert.strictEqual(SRC.indexOf('_credits.debit_THAT_DOES_NOT_EXIST'), -1);
+});

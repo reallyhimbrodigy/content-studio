@@ -311,6 +311,7 @@ const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — 
 const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
+const _credits = require('./lib/credits');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
   const id = `${scope}:${key}`;
@@ -2745,7 +2746,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2761,6 +2762,13 @@ const server = http.createServer((req, res) => {
     // §4: mark the first-run sample-clip demo so it's quota-exempt AND excluded
     // from activation metrics. Only set when true (column defaults false).
     if (demo) insertRow.demo = true;
+    // CREDITS RECEIPT, not a ledger. How much THIS job actually spent, so the
+    // refund leg does not have to guess the amount — NULL means never debited
+    // (re-edit, demo, or credits disabled) and the leg skips rather than
+    // assuming 10. Balance stays authoritative at RevenueCat.
+    if (Number.isInteger(creditsDebited) && creditsDebited > 0) {
+      insertRow.credits_debited = creditsDebited;
+    }
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -5699,6 +5707,45 @@ const server = http.createServer((req, res) => {
             }
           }
 
+          // ── CREDITS DEBIT (ruling 1: server-side, never the client) ────────
+          // BEFORE the insert and therefore before spawn. Spawn-then-debit
+          // spends GPU on a render the user cannot pay for.
+          //
+          // NO PRE-READ: RevenueCat validates the balance and deducts ATOMICALLY,
+          // returning 422 with nothing deducted when short. Reading first would
+          // only open a race between the read and the spend — two concurrent
+          // renders could each see 10 and each spend it.
+          //
+          // A demo is quota-exempt and must stay credit-exempt too, or the
+          // first-run sample clip would charge a user 10 credits.
+          let _creditsDebited = null;
+          if (!isDemo && _credits.isConfigured()
+              && _credits.shouldDebit({ mode: 'full' })) {
+            try {
+              await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
+              _creditsDebited = _credits.COST_PER_RENDER;
+            } catch (e) {
+              if (e && e.code === 'INSUFFICIENT') {
+                // 402 carries `needed` ONLY. With no pre-read the server never
+                // learns the balance on this path and RC's 422 does not report
+                // it; promising a balance here would be a contract we cannot
+                // keep. The client calls /api/credits/balance if it wants it.
+                console.log('  [credits] 402 insufficient userId=%s', authUser.id);
+                return { status: 402, body: {
+                  error: 'insufficient_credits', kind: 'credits',
+                  route: 'paywall', needed: _credits.COST_PER_RENDER,
+                } };
+              }
+              // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
+              // A refusal and an outage are different failures and must not be
+              // collapsed — one is the user's problem, the other is ours.
+              console.error('  [credits] grant path unavailable:', e && e.code, e && e.message);
+              return { status: 503, body: {
+                error: 'credits_unavailable', kind: 'credits', retryable: true,
+              } };
+            }
+          }
+
           const created = await createQueuedVideoJob({
             userId: authUser.id,
             videoUrl,
@@ -5708,6 +5755,7 @@ const server = http.createServer((req, res) => {
             appVersion: clientAppVersion(req),
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
+            creditsDebited: _creditsDebited,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
@@ -5716,6 +5764,19 @@ const server = http.createServer((req, res) => {
             // logged milliseconds ago — and treat as a replay. A DEMO logs no
             // render charge, so it has nothing to unwind — skipping the delete is
             // load-bearing: otherwise it would wrongly erase a REAL render event.
+            // Same unwind for CREDITS as for the render charge — one job, one
+            // debit. A replay that kept the debit would silently charge 10 for
+            // a job that never runs.
+            if (_creditsDebited) {
+              try {
+                await _credits.credit(authUser.id, _creditsDebited);
+                console.log('  [credits] replay unwind refunded %d to %s',
+                  _creditsDebited, authUser.id);
+              } catch (e) {
+                console.warn('  [credits] replay unwind FAILED (user is down %d):',
+                  _creditsDebited, e && e.message);
+              }
+            }
             if (!isDemo) {
               try {
                 const { data: ev } = await supabaseAdmin
@@ -6536,6 +6597,52 @@ const server = http.createServer((req, res) => {
   // Register an APNs device token for the current user. Idempotent —
   // upserts on the unique token column. Bumps last_seen_at on every call so
   // we can prune long-dead tokens with a cron job later if needed.
+  // ── GET /api/credits/balance — READ-THROUGH, never cached ────────────────
+  // Balance is authoritative at RevenueCat (ruling 4). This does NOT write a DB
+  // copy and does NOT fall back to a stored number on failure: a stale balance
+  // that looks authoritative is worse than no balance, because the client would
+  // render it as fact and let a user start a render they cannot pay for.
+  if (parsed.pathname === '/api/credits/balance' && req.method === 'GET') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'credits-balance', authUser.id, 60, 60)) return;
+        if (!_credits.isConfigured()) {
+          // Explicit, not a zero. "Credits are off" and "you have none" are
+          // different states and must not render the same.
+          return sendJson(res, 503, { error: 'credits_unavailable',
+                                      reason: 'not_configured' });
+        }
+        const b = await _credits.getBalance(authUser.id);
+        // resolveEntitlementDecision(fetchSubscriptionEntitlement(...)) is the
+        // real pair; an earlier draft called a `resolveEntitlement` that does
+        // not exist. It sat inside this try/catch, so the endpoint would have
+        // returned 503 forever while looking implemented.
+        let tier = 'free';
+        try {
+          const _ent = await fetchSubscriptionEntitlement(authUser.id);
+          const _dec = resolveEntitlementDecision(_ent);
+          if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
+        } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
+        return sendJson(res, 200, {
+          balance: b.balance,
+          currency_code: b.currency_code,
+          // found:false with balance:0 distinguishes "no row for our currency"
+          // from "this user has zero" — a bare 0 hides which one you are seeing.
+          found: b.found,
+          tier,
+          allowance: _credits.TIER_ALLOWANCE[tier] ?? null,
+          cost_per_render: _credits.COST_PER_RENDER,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[credits] balance read failed:', e && (e.code || e.message));
+        return sendJson(res, 503, { error: 'balance_unavailable' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/devices/register' && req.method === 'POST') {
     (async () => {
       try {
