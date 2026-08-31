@@ -194,7 +194,13 @@ struct AskCard: View {
                         answer.imageKey = try await upload(data: d, name: imageName, mime: "image/jpeg")
                     }
                     if let clip = clipAsset {
-                        let fileUrl = try await resolveClip(clip.asset)
+                        // A pick recovered from the item provider already IS a
+                        // file — no library round-trip needed or possible.
+                        let fileUrl: URL
+                        if let a = clip.asset { fileUrl = try await resolveClip(a) }
+                        else if let local = clip.localFile { fileUrl = local }
+                        else { throw NSError(domain: "Picker", code: -1,
+                                             userInfo: [NSLocalizedDescriptionKey: "clip has neither asset nor file"]) }
                         defer { try? FileManager.default.removeItem(at: fileUrl) }
                         // Stream from disk via the BACKGROUND session (survives
                         // suspension/kill, no ~2x-file RAM copy) — a clip can be

@@ -2,6 +2,8 @@ import SwiftUI
 import PhotosUI
 import Photos
 import AVFoundation
+import UIKit
+import UniformTypeIdentifiers
 
 struct NativeVideoPicker: UIViewControllerRepresentable {
     let maxSelection: Int
@@ -39,6 +41,52 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
         // footage that's a multi-second wait before the UI even knows
         // something was picked. Caller now handles iCloud fetch in the
         // background while the thumbnail appears immediately.
+        /// The read-authorization state, as a stable string for analytics.
+        ///
+        /// Instrumented because the whole diagnosis turned on it and it appeared
+        /// NOWHERE in the app: the picker never inspected authorization, so
+        /// "never asked" / "denied" / "limited-with-asset-outside-the-grant"
+        /// were indistinguishable in the data and all three need different
+        /// fixes. Reading the status does NOT prompt.
+        static var readAuthStatus: String {
+            switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+            case .notDetermined: return "not_determined"
+            case .restricted:    return "restricted"
+            case .denied:        return "denied"
+            case .authorized:    return "authorized"
+            case .limited:       return "limited"
+            @unknown default:    return "unknown"
+            }
+        }
+
+        /// Copy the video out of the picker's item provider into our temp dir.
+        ///
+        /// `loadFileRepresentation` hands back a URL that is deleted the moment
+        /// the completion returns, so the file MUST be copied inside the
+        /// closure — returning the provider's URL would give a path that no
+        /// longer exists by the time the upload reads it.
+        static func copyOutOfProvider(_ provider: NSItemProvider) async -> URL? {
+            let type = UTType.movie.identifier
+            guard provider.hasItemConformingToTypeIdentifier(type) else { return nil }
+            return await withCheckedContinuation { cont in
+                provider.loadFileRepresentation(forTypeIdentifier: type) { tmp, _ in
+                    guard let tmp else { cont.resume(returning: nil); return }
+                    let dest = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("picked-\(UUID().uuidString).\(tmp.pathExtension.isEmpty ? "mov" : tmp.pathExtension)")
+                    do {
+                        try FileManager.default.copyItem(at: tmp, to: dest)
+                        cont.resume(returning: dest)
+                    } catch {
+                        cont.resume(returning: nil)
+                    }
+                }
+            }
+        }
+
+        /// Set when a pick could not be recovered by either path, so the UI can
+        /// say so instead of returning the user to an unchanged screen.
+        @MainActor static var lastUnrecoverableCount: Int = 0
+
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
             // CANCEL / empty dismissal: PHPicker calls back with zero results when
@@ -55,11 +103,19 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
             var pickedVideos: [PickedVideo] = []
             var droppedNoIdentifier = 0
             var droppedNoAsset = 0
+            // Results whose PHAsset lookup failed, kept for the item-provider
+            // recovery below instead of being discarded.
+            var needsRecovery: [(String, NSItemProvider)] = []
             for result in results {
                 guard let assetId = result.assetIdentifier else { droppedNoIdentifier += 1; continue }
                 let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
-                guard let asset = assets.firstObject else { droppedNoAsset += 1; continue }
-                pickedVideos.append(PickedVideo(asset: asset, duration: asset.duration))
+                guard let asset = assets.firstObject else {
+                    droppedNoAsset += 1
+                    needsRecovery.append((assetId, result.itemProvider))
+                    continue
+                }
+                pickedVideos.append(PickedVideo(identifier: assetId, asset: asset,
+                                                localFile: nil, duration: asset.duration))
             }
             // A picked result that resolves to NO PHAsset used to vanish here with
             // ZERO signal — indistinguishable in the data from "never picked." That
@@ -67,9 +123,74 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
             // always, and when anything dropped, a durable diagnostic naming which
             // guard failed (missing assetIdentifier vs. fetch returning nothing).
             let dropped = droppedNoIdentifier + droppedNoAsset
-            Analytics.track("picker_result",
-                            props: ["raw": results.count, "resolved": pickedVideos.count, "dropped": dropped],
-                            durable: dropped > 0)
+
+            // ── RECOVERY: load the video from the picker's own item provider ──
+            //
+            // WHY THIS PATH EXISTS. `PHAsset.fetchAssets(withLocalIdentifiers:)`
+            // needs photo-library READ authorization. This app never requests
+            // it — the only requestAuthorization in the tree is `.addOnly`, for
+            // SAVING a finished video — so for a user who has not granted read
+            // access the fetch returns an EMPTY SET with no error, and the video
+            // the user explicitly chose was silently discarded. Measured across
+            // 675 installs: every single loss was this guard (no_identifier was
+            // 0 in 100% of cases), and 14% of them never recovered at all.
+            //
+            // PHPicker itself runs OUT OF PROCESS and needs no permission — the
+            // result already carries the media. So instead of asking for a
+            // permission we do not otherwise need, load the file the picker
+            // already handed us. No prompt, works under `.limited` even when the
+            // asset sits outside the user's granted subset, and it is the path
+            // Apple intends for PHPicker.
+            //
+            // The PHAsset path stays PRIMARY where it works, because it is what
+            // enables the iCloud-streaming upload strategy (stream from iCloud
+            // straight into the S3 multipart upload) that a flat file copy
+            // cannot do.
+            //
+            // NON-BLOCKING when nothing drops, which is the normal case: the
+            // recovery task is only entered if `needsRecovery` is non-empty, so
+            // the immediate-return behaviour that removed the old multi-second
+            // iCloud stall is preserved exactly.
+            if needsRecovery.isEmpty {
+                Analytics.track("picker_result",
+                                props: ["raw": results.count, "resolved": pickedVideos.count,
+                                        "dropped": dropped, "recovered": 0,
+                                        "read_auth": Self.readAuthStatus],
+                                durable: dropped > 0)
+                onPick(pickedVideos)
+                return
+            }
+
+            Task {
+                var recovered: [PickedVideo] = []
+                for (assetId, provider) in needsRecovery {
+                    if let url = await Self.copyOutOfProvider(provider) {
+                        let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+                        recovered.append(PickedVideo(identifier: assetId, asset: nil,
+                                                     localFile: url, duration: dur))
+                    }
+                }
+                let all = pickedVideos + recovered
+                let stillLost = needsRecovery.count - recovered.count
+                Analytics.track("picker_result",
+                                props: ["raw": results.count, "resolved": all.count,
+                                        "dropped": stillLost, "recovered": recovered.count,
+                                        "read_auth": Self.readAuthStatus],
+                                durable: stillLost > 0)
+                if stillLost > 0 {
+                    // NEVER SILENT AGAIN. Before this, a pick that resolved to
+                    // nothing returned the user to an unchanged screen with no
+                    // error, no spinner and no explanation — indistinguishable
+                    // from never having picked. If we cannot recover it, say so.
+                    Analytics.track("picker_asset_unrecoverable",
+                                    props: ["count": stillLost, "raw": results.count,
+                                            "read_auth": Self.readAuthStatus], durable: true)
+                }
+                await MainActor.run {
+                    Self.lastUnrecoverableCount = stillLost
+                    onPick(all)
+                }
+            }
             if dropped > 0 {
                 Analytics.track("picker_asset_unresolved",
                                 props: ["raw": results.count,
@@ -83,9 +204,19 @@ struct NativeVideoPicker: UIViewControllerRepresentable {
 }
 
 struct PickedVideo {
-    let asset: PHAsset
+    /// PHPicker's `assetIdentifier`. ALWAYS present — it is the second guard
+    /// (the PHAsset lookup) that fails, never this one, so it is the stable id
+    /// whether or not the library lookup succeeded.
+    let identifier: String
+    /// nil when the photo-library lookup returned nothing (no read permission,
+    /// or a `.limited` grant that excludes this asset). The recovery path fills
+    /// `localFile` instead.
+    let asset: PHAsset?
+    /// A copy of the video taken from the picker's item provider, used when
+    /// `asset` is nil. Owned by us, in the temp directory.
+    let localFile: URL?
     let duration: TimeInterval
-    var id: String { asset.localIdentifier }
+    var id: String { identifier }
 }
 
 /// Two possible resolution strategies for a picked video:
@@ -109,6 +240,39 @@ enum PHAssetResolver {
     /// a video resource with a known file size, returns .stream so the
     /// caller can pipeline iCloud download + S3 upload. Falls back to
     /// downloading via resolveFileUrl only if streaming isn't viable.
+    // ── PickedVideo-aware overloads ─────────────────────────────────────────
+    //
+    // A video recovered from the picker's item provider has NO PHAsset — it is
+    // already a file on disk. These keep the five call sites from each having
+    // to branch on that, and make the recovered pick behave like any other
+    // local clip. A recovered pick is necessarily `.local`, never `.stream`:
+    // iCloud streaming needs PHAssetResource, which needs the asset. That is
+    // the accepted cost, and it is strictly better than today, where the pick
+    // is lost outright.
+    static func resolveStrategy(video: PickedVideo) async -> VideoResolution? {
+        if let asset = video.asset { return await resolveStrategy(asset: asset) }
+        guard let url = video.localFile else { return nil }
+        return .local(url)
+    }
+
+    static func localFileURLIfAvailable(video: PickedVideo) async -> URL? {
+        if let asset = video.asset { return await localFileURLIfAvailable(asset: asset) }
+        return video.localFile
+    }
+
+    static func thumbnail(for video: PickedVideo) async -> UIImage? {
+        if let asset = video.asset { return await thumbnail(for: asset) }
+        guard let url = video.localFile else { return nil }
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 400, height: 400)
+        return await withCheckedContinuation { cont in
+            gen.generateCGImageAsynchronously(for: .zero) { cg, _, _ in
+                cont.resume(returning: cg.map { UIImage(cgImage: $0) })
+            }
+        }
+    }
+
     static func resolveStrategy(asset: PHAsset) async -> VideoResolution? {
         // 1. Can we get the file locally, without any iCloud round trip?
         if let localUrl = await tryResolveLocalOnly(asset: asset) {

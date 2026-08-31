@@ -14,6 +14,9 @@ struct EditorView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
+    /// Set when a pick resolved to nothing by BOTH paths — see handlePickedVideos.
+    @State private var showPickerError = false
+    @State private var pickerErrorCount = 0
     /// Pre-permission explainer for push notifications, shown once on the first
     /// upload (see handlePickedVideos) — never cold at app open.
     @State private var showPushExplainer = false
@@ -146,6 +149,14 @@ struct EditorView: View {
             // unified black: hamburger · pill · new-chat.
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
+            .alert(String(localized: "Couldn't open that video"), isPresented: $showPickerError) {
+                Button(String(localized: "Try again")) { showVideoPicker = true }
+                Button(String(localized: "Not now"), role: .cancel) {}
+            } message: {
+                // Names what happened and the one action that works, per the
+                // house rule on error copy — never a bare "something went wrong".
+                Text(String(localized: "We couldn't read it from your library. Pick it again — that usually works."))
+            }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
@@ -1363,6 +1374,20 @@ struct EditorView: View {
 
     private func handlePickedVideos(_ videos: [PickedVideo]) {
         Task { @MainActor in
+            // NEVER SILENT. A pick that resolved to nothing used to return the
+            // user to an unchanged screen — no error, no spinner, nothing to
+            // distinguish it from never having tapped. Measured at 675 installs
+            // losing at least one video this way, 14% of whom never got a clip
+            // through at all. If both the library lookup AND the item-provider
+            // recovery failed, say so and offer the retry, which is the action
+            // that actually works (a second pick succeeds for 86% of them).
+            let lost = NativeVideoPicker.Coordinator.lastUnrecoverableCount
+            NativeVideoPicker.Coordinator.lastUnrecoverableCount = 0
+            if lost > 0 {
+                pickerErrorCount = lost
+                showPickerError = true
+                if videos.isEmpty { return }
+            }
             for video in videos {
                 // DURATION GATE — enforced at PICK TIME on PHAsset.duration, which
                 // is metadata (no download), so it covers iCloud-only clips too and
@@ -1390,7 +1415,7 @@ struct EditorView: View {
                 // LAYER 1 — on-device Vision precheck. <1s for local files, skipped
                 // for iCloud-only (Layer 2 handles those). Advisory in 223: logs the
                 // verdict, never blocks.
-                if let localUrl = await PHAssetResolver.localFileURLIfAvailable(asset: video.asset) {
+                if let localUrl = await PHAssetResolver.localFileURLIfAvailable(video: video) {
                     // Audio-only preflight now (duration is gated above, for all clips).
                     switch await TalkingHeadPrecheck.preflight(videoURL: localUrl) {
                     case .noAudio:
@@ -1553,7 +1578,7 @@ struct EditorView: View {
         // iCloud bytes needed. Tile shows up the instant the picker
         // dismisses.
         Task {
-            let thumb = await PHAssetResolver.thumbnail(for: video.asset)
+            let thumb = await PHAssetResolver.thumbnail(for: video)
             await MainActor.run { pending.thumbnail = thumb }
         }
 
@@ -1583,7 +1608,7 @@ struct EditorView: View {
                     // iCloud-only videos stream download→upload in parallel
                     // so the two transfers overlap instead of serialising.
                     let resolveStart = Date()
-                    let strategy = await PHAssetResolver.resolveStrategy(asset: video.asset)
+                    let strategy = await PHAssetResolver.resolveStrategy(video: video)
                     print(String(format: "[perf] strategy-probe %.2fs", Date().timeIntervalSince(resolveStart)))
 
                     // Instrumentation (224): stamp source duration now; source
@@ -1660,7 +1685,19 @@ struct EditorView: View {
                             // resource. Recovery is tracked so the effect read can
                             // measure exactly how much of the 46.3% this closes.
                             print("[materialize] primary failed (\(error.localizedDescription)) — PHAssetResourceIO fallback")
-                            let resources = PHAssetResource.assetResources(for: video.asset)
+                            // Unreachable for a provider-recovered pick — those
+                            // resolve `.local`, never `.stream`, so this branch
+                            // cannot be entered without an asset. Guarded rather
+                            // than force-unwrapped so that stays true if the
+                            // strategy logic ever changes.
+                            guard let streamAsset = video.asset else {
+                                Analytics.track("picker_asset_unresolved",
+                                                props: ["stage": "stream_without_asset",
+                                                        "no_asset": 1, "no_identifier": 0], durable: true)
+                                throw NSError(domain: "Picker", code: -1,
+                                              userInfo: [NSLocalizedDescriptionKey: "recovered clip has no library asset"])
+                            }
+                            let resources = PHAssetResource.assetResources(for: streamAsset)
                             let preferredTypes: [PHAssetResourceType] = [.fullSizeVideo, .video, .pairedVideo]
                             guard let resource = preferredTypes.compactMap({ t in
                                 resources.first(where: { $0.type == t })

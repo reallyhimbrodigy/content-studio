@@ -4332,6 +4332,77 @@
         }
       }
     },
+    "Couldn't open that video": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر فتح هذا الفيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সেই ভিডিওটি খোলা যায়নি"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Video ließ sich nicht öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo abrir ese vídeo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'ouvrir cette vidéo"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वह वीडियो नहीं खुल सका"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak bisa membuka video itu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その動画を開けませんでした"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "त्यो भिडियो खोल्न सकिएन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir esse vídeo"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وہ ویڈیو نہیں کھل سکی"
+          }
+        }
+      }
+    },
     "Couldn't respond. Long-press to try again.": {
       "localizations": {
         "ar": {
@@ -19680,6 +19751,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "چیٹ + ڈیلیور شدہ ماک کا انتظار…"
+          }
+        }
+      }
+    },
+    "We couldn't read it from your library. Pick it again — that usually works.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر علينا قراءته من مكتبتك. اخترْه مرة أخرى — غالبًا ما ينجح ذلك."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার লাইব্রেরি থেকে এটি পড়া যায়নি। আবার বেছে নিন — সাধারণত কাজ করে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir konnten es nicht aus deiner Mediathek lesen. Wähl es noch einmal aus — das klappt meistens."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos leerlo de tu fototeca. Vuelve a seleccionarlo: suele funcionar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu le lire depuis votre photothèque. Sélectionnez-le à nouveau — ça marche en général."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हम इसे आपकी लाइब्रेरी से नहीं पढ़ पाए। इसे दोबारा चुनें — आमतौर पर काम कर जाता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kami tidak bisa membacanya dari galeri Anda. Pilih lagi — biasanya berhasil."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリから読み込めませんでした。もう一度選び直すとたいてい成功します。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको लाइब्रेरीबाट यो पढ्न सकिएन। फेरि छान्नुहोस् — प्रायः काम गर्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não conseguimos ler da sua biblioteca. Selecione de novo — geralmente funciona."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہم اسے آپ کی لائبریری سے نہیں پڑھ سکے۔ دوبارہ منتخب کریں — عموماً کام کر جاتا ہے۔"
           }
         }
       }
