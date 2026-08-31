@@ -111,3 +111,47 @@ paywall claim rewrite are all client-side and in progress. The claim rewrite
 matters to you only in that **"Unlimited videos, no daily cap" becomes false the
 moment this ships** — it is already flag-matched to the meter, so the copy
 follows whichever state the meter is actually in.
+
+---
+
+# Addendum — reverse trial grant (item 5)
+
+Same shape as above: **the client cannot do this half either**, and for a reason
+that is already deliberate rather than incidental.
+
+`grant_referral_reward` and `qualify_referral` were **revoked from
+`authenticated`** in the referral security migration, and the `referral_rewards`
+insert at `server.js:3352` runs as service_role. That revoke closed a real
+exploit (three throwaway accounts → a week of unmetered Pro), so it must not be
+loosened to let the client grant its own trial — that would reopen exactly the
+hole it closed, with a friendlier name.
+
+## Ask
+
+**`POST /api/reverse-trial/grant`**, authenticated, granting **72 hours** of Pro.
+
+- **72 hours from grant, not 3 calendar days.** A decline at 23:50 must not yield
+  an eight-hour trial.
+- Writes through the **existing** `pro_until` + `referral_rewards` path —
+  `provider='db'`, `provider_ok`, the same rows the cap already SUMs. **No second
+  grant mechanism**, per the ruling.
+- **Once per install, ever.** Enforce server-side; a client-side "already
+  granted" flag is a reinstall away from being free Pro forever.
+- **Does NOT consume the free export.** The trial exists to create a loss of
+  unlimited Pro at expiry; taking the export as well leaves a declining user
+  strictly worse off than one who never saw the offer.
+- Idempotent on repeat calls — a double-tap on Decline must not grant 144 hours.
+
+## What the client does
+
+Calls it on offer-reveal decline behind `reverse_trial`, renders the granted
+state, and renders the **expiry** moment behind a separate flag
+`reverse_trial_expiry`. The split is deliberate: the grant is a non-event and the
+expiry is where conversion happens, so blending them makes the part that matters
+unreadable.
+
+## What I need back
+
+The response shape — granted / already-granted / ineligible, plus the expiry
+timestamp so the client can render the countdown-free "your trial ends" surface
+from the server's clock rather than its own.
