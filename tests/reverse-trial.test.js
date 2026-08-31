@@ -108,3 +108,31 @@ test('CONTROL: the region is real and these assertions can fail', () => {
   assert.ok(R.length > 1500, 'endpoint body actually captured');
   assert.doesNotMatch(R, /THIS_STRING_IS_NOT_PRESENT/);
 });
+
+test('a failed READ refuses rather than re-granting (the silent-zero trap)', () => {
+  const R = region();
+  // RLS is enabled on reverse_trial_grants with NO policies, so a non-service_role
+  // client gets ZERO ROWS rather than an error. Ignoring `error` and testing only
+  // `data` produces the same wrong answer from a plain query failure: null reads
+  // as "no grant exists" and the endpoint grants again.
+  assert.match(R, /error: priorErr/,
+    'the prior-grant read must surface its error');
+  assert.match(R, /prior_read_failed/,
+    'a failed prior-grant read must REFUSE, not fall through to a grant');
+  assert.match(R, /cap_read_failed/,
+    'a failed cap read looks like "nothing granted in 30 days" and would let ' +
+    'an uncapped grant through');
+  const iErr = R.indexOf('prior_read_failed');
+  const iGrant = R.indexOf('Date.now() + 72');
+  assert.ok(iErr > 0 && iErr < iGrant, 'the refusal must precede the grant');
+});
+
+test('every DB call in the endpoint uses service_role', () => {
+  const R = region();
+  const clients = [...R.matchAll(/(\w+)\s*\n?\s*\.from\('([a-z_]+)'\)/g)].map((m) => m[1]);
+  assert.ok(clients.length >= 6, `expected several DB calls, found ${clients.length}`);
+  const bad = clients.filter((c) => c !== 'supabaseAdmin');
+  assert.deepStrictEqual(bad, [],
+    `non-service_role client(s) ${bad} would get ZERO ROWS under RLS-with-no-` +
+    `policies — which reads as "no grant exists" and re-grants`);
+});

@@ -6636,10 +6636,24 @@ const server = http.createServer((req, res) => {
         // IDEMPOTENT: the PK on device_id is the enforcement. A prior grant
         // returns the ORIGINAL pro_until — a double-tap on Decline cannot
         // produce 144 hours.
-        const { data: prior } = await supabaseAdmin
+        // FAIL CLOSED ON A READ ERROR. Ignoring `error` here and testing only
+        // `data` is the silent-zero trap: a failed read returns null, which is
+        // INDISTINGUISHABLE from "no grant exists", and the endpoint would go
+        // on to grant again. RLS is enabled on reverse_trial_grants with NO
+        // policies, so any client other than service_role gets zero rows rather
+        // than an error — the same wrong answer by a different route. We use
+        // supabaseAdmin (service_role) everywhere here, and now a read failure
+        // refuses instead of re-granting.
+        const { data: prior, error: priorErr } = await supabaseAdmin
           .from('reverse_trial_grants')
           .select('device_id, user_id, granted_at, pro_until')
           .eq('device_id', deviceId).maybeSingle();
+        if (priorErr) {
+          console.error('[reverse-trial] prior-grant read FAILED — refusing rather '
+            + 'than re-granting:', priorErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'prior_read_failed' });
+        }
         if (prior) {
           if (prior.user_id !== authUser.id) {
             return sendJson(res, 409, { error: 'already_used',
@@ -6661,9 +6675,16 @@ const server = http.createServer((req, res) => {
         // trials unbounded, both writing pro_until.
         const { CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
         const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
-        const { data: grants } = await supabaseAdmin
+        const { data: grants, error: grantsErr } = await supabaseAdmin
           .from('referral_rewards').select('days_granted')
           .eq('user_id', authUser.id).gte('granted_at', since);
+        if (grantsErr) {
+          // Same trap: a failed cap read looks like "nothing granted in 30
+          // days" and would let the grant through, uncapped.
+          console.error('[reverse-trial] cap read FAILED — refusing:', grantsErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'cap_read_failed' });
+        }
         const used = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
         if (used + 3 > CAP_DAYS_PER_30D) {
           // REFUSE, never truncate. A one-hour "72-hour trial" reads as broken
