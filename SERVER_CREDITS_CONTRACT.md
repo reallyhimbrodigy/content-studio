@@ -151,9 +151,19 @@ Codes: `RENDER_FAILED`, `DESIGNED_REJECTION`, `STALLED`, `CANCELLED`.
 
 ## Open questions for Frontend
 
-1. **Insufficient-credits UX**: `402` carries `balance` and `needed`. Does the
-   client route to paywall, or to a "wait for refresh" state? The server does
-   not decide this; it reports the two numbers.
+1. **Insufficient-credits UX**: `402` carries `needed: 10` and **NOT** a
+   balance. That is a consequence of removing the pre-read — with the debit
+   attempted directly, the server never learns the balance on the failing path,
+   and RC's 422 does not report it. An earlier draft of this document promised
+   `balance` here and could not have delivered it.
+
+   If the client wants the number it calls `/api/credits/balance`, which is one
+   extra round trip on an already-failed action. If that is the wrong trade,
+   say so and the debit leg can read the balance *after* a 422 — but that is a
+   deliberate extra call on the error path, not something to slip in silently.
+
+   Does the client route to paywall, or to a "wait for refresh" state? The
+   server does not decide this.
 2. **Balance staleness**: on a `503`, what does the client show? Proposal: last
    known value, visibly marked stale, and no debit attempt until a read
    succeeds.
