@@ -82,6 +82,24 @@ async function ship(version, buildNum) {
     ver = c.body.data;
     console.log(`asc-ship: created version ${version}`);
   }
+
+  // RELEASE NOTES ARE REQUIRED on any version after the first, and a freshly
+  // CREATED version has none — `whatsNew` comes back null and the submission
+  // item 409s with nothing explaining why. This did not surface until now
+  // because every previous cut reused an existing version record that already
+  // carried notes; the create path had never actually been exercised end to
+  // end. Set them here so creating and submitting is one working operation.
+  const locs = await get(`/v1/appStoreVersions/${ver.id}/appStoreVersionLocalizations` +
+                         '?fields[appStoreVersionLocalizations]=locale,whatsNew');
+  for (const l of (locs.data || [])) {
+    if (l.attributes.whatsNew) continue;
+    const r = await send(`/v1/appStoreVersionLocalizations/${l.id}`, 'PATCH', {
+      data: { type: 'appStoreVersionLocalizations', id: l.id,
+              attributes: { whatsNew: process.env.ASC_WHATS_NEW || 'Fixes and performance improvements.' } },
+    });
+    if (r.status >= 300) { console.error(`asc-ship: could not set release notes for ${l.attributes.locale}`, r.status); process.exit(1); }
+    console.log(`asc-ship: set release notes for ${l.attributes.locale}`);
+  }
   const r1 = await send(`/v1/appStoreVersions/${ver.id}/relationships/build`, 'PATCH', { data: { type: 'builds', id: build.id } });
   if (r1.status >= 300) { console.error('asc-ship: attach build failed', r1.status); process.exit(1); }
 
