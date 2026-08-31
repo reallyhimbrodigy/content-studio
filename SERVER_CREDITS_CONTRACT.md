@@ -37,8 +37,12 @@ rather than adding a dependency.
 
 ```
 → {}                                    (auth: Supabase user)
-← { balance: 42, tier: "pro", allowance: 200, period_ends_at: "…" }
+← { balance: 42, tier: "pro", allowance: 200, currency_code: "CRD", found: true }
 ```
+
+`found:false` with `balance:0` distinguishes "this customer has no row for our
+currency" from "this customer has zero" — they are different states and a single
+`0` hides which one you are looking at.
 
 Read-through to RC. **No DB copy is written.** If RC is unreachable this returns
 `503` with `{ error: "balance_unavailable" }` — it does NOT fall back to a cached
@@ -56,11 +60,26 @@ same place the quota/entitlement gate already runs.
 
 ```
 BEFORE spawn:
-  if (mode === 're-edit')            → NO DEBIT      (ruling 3)
-  else if (balance < COST_PER_RENDER) → 402 { error:'insufficient_credits',
-                                              balance, needed }
-  else                                → RC debit 10, then spawn
+  if (!shouldDebit({mode}))  → NO DEBIT                      (ruling 3)
+  else try { await credits.debit(userId, 10) }               (attempt, no pre-read)
+       catch INSUFFICIENT   → 402 { error:'insufficient_credits', needed:10 }
+       catch UNREACHABLE    → 503 (do NOT spawn, do NOT free-render)
+  → spawn
 ```
+
+**CORRECTED 2026-08-31, after reading the RC v2 reference.** This originally
+read "if (balance < COST) → 402 else debit" — a **TOCTOU race**: two concurrent
+renders could each read 10 and each spend it.
+
+RevenueCat **validates the balance and deducts atomically**, returning HTTP
+**422** with `retryable:false` and **deducting nothing** when the balance is
+short. So the check and the spend are one operation, at the place the balance
+actually lives. There is no pre-read, and `402` is derived from RC's 422 rather
+than from a number we compared ourselves.
+
+The second correction: **RC documents no idempotency key on this endpoint.**
+Exactly-once therefore cannot come from RC and must come from our claim marker.
+Any design that assumed a safe retry would double-spend.
 
 `COST_PER_RENDER = 10`.
 
