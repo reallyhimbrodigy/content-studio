@@ -174,6 +174,15 @@ const path = require('node:path');
 const SRC = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 const LEG = fs.readFileSync(path.join(__dirname, '../lib/refund-leg.js'), 'utf8');
 
+// STRIP COMMENTS BEFORE ASSERTING ON CODE. Three separate assertions in this
+// campaign have failed on a COMMENT that happened to contain the token they
+// forbade — a note saying "no usage_events write", and one saying "NOT a
+// balance:". A comment cannot spend an export or promise a field. Any
+// doesNotMatch over source must run on code only.
+const codeOnly = (src) => src.split('\n')
+  .filter((l) => !l.trim().startsWith('//'))
+  .join('\n');
+
 test('the debit runs BEFORE the job insert, and demos are exempt', () => {
   const iDebit = SRC.indexOf('_credits.debit(authUser.id');
   const iInsert = SRC.indexOf('const created = await createQueuedVideoJob({');
@@ -191,13 +200,17 @@ test('the debit runs BEFORE the job insert, and demos are exempt', () => {
 });
 
 test('402 carries needed ONLY — never a balance we did not read', () => {
-  const i = SRC.indexOf("error: 'insufficient_credits'");
+  const CODE = codeOnly(SRC);
+  const i = CODE.indexOf("error: 'insufficient_credits'");
   assert.ok(i > 0, 'no insufficient_credits response');
-  const body = SRC.slice(i, i + 260);
+  const body = CODE.slice(i, i + 300);
   assert.match(body, /needed:/);
-  assert.doesNotMatch(body, /balance:/,
+  assert.doesNotMatch(body, /\bbalance:/,
     'with no pre-read the server never learns the balance on this path; ' +
     'promising one is a contract that cannot be kept');
+  assert.match(body, /balanceKnown: false/,
+    'and it should SAY so, rather than leaving the client to infer it from ' +
+    'an absent field');
 });
 
 test('an outage does NOT free-render', () => {
@@ -252,4 +265,50 @@ test('CONTROL: these seam assertions can fail', () => {
   // assertions above would need to fail, not pass vacuously.
   assert.ok(SRC.length > 10000 && LEG.length > 2000, 'sources actually loaded');
   assert.strictEqual(SRC.indexOf('_credits.debit_THAT_DOES_NOT_EXIST'), -1);
+});
+
+// ── REACHABILITY ────────────────────────────────────────────────────────────
+// The check that was missing. My earlier tests asserted refundJobCredits'
+// INTERNALS — claim before RC, unclaim on failure — and every one passed while
+// the function had ZERO CALLERS. The credits refund was dead code and the event
+// went nowhere. Frontend found it trying to wire CreditsRefundedMessage.
+//
+// Testing what a function does is not testing that it runs.
+test('refundJobCredits is actually CALLED by the sweep', () => {
+  const calls = (LEG.match(/await refundJobCredits\(/g) || []).length;
+  assert.ok(calls >= 1,
+    'refundJobCredits has no caller — the credits refund is dead code and the ' +
+    'refund event goes nowhere, however correct the function is');
+  const iSweep = LEG.indexOf('async function sweepRefundLeg');
+  const iCall = LEG.indexOf('await refundJobCredits(');
+  assert.ok(iCall > iSweep,
+    'the call must be inside the sweep, not merely somewhere in the file');
+});
+
+test('the sweep SELECTS the columns the credits refund reads', () => {
+  // credits_debited is the receipt. If the sweep does not select it, every job
+  // reads undefined and the refund no-ops as "never debited" — green tests,
+  // zero refunds.
+  const iSel = LEG.indexOf(".select('id, user_id");
+  const sel = LEG.slice(iSel, iSel + 260);
+  assert.match(sel, /credits_debited/,
+    'without this column every refund no-ops as never-debited');
+  assert.match(sel, /credits_refunded_at/);
+});
+
+test('the SSE frame carries a type discriminator', () => {
+  assert.match(SRC, /type: 'job_status'/,
+    'an untagged frame cannot be routed — a refund frame would parse as a ' +
+    'status update');
+  assert.match(SRC, /creditsRefunded: data\.credits_refunded_at/,
+    'the refund must be surfaced from the row; the sweep runs outside any ' +
+    'request so there is no stream to push to');
+});
+
+test('the 402 and the export wall are typed too', () => {
+  assert.match(SRC, /type: 'insufficient_credits'/);
+  assert.match(SRC, /type: 'free_export_spent'/);
+  assert.match(SRC, /freeExportSpent: true/,
+    'the client was inferring "spent" by comparing two counters, which breaks ' +
+    'silently when FREE_EXPORT_LIMIT moves');
 });

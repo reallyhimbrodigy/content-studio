@@ -312,6 +312,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
+const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
   const id = `${scope}:${key}`;
@@ -2187,13 +2188,19 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message, credits_debited, credits_refunded_at')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
           if (data) {
             try {
               res.write(`data: ${JSON.stringify({
+                // TYPE DISCRIMINATOR (Frontend, 2026-08-31). Every SSE frame
+                // was an untagged status snapshot, so a client had no way to
+                // route anything else — CreditsRefundedMessage could not be
+                // wired because a refund frame would parse as a status update.
+                // Additive: existing clients ignore an unknown field.
+                type: 'job_status',
                 status: data.status,
                 progress: data.progress || 0,
                 step: data.current_step || '',
@@ -2210,6 +2217,19 @@ const server = http.createServer((req, res) => {
                 // is why a client that reconnects onto a completed job never learns
                 // to quit. Matches the poll path, which already sets final:true.
                 final: isTerminalJobStatus(data.status),
+                // CREDITS REFUND, CARRIED ON THE ROW rather than pushed. The
+                // refund lands in a background sweep, outside any request, so
+                // there is no open stream to push to at that moment. Both facts
+                // it needs are already columns, and the reason is a pure
+                // function of the row — so the snapshot reports it and a client
+                // that reconnects still sees it. No second channel, and the
+                // event cannot "go nowhere" because it is not a separate
+                // artifact that can be dropped.
+                creditsRefunded: data.credits_refunded_at ? {
+                  amount: data.credits_debited || 0,
+                  reasonCode: _refundLeg.creditsRefundReasonCode(data),
+                  at: data.credits_refunded_at,
+                } : null,
               })}\n\n`);
             } catch (e) {}
           }
@@ -5732,8 +5752,15 @@ const server = http.createServer((req, res) => {
                 // keep. The client calls /api/credits/balance if it wants it.
                 console.log('  [credits] 402 insufficient userId=%s', authUser.id);
                 return { status: 402, body: {
+                  // TYPED, so the client can switch on `type` instead of
+                  // string-matching `error`. Same discriminator convention as
+                  // the SSE frames.
+                  type: 'insufficient_credits',
                   error: 'insufficient_credits', kind: 'credits',
                   route: 'paywall', needed: _credits.COST_PER_RENDER,
+                  // NOT a balance: with no pre-read the server never learns it
+                  // on this path, and RC's 422 does not report one.
+                  balanceKnown: false,
                 } };
               }
               // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
@@ -6559,7 +6586,17 @@ const server = http.createServer((req, res) => {
         try { used = await getFeatureUsageCount(supabaseAdmin, authUser.id, 'export'); }
         catch (e) { console.error('[export] usage-count failed — fail CLOSED (revenue wall):', e?.message); used = FREE_EXPORT_LIMIT; }
         if (used >= FREE_EXPORT_LIMIT) {
-          return sendJson(res, 402, { error: 'upgrade_required', free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT });
+          return sendJson(res, 402, {
+            type: 'free_export_spent',
+            error: 'upgrade_required',
+            free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT,
+            // THE SERVER KNOB Frontend asked for. The client was inferring
+            // "spent" by comparing two numbers it had to be given separately;
+            // the server already knows and can just say so. Inference from a
+            // pair of counters silently breaks the moment FREE_EXPORT_LIMIT
+            // moves, which it is env-configurable to do.
+            freeExportSpent: true,
+          });
         }
       }
 
