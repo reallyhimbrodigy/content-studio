@@ -56,6 +56,14 @@ final class JobDispatchCoordinator {
         let isPaymentRequired: Bool
         let paymentKind: String?
         let paymentLimit: Int?
+        /// Zero credits. Kept SEPARATE from isPaymentRequired because the two
+        /// take different routes: the daily cap raises the modal paywall, the
+        /// credit wall answers in the thread. Folding them together is what
+        /// would make the two conversions indistinguishable downstream.
+        var isCreditsExhausted: Bool = false
+        /// False when the server could not read the balance. The surface must
+        /// then omit the number rather than print a zero it never read.
+        var creditsBalanceKnown: Bool = false
     }
 
     /// Phase reports for the UI. Today the only consumer updates the
@@ -290,6 +298,46 @@ final class JobDispatchCoordinator {
         }
 
         switch apiError {
+        // CREDITS: a hard stop, but NOT a paywall presentation. The ruling is
+        // that the zero-balance moment is answered in the thread — the user has
+        // just sent something, and a sheet slamming over the conversation reads
+        // as an ambush rather than as the product replying. isPaymentRequired
+        // stays FALSE so no modal is raised; EditorView renders the in-thread
+        // block off isCreditsExhausted instead.
+        //
+        // NOTE FOR BUILDER: the 402 body carries route:"paywall". The client
+        // deliberately does not follow that hint, because the in-thread
+        // treatment was ruled explicitly. Flagging rather than silently
+        // diverging — if the server hint is meant to be authoritative, that is
+        // a decision to make once, not per-surface.
+        case .insufficientCredits(_, let balanceKnown):
+            return .hard(HardFailure(
+                errorCode: "INSUFFICIENT_CREDITS",
+                userMessage: String(localized: "You're out of credits for now"),
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: "credits",
+                paymentLimit: nil,
+                isCreditsExhausted: true,
+                creditsBalanceKnown: balanceKnown
+            ))
+
+        // The export gate never reaches dispatch — it fires at save/share on a
+        // finished render — so it cannot arise here. Handled explicitly rather
+        // than by a default, so that if the export path ever does route through
+        // dispatch the compiler makes us decide instead of silently swallowing.
+        case .freeExportSpent:
+            return .hard(HardFailure(
+                errorCode: "FREE_EXPORT_SPENT",
+                userMessage: String(localized: "Your video is ready — you've used your free export"),
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: "export",
+                paymentLimit: nil
+            ))
+
         case .paymentRequired(let kind, let limit, let msg):
             return .hard(HardFailure(
                 errorCode: "PAYMENT_REQUIRED",

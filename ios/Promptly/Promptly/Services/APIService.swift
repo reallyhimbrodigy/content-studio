@@ -238,8 +238,27 @@ class APIService {
                 let limit: Int?
                 let message: String?
                 let error: String?
+                let needed: Int?
+                let balance_known: Bool?
             }
             let payload = try? JSONDecoder().decode(LimitPayload.self, from: data)
+            // CREDITS IS ITS OWN REFUSAL, not the daily cap wearing a hat.
+            // Routing it into paymentRequired would show a user with credits
+            // remaining the daily-cap copy, and would make the two conversions
+            // indistinguishable in the funnel.
+            //
+            // `balance_known` is the field that matters and it is why this is
+            // not just a string check: when the server could not read the
+            // balance it says so, and the client must NOT then state a number
+            // it does not have. An unknown balance rendered as "0 credits" is
+            // the same confident-zero mistake this project has already paid
+            // for once.
+            if payload?.error == "insufficient_credits" || payload?.kind == "credits" {
+                throw APIError.insufficientCredits(
+                    needed: payload?.needed ?? CreditsService.perVideo,
+                    balanceKnown: payload?.balance_known ?? false
+                )
+            }
             throw APIError.paymentRequired(
                 kind: payload?.kind ?? "render",
                 limit: payload?.limit,
@@ -349,6 +368,12 @@ class APIService {
         case gated(url: URL, watermarked: Bool)                             // 200
         case legacyPublicSaveOK                                             // 404 (no_private_asset / route-dark) or 501 gate-dark
         case paymentRequired(freeExportsUsed: Int?, freeExportLimit: Int?)  // 402
+        /// 402 + free_export_spent:true — the free tier's one export is gone.
+        /// Separate from `paymentRequired` because this is the moment the
+        /// upgrade case is strongest (the video is finished and on screen), so
+        /// it earns its own surface and its own event rather than reusing the
+        /// generic wall's copy.
+        case freeExportSpent                                                // 402 + flag
     }
 
     /// POST /api/jobs/{id}/export with the Supabase bearer. Throws URLError on a
@@ -367,8 +392,19 @@ class APIService {
             guard let u = URL(string: r.url) else { throw APIError.jobCreationFailed("Bad export URL") }
             return .gated(url: u, watermarked: r.watermarked ?? false)
         case 402:
-            struct P: Decodable { let free_exports_used: Int?; let free_export_limit: Int? }
+            struct P: Decodable {
+                let free_exports_used: Int?
+                let free_export_limit: Int?
+                /// EXPLICIT, not inferred from a count comparison. The server
+                /// states the verdict rather than leaving the client to derive
+                /// it from used >= limit — a derivation that silently breaks the
+                /// moment either number is absent or the policy changes, and
+                /// that would then show the wrong wall at the exact moment the
+                /// user has a finished video in front of them.
+                let free_export_spent: Bool?
+            }
             let p = try? JSONDecoder().decode(P.self, from: data)
+            if p?.free_export_spent == true { return .freeExportSpent }
             return .paymentRequired(freeExportsUsed: p?.free_exports_used, freeExportLimit: p?.free_export_limit)
         case 404, 501:
             return .legacyPublicSaveOK
@@ -1662,6 +1698,16 @@ enum APIError: LocalizedError {
     /// called by a free user. `kind` is "render", "chat", or "reedit" so
     /// the caller can present the right paywall reason.
     case paymentRequired(kind: String, limit: Int?, message: String)
+    /// Zero credits. Distinct from `paymentRequired` on purpose: it names a
+    /// different limit, argues for a different upgrade, and must be readable
+    /// as a separate conversion. `balanceKnown` is false when the server could
+    /// not read the balance — the client must then decline to state a number
+    /// rather than print a zero it never read.
+    case insufficientCredits(needed: Int, balanceKnown: Bool)
+    /// The free tier's single export, already spent. Its own case so its
+    /// conversion is measurable apart from the credit wall — they argue for
+    /// different things and blending them makes both unreadable.
+    case freeExportSpent
     /// Server returned 403 `wall_required` — an enforced `.none` account hit a
     /// gated door (post-flip; inert while the wall knob is off). The client
     /// routes to the trial wall (TrialWallView, context .door), never a usable
@@ -1694,6 +1740,14 @@ enum APIError: LocalizedError {
         case .wallRequired(let message): return message
         case .structuredFailure(_, let userMessage, _, _, _): return userMessage
         case .validationRejected(let userMessage, _, _): return userMessage
+        // Both of these are rendered by a DEDICATED in-thread surface, not by
+        // this string. The description exists only for logs and for any generic
+        // catch that has not been taught about them — so it deliberately does
+        // NOT name a balance. Stating a number here would risk printing a count
+        // we never read, which is the one thing the credits surfaces are built
+        // to avoid.
+        case .insufficientCredits: return "Out of credits"
+        case .freeExportSpent: return "Free export already used"
         }
     }
 }

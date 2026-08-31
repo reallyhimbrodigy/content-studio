@@ -496,7 +496,27 @@ struct MessageBubble: View {
                     // daily slot server-side (inline + backstop sweep), so the
                     // user's one-a-day is never burned by our failure. Say so —
                     // Pro has no daily limit, so it's free-tier only.
-                    if !SubscriptionService.shared.effectiveIsPro {
+                    // ONE NOT-CHARGED CLAIM, NEVER TWO. With credits on, the
+                    // refund line REPLACES the daily-slot line. Stacking them
+                    // would put two reassurances about two different currencies
+                    // in one card — "this didn't use your daily render" above
+                    // "10 credits refunded" — and a user cannot tell whether
+                    // that is one fact stated twice or two separate things, so
+                    // it reads as the product being unsure what it charged.
+                    // Credits are the model under test, so they take the line
+                    // while the experiment runs.
+                    if message.creditsExhausted {
+                        // The zero-balance block, in the thread, where the send
+                        // happened. `refreshDate` is nil until the server sends
+                        // one — the surface simply omits that line rather than
+                        // inventing a date, for the same reason it omits an
+                        // unread balance.
+                        CreditsExhaustedMessage(refreshDate: nil) {
+                            AppState.shared.presentPaywall(.manual)
+                        }
+                    } else if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
+                        CreditsRefundedMessage(amount: refunded)
+                    } else if !SubscriptionService.shared.effectiveIsPro {
                         HStack(spacing: 5) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 11))
@@ -1284,6 +1304,15 @@ final class VideoExporter: ObservableObject {
 
     @Published var saveState: ActionState = .idle
     @Published var shareState: ActionState = .idle
+    /// The free tier's single export, already spent. Lives HERE, beside the two
+    /// states it is a sibling of, because the export outcome is the exporter's
+    /// knowledge — a copy held in a View would have to be pushed back up from
+    /// the catch block and would go stale the moment the row recycled.
+    ///
+    /// Nothing in the tree recorded this before: the 402 was caught and thrown
+    /// away at both exits, so no property anywhere could tell you an export had
+    /// been gated. That absence is why the surface had no call site to have.
+    @Published var freeExportSpent = false
 
     private var cachedLocalUrl: URL?
     private var cachedAssetId: String?
@@ -1299,9 +1328,15 @@ final class VideoExporter: ObservableObject {
         case saveFailed(String)
         case appNotInstalled(String)
         case gatedPaywall   // 225 item 3: 402 — sentinel routed to the paywall, never shown
+        /// 402 + free_export_spent — the free tier's one export is gone.
+        /// A sentinel like gatedPaywall: routed to its own in-thread surface,
+        /// never shown as an error string, because "your video is ready" is
+        /// not a failure and must not be dressed as one.
+        case freeExportSpent
 
         var errorDescription: String? {
             switch self {
+            case .freeExportSpent:   return "Free export already used"
             case .invalidUrl:        return "Invalid video URL"
             case .photosDenied:      return "Photos access was denied"
             case .saveFailed(let m): return "Couldn't save: \(m)"
@@ -1333,6 +1368,12 @@ final class VideoExporter: ObservableObject {
         case .gated(let url, _):   return url.absoluteString
         case .legacyPublicSaveOK:  return videoUrlStr
         case .paymentRequired:     throw ExportError.gatedPaywall
+        // The free tier's single export, already spent. A DIFFERENT throw from
+        // the generic wall — routing it to .gatedPaywall would present the same
+        // modal for a different limit, which is precisely what makes the two
+        // conversions unreadable from each other. This one is answered in the
+        // thread, at the moment the finished video is on screen.
+        case .freeExportSpent:     throw ExportError.freeExportSpent
         }
     }
 
@@ -1403,6 +1444,15 @@ final class VideoExporter: ObservableObject {
                 saveState = .success
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 if saveState == .success { saveState = .idle }
+            } catch ExportError.freeExportSpent {
+                // The free tier's ONE export, spent. Answered in the thread at
+                // the moment the finished video is on screen — not by the modal
+                // paywall, which would make this indistinguishable from the
+                // generic wall and from a render failure. Three different
+                // situations sharing one presentation is how a conversion
+                // becomes unreadable.
+                saveState = .idle
+                freeExportSpent = true
             } catch ExportError.gatedPaywall {
                 // 225 item 3: 402 — out of free exports. Present the upgrade paywall;
                 // NEVER fall back to a public save. No error copy (this is a flow).
@@ -1434,6 +1484,12 @@ final class VideoExporter: ObservableObject {
                     shareState = .idle
                     Self.presentShareSheet(fileUrl: localFile)
                 }
+            } catch ExportError.freeExportSpent {
+                // Same treatment on the Share path as on Save — both are exits,
+                // and the user must not get two different answers depending on
+                // which button they pressed.
+                shareState = .idle
+                freeExportSpent = true
             } catch ExportError.gatedPaywall {
                 shareState = .idle
                 await MainActor.run { AppState.shared.presentPaywall(.exportGate) }
@@ -1502,6 +1558,17 @@ struct VideoActionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // The free tier's export, spent. It sits ABOVE the action row it
+            // just refused, so the explanation is adjacent to the button the
+            // user pressed rather than in a sheet that covers it. This is the
+            // moment the upgrade case is strongest — the video is finished and
+            // on screen — so it should read as earned, not as a wall.
+            if OnboardingState.shared.creditsEnabled, exporter.freeExportSpent {
+                FreeExportSpentMessage {
+                    AppState.shared.presentPaywall(.exportGate)
+                }
+                .transition(.opacity)
+            }
             if showSaveCta {
                 saveCtaBanner
                     .transition(.opacity.combined(with: .move(edge: .top)))

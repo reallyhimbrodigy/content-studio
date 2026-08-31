@@ -240,7 +240,11 @@ class SSEClient {
                         hlsManifestUrl: job.hls_manifest_url,
                         thumbnailUrl: job.thumbnail_url, error: nil, final: true,
                         errorCode: nil, userMessage: nil, retryable: nil,
-                        requiresNewVideo: nil, requiresVibeChange: nil
+                        requiresNewVideo: nil, requiresVibeChange: nil,
+                        // The POLL's synthesised event, not a server frame. It
+                        // carries no refund by construction, so nil is the
+                        // honest value rather than a placeholder.
+                        type: nil, creditsRefunded: nil, reasonCode: nil
                     ))
                 } else if JobLifecycle.isTerminal(job.status) {
                     // ANY other terminal status — failed/error, canceled/cancelled,
@@ -259,7 +263,11 @@ class SSEClient {
                             : nil,
                         final: true,
                         errorCode: nil, userMessage: nil, retryable: nil,
-                        requiresNewVideo: nil, requiresVibeChange: nil
+                        requiresNewVideo: nil, requiresVibeChange: nil,
+                        // The POLL's synthesised event, not a server frame. It
+                        // carries no refund by construction, so nil is the
+                        // honest value rather than a placeholder.
+                        type: nil, creditsRefunded: nil, reasonCode: nil
                     ))
                 }
                 // If still processing, do nothing — wait for more SSE events or next timeout check
@@ -299,15 +307,32 @@ struct SSEEvent: Codable {
     let requiresNewVideo: Bool?
     let requiresVibeChange: Bool?
 
+    /// Frame discriminator. This struct is a flat bag of optionals with no tag,
+    /// which was fine while every frame was a progress update — but it means an
+    /// unrecognised frame decodes to all-nil and is dropped in silence. The
+    /// credits refund would have vanished exactly that way: emitted correctly by
+    /// the server, decoded into nothing, and reported as "the refund message
+    /// never shows".
+    let type: String?
+
+    /// Credits returned for a failed render, riding the status snapshot rather
+    /// than arriving as its own frame — so a client that reconnects mid-failure
+    /// still learns about the refund from the next status it receives, instead
+    /// of having missed a one-shot event while the socket was down.
+    let creditsRefunded: Int?
+    let reasonCode: String?
+
     enum CodingKeys: String, CodingKey {
         case status, progress, step, message
         case videoUrl, hlsManifestUrl, thumbnailUrl
-        case error, final
+        case error, final, type
         case errorCode = "error_code"
         case userMessage = "user_message"
         case retryable
         case requiresNewVideo = "requires_new_video"
         case requiresVibeChange = "requires_vibe_change"
+        case creditsRefunded = "credits_refunded"
+        case reasonCode = "reason_code"
     }
 }
 

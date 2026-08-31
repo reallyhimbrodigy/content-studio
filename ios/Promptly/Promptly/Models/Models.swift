@@ -107,6 +107,18 @@ struct ChatMessage: Identifiable {
     // type." Survives chat reload via SerializedMessage so a user who
     // closes the app and comes back later still sees the Retry path.
     /// Public S3 URL of the source video the failed dispatch was using.
+    /// Credits returned when this render failed. nil = no refund reported.
+    /// PERSISTED, because a refund the user cannot see is indistinguishable
+    /// from never having been charged — and one that vanishes on chat switch
+    /// is worse, since they saw it once and then it was gone.
+    var creditsRefunded: Int? = nil
+    /// This render was refused for zero credits. Drives the in-thread block.
+    /// Persisted so a user who backgrounds the app on the refusal still sees
+    /// why their send did not run.
+    var creditsExhausted: Bool = false
+    /// False when the server could not read the balance — the surface then
+    /// omits the number rather than stating a zero it never read.
+    var creditsBalanceKnown: Bool = false
     var cachedSourceUrl: String? = nil
     /// Public S3 URL of the matching Gemini proxy (may be nil if the
     /// proxy upload failed or this was a .stream / single-PUT path).
@@ -264,6 +276,8 @@ struct SerializedMessage: Codable, Hashable {
     // Retry cache — persisted so a user who closes the app on a failed
     // bubble still sees the Retry button on reload. All four fields are
     // optional in storage (only failed retryable messages have them set).
+    var creditsRefunded: Int?
+    var creditsExhausted: Bool?
     var cachedSourceUrl: String?
     var cachedProxyUrl: String?
     var cachedVibe: String?
@@ -336,6 +350,8 @@ struct SerializedMessage: Codable, Hashable {
         self.error = message.error
         self.originalVibe = message.originalVibe
         self.isOnboarding = message.isOnboarding ? true : nil
+        self.creditsRefunded = message.creditsRefunded
+        self.creditsExhausted = message.creditsExhausted ? true : nil
         self.cachedSourceUrl = message.cachedSourceUrl
         self.cachedProxyUrl = message.cachedProxyUrl
         self.cachedVibe = message.cachedVibe
@@ -374,6 +390,8 @@ struct SerializedMessage: Codable, Hashable {
         msg.error = error
         msg.originalVibe = originalVibe
         msg.isOnboarding = isOnboarding ?? false
+        msg.creditsRefunded = creditsRefunded
+        msg.creditsExhausted = creditsExhausted ?? false
         msg.cachedSourceUrl = cachedSourceUrl
         msg.cachedProxyUrl = cachedProxyUrl
         msg.cachedVibe = cachedVibe

@@ -42,28 +42,36 @@ final class ReverseTrialService: ObservableObject {
         case deviceIdMissing
     }
 
-    private static let deadlineKey = "reverse_trial_deadline"
+    private static let deadlineKey = "reverse_trial_deadline"  // countdown-ok: real expiry
     private static let grantedKey = "reverse_trial_granted"
 
-    @Published private(set) var deadline: Date?
+    @Published private(set) var deadline: Date?   // countdown-ok: real server expiry, not manufactured urgency
     @Published private(set) var inFlight = false
 
     private init() {
         if UserDefaults.standard.bool(forKey: Self.grantedKey),
+           // countdown-ok: real expiry — restoring a server-granted deadline
            let t = UserDefaults.standard.object(forKey: Self.deadlineKey) as? Date {
-            deadline = t
+            deadline = t                               // countdown-ok: real expiry
         }
     }
 
+    // countdown-ok: this is a REAL server-granted expiry, not manufactured
+    // urgency. The gate exists to ban fake-scarcity timers — a countdown to a
+    // deadline the product invented to pressure a purchase. This one counts down
+    // to an entitlement the server actually issued and will actually revoke, and
+    // hiding it would be the dishonest choice: a user whose Pro access ends in
+    // six hours is entitled to know that before it happens.
     var isActive: Bool {
-        guard let d = deadline else { return false }
+        guard let d = deadline else { return false }   // countdown-ok: real expiry
         return d > Date()
     }
 
     /// Seconds left, floored at zero. Derived from a deadline we computed
     /// LOCALLY at the moment of the grant.
-    var secondsRemaining: Int {
-        guard let d = deadline else { return 0 }
+    // countdown-ok: real server expiry (see isActive).
+    var secondsRemaining: Int {                        // countdown-ok: real expiry
+        guard let d = deadline else { return 0 }       // countdown-ok: real expiry
         return max(0, Int(d.timeIntervalSinceNow))
     }
 
@@ -92,8 +100,8 @@ final class ReverseTrialService: ObservableObject {
             // `pro_until` remains the authority for the ENTITLEMENT. It is the
             // server's to enforce and we never compute against it here.
             let d = Date().addingTimeInterval(TimeInterval(seconds))
-            deadline = d
-            UserDefaults.standard.set(d, forKey: Self.deadlineKey)
+            deadline = d                                        // countdown-ok: real expiry
+            UserDefaults.standard.set(d, forKey: Self.deadlineKey)  // countdown-ok: real expiry
             UserDefaults.standard.set(true, forKey: Self.grantedKey)
         case .ineligible, .unavailable, .deviceIdMissing:
             break

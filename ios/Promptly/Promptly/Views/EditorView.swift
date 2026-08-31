@@ -3177,7 +3177,33 @@ struct EditorView: View {
                             }
 
                         case .hardFailure(let hf):
-                            if hf.isPaymentRequired {
+                            // ZERO CREDITS — answered in the thread, never as a
+                            // modal. Checked BEFORE isPaymentRequired so it can
+                            // never fall through to the daily-cap paywall, which
+                            // would show a user with credits remaining the wrong
+                            // limit's copy and make the two conversions
+                            // impossible to tell apart in the funnel.
+                            if hf.isCreditsExhausted {
+                                if let i = indexOfProcessingMsg() {
+                                    // Replace the stub in place rather than
+                                    // removing it: the user sent something and a
+                                    // bubble that vanishes reads as the app
+                                    // having lost their message.
+                                    messages[i].jobStatus = "failed"
+                                    messages[i].error = nil
+                                    messages[i].creditsExhausted = true
+                                    // Only carried when the SERVER said it knew
+                                    // the balance. Otherwise the surface omits
+                                    // the number entirely rather than printing a
+                                    // zero we never read.
+                                    messages[i].creditsBalanceKnown = hf.creditsBalanceKnown
+                                    persistMessages()
+                                }
+                                Analytics.track("credits_exhausted", props: [
+                                    "balance_known": hf.creditsBalanceKnown,
+                                    "context": "dispatch",
+                                ])
+                            } else if hf.isPaymentRequired {
                                 // Same flow as the old APIError.paymentRequired
                                 // branch: pull the stub processing bubble
                                 // and pop the paywall — but only when the
@@ -3390,6 +3416,22 @@ struct EditorView: View {
                 // applying needs_input here would show a held bar with no card
                 // until the next poll — let the poll transition it instead.
                 messages[messageIndex].jobStatus = status
+            }
+            // Credits refund. It rides the STATUS SNAPSHOT rather than arriving
+            // as a one-shot frame, which is what makes it survivable: a client
+            // whose socket dropped during the failure still learns about the
+            // refund from the next status it receives. Read it on every event,
+            // not only on the failure branch, for exactly that reason.
+            //
+            // Only ever set from the server's number. Substituting the client's
+            // own `CreditsService.perVideo` would have the app assert a refund
+            // the server may not have performed.
+            if let refunded = event.creditsRefunded, refunded > 0,
+               messages[messageIndex].creditsRefunded != refunded {
+                messages[messageIndex].creditsRefunded = refunded
+                // Through the existing choke point, so the refund persists by
+                // the same path every other message mutation uses.
+                persistMessages()
             }
             if let progress = event.progress {
                 // Phase 2 mapping per the backend contract:
@@ -4257,18 +4299,36 @@ private struct UsageMeterStrip: View {
                         // ("resets at 5:00 PM"), with a "tomorrow" hint when that lands
                         // on the next local day. (Rolling 24h-from-use is the queued
                         // follow-up — see the quota note.)
+                        // TWO WHOLE SENTENCES, NOT A CONCATENATION. This used to
+                        // append a hardcoded English " tomorrow" onto an
+                        // otherwise-translated string, so every non-English user
+                        // at a next-day reset read a sentence ending in an
+                        // English word — and no translator could reorder it,
+                        // because the fragment arrived after the catalog lookup.
+                        // Word order is not portable; whole sentences are.
                         let cal = Calendar.current
-                        let dayHint = cal.isDateInToday(reset) ? ""
-                            : (cal.isDateInTomorrow(reset) ? " tomorrow" : "")
-                        Text("No free videos left · resets at \(Self.resetTimeFormatter.string(from: reset))\(dayHint)")
+                        let time = Self.resetTimeFormatter.string(from: reset)
+                        if cal.isDateInTomorrow(reset) {
+                            Text("No free videos left · resets tomorrow at \(time)")
+                        } else {
+                            Text("No free videos left · resets at \(time)")
+                        }
                     } else {
                         Text("No free videos left today")
                     }
                 }
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
-                .lineLimit(1)
+                // WRAPS RATHER THAN TRUNCATES. At one line with a 0.85 floor
+                // this truncated tail-first on a 390pt iPHONE in fr and es —
+                // measured, not hypothetical — and the tail is the reset time,
+                // the only actionable fact in the sentence. "No free videos left
+                // · resets at…" tells a user they are blocked and hides when
+                // that ends, which is the worst possible half of the message to
+                // keep. One extra line above the composer is a cheap trade.
+                .lineLimit(2)
                 .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 8)
 
@@ -4338,8 +4398,26 @@ struct UpgradePill: View {
                 Text("Upgrade")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
+                    // NOT `.fixedSize()` on the stack. That made the pill
+                    // incompressible at its ideal width, which is fine for the
+                    // 8-character English string and breaks in shipped locales:
+                    // French renders "Passer à la version supérieure" at ~229pt
+                    // of the ~242pt the top bar has for the pill AND the quota
+                    // capsule together, leaving ~13pt for the capsule. hi, ne
+                    // and ur are comparable. Because the pill could not give,
+                    // the only flexible sibling — the quota count — absorbed all
+                    // of it and collapsed.
+                    //
+                    // This is a 390pt iPHONE defect in production locales, not
+                    // an iPad-width one; it was found during the iPad sweep but
+                    // it is not iPad work.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .layoutPriority(1)
             }
-            .fixedSize()
+            // Bounded rather than fixed: the pill may shrink toward its floor
+            // under pressure instead of shoving its neighbour off the bar.
+            .frame(maxWidth: 168)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(

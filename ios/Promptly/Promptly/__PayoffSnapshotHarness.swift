@@ -300,6 +300,7 @@ struct PayoffSnapshotHarnessView: View {
             return m
         }()
         @State private var step = 0
+        nonisolated(unsafe) static var renders = 0
 
         /// A recognisable stand-in frame. Not a real clip — this is a pacing
         /// and composition proof, and shipping a real user's footage into a
@@ -327,6 +328,7 @@ struct PayoffSnapshotHarnessView: View {
                               "sfx", "transitions", "encode", "thumbnail", "upload"]
 
         var body: some View {
+            let _ = { RingMotionDriver.renders += 1; print("RING_BODY render#\(RingMotionDriver.renders) progress=\(msg.jobProgress ?? -1)") }()
             MessageBubble(message: msg)
                 .task {
                     // REAL PACING, NOT A SPED-UP FAKE. TricklePacing fills to
@@ -341,8 +343,29 @@ struct PayoffSnapshotHarnessView: View {
                     // the CAPTURE is time-lapsed instead. Speeding up the video
                     // is truthful; speeding up the pacing would be proving a
                     // ring we do not ship.
+                    let t0 = Date()
+                    print("RING_DRIVE_START")
                     for (i, token) in tokens.enumerated() {
-                        try? await Task.sleep(for: .milliseconds(11_000))
+                        // SHORT SLEEPS, SUMMED — measured, not guessed. A single
+                        // 11s Task.sleep does not fire on schedule in the
+                        // simulator: instrumented across 42s at 11s pacing the
+                        // loop produced ZERO ticks and ZERO cancellations, while
+                        // the same driver at 750ms ticked normally. Long sleeps
+                        // get coalesced hard once the app goes idle.
+                        //
+                        // WHAT THAT PRODUCED IS WORTH RECORDING, because it
+                        // looked exactly like a product bug: the stage feed
+                        // stalled at seed, so the ring never received progress
+                        // past 0, so the bar parked at overshootMargin (12) and
+                        // sat there. That was the anti-lie tether doing its job —
+                        // refusing to march forward on a feed that had stopped.
+                        // A ring that had swept on to 40% would have been the
+                        // real defect. The harness was lying, not the ring.
+                        for _ in 0..<44 {
+                            do { try await Task.sleep(for: .milliseconds(250)) }
+                            catch { print("RING_DRIVE_CANCELLED at i=\(i) t=\(Int(Date().timeIntervalSince(t0)))s"); return }
+                        }
+                        print("RING_DRIVE_TICK i=\(i) token=\(token) t=\(Int(Date().timeIntervalSince(t0)))s")
                         msg.stageTimeline?.receive(stepToken: token)
                         // Deliberately NOT a linear sweep to 100. The backend
                         // feed is lumpy and the ring is supposed to absorb that
