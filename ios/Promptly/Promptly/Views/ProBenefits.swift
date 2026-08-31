@@ -57,6 +57,30 @@ enum ProBenefits {
     /// pitch priority, so the first three claims are the three best claims
     /// everywhere, and a surface can never elevate a minor benefit above a
     /// major one or omit something the screen before it promised.
+    /// Monthly video allowance per tier, once the credits meter is live.
+    /// 10 credits per video, flat: Free 30/mo = 3, Pro 200 = 20, Max 1000 = 100.
+    /// Derived here rather than written into copy so the claim and the meter
+    /// cannot drift — the number a user reads is computed from the same
+    /// constant the balance is.
+    static let creditsPerVideo = 10
+    static func monthlyVideos(credits: Int) -> Int { credits / creditsPerVideo }
+
+    /// The headline claim, which MUST match whichever meter is actually running.
+    ///
+    /// "Unlimited videos, no daily cap" is true today and becomes FALSE the
+    /// moment credits ship — Pro at 200/month is 20 videos, a cap. So the claim
+    /// is chosen by the same flag that arms the meter: unlimited while the
+    /// meter is off, the real number once it is on. Shipping the number early
+    /// would be false in the other direction, which is the failure mode that is
+    /// easy to miss because it reads as conservative.
+    static func headlineVideoClaim(creditsEnabled: Bool, monthlyCredits: Int?) -> Benefit {
+        guard creditsEnabled, let c = monthlyCredits, c > 0 else {
+            return Benefit(icon: "infinity", text: String(localized: "Unlimited videos, no daily cap"))
+        }
+        return Benefit(icon: "infinity",
+                       text: String(localized: "\(monthlyVideos(credits: c)) videos a month"))
+    }
+
     static let core: [Benefit] = [
         Benefit(icon: "infinity",
                 text: String(localized: "Unlimited videos, no daily cap")),

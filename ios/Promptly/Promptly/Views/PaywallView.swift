@@ -1092,7 +1092,14 @@ struct ProCelebrationView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text("Everything's unlocked. No daily limit — create as much as you want.")
+                    // Matches the meter that is actually running, for the same
+                    // reason ProBenefits.headlineVideoClaim does: this sentence
+                    // is a cap claim once credits are live, and it was ALSO
+                    // spelled here rather than in ProBenefits — the exact
+                    // duplication benefits-parity-gate exists to prevent.
+                    Text(OnboardingState.shared.creditsEnabled
+                         ? String(localized: "Your plan is active. Create as much as your monthly credits allow.")
+                         : String(localized: "Everything's unlocked. No daily limit — create as much as you want."))
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.72))
                         .multilineTextAlignment(.center)

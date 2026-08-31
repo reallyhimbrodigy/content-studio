@@ -517,6 +517,77 @@
         }
       }
     },
+    "%lld videos a month": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld فيديو شهريًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মাসে %lldটি ভিডিও"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Videos pro Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeos al mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vidéos par mois"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हर महीने %lld वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld video per bulan"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月に%lld本の動画"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "महिनामा %lld भिडियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeos por mês"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہر ماہ %lld ویڈیوز"
+          }
+        }
+      }
+    },
     "%lld weeks": {
       "localizations": {
         "ar": {
@@ -7421,6 +7492,10 @@
           }
         }
       }
+    },
+    "Getting started…": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "Glad you like it!": {
       "localizations": {
@@ -22591,6 +22666,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کے پہلے سال پر %lld%% رعایت"
+          }
+        }
+      }
+    },
+    "Your plan is active. Create as much as your monthly credits allow.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خطتك نشطة. أنشئ بقدر ما تسمح به أرصدتك الشهرية."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার প্ল্যান সক্রিয়। মাসিক ক্রেডিট যতটা অনুমতি দেয় ততটা বানান।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Tarif ist aktiv. Erstelle so viel, wie deine monatlichen Credits erlauben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu plan está activo. Crea todo lo que te permitan tus créditos mensuales."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre formule est active. Créez autant que vos crédits mensuels le permettent."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका प्लान सक्रिय है। जितने मासिक क्रेडिट हैं, उतना बनाएँ।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paket Anda aktif. Berkarya sebanyak yang kredit bulanan Anda izinkan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プランが有効です。毎月のクレジットの範囲で自由に作成できます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको योजना सक्रिय छ। मासिक क्रेडिटले दिएसम्म बनाउनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano está ativo. Crie tudo o que seus créditos mensais permitirem."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا پلان فعال ہے۔ ماہانہ کریڈٹس جتنے اجازت دیں اتنا بنائیں۔"
           }
         }
       }

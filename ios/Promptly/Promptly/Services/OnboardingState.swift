@@ -42,6 +42,27 @@ final class OnboardingState: ObservableObject {
     /// against attribution that has been 0% all-time. A promise the pipeline
     /// cannot keep is worse than no surface.
     @Published private(set) var secondPaywallReferralEnabled = false
+    // ── 2026-08-31 build: six independent experiments ────────────────────────
+    // Each on its OWN flag so their effects are separable. The reverse trial in
+    // particular is split from its expiry surface: the grant is a non-event and
+    // the expiry is where conversion happens, so blending them into one flag
+    // would make the thing that matters unreadable.
+    /// Credits meter — read/display half only (the client cannot debit;
+    /// RevenueCat Virtual Currencies is read-only on device, SDK 5.75.0).
+    @Published private(set) var creditsEnabled = false
+    /// The render-progress rebuild: framed source + ring, no bullet list.
+    @Published private(set) var progressRingEnabled = false
+    /// Before/after compare in the delivered-video bubble.
+    @Published private(set) var beforeAfterEnabled = false
+    /// One or two conversational questions rendered on the send run loop.
+    @Published private(set) var instantQuestionsEnabled = false
+    /// 72h Pro on offer-reveal decline, via pro_until + the existing ledger.
+    @Published private(set) var reverseTrialEnabled = false
+    /// The expiry moment — deliberately separate from the grant.
+    @Published private(set) var reverseTrialExpiryEnabled = false
+    /// Q1 audience + Q2 content type into reveal and paywall headlines.
+    @Published private(set) var paywallPersonalizationEnabled = false
+
     @Published private(set) var postrenderSaveCtaEnabled = false
     @Published private(set) var chatMediaEnabled = false
     @Published private(set) var firstSessionAutopickerEnabled = false
@@ -136,6 +157,13 @@ final class OnboardingState: ObservableObject {
             offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
+            creditsEnabled = (obj?["credits"] as? String) == "on"
+            progressRingEnabled = (obj?["progress_ring"] as? String) == "on"
+            beforeAfterEnabled = (obj?["before_after"] as? String) == "on"
+            instantQuestionsEnabled = (obj?["instant_questions"] as? String) == "on"
+            reverseTrialEnabled = (obj?["reverse_trial"] as? String) == "on"
+            reverseTrialExpiryEnabled = (obj?["reverse_trial_expiry"] as? String) == "on"
+            paywallPersonalizationEnabled = (obj?["paywall_personalization"] as? String) == "on"
             UserDefaults.standard.set(attributionGateEnabled, forKey: "attribution_gate_enabled")
             UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
             UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")

@@ -326,13 +326,32 @@ struct MessageBubble: View {
                         PlanPreviewCard(vibe: vibe)
                             .padding(.bottom, 10)
                     }
-                    PipelineProgressView(
-                        timeline: timeline,
-                        progress: message.jobProgress ?? 0,
-                        subMessage: message.stepMessage,
-                        finishing: message.isFinishing,
-                        onCancel: onCancel
-                    )
+                    // FLAG-DARK REBUILD. The ring replaces the bar + bullet
+                    // list; the data underneath (StageTimeline, the 17-stage
+                    // server feed, TrickleProgress) is identical, so flipping
+                    // the flag changes only the presentation and never the
+                    // progress semantics.
+                    if OnboardingState.shared.progressRingEnabled {
+                        RenderProgressRing(
+                            timeline: timeline,
+                            progress: message.jobProgress ?? 0,
+                            // The SOURCE clip's own frame — the thing being edited. Comes
+                            // from the attachment, not from thumbnailUrl (which is
+                            // the RESULT's poster and does not exist yet mid-render).
+                            thumbnail: message.videoAttachment?.thumbnail,
+                            subMessage: message.stepMessage,
+                            finishing: message.isFinishing,
+                            onCancel: onCancel
+                        )
+                    } else {
+                        PipelineProgressView(
+                            timeline: timeline,
+                            progress: message.jobProgress ?? 0,
+                            subMessage: message.stepMessage,
+                            finishing: message.isFinishing,
+                            onCancel: onCancel
+                        )
+                    }
                 } else {
                     ProcessingIndicator(
                         stepMessage: message.stepMessage ?? "Getting started...",
