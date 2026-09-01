@@ -149,6 +149,20 @@ struct OfferRevealView: View {
                     // never louder than the plan being sold.
                     secondaryMonthlyLine
 
+                    // THE FREE PATH, offered at the moment someone declines to
+                    // pay — which is exactly when "there is another way to get
+                    // this" is worth hearing, and the only moment on this
+                    // screen where it is not competing with the sale.
+                    //
+                    // It sits ABOVE the decline link deliberately: a user who
+                    // has decided not to buy should meet the alternative before
+                    // the exit, not after it. Below the link it would be seen
+                    // only by people who had already left.
+                    if OnboardingState.shared.referralProgressEnabled {
+                        ReferralProgressRow(source: "offer_reveal", compact: true)
+                            .padding(.top, 20)
+                    }
+
                     // The escape hatch: a text link, never an X (an X invites
                     // an accidental dismissal of a one-time reveal).
                     Button {

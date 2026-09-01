@@ -30558,6 +30558,297 @@
           }
         }
       }
+    },
+    "%lld of %lld friends joined": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friend joined"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friends joined"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld von %2$lld Freund ist dabei"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld von %2$lld Freunden sind dabei"
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigo se unió"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigos se unieron"
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld ami sur %2$lld a rejoint"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld amis sur %2$lld ont rejoint"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigo entrou"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigos entraram"
+                }
+              }
+            }
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انضم %1$lld من أصل %2$lld أصدقاء"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld জনের মধ্যে %1$lld জন বন্ধু যোগ দিয়েছে"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld में से %1$lld दोस्त जुड़ चुके हैं"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld dari %2$lld teman sudah gabung"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "友達%2$lld人のうち%1$lld人が参加"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld मध्ये %1$lld जना साथी जोडिनुभयो"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld میں سے %1$lld دوست شامل ہو چکے"
+          }
+        }
+      }
+    },
+    "Get a free week of Pro when all 3 have made a video": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "احصل على أسبوع مجاني من برو عندما ينشئ الثلاثة فيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "তিনজনই ভিডিও বানালে এক সপ্তাহ Pro ফ্রি পাবেন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn alle 3 ein Video gemacht haben, bekommst du eine Woche Pro gratis"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consigue una semana de Pro gratis cuando los 3 hayan hecho un vídeo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reçois une semaine de Pro gratuite quand les 3 ont fait une vidéo"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तीनों वीडियो बना लें तो एक हफ़्ता Pro मुफ़्त"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dapat Pro gratis seminggu kalau ketiganya sudah bikin video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3人とも動画を作ったら、Proが1週間無料"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तीनै जनाले भिडियो बनाए भने एक हप्ता Pro निःशुल्क"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ganhe uma semana de Pro grátis quando os 3 fizerem um vídeo"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تینوں ویڈیو بنا لیں تو ایک ہفتہ Pro مفت"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get a free week of Pro when all 3 have made a video"
+          }
+        }
+      }
+    },
+    "All 3 friends are in — your free week is on the way": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انضم الأصدقاء الثلاثة — أسبوعك المجاني في الطريق"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "তিন বন্ধুই যোগ দিয়েছে — আপনার ফ্রি সপ্তাহ আসছে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle 3 Freunde sind dabei — deine Gratis-Woche kommt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los 3 amigos están dentro — tu semana gratis viene en camino"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les 3 amis sont là — ta semaine gratuite arrive"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तीनों दोस्त जुड़ गए — आपका मुफ़्त हफ़्ता आ रहा है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ketiga teman sudah gabung — Pro gratis seminggu segera datang"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "友達3人がそろいました — 無料の1週間はもうすぐです"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तीनै जना साथी आइपुग्नुभयो — तपाईंको निःशुल्क हप्ता आउँदैछ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os 3 amigos entraram — sua semana grátis está a caminho"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تینوں دوست شامل ہو گئے — آپ کا مفت ہفتہ آ رہا ہے"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All 3 friends are in — your free week is on the way"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

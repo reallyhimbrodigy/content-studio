@@ -242,9 +242,11 @@ struct SecondPaywallView: View {
                     // No denominator: a target reintroduces the quota the
                     // ladder exists to remove, and this one counted toward a
                     // reward nobody could reach while attribution was 0%.
-                    Text(ReferralCopy.progress(referrals.qualifiedCount))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.55))
+                    // Replaced by the shared component: the count and the
+                    // share action now ship together, so a surface cannot
+                    // adopt one and forget the other — which is how three of
+                    // the four share points ended up with no progress at all.
+                    ReferralProgressRow(source: "paywall2", compact: true)
                 }
                 Spacer()
                 Image(systemName: "square.and.arrow.up")

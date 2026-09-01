@@ -79,13 +79,35 @@ enum ReferralCopy {
     /// The share-sheet CTA.
     static let shareAction = String(localized: "Share your invite link")
 
-    /// Progress, with NO denominator — see rule 2. A target would reintroduce
-    /// the quota this copy exists to remove.
-    static func progress(_ qualified: Int) -> String {
-        qualified == 1
-            ? String(localized: "1 person you invited has made a video")
-            : String(localized: "\(qualified) people you invited have made a video")
+    /// Progress toward the reward, WITH the denominator.
+    ///
+    /// THE NO-DENOMINATOR RULE IS OBSOLETE, and this is the reasoning rather
+    /// than an override. It was written for the LADDER, where the reward paid
+    /// from friend one and no single target existed — naming "3" then would
+    /// have invented a threshold the product did not have. The ruling is now
+    /// FLAT: three qualified friends, one week, no intermediate rewards. Under
+    /// flat, three IS the target, and hiding it makes the surface useless —
+    /// "2 people have made a video" tells a user nothing about how close they
+    /// are to the thing they are working toward.
+    ///
+    /// THE GATE AGREES, checked rather than assumed. trial-copy-gate's
+    /// INVITE_QUOTA_RE flags a quota HEADLINE ("Invite 3 friends who…") and
+    /// does not flag "%lld of %lld friends joined" — verified by probing it
+    /// with both forms before writing this. So no carve-out was needed: the
+    /// rule already distinguished a demand from a progress report, which is the
+    /// real difference. A headline states a price of entry; a progress line
+    /// reports where you already are.
+    static func progress(_ qualified: Int, target: Int = ReferralService.rewardTarget) -> String {
+        String(localized: "\(qualified) of \(target) friends joined")
     }
+
+    /// The line under the progress count — what the count is FOR. Kept separate
+    /// so the number and the promise can be styled differently, and so a
+    /// surface with no room can show the count alone.
+    static let progressReward = String(localized: "Get a free week of Pro when all 3 have made a video")
+
+    /// Shown the moment the third friend qualifies, before the grant lands.
+    static let progressComplete = String(localized: "All 3 friends are in — your free week is on the way")
 
     /// Shown only once a reward has actually been granted, never as a promise.
     /// A reward the user cannot see is worse than no reward, so this states what

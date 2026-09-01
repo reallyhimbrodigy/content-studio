@@ -68,6 +68,9 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var reverseTrialExpiryEnabled = false
     /// Q1 audience + Q2 content type into reveal and paywall headlines.
     @Published private(set) var paywallPersonalizationEnabled = false
+    /// Referral progress + one-tap share on every share surface. Dark by
+    /// default like every other experiment.
+    @Published private(set) var referralProgressEnabled = false
 
     @Published private(set) var postrenderSaveCtaEnabled = false
     @Published private(set) var chatMediaEnabled = false
@@ -171,6 +174,7 @@ final class OnboardingState: ObservableObject {
             reverseTrialEnabled = (obj?["reverse_trial"] as? String) == "on"
             reverseTrialExpiryEnabled = (obj?["reverse_trial_expiry"] as? String) == "on"
             paywallPersonalizationEnabled = (obj?["paywall_personalization"] as? String) == "on"
+            referralProgressEnabled = (obj?["referral_progress"] as? String) == "on"
             UserDefaults.standard.set(attributionGateEnabled, forKey: "attribution_gate_enabled")
             UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
             UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")
@@ -193,6 +197,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(reverseTrialEnabled, forKey: "reverse_trial_enabled")
             UserDefaults.standard.set(reverseTrialExpiryEnabled, forKey: "reverse_trial_expiry_enabled")
             UserDefaults.standard.set(paywallPersonalizationEnabled, forKey: "paywall_personalization_enabled")
+            UserDefaults.standard.set(referralProgressEnabled, forKey: "referral_progress_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
@@ -221,6 +226,7 @@ final class OnboardingState: ObservableObject {
             reverseTrialEnabled = UserDefaults.standard.bool(forKey: "reverse_trial_enabled")
             reverseTrialExpiryEnabled = UserDefaults.standard.bool(forKey: "reverse_trial_expiry_enabled")
             paywallPersonalizationEnabled = UserDefaults.standard.bool(forKey: "paywall_personalization_enabled")
+            referralProgressEnabled = UserDefaults.standard.bool(forKey: "referral_progress_enabled")
         }
     }
 
@@ -251,6 +257,7 @@ final class OnboardingState: ObservableObject {
         case "reverse_trial": reverseTrialEnabled = true
         case "reverse_trial_expiry": reverseTrialExpiryEnabled = true
         case "paywall_personalization": paywallPersonalizationEnabled = true
+        case "referral_progress": referralProgressEnabled = true
         // LOUD, not silent. `default: break` meant a mistyped key produced a
         // run that looked forced and wasn't — the harness would record the dark
         // state and it would be filed as "the surface doesn't work". A proof
