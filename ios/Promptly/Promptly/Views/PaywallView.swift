@@ -788,6 +788,45 @@ struct PaywallView: View {
         return String(localized: "Welcome back — your plan has an offer waiting")
     }
 
+    /// Row label: duration alone when one tier is on offer, "Tier · Duration"
+    /// when more than one is.
+    private func planLabel(for pkg: Package) -> String {
+        let duration: String? = {
+            if let p = pkg.storeProduct.subscriptionPeriod {
+                switch p.unit {
+                case .year:  return String(localized: "Year")
+                case .month: return String(localized: "Month")
+                case .week:  return String(localized: "Week")
+                default: return nil
+                }
+            }
+            switch pkg.packageType {
+            case .annual: return String(localized: "Year")
+            case .monthly: return String(localized: "Month")
+            case .weekly: return String(localized: "Week")
+            default: return nil
+            }
+        }()
+
+        let ids = (currentPackages ?? []).map(\.storeProduct.productIdentifier)
+        let tiersOnOffer = Set(ids.compactMap { CreditAllowance.monthly(forProductId: $0) })
+        let tier: String? = {
+            guard tiersOnOffer.count > 1,
+                  let m = CreditAllowance.monthly(forProductId: pkg.storeProduct.productIdentifier)
+            else { return nil }
+            return m >= 1000 ? String(localized: "Max") : String(localized: "Pro")
+        }()
+
+        switch (tier, duration) {
+        case let (t?, d?): return "\(t) · \(d)"
+        case let (t?, nil): return t
+        case let (nil, d?): return d
+        // Last resort only: no period AND no known tier. Naming the app is
+        // better than an empty row, and it is what shipped before.
+        case (nil, nil): return String(localized: "Promptly Pro")
+        }
+    }
+
     private func packageRow(_ pkg: Package) -> some View {
         let isSelected = selectedPackage?.identifier == pkg.identifier
         let priceText = pkg.storeProduct.localizedPriceString
@@ -795,7 +834,27 @@ struct PaywallView: View {
         // left, the billed price + unit on the right. The billed amount stays
         // the most prominent number on the row (the standing honesty law —
         // the yearly_frame_fix prominence is now unconditional layout).
+        // UNIT FROM THE SUBSCRIPTION PERIOD, not from PackageType.
+        //
+        // PackageType only classifies the offering's standard slots. A product
+        // RevenueCat hands back as `.custom` — which is what the Max products
+        // arrive as — fell into `default: ""`, and the row then rendered
+        // "$89.99/" with a dangling slash and no period. The price is the most
+        // important text on this screen and it was ending mid-sentence.
+        //
+        // The subscription period is on the product itself and is correct for
+        // any product, standard slot or not.
         let unitText: String = {
+            if let period = pkg.storeProduct.subscriptionPeriod {
+                switch period.unit {
+                case .year:  return String(localized: "year")
+                case .month: return period.value == 1 ? String(localized: "month")
+                                                      : String(localized: "\(period.value) months")
+                case .week:  return String(localized: "week")
+                case .day:   return String(localized: "day")
+                @unknown default: return ""
+                }
+            }
             switch pkg.packageType {
             case .annual: return String(localized: "year")
             case .monthly: return String(localized: "month")
@@ -833,10 +892,20 @@ struct PaywallView: View {
                     // Our OWN plan label — NEVER StoreKit's localizedTitle
                     // (which can carry "(Promptly Pro)" suffixes / ASC naming
                     // quirks). Bare nouns per the reference. (build 216 rule)
-                    Text(pkg.packageType == .annual ? "Year"
-                         : pkg.packageType == .monthly ? "Month"
-                         : pkg.packageType == .weekly ? "Week"
-                         : "Promptly Pro")
+                    // THE LABEL MUST IDENTIFY THE ROW, which duration alone
+                    // stopped being able to do the moment a second tier
+                    // existed. This mapped only Year/Month/Week and fell back
+                    // to the literal "Promptly Pro" — so BOTH Max products
+                    // rendered as "Promptly Pro", two rows with the same name
+                    // at different prices on the screen that asks for money.
+                    //
+                    // Tier comes from the allowance the product maps to, the
+                    // same derivation the sort uses, so nothing here needs to
+                    // know "max" exists. Duration comes from the subscription
+                    // period. The tier is only NAMED when more than one is on
+                    // offer — with a single tier "Year" is unambiguous and
+                    // "Pro · Year" is noise.
+                    Text(planLabel(for: pkg))
                         .cType(16, .semibold)
                         .foregroundColor(.white)
                     // RE-RULED 2026-08-22: the annual anchor reads MONTHLY —
