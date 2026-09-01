@@ -221,7 +221,14 @@ test('an outage does NOT free-render', () => {
   // unrelated source.
   const iDebit = SRC.indexOf('_credits.debit(authUser.id');
   assert.ok(iDebit > 0, 'no debit call — nothing to guard');
-  const region = SRC.slice(iDebit, iDebit + 1800);
+  // BOUNDED STRUCTURALLY, NOT BY CHARACTER COUNT. This was slice(iDebit, +1800)
+  // and went red on merge when comments between the debit and its outage branch
+  // pushed the branch past 1800 -- while production was CORRECT. Third time a
+  // fixed-character window has broken on added comments; the region now ends at
+  // the next route/handler boundary so prose cannot move it.
+  const _after = SRC.slice(iDebit);
+  const _end = _after.indexOf('createQueuedVideoJob');
+  const region = _after.slice(0, _end > 0 ? _end : 4000);
   assert.match(region, /credits_unavailable/,
     'the dispatch debit has no outage branch — an RC outage would fall ' +
     'through and spawn a free render');
