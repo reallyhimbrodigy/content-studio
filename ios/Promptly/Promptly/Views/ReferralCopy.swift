@@ -39,16 +39,28 @@ enum ReferralCopy {
     /// seven times more Pro per referral than the product grants, on the one
     /// surface whose entire job is to be believed, in twelve languages.
     ///
-    /// This wording is correct under BOTH candidate rulings — the 2/4/7 ladder
-    /// and a flat 3-to-7 — because both agree on the headline: three friends,
-    /// one week. The ladder question only decides whether the INTERMEDIATE
-    /// milestones are named, which is `ladderDetail` below and a one-line
-    /// change either way. Stating only the part both rulings share is what lets
-    /// this ship before the ruling lands.
+    /// I FIRST WROTE "Invite 3 friends who make a video — get a week of Pro"
+    /// and claimed it was correct under BOTH candidate rulings. It is not, and
+    /// trial-copy-gate caught it: under the 2/4/7 LADDER the reward starts at
+    /// friend ONE, so naming three states a quota that does not exist and hides
+    /// the 2 days already earned. The gate's rule says exactly that — "states a
+    /// quota before the first share; the ladder pays from invite one" — which
+    /// is a ruling that predates me and that I walked straight into.
+    ///
+    /// So the two candidate rulings genuinely need DIFFERENT copy and no single
+    /// string covers both:
+    ///   ladder 2/4/7  -> pays from friend one, so no number belongs in the
+    ///                    headline. This wording.
+    ///   flat 3 -> 7   -> a quota IS the truth, and the headline must say three.
+    ///                    That wording would fail the gate as written, because
+    ///                    the gate encodes the ladder assumption. If Zac rules
+    ///                    flat, the RULE has to move too — not be worked around.
+    ///
+    /// Written for the ladder, which is the standing ruling.
     ///
     /// The string is already in the catalog and already translated x11 — it was
     /// written for the second paywall and is the same promise.
-    static let offer = String(localized: "Invite 3 friends who make a video — get a week of Pro")
+    static let offer = String(localized: "Every friend who makes a video earns you free Pro")
 
     /// The intermediate rewards, shown only if the LADDER survives Zac's
     /// ruling. Nil under a flat 3-to-7, where naming a partial reward that does

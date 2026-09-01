@@ -129,11 +129,11 @@ struct PaywallFeatureChecklist: View {
                             .fill(Color.white)
                             .frame(width: 24, height: 24)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .heavy))
+                            .cType(11, .heavy)
                             .foregroundColor(.black)
                     }
                     Text(text)
-                        .font(.system(size: 16, weight: .medium))
+                        .cType(16, .medium)
                         .foregroundColor(.white)
                     Spacer()
                 }
@@ -230,7 +230,7 @@ struct PaywallView: View {
             if showingBenefitPage {
                 exportBenefitPage
             } else {
-            ConversionScroll {
+            ConversionScroll(width: ConversionColumn.content) {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
 
@@ -250,14 +250,14 @@ struct PaywallView: View {
                     }
 
                     Text(title)
-                        .font(.system(size: 28, weight: .bold))
+                        .cType(28, .bold)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                         .entrance(delay: 0.05)
 
                     Text(subtitle)
-                        .font(.system(size: 16))
+                        .cType(16)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -269,7 +269,7 @@ struct PaywallView: View {
                     // any offer the account is actually eligible for at purchase.
                     if onboardingStateRef.offerSurfacingEnabled, let winBack = winBackLine {
                         Text(winBack)
-                            .font(.system(size: 13, weight: .semibold))
+                            .cType(13, .semibold)
                             .foregroundColor(.white.opacity(0.85))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -329,7 +329,7 @@ struct PaywallView: View {
                     if onboardingStateRef.yearlyFrameFixEnabled,
                        let sel = selectedPackage, sel.packageType == .annual {
                         Text("You'll be charged \(sel.storeProduct.localizedPriceString) today. Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
-                            .font(.system(size: 12))
+                            .cType(12)
                             .foregroundColor(.white.opacity(0.55))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -347,7 +347,7 @@ struct PaywallView: View {
                                 if ok { isPresented = false }
                             }
                         }
-                        .font(.system(size: 13, weight: .medium))
+                        .cType(13, .medium)
                         .foregroundColor(.white.opacity(0.6))
 
                         // Apple 3.1.2: a subscription paywall MUST carry functional
@@ -357,7 +357,7 @@ struct PaywallView: View {
                             Text("·").foregroundColor(.white.opacity(0.3))
                             Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
                         }
-                        .font(.system(size: 12, weight: .medium))
+                        .cType(12, .medium)
                         .foregroundColor(.white.opacity(0.5))
                     }
                     .padding(.top, 20)
@@ -378,7 +378,7 @@ struct PaywallView: View {
                 isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .cType(14, .bold)
                     .foregroundColor(.white)
                     .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial)
@@ -443,7 +443,7 @@ struct PaywallView: View {
     /// didn't. No countdown, no scarcity: the only urgency named here is the
     /// real one (this video is finished and waiting).
     private var exportBenefitPage: some View {
-        ConversionScroll {
+        ConversionScroll(width: ConversionColumn.content) {
             VStack(spacing: 0) {
                 Spacer().frame(height: 72)
 
@@ -455,7 +455,7 @@ struct PaywallView: View {
                 }
 
                 Text(benefitHeadline)
-                    .font(.system(size: 28, weight: .bold))
+                    .cType(28, .bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     // Render-caught 2026-08-27: a personalised headline is
@@ -468,7 +468,7 @@ struct PaywallView: View {
                     .padding(.horizontal, 28)
 
                 Text(String(localized: "Your edit is finished and waiting."))
-                    .font(.system(size: 16))
+                    .cType(16)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -480,11 +480,11 @@ struct PaywallView: View {
                             ZStack {
                                 Circle().fill(Color.white).frame(width: 24, height: 24)
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .heavy))
+                                    .cType(11, .heavy)
                                     .foregroundColor(.black)
                             }
                             Text(line)
-                                .font(.system(size: 16, weight: .medium))
+                                .cType(16, .medium)
                                 .foregroundColor(.white)
                             Spacer()
                         }
@@ -501,7 +501,7 @@ struct PaywallView: View {
                     withAnimation(.easeInOut(duration: 0.22)) { showingBenefitPage = false }
                 } label: {
                     Text(String(localized: "See plans"))
-                        .font(.system(size: 17, weight: .bold))
+                        .cType(17, .bold)
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity).frame(height: 56)
                         .background(Color.white, in: Capsule())
@@ -639,18 +639,18 @@ struct PaywallView: View {
     private var offeringsUnavailable: some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 28, weight: .semibold))
+                .cType(28, .semibold)
                 .foregroundColor(.white.opacity(0.75))
             Text(subscription.offeringsError
                  ?? "We couldn't load subscription options. Please try again.")
-                .font(.system(size: 14))
+                .cType(14)
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
             Button {
                 Task { await subscription.refreshOfferings() }
             } label: {
                 Text("Retry")
-                    .font(.system(size: 15, weight: .semibold))
+                    .cType(15, .semibold)
                     .foregroundColor(.black)
                     .padding(.horizontal, 30)
                     .frame(height: 46)
@@ -684,20 +684,20 @@ struct PaywallView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "person.2.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .cType(15, .semibold)
                     .foregroundColor(.white)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Or get Pro free")
-                        .font(.system(size: 15, weight: .semibold))
+                        .cType(15, .semibold)
                         .foregroundColor(.white)
                     Text(ReferralCopy.offer)
-                        .font(.system(size: 12))
+                        .cType(12)
                         .foregroundColor(.white.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 15))
+                    .cType(15)
                     .foregroundColor(.white.opacity(0.55))
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -830,14 +830,14 @@ struct PaywallView: View {
                          : pkg.packageType == .monthly ? "Month"
                          : pkg.packageType == .weekly ? "Week"
                          : "Promptly Pro")
-                        .font(.system(size: 16, weight: .semibold))
+                        .cType(16, .semibold)
                         .foregroundColor(.white)
                     // RE-RULED 2026-08-22: the annual anchor reads MONTHLY —
                     // the honest minimal-gap frame against Apple's sheet.
                     // Storefront-derived (RC per-month or ÷12), no literals.
                     if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
-                            .font(.system(size: 12, weight: .medium))
+                            .cType(12, .medium)
                             .foregroundColor(.white.opacity(0.65))
                     }
                     // annual_dollar_line: the deal in dollars, computed from
@@ -847,7 +847,7 @@ struct PaywallView: View {
                        onboardingStateRef.annualDollarLineEnabled,
                        let dollarLine = currentPackages.flatMap({ PlanSavings.annualDollarLine(in: $0) }) {
                         Text(dollarLine)
-                            .font(.system(size: 11, weight: .medium))
+                            .cType(11, .medium)
                             .foregroundColor(.white.opacity(0.5))
                             // WRAPS. Caught in the iPad capture of the width
                             // cap: inside a 460pt column this line truncated to
@@ -870,7 +870,7 @@ struct PaywallView: View {
                        pkg.packageType == .annual || pkg.packageType == .monthly,
                        let offerLine = introOfferLine(for: pkg) {
                         Text(offerLine)
-                            .font(.system(size: 11, weight: .medium))
+                            .cType(11, .medium)
                             .foregroundColor(.white.opacity(0.65))
                             .onAppear {
                                 Analytics.track("offer_line_shown", props: [
@@ -883,7 +883,7 @@ struct PaywallView: View {
                 Spacer()
                 // LAW: the billed amount is the big number on every row.
                 Text("\(priceText)/\(unitText)")
-                    .font(.system(size: 16, weight: .semibold))
+                    .cType(16, .semibold)
                     .foregroundColor(.white.opacity(0.95))
             }
             .padding(.horizontal, 16)
@@ -899,7 +899,7 @@ struct PaywallView: View {
             .overlay(alignment: .topTrailing) {
                 if let pctOff {
                     Text("\(pctOff)% OFF")
-                        .font(.system(size: 10, weight: .heavy))
+                        .cType(10, .heavy)
                         .tracking(0.4)
                         .foregroundColor(.black)
                         .padding(.horizontal, 8)
@@ -943,7 +943,7 @@ struct PaywallView: View {
                     ProgressView().tint(.black)
                 } else {
                     Text(ctaText)
-                        .font(.system(size: 17, weight: .bold))
+                        .cType(17, .bold)
                 }
             }
             .foregroundColor(.black)
@@ -966,7 +966,7 @@ struct PaywallView: View {
     private var fineprint: some View {
         // The required auto-renew disclosure (no trial, so no reminder line).
         Text(TrialCopy.fineprint)
-            .font(.system(size: 11))
+            .cType(11)
             .foregroundColor(.white.opacity(0.4))
             .multilineTextAlignment(.center)
     }
@@ -986,7 +986,7 @@ struct PaywallView: View {
                 isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .cType(14, .bold)
                     .foregroundColor(.white)
                     .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial)
@@ -1020,18 +1020,18 @@ struct AbandonRecoveryOverlay: View {
             Color.black.opacity(0.72).ignoresSafeArea()
             VStack(spacing: 16) {
                 Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 38))
+                    .cType(38)
                     .foregroundColor(.green)
                 Text("No charge was made")
-                    .font(.system(size: 21, weight: .bold))
+                    .cType(21, .bold)
                     .foregroundColor(.white)
                 Text("You can upgrade to Pro whenever you're ready — nothing was charged.")
-                    .font(.system(size: 15))
+                    .cType(15)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                 Button(action: onBack) {
                     Text("Back to Pro")
-                        .font(.system(size: 16, weight: .semibold))
+                        .cType(16, .semibold)
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(Color.white, in: Capsule())
@@ -1048,10 +1048,10 @@ struct AbandonRecoveryOverlay: View {
                     } label: {
                         VStack(spacing: 2) {
                             Text("Or get Pro free")
-                                .font(.system(size: 14, weight: .semibold))
+                                .cType(14, .semibold)
                                 .foregroundColor(.white)
                             Text(ReferralCopy.offer)
-                                .font(.system(size: 12))
+                                .cType(12)
                                 .foregroundColor(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
                         }
@@ -1092,7 +1092,7 @@ struct ProCelebrationView: View {
             }
             .ignoresSafeArea()
 
-            ConversionScroll {
+            ConversionScroll(width: ConversionColumn.content) {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 88)
 
@@ -1101,7 +1101,7 @@ struct ProCelebrationView: View {
                         .padding(.bottom, 22)
 
                     Text(TrialCopy.proMomentTitle)
-                        .font(.system(size: 28, weight: .heavy))
+                        .cType(28, .heavy)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
@@ -1113,7 +1113,7 @@ struct ProCelebrationView: View {
                     Text(OnboardingState.shared.creditsEnabled
                          ? String(localized: "Your plan is active. Create as much as your monthly credits allow.")
                          : String(localized: "Everything's unlocked. No daily limit — create as much as you want."))
-                        .font(.system(size: 15))
+                        .cType(15)
                         .foregroundColor(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 36)
@@ -1123,11 +1123,11 @@ struct ProCelebrationView: View {
                         ForEach(unlocked, id: \.text) { item in
                             HStack(spacing: 12) {
                                 Image(systemName: item.icon)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .cType(14, .semibold)
                                     .foregroundColor(.white)
                                     .frame(width: 22)
                                 Text(item.text)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .cType(15, .medium)
                                     .foregroundColor(.white)
                                 Spacer()
                             }
@@ -1139,7 +1139,7 @@ struct ProCelebrationView: View {
                     .padding(.top, 26)
 
                     Text(TrialCopy.confirmationBody(price: price))
-                        .font(.system(size: 12))
+                        .cType(12)
                         .foregroundColor(.white.opacity(0.5))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 36)
@@ -1152,7 +1152,7 @@ struct ProCelebrationView: View {
                         onContinue()
                     } label: {
                         Text("Start creating")
-                            .font(.system(size: 17, weight: .bold))
+                            .cType(17, .bold)
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)

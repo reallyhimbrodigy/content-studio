@@ -30344,6 +30344,83 @@
           }
         }
       }
+    },
+    "Every friend who makes a video earns you free Pro": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every friend who makes a video earns you free Pro"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "كل صديق ينشئ فيديو يمنحك برو مجانًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "যে বন্ধু ভিডিও বানায়, সে আপনাকে ফ্রি Pro এনে দেয়"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Freund, der ein Video macht, bringt dir gratis Pro"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada amigo que hace un vídeo te da Pro gratis"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque ami qui fait une vidéo te donne du Pro gratuit"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हर दोस्त जो वीडियो बनाता है, आपको मुफ़्त Pro दिलाता है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiap teman yang bikin video kasih kamu Pro gratis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "友達が動画を作るたびに、Proが無料でもらえます"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भिडियो बनाउने हरेक साथीले तपाईंलाई निःशुल्क Pro दिलाउँछ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada amigo que faz um vídeo te dá Pro grátis"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہر دوست جو ویڈیو بنائے، آپ کو مفت Pro دلائے"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

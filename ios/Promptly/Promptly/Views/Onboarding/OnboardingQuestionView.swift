@@ -251,7 +251,7 @@ struct OnboardingQuestionView: View {
             }
             // The only width bound on the question column — capping here
             // constrains the header, the options and the CTA together.
-            .conversionColumn()
+            .conversionColumn(ConversionColumn.content)
         }
         #if DEBUG
         .task {

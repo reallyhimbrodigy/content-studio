@@ -137,7 +137,7 @@ struct VideoTypeQuestionView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
-            .conversionColumn()
+            .conversionColumn(ConversionColumn.content)
         }
         #if DEBUG
         .task {

@@ -59,7 +59,7 @@ struct FirstLaunchPaywallView: View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
 
-            ConversionScroll {
+            ConversionScroll(width: ConversionColumn.content) {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 64)
 
@@ -67,14 +67,14 @@ struct FirstLaunchPaywallView: View {
                         .padding(.bottom, 18)
 
                     Text("Videos that edit themselves")
-                        .font(.system(size: 30, weight: .heavy))
+                        .cType(30, .heavy)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                         .entrance(delay: 0.05)
 
                     Text("Talk to Promptly like an editor. Captions, cuts, graphics — done for you.")
-                        .font(.system(size: 16))
+                        .cType(16)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -111,7 +111,7 @@ struct FirstLaunchPaywallView: View {
                         .entrance(delay: 0.32)
 
                     Text(TrialCopy.fineprint)
-                        .font(.system(size: 11))
+                        .cType(11)
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -123,14 +123,14 @@ struct FirstLaunchPaywallView: View {
                                 if await subscription.restorePurchases() { finish() }
                             }
                         }
-                        .font(.system(size: 13))
+                        .cType(13)
                         .foregroundColor(.white.opacity(0.55))
 
                         HStack(spacing: 18) {
                             Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
                             Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
                         }
-                        .font(.system(size: 12))
+                        .cType(12)
                         .foregroundColor(.white.opacity(0.35))
                     }
                     .padding(.top, 18)
@@ -159,7 +159,7 @@ struct FirstLaunchPaywallView: View {
                 finish()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .cType(14, .semibold)
                     .foregroundColor(.white.opacity(0.6))
                     .frame(width: 34, height: 34)
                     .background(Circle().fill(Color.white.opacity(0.08)))
@@ -216,11 +216,11 @@ struct FirstLaunchPaywallView: View {
     private func benefitRow(icon: String, text: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .cType(15, .semibold)
                 .foregroundStyle(Color.white)
                 .frame(width: 24)
             Text(text)
-                .font(.system(size: 15))
+                .cType(15)
                 .foregroundColor(.white.opacity(0.88))
         }
     }
@@ -252,11 +252,11 @@ struct FirstLaunchPaywallView: View {
                              : pkg.packageType == .monthly ? "Monthly"
                              : pkg.packageType == .weekly ? "Weekly"
                              : "Promptly Pro")
-                            .font(.system(size: 16, weight: .semibold))
+                            .cType(16, .semibold)
                             .foregroundColor(.white)
                         if isFirst {
                             Text("BEST VALUE")
-                                .font(.system(size: 9, weight: .heavy))
+                                .cType(9, .heavy)
                                 .tracking(0.6)
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 6)
@@ -265,13 +265,13 @@ struct FirstLaunchPaywallView: View {
                         }
                     }
                     Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
-                        .font(.system(size: 13))
+                        .cType(13)
                         .foregroundColor(.white.opacity(0.7))
                     // Both SKUs in weekly terms: annual carries the per-week
                     // anchor; the weekly SKU's price line is already per-week.
                     if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
-                            .font(.system(size: 11, weight: .medium))
+                            .cType(11, .medium)
                             .foregroundColor(.white.opacity(0.55))
                     }
                 }
@@ -307,7 +307,7 @@ struct FirstLaunchPaywallView: View {
             HStack {
                 if isPurchasing { ProgressView().tint(.black) }
                 Text(isPurchasing ? "One moment…" : "Get Started")
-                    .font(.system(size: 17, weight: .bold))
+                    .cType(17, .bold)
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)

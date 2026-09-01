@@ -71,7 +71,7 @@ struct OfferRevealView: View {
                        let lead = PaywallPersonalization.lead(audience: onboarding.v2Audience,
                                                                videoType: onboarding.v2VideoType) {
                         Text(lead)
-                            .font(.system(size: 15, weight: .medium))
+                            .cType(15, .medium)
                             .foregroundColor(.white.opacity(0.6))
                             .multilineTextAlignment(.center)
                             .padding(.bottom, 4)
@@ -79,7 +79,7 @@ struct OfferRevealView: View {
 
                     Text(offerPackage.map { OfferReveal.headline(for: $0) }
                          ?? String(localized: "Your first subscription"))
-                        .font(.system(size: 28, weight: .bold))
+                        .cType(28, .bold)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -104,11 +104,11 @@ struct OfferRevealView: View {
                                 ZStack {
                                     Circle().fill(Color.white).frame(width: 24, height: 24)
                                     Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .heavy))
+                                        .cType(11, .heavy)
                                         .foregroundColor(.black)
                                 }
                                 Text(line)
-                                    .font(.system(size: 16, weight: .medium))
+                                    .cType(16, .medium)
                                     .foregroundColor(.white)
                                 Spacer()
                             }
@@ -131,7 +131,7 @@ struct OfferRevealView: View {
                             if isPurchasing { ProgressView().tint(.black) }
                             else { Text(offerPackage.map { OfferReveal.ctaLabel(for: $0) }
                                         ?? String(localized: "Continue"))
-                                        .font(.system(size: 17, weight: .bold)) }
+                                        .cType(17, .bold) }
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity).frame(height: 56)
@@ -156,7 +156,7 @@ struct OfferRevealView: View {
                         onDecline()
                     } label: {
                         Text(String(localized: "Decline offer"))
-                            .font(.system(size: 14, weight: .medium))
+                            .cType(14, .medium)
                             .foregroundColor(.white.opacity(0.6))
                     }
                     .padding(.top, 18)
@@ -170,7 +170,7 @@ struct OfferRevealView: View {
                     // the user scrolling to find it in one language and not
                     // another. Measured on the longest of the twelve.
                     Text(TrialCopy.fineprint)
-                        .font(.system(size: 11))
+                        .cType(11)
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -180,7 +180,7 @@ struct OfferRevealView: View {
                 }
                 // Root cause of the whole surface's iPad stretch: this was the
                 // only width bound on the reveal column.
-                .conversionColumn()
+                .conversionColumn(ConversionColumn.content)
             }
         }
         .onAppear {
@@ -266,7 +266,7 @@ struct OfferRevealView: View {
                 // place it in. Interpolated as a whole sentence, the translator
                 // moves %@ and %lld wherever their grammar needs them.
                 Text(String(localized: "Or start monthly for \(intro.localizedPriceString) (\(pct)% off)"))
-                    .font(.system(size: 14, weight: .medium))
+                    .cType(14, .medium)
                     .foregroundColor(.white.opacity(0.75))
                     .underline()
                     .multilineTextAlignment(.center)
@@ -289,7 +289,7 @@ struct OfferRevealView: View {
 
     private var oneTimeBadge: some View {
         Text(String(localized: "ONE TIME OFFER"))
-            .font(.system(size: 12, weight: .heavy))
+            .cType(12, .heavy)
             .tracking(1.4)
             .foregroundColor(.black)
             .padding(.horizontal, 14)
@@ -325,17 +325,17 @@ struct OfferRevealView: View {
         VStack(spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(pkg.storeProduct.localizedPriceString)
-                    .font(.system(size: 20, weight: .semibold))
+                    .cType(20, .semibold)
                     .foregroundColor(.white.opacity(0.5))
                     .strikethrough(true, color: .white.opacity(0.5))
                 if let intro = pkg.storeProduct.introductoryDiscount?.localizedPriceString {
                     Text(intro)
-                        .font(.system(size: 34, weight: .heavy))
+                        .cType(34, .heavy)
                         .foregroundColor(.white)
                 }
             }
             Text(OfferReveal.termLine(for: pkg))
-                .font(.system(size: 13))
+                .cType(13)
                 .foregroundColor(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
         }
