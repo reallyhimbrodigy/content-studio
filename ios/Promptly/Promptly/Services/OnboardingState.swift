@@ -72,6 +72,13 @@ final class OnboardingState: ObservableObject {
     /// default like every other experiment.
     @Published private(set) var referralProgressEnabled = false
 
+    /// Free text from Q2's "Something else". Persisted so personalisation can
+    /// use a real answer instead of the `other` bucket, which returns nil
+    /// everywhere and therefore personalises nothing.
+    @Published var v2VideoTypeOther: String? = UserDefaults.standard.string(forKey: "v2_video_type_other") {
+        didSet { UserDefaults.standard.set(v2VideoTypeOther, forKey: "v2_video_type_other") }
+    }
+
     @Published private(set) var postrenderSaveCtaEnabled = false
     @Published private(set) var chatMediaEnabled = false
     @Published private(set) var firstSessionAutopickerEnabled = false

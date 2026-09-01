@@ -31,6 +31,7 @@ struct AuthView: View {
         ZStack {
             backgroundLayer
 
+            GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 24) {
                     Spacer(minLength: 56)
@@ -69,8 +70,21 @@ struct AuthView: View {
                 // this the SignInWithAppleButton stretches across an
                 // 1180pt-wide screen which both looks broken and is what
                 // Apple flagged in the App Review rejection of build 151.
+                //
+                // THE 460 STAYS — it is the rejection fix and it is not a
+                // number to tune. What was missing is the OTHER axis: capped
+                // horizontally and pinned to the top, the form sat in the upper
+                // third of a 1366pt screen with everything below it black. The
+                // column was right and the page still read as broken.
                 .frame(maxWidth: 460)
                 .frame(maxWidth: .infinity)
+                // minHeight, not a fixed height, and that distinction is what
+                // makes this safe on a phone: when the form is TALLER than the
+                // viewport — a small iPhone with the keyboard up — the
+                // constraint does not bind and it scrolls exactly as before. It
+                // only ever fills space that was already empty.
+                .frame(minHeight: max(0, geo.size.height - 48))
+                .padding(.vertical, 24)
             }
             .scrollDismissesKeyboard(.interactively)
             // Note: deliberately NOT using .dismissKeyboardOnTap() here.
@@ -79,6 +93,7 @@ struct AuthView: View {
             // button can handle them — caused App Review rejection of
             // build 151. .scrollDismissesKeyboard(.interactively) above
             // handles keyboard dismissal via swipe, which is enough.
+            }
         }
         .preferredColorScheme(.dark)
         .fullScreenCover(item: Binding(

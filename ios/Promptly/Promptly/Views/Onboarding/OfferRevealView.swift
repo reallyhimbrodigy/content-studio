@@ -169,9 +169,22 @@ struct OfferRevealView: View {
                         Analytics.track("offer_reveal_declined", props: ["context": "onboarding_v2"])
                         onDecline()
                     } label: {
+                        // LEGIBLE, NORMAL SIZE. It was 14pt at 60% white, which
+                        // is the styling of something you are meant to overlook
+                        // — and an escape hatch you cannot find is a dark
+                        // pattern whatever the intent. The primary is still
+                        // dominant by fill and size; this only has to be
+                        // readable and obviously tappable.
+                        //
+                        // A LARGER TAP TARGET TOO: a bare Text button hit-tests
+                        // to the glyphs, well under the 44pt minimum, on the one
+                        // control someone frustrated is reaching for.
                         Text(String(localized: "Decline offer"))
-                            .cType(14, .medium)
-                            .foregroundColor(.white.opacity(0.6))
+                            .cType(16, .medium)
+                            .foregroundColor(.white.opacity(0.82))
+                            .frame(minHeight: 44)
+                            .padding(.horizontal, 20)
+                            .contentShape(Rectangle())
                     }
                     .padding(.top, 18)
 
@@ -279,12 +292,26 @@ struct OfferRevealView: View {
                 // A translator handed the fragment "off" has no sentence to
                 // place it in. Interpolated as a whole sentence, the translator
                 // moves %@ and %lld wherever their grammar needs them.
+                // A REAL SECONDARY BUTTON, not an underlined sentence.
+                //
+                // Underlined text reads as a footnote or a legal link, so the
+                // monthly plan — an actual thing the user can buy — was styled
+                // like fine print and sat below the fold of attention. A
+                // bordered capsule says "this is tappable" without competing
+                // with the filled primary above it: the hierarchy is carried by
+                // FILL versus OUTLINE, which is the standard idiom, rather than
+                // by making the alternative hard to see.
                 Text(String(localized: "Or start monthly for \(intro.localizedPriceString) (\(pct)% off)"))
-                    .cType(14, .medium)
-                    .foregroundColor(.white.opacity(0.75))
-                    .underline()
+                    .cType(15, .semibold)
+                    .foregroundColor(.white.opacity(0.92))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(
+                        Capsule().strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+                    )
+                    .contentShape(Capsule())
             }
             .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
             .disabled(isPurchasing)

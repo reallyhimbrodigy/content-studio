@@ -51,6 +51,39 @@ struct VideoTypeQuestionView: View {
 
     private var canContinue: Bool { type != nil }
 
+    @FocusState private var otherFocused: Bool
+
+    /// The free-text answer for "Something else".
+    ///
+    /// Stored under its own key rather than squeezed into the compound key: the
+    /// compound key is parsed by `contentTypeV2` and friends, and a user's
+    /// arbitrary sentence has no business in a field those switch on. This is
+    /// data for personalisation to READ, not a new enum case to guess at.
+    @State private var otherText: String = ""
+
+    private var otherField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("", text: $otherText, prompt:
+                Text(String(localized: "What kind of videos?"))
+                    .foregroundColor(.white.opacity(0.35)))
+                .textInputAutocapitalization(.sentences)
+                .autocorrectionDisabled(false)
+                .focused($otherFocused)
+                .font(.system(size: 16))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 52)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(otherFocused ? 0.28 : 0.10), lineWidth: 1))
+                // OPTIONAL. Continue already gates on the type alone, and
+                // demanding a sentence here would turn the escape hatch into a
+                // second question — which is what the removed chips did.
+                .submitLabel(.done)
+        }
+    }
+
     /// The internal encoding: "type:style", or bare type when no style was
     /// chosen. Never rendered.
     private var compoundKey: String? {
@@ -103,12 +136,24 @@ struct VideoTypeQuestionView: View {
                             typeRow(opt.key, opt.label)
                         }
 
-                        // The style control. Appears once a type is chosen —
-                        // asking for a register before knowing the subject is
-                        // noise — and stays optional.
-                        if type != nil && type != "other" {
-                            styleControl
-                                .padding(.top, 18)
+                        // STYLE CHIPS REMOVED. They asked for a second answer
+                        // before the first one had done anything, and the same
+                        // three labels are already asked — better — by
+                        // InstantQuestionCard at the moment a render starts,
+                        // where the user has context and the answer is about
+                        // the clip in front of them.
+                        //
+                        // FREE TEXT ON "SOMETHING ELSE", which is the change
+                        // that earns its place. Picking it used to store the
+                        // bare key `other`, and `other` returns nil from
+                        // contentTypeV2, PaywallPersonalization.contentNoun and
+                        // ProBenefits.personalised — so every user who did not
+                        // fit the five presets fell into a bucket that
+                        // personalises nothing and tells us nothing. Their
+                        // answer existed and was thrown away.
+                        if type == "other" {
+                            otherField
+                                .padding(.top, 14)
                                 .transition(reduceMotion ? .opacity
                                             : .opacity.combined(with: .move(edge: .bottom)))
                         }
@@ -121,6 +166,14 @@ struct VideoTypeQuestionView: View {
 
                 Button {
                     guard let key = compoundKey else { return }
+                    // Store the free text alongside the key. Trimmed, and only
+                    // when non-empty — an empty string would read downstream as
+                    // "they answered nothing", which is exactly what `other`
+                    // already means and would gain nothing.
+                    let trimmed = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if key == "other", !trimmed.isEmpty {
+                        OnboardingState.shared.v2VideoTypeOther = trimmed
+                    }
                     onContinue([key])
                 } label: {
                     Text("Continue")
