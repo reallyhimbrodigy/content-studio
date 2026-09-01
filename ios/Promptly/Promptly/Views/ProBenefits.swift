@@ -81,9 +81,28 @@ enum ProBenefits {
                        text: String(localized: "\(monthlyVideos(credits: c)) videos a month"))
     }
 
-    static let core: [Benefit] = [
-        Benefit(icon: "infinity",
-                text: String(localized: "Unlimited videos, no daily cap")),
+    /// `core` is now COMPUTED, not a constant, and that is the whole fix.
+    ///
+    /// `headlineVideoClaim` existed with the right logic and ZERO CALLERS — the
+    /// only mention of it outside this file was a comment. So the claim that was
+    /// supposed to switch when the meter arms was never on any screen: every
+    /// paywall read this array, and this array said "Unlimited" unconditionally.
+    /// The rewrite was not covered and did not regress; it was never wired.
+    ///
+    /// A static array cannot answer a question about runtime state, so the
+    /// first row has to be resolved when it is read. Every surface reads `core`,
+    /// so wiring it here reaches all of them at once — the same reason the list
+    /// was centralised in the first place.
+    /// @MainActor because it reads OnboardingState, which is MainActor-isolated.
+    /// Every caller is already a SwiftUI view body, so this costs nothing — and
+    /// the compiler refusing the nonisolated read is the correct outcome: a
+    /// paywall claim resolved off the main actor could disagree with the flag
+    /// the rest of the screen is drawing from.
+    @MainActor
+    static var core: [Benefit] {
+        [
+        headlineVideoClaim(creditsEnabled: OnboardingState.shared.creditsEnabled,
+                           monthlyCredits: OnboardingState.shared.creditsMonthlyAllowance),
         Benefit(icon: "captions.bubble.fill",
                 text: String(localized: "Captions, cuts and graphics — automatic")),
         Benefit(icon: "arrow.uturn.left",
@@ -94,10 +113,12 @@ enum ProBenefits {
                 text: String(localized: "Unlimited AI chats")),
         Benefit(icon: "square.and.arrow.down",
                 text: String(localized: "Save and share every video")),
-    ]
+        ]
+    }
 
     /// The first `n` claims, for surfaces with less room. Never a hand-picked
     /// subset — see the note on `core`.
+    @MainActor
     static func top(_ n: Int) -> [Benefit] { Array(core.prefix(max(0, n))) }
 
     /// The same claim SET, with the first two lines rewritten in the user's own
@@ -107,6 +128,7 @@ enum ProBenefits {
     ///
     /// Note it substitutes BY INDEX into `core` rather than rebuilding a list:
     /// that is what makes the tail impossible to drift.
+    @MainActor
     static func personalised(audience: String?, videoType: String?) -> [Benefit] {
         var out = core
 
@@ -155,6 +177,7 @@ enum ProBenefits {
     }
 
     /// Text-only convenience for surfaces that render their own row style.
+    @MainActor
     static func lines(audience: String? = nil, videoType: String? = nil) -> [String] {
         personalised(audience: audience, videoType: videoType).map(\.text)
     }

@@ -50,6 +50,12 @@ final class OnboardingState: ObservableObject {
     /// Credits meter — read/display half only (the client cannot debit;
     /// RevenueCat Virtual Currencies is read-only on device, SDK 5.75.0).
     @Published private(set) var creditsEnabled = false
+    /// Monthly credit allowance for the CURRENT tier, served alongside the
+    /// credits flag. nil while the meter is dark or the server has not said —
+    /// and nil is what keeps the paywall honest: `headlineVideoClaim` falls back
+    /// to the unlimited wording rather than inventing a number, so a missing
+    /// value can never become a false claim about what money buys.
+    @Published private(set) var creditsMonthlyAllowance: Int? = nil
     /// The render-progress rebuild: framed source + ring, no bullet list.
     @Published private(set) var progressRingEnabled = false
     /// Before/after compare in the delivered-video bubble.
@@ -158,6 +164,7 @@ final class OnboardingState: ObservableObject {
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
+            creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
             progressRingEnabled = (obj?["progress_ring"] as? String) == "on"
             beforeAfterEnabled = (obj?["before_after"] as? String) == "on"
             instantQuestionsEnabled = (obj?["instant_questions"] as? String) == "on"

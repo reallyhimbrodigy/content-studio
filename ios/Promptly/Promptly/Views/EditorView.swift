@@ -4168,20 +4168,6 @@ struct PendingVideoThumb: View {
     }
 }
 
-struct CircularProgressRing: View {
-    let progress: Double
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.25), lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: max(0.02, progress))
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.2), value: progress)
-        }
-    }
-}
 
 
 /// Marker thrown by runLayer2Validate when the backend /validate

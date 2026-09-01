@@ -494,6 +494,7 @@ enum OfferReveal {
     /// only asks for the personalised variant. Before 2026-08-28 this function
     /// owned its own list and the first-launch paywall owned a different one,
     /// which is how they drifted apart without anything noticing.
+    @MainActor
     static func benefitLines(audience: String?, videoType: String?) -> [String] {
         ProBenefits.lines(audience: audience, videoType: videoType)
     }

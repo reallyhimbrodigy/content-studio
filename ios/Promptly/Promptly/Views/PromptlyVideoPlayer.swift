@@ -1098,26 +1098,3 @@ final class PromptlyPlayerHostVC: UIHostingController<PromptlyPlayerView> {
     }
 }
 
-// MARK: - Buffering spinner
-//
-// Center-screen indicator that pops in when AVPlayer stalls mid-playback.
-// Matches the visual weight of the play/pause button (76pt circle) so
-// the eye stays anchored to the same focal point. ultraThinMaterial
-// keeps it legible over any frame — bright daylight shots and dark
-// night scenes alike — without a hard chip that would feel out of place.
-struct BufferingSpinner: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: 64, height: 64)
-                .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
-            ProgressView()
-                .progressViewStyle(.circular)
-                .tint(.white)
-                .scaleEffect(1.15)
-        }
-        .accessibilityLabel("Loading")
-    }
-}
