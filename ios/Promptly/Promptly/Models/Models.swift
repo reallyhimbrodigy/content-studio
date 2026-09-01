@@ -876,9 +876,9 @@ enum PipelineCatalog {
         PipelineStage(id: "captions",     title: String(localized: "Adding your captions"), icon: "text.bubble",               authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "sfx",          title: String(localized: "Adding sounds"),        icon: "speaker.wave.2",            authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "transitions",  title: String(localized: "Making it flow better"),         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "encode",       title: String(localized: "Almost done"),                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "encode",       title: String(localized: "Saving your video"),                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "thumbnail",    title: String(localized: "Choosing your cover picture"),      icon: "photo.on.rectangle",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "upload",       title: String(localized: "Finishing up"),          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
+        PipelineStage(id: "upload",       title: String(localized: "Almost done"),          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
     ]
 
     static func stages(for mode: String) -> [PipelineStage] {
