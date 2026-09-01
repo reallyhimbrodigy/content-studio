@@ -31075,6 +31075,83 @@
           }
         }
       }
+    },
+    "%lld videos a month, plus early access to new features": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld videos a month, plus early access to new features"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld فيديو في الشهر، مع وصول مبكر للميزات الجديدة"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মাসে %lld টি ভিডিও, আর নতুন ফিচারে আগেভাগে অ্যাক্সেস"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Videos im Monat, plus früher Zugang zu neuen Funktionen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeos al mes, y acceso anticipado a lo nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vidéos par mois, et accès en avant-première aux nouveautés"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "महीने में %lld वीडियो, और नई सुविधाएँ सबसे पहले"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld video sebulan, plus akses awal ke fitur baru"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月に%lld本、新機能も先に使えます"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "महिनाको %lld भिडियो, र नयाँ सुविधामा पहिले पहुँच"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeos por mês, e acesso antecipado às novidades"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مہینے میں %lld ویڈیوز، اور نئی خصوصیات تک پہلے رسائی"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

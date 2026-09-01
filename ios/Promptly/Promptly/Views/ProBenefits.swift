@@ -126,6 +126,21 @@ enum ProBenefits {
         return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
     }
 
+    /// The MAX claim, shown only when a Max product is actually on offer.
+    ///
+    /// Gated on the credits flag with everything else, because "100 videos a
+    /// month" is a credits statement — with the meter dark there is no such
+    /// number and the line would be describing a product the user cannot get.
+    ///
+    /// The 100 is DERIVED, not typed: Max maps to 1000 credits and a video
+    /// costs 10, so the claim and the meter cannot drift. If Zac configures Max
+    /// at a different allowance, this sentence follows without an edit.
+    @MainActor
+    static func maxClaim(monthlyCredits: Int) -> Benefit {
+        Benefit(icon: "sparkles",
+                text: String(localized: "\(monthlyVideos(credits: monthlyCredits)) videos a month, plus early access to new features"))
+    }
+
     /// `core` is now COMPUTED, not a constant, and that is the whole fix.
     ///
     /// `headlineVideoClaim` existed with the right logic and ZERO CALLERS — the

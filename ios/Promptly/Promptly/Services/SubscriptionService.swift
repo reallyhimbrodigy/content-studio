@@ -331,7 +331,25 @@ final class SubscriptionService: ObservableObject {
         }
     }
 
+    /// TIER FIRST, THEN DURATION. Max sits above Pro, which duration alone
+    /// cannot express — a Max monthly and a Pro monthly are the same
+    /// PackageType, so the old comparator interleaved them by whatever order
+    /// the offering happened to return.
+    ///
+    /// The tier is derived from the ALLOWANCE the product maps to, not from a
+    /// hardcoded product id: `promptly_max_monthly` sorts above Pro because
+    /// CreditAllowance says it is worth 1000 credits, and any future tier
+    /// configured in the dashboard sorts itself. Nothing here needs to know
+    /// that "max" exists.
+    ///
+    /// Products with no known allowance rank last among tiers rather than
+    /// first — an unrecognised product should not lead the paywall.
     static func sortedByDuration(_ packages: [Package]) -> [Package] {
+        func tierRank(_ p: Package) -> Int {
+            guard let m = CreditAllowance.monthly(forProductId: p.storeProduct.productIdentifier)
+            else { return Int.max }
+            return -m   // higher allowance sorts first
+        }
         func rank(_ t: PackageType) -> Int {
             switch t {
             case .lifetime: return 0
@@ -345,7 +363,10 @@ final class SubscriptionService: ObservableObject {
             }
         }
         return packages.enumerated()
-            .sorted { (rank($0.element.packageType), $0.offset) < (rank($1.element.packageType), $1.offset) }
+            .sorted {
+                (tierRank($0.element), rank($0.element.packageType), $0.offset)
+                    < (tierRank($1.element), rank($1.element.packageType), $1.offset)
+            }
             .map(\.element)
     }
 
