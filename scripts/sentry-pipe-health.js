@@ -70,14 +70,35 @@ function getJSON(host, pathname, headers) {
     return Promise.resolve({ status: 200, body: fx[key] !== undefined ? fx[key] : (key === 'keys' ? [] : {}), headers: {} });
   }
   return new Promise((resolve) => {
-    https.get({ host, path: pathname, headers }, (res) => {
+    // TIMEOUT, because this check HUNG FOR OVER TEN MINUTES on 2026-09-01 and
+    // produced ZERO bytes of output. The network was fine throughout — from the
+    // same machine, sentry.io answered a plain GET in 0.2s and Apple's API in
+    // 0.4s — while this process simply sat there. `https.get` sets no default
+    // timeout, so a single stalled socket hangs the request forever.
+    //
+    // A HUNG MONITOR IS WORSE THAN A FAILING ONE. A failure prints something a
+    // person can act on. A hang prints nothing, and in a cron "nothing" is
+    // indistinguishable from a quiet, healthy night — so the check would go on
+    // not-reporting indefinitely and read as calm. This one had returned PASS
+    // all day; the single thing it could not report was its own inability to
+    // run.
+    //
+    // 20s, then destroy the socket and resolve as unreadable, so the caller
+    // exits 2 — already defined here as CANNOT READ, explicitly "not the same
+    // as healthy", which is exactly the right verdict for a stall.
+    const req = https.get({ host, path: pathname, headers, timeout: 20000 }, (res) => {
       let d = '';
       res.on('data', (c) => (d += c));
       res.on('end', () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(d || '{}'), headers: res.headers }); }
         catch { resolve({ status: res.statusCode, body: null, raw: d.slice(0, 300) }); }
       });
-    }).on('error', (e) => resolve({ status: 0, body: null, error: e.message }));
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ status: 0, body: null, error: `timeout after 20s — ${host}${pathname.split('?')[0]}` });
+    });
+    req.on('error', (e) => resolve({ status: 0, body: null, error: e.message }));
   });
 }
 
