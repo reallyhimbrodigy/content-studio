@@ -172,4 +172,41 @@ PYEOF
 pair_rc=$?
 [ "$pair_rc" -ne 0 ] && exit "$pair_rc"
 
+# ── PLURAL AGREEMENT ─────────────────────────────────────────────────────
+# A count next to a countable noun with no plural variation renders "1 videos".
+# This was live on the paywall in EVERY language including English, because
+# FREE_DAILY_RENDERS is 1 — so the broken form was not an edge case, it was what
+# 100% of free users read. It survived a full localisation pass, a plain-language
+# pass and a register pass, because every one of those checks the WORDS and none
+# of them checks the NUMBER.
+#
+# Only flags strings that pair a count with a listed countable noun. A bare
+# "%lld%% off" or "Step %lld of %lld" has nothing to agree with.
+python3 - <<'PYEOF'
+import json, re, sys
+NOUNS = r"(videos?|clips?|chats?|messages?|credits?|days?|weeks?|months?|years?|friends?|people|person)"
+cat = json.load(open("Promptly/Localizable.xcstrings"))["strings"]
+bad = []
+for k, e in cat.items():
+    if not re.search(r"%(\d+\$)?lld", k):
+        continue
+    # Inflection markup handles agreement automatically — that is the good path.
+    if "inflect:" in k:
+        continue
+    if not re.search(r"%(\d+\$)?lld\s+\w*\s*" + NOUNS, k, re.I):
+        continue
+    en = e.get("localizations", {}).get("en", {})
+    if "variations" not in en:
+        bad.append(k)
+if bad:
+    print(f"plural-agreement: FAIL — {len(bad)} count string(s) can render \"1 videos\"")
+    for b in sorted(bad):
+        print("   ", b[:88])
+    print("  Add a plural variation, or use ^[%lld thing](inflect: true).")
+    sys.exit(1)
+print("plural-agreement: PASS — every count+noun string handles the singular")
+PYEOF
+plural_rc=$?
+[ "$plural_rc" -ne 0 ] && exit "$plural_rc"
+
 echo "plain-language-gate: PASS — no engineering vocabulary in user-facing copy."

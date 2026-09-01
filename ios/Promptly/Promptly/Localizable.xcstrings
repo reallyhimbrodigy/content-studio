@@ -235,6 +235,24 @@
             "state": "translated",
             "value": "%lld کریڈٹس واپس — وہ رینڈر شمار نہیں ہوا"
           }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credit refunded — that render didn't count"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credits refunded — that render didn't count"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -253,21 +271,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Tage"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Tag"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Tage"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld días"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld día"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld días"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld jours"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld jour"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld jours"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -295,15 +349,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld dias"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld dia"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld dias"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "%lld دن"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -323,21 +407,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Noch %lld Gratis-Videos heute"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Noch %lld Gratis-Video heute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Noch %lld Gratis-Videos heute"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Te quedan %lld vídeos gratis hoy"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Queda %lld vídeo gratis hoy"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Quedan %lld vídeos gratis hoy"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il te reste %lld vidéos gratuites aujourd'hui"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Il te reste %lld vidéo gratuite aujourd'hui"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Il te reste %lld vidéos gratuites aujourd'hui"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -365,15 +485,57 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restam %lld vídeos grátis hoje"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Resta %lld vídeo grátis hoje"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restam %lld vídeos grátis hoje"
+                }
+              }
+            }
           }
         },
         "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "آج %lld مفت ویڈیوز باقی"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "آج %lld مفت ویڈیو باقی"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "آج %lld مفت ویڈیوز باقی"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld free video left today"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld free videos left today"
+                }
+              }
+            }
           }
         }
       }
@@ -393,21 +555,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Monate"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Monat"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Monate"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld meses"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mes"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld meses"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld mois"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mois"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mois"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -435,15 +633,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld meses"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mês"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld meses"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "%lld مہینے"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld month"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld months"
+                }
+              }
+            }
           }
         }
       }
@@ -463,21 +691,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld eingeladene Personen haben ein Video gemacht"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Person, die du eingeladen hast, hat ein Video gemacht"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Personen, die du eingeladen hast, haben ein Video gemacht"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld personas que invitaste han hecho un vídeo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld persona que invitaste ha hecho un vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld personas que invitaste han hecho un vídeo"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld personnes que tu as invitées ont fait une vidéo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld personne que tu as invitée a fait une vidéo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld personnes que tu as invitées ont fait une vidéo"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -505,15 +769,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pessoas que você convidou fizeram um vídeo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pessoa que você convidou fez um vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pessoas que você convidou fizeram um vídeo"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "آپ کے مدعو کردہ %lld افراد نے ویڈیو بنائی ہے"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld person you invited has made a video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld people you invited have made a video"
+                }
+              }
+            }
           }
         }
       }
@@ -533,21 +827,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld heute"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld heute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld heute"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld hoy"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hoy"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hoy"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld aujourd'hui"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld aujourd'hui"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld aujourd'hui"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -575,15 +905,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld hoje"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hoje"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hoje"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "آج %lld"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld today"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld today"
+                }
+              }
+            }
           }
         }
       }
@@ -604,21 +964,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Videos pro Monat"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Video im Monat"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Videos im Monat"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vídeos al mes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo al mes"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos al mes"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vidéos par mois"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéo par mois"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéos par mois"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -646,15 +1042,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vídeos por mês"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo por mês"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos por mês"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "ہر ماہ %lld ویڈیوز"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video a month"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos a month"
+                }
+              }
+            }
           }
         }
       }
@@ -675,21 +1101,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "noch %lld Videos"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Video übrig"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Videos übrig"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vídeos restantes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Queda %lld vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Quedan %lld vídeos"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vidéos restantes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéo restante"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéos restantes"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -717,15 +1179,57 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "restam %lld vídeos"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Resta %lld vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restam %lld vídeos"
+                }
+              }
+            }
           }
         },
         "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld ویڈیوز باقی"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ویڈیو باقی"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ویڈیوز باقی"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video left"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos left"
+                }
+              }
+            }
           }
         }
       }
@@ -745,21 +1249,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Wochen"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Woche"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Wochen"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld semanas"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semana"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semanas"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld semaines"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semaine"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semaines"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -787,15 +1327,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld semanas"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semana"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld semanas"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "%lld ہفتے"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld week"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld weeks"
+                }
+              }
+            }
           }
         }
       }
@@ -815,21 +1385,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Jahre"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Jahr"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Jahre"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld años"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld año"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld años"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld ans"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld an"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ans"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -857,15 +1463,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld anos"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ano"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld anos"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "%lld سال"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld year"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld years"
+                }
+              }
+            }
           }
         }
       }
@@ -7240,21 +7876,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Gratis-Tarif enthält %lld KI-Chatnachrichten pro Tag. Upgrade für unbegrenzt."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis enthält %lld KI-Chatnachricht pro Tag. Mit Pro unbegrenzt."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis enthält %lld KI-Chatnachrichten pro Tag. Mit Pro unbegrenzt."
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "El plan gratuito incluye %lld mensajes de chat de IA al día. Mejora para tenerlos sin límite."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis incluye %lld mensaje de chat al día. Mejora para tener ilimitados."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis incluye %lld mensajes de chat al día. Mejora para tener ilimitados."
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La version gratuite inclut %lld messages de discussion IA par jour. Passez à l'illimité."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "En gratuit tu as %lld message de chat par jour. Passe à Pro pour l'illimité."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "En gratuit tu as %lld messages de chat par jour. Passe à Pro pour l'illimité."
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -7282,15 +7954,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O plano gratuito inclui %lld mensagens de chat de IA por dia. Faça upgrade para ilimitado."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "O grátis inclui %lld mensagem de chat por dia. Assine o Pro para ter ilimitado."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "O grátis inclui %lld mensagens de chat por dia. Assine o Pro para ter ilimitado."
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "مفت پلان میں روزانہ %lld AI چیٹ پیغامات شامل ہیں۔ لامحدود کے لیے اپ گریڈ کریں۔"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld AI chat message per day. Upgrade for unlimited."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld AI chat messages per day. Upgrade for unlimited."
+                }
+              }
+            }
           }
         }
       }
@@ -7361,6 +8063,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "مفت پلان میں روزانہ %lld ویڈیو رینڈرز شامل ہیں۔ لامحدود کے لیے Pro لیں۔"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld video per day. Upgrade to Pro for unlimited."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld videos per day. Upgrade to Pro for unlimited."
+                }
+              }
+            }
           }
         }
       }
@@ -21631,21 +22351,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du hast %lld Tage Pro erhalten"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Du hast %lld Tag Pro bekommen"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Du hast %lld Tage Pro bekommen"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Has ganado %lld días de Pro"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Ganaste %lld día de Pro"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Ganaste %lld días de Pro"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vous avez gagné %lld jours de Pro"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Tu as gagné %lld jour de Pro"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Tu as gagné %lld jours de Pro"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -21673,15 +22429,45 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Você ganhou %lld dias de Pro"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Você ganhou %lld dia de Pro"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Você ganhou %lld dias de Pro"
+                }
+              }
+            }
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "آپ نے %lld دن کا Pro حاصل کیا"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "You earned %lld day of Pro"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "You earned %lld days of Pro"
+                }
+              }
+            }
           }
         }
       }
@@ -26628,9 +27414,21 @@
       "extractionState": "manual",
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld of %2$lld friends have made a video"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friend has made a video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friends have made a video"
+                }
+              }
+            }
           }
         },
         "ar": {
@@ -26646,21 +27444,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld von %2$lld Freunden haben ein Video erstellt"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld von %2$lld Freund hat ein Video gemacht"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld von %2$lld Freunden haben ein Video gemacht"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld de %2$lld amigos han hecho un vídeo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigo ha hecho un vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigos han hecho un vídeo"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld ami(e)s sur %2$lld ont créé une vidéo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld ami sur %2$lld a fait une vidéo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld amis sur %2$lld ont fait une vidéo"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -26688,9 +27522,21 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld de %2$lld amigos criaram um vídeo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigo fez um vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigos fizeram um vídeo"
+                }
+              }
+            }
           }
         },
         "ur": {
@@ -28168,39 +29014,111 @@
       "extractionState": "manual",
       "localizations": {
         "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "المجاني يمنحك %lld فيديو في اليوم. برو يمنحك ما تشاء."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "المجاني يمنحك فيديو واحدًا في اليوم. برو يمنحك ما تشاء."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "المجاني يمنحك %lld فيديو في اليوم. برو يمنحك ما تشاء."
+                }
+              }
+            }
           }
         },
         "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
+                }
+              }
+            }
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gratis bekommst du %lld Videos am Tag. Mit Pro so viele du willst."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis bekommst du %lld Video am Tag. Mit Pro so viele du willst."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis bekommst du %lld Videos am Tag. Mit Pro so viele du willst."
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gratis te da %lld vídeos al día. Pro te da todos los que quieras."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis te da %lld vídeo al día. Pro te da todos los que quieras."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Gratis te da %lld vídeos al día. Pro te da todos los que quieras."
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En gratuit tu as %lld vidéos par jour. Avec Pro, autant que tu veux."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "En gratuit tu as %lld vidéo par jour. Avec Pro, autant que tu veux."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "En gratuit tu as %lld vidéos par jour. Avec Pro, autant que tu veux."
+                }
+              }
+            }
           }
         },
         "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "मुफ़्त में रोज़ %lld वीडियो मिलते हैं। Pro में जितने चाहें।"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "मुफ़्त में रोज़ %lld वीडियो मिलता है। Pro में जितने चाहें।"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "मुफ़्त में रोज़ %lld वीडियो मिलते हैं। Pro में जितने चाहें।"
+                }
+              }
+            }
           }
         },
         "id": {
@@ -28216,27 +29134,75 @@
           }
         },
         "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
+                }
+              }
+            }
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O grátis dá %lld vídeos por dia. O Pro dá quantos você quiser."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "O grátis dá %lld vídeo por dia. O Pro dá quantos você quiser."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "O grátis dá %lld vídeos por dia. O Pro dá quantos você quiser."
+                }
+              }
+            }
           }
         },
         "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "مفت میں روزانہ %lld ویڈیوز۔ Pro میں جتنی چاہیں۔"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "مفت میں روزانہ %lld ویڈیو۔ Pro میں جتنی چاہیں۔"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "مفت میں روزانہ %lld ویڈیوز۔ Pro میں جتنی چاہیں۔"
+                }
+              }
+            }
           }
         },
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free gives you %lld video a day. Pro gives you as many as you want."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
+                }
+              }
+            }
           }
         }
       }
@@ -29104,21 +30070,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Guthaben zurück. Das Video zählt nicht."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Credit zurück. Das Video zählt nicht."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Credits zurück. Das Video zählt nicht."
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld créditos de vuelta. Ese vídeo no contó."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld crédito de vuelta. Ese vídeo no contó."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld créditos de vuelta. Ese vídeo no contó."
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld crédits rendus. Cette vidéo ne compte pas."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld crédit rendu. Cette vidéo ne compte pas."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld crédits rendus. Cette vidéo ne compte pas."
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -29146,9 +30148,21 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld créditos de volta. Aquele vídeo não contou."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld crédito de volta. Aquele vídeo não contou."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld créditos de volta. Aquele vídeo não contou."
+                }
+              }
+            }
           }
         },
         "ur": {
@@ -29158,9 +30172,21 @@
           }
         },
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld credits back. That video didn't count."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credit back. That video didn't count."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credits back. That video didn't count."
+                }
+              }
+            }
           }
         }
       }

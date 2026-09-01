@@ -95,7 +95,23 @@ for k, srcs in sorted(conv.items()):
     want_args, want_esc = types(k)
     gaps = []
     for lang in targets:
-        val = (locs.get(lang) or {}).get("stringUnit", {}).get("value")
+        # A localization is EITHER a flat stringUnit OR plural variations. This
+        # read only knew the flat shape, so the moment plural handling was added
+        # — the fix for a live "1 videos" defect — every pluralised language
+        # started reporting as MISSING. A gate that fails on the correct answer
+        # is worse than one that misses the wrong one: it pressures the next
+        # person to undo the fix.
+        _loc = locs.get(lang) or {}
+        val = (_loc.get("stringUnit") or {}).get("value")
+        if val is None:
+            _pl = ((_loc.get("variations") or {}).get("plural") or {})
+            # "other" is the category every language is required to define, so
+            # it is the one to validate placeholders against.
+            for _cat in ("other", "one"):
+                _v = ((_pl.get(_cat) or {}).get("stringUnit") or {}).get("value")
+                if _v is not None:
+                    val = _v
+                    break
         if not val:
             gaps.append(lang)
             continue
