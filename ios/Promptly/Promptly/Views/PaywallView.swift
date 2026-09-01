@@ -606,7 +606,14 @@ struct PaywallView: View {
     }
 
     private var featureList: some View {
-        PaywallFeatureChecklist()
+        VStack(spacing: 0) {
+            PaywallFeatureChecklist()
+            // The allowance table, dark with the meter. Under the claims
+            // because it is the detail behind the headline row, not a
+            // competing pitch — and it draws nothing while credits are off.
+            CreditTierComparison()
+                .padding(.top, 16)
+        }
     }
 
     private var currentPackages: [Package]? {

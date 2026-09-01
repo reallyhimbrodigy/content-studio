@@ -1270,6 +1270,11 @@ struct EditorView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            // The balance, always on screen. It self-hides when the flag is off
+            // or the balance is unknown, so this call site carries no condition
+            // — the same contract UsageMeterStrip uses.
+            CreditBadge()
             .accessibilityLabel("Show chats")
 
             if !subscriptionService.effectiveIsPro {

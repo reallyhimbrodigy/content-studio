@@ -83,10 +83,41 @@ final class CreditsService: ObservableObject {
 /// money.
 enum CreditAllowance {
     static let free = 30
+    /// Tier allowances, longest match FIRST so "max" is not shadowed by the
+    /// "pro" substring in a product id like `promptly_pro_max_yearly`.
+    ///
+    /// N PRODUCTS, NOT TWO. The list is the mapping, and the PRODUCTS come from
+    /// StoreKit — so a Max tier configured in the dashboard appears the moment
+    /// the offering returns it, with no client build. That is the whole reason
+    /// this is a lookup keyed on the product id rather than a switch over an
+    /// enum of tiers we happen to know about today.
+    ///
+    /// An unrecognised id returns nil, deliberately: showing an invented
+    /// allowance for an unknown product is worse than showing none, because it
+    /// is a claim about what someone gets for money.
     private static let known: [(match: String, monthly: Int)] = [
         ("max", 1000),
         ("pro", 200),
     ]
+
+    /// Every tier we can describe from the products StoreKit actually returned,
+    /// ordered by allowance. Drives the paywall's tier comparison, so the rows
+    /// are whatever is configured rather than a hardcoded two-tier table.
+    ///
+    /// Free is prepended because it is not a StoreKit product and never will
+    /// be — it is the absence of one.
+    static func tiers(from productIds: [String]) -> [(label: String, monthly: Int)] {
+        var out: [(String, Int)] = [(String(localized: "Free"), free)]
+        var seen = Set<Int>([free])
+        for id in productIds {
+            guard let m = monthly(forProductId: id), !seen.contains(m) else { continue }
+            seen.insert(m)
+            let label = id.lowercased().contains("max")
+                ? String(localized: "Max") : String(localized: "Pro")
+            out.append((label, m))
+        }
+        return out.sorted { $0.1 < $1.1 }
+    }
 
     /// Monthly credits for a product id, or nil if we do not recognise it.
     static func monthly(forProductId id: String) -> Int? {

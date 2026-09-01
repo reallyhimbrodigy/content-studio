@@ -65,6 +65,21 @@ enum ProBenefits {
     static let creditsPerVideo = 10
     static func monthlyVideos(credits: Int) -> Int { credits / creditsPerVideo }
 
+    /// The allowance for the user's CURRENT tier, derived from the products
+    /// StoreKit returned. nil when they are on free, when no product matches,
+    /// or when offerings have not loaded — and nil is the safe answer in all
+    /// three, because it means the claim falls back to wording that does not
+    /// state a number.
+    @MainActor
+    static func storeKitAllowance() -> Int? {
+        guard SubscriptionService.shared.effectiveIsPro else { return nil }
+        let ids = (SubscriptionService.shared.offerings?.current?.availablePackages ?? [])
+            .map(\.storeProduct.productIdentifier)
+        // Highest matched allowance: a subscriber holding several products
+        // should be described by the best one they actually have.
+        return ids.compactMap { CreditAllowance.monthly(forProductId: $0) }.max()
+    }
+
     /// The headline claim, which MUST match whichever meter is actually running.
     ///
     /// "Unlimited videos, no daily cap" is true today and becomes FALSE the
@@ -131,8 +146,15 @@ enum ProBenefits {
     @MainActor
     static var core: [Benefit] {
         [
+        // Allowance from the SERVER first, then derived from the StoreKit
+        // products actually on offer. The second source is what makes a Max
+        // tier appear the moment Zac configures it — no client build, no
+        // hardcoded third row — and it also means the claim survives a server
+        // field that has not shipped yet. Both nil still falls back to the
+        // unlimited wording rather than inventing a number.
         headlineVideoClaim(creditsEnabled: OnboardingState.shared.creditsEnabled,
-                           monthlyCredits: OnboardingState.shared.creditsMonthlyAllowance),
+                           monthlyCredits: OnboardingState.shared.creditsMonthlyAllowance
+                                           ?? storeKitAllowance()),
         Benefit(icon: "captions.bubble.fill",
                 text: String(localized: "Captions, cuts and graphics — automatic")),
         Benefit(icon: "arrow.uturn.left",
