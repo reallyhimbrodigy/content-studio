@@ -30,8 +30,36 @@ import Foundation
 ///    implying a reward for installing.
 enum ReferralCopy {
 
-    /// The offer, stated once. Referrer-only, no quota, tied to a completed video.
-    static let offer = String(localized: "A day of Pro each time someone you invite makes their first video")
+    /// The offer, stated once. Referrer-only, tied to completed videos.
+    ///
+    /// CORRECTED 2026-09-01. This said "A day of Pro each time someone you
+    /// invite makes their first video" — wrong on BOTH halves of the ruled
+    /// reward. It is not a day, and it is not per referral: the reward is a week
+    /// of Pro for THREE qualified referrals. The old wording promised roughly
+    /// seven times more Pro per referral than the product grants, on the one
+    /// surface whose entire job is to be believed, in twelve languages.
+    ///
+    /// This wording is correct under BOTH candidate rulings — the 2/4/7 ladder
+    /// and a flat 3-to-7 — because both agree on the headline: three friends,
+    /// one week. The ladder question only decides whether the INTERMEDIATE
+    /// milestones are named, which is `ladderDetail` below and a one-line
+    /// change either way. Stating only the part both rulings share is what lets
+    /// this ship before the ruling lands.
+    ///
+    /// The string is already in the catalog and already translated x11 — it was
+    /// written for the second paywall and is the same promise.
+    static let offer = String(localized: "Invite 3 friends who make a video — get a week of Pro")
+
+    /// The intermediate rewards, shown only if the LADDER survives Zac's
+    /// ruling. Nil under a flat 3-to-7, where naming a partial reward that does
+    /// not exist would repeat the defect this comment documents.
+    ///
+    /// PENDING: ladder 2/4/7 vs flat 3 -> 7. Set `ladderConfirmed` when ruled.
+    static let ladderConfirmed = false
+    static var ladderDetail: String? {
+        guard ladderConfirmed else { return nil }
+        return String(localized: "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week")
+    }
 
     /// Section heading on surfaces that host the invite.
     static let heading = String(localized: "Get Pro free")

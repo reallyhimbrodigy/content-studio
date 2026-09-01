@@ -30267,6 +30267,83 @@
           }
         }
       }
+    },
+    "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "صديق واحد = يومان، اثنان = 4 أيام، ثلاثة = أسبوع"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "১ জন বন্ধু = ২ দিন, ২ জন = ৪ দিন, ৩ জন = এক সপ্তাহ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 Freund bringt dir 2 Tage, 2 bringen 4, 3 bringen eine Woche"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 amigo te da 2 días, 2 te dan 4, 3 te dan una semana"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 ami te donne 2 jours, 2 t'en donnent 4, 3 t'en donnent une semaine"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 दोस्त से 2 दिन, 2 से 4 दिन, 3 से एक हफ़्ता"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 teman dapat 2 hari, 2 dapat 4, 3 dapat seminggu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "友達1人で2日、2人で4日、3人で1週間"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "१ जना साथीले २ दिन, २ जनाले ४ दिन, ३ जनाले एक हप्ता"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 amigo dá 2 dias, 2 dão 4, 3 dão uma semana"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 دوست سے 2 دن، 2 سے 4 دن، 3 سے ایک ہفتہ"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
