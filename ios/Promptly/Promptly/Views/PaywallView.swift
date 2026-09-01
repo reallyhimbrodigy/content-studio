@@ -163,7 +163,7 @@ struct PaywallView: View {
 
     private var title: String {
         switch reason {
-        case .dailyRenders: return String(localized: "You're out of free renders for today")
+        case .dailyRenders: return String(localized: "You've used today's free video")
         case .dailyChats:   return String(localized: "You're out of free chats for today")
         case .reedit:       return String(localized: "Re-edit is a Pro feature")
         case .manual:       return String(localized: "Unlock Promptly Pro")
@@ -182,11 +182,11 @@ struct PaywallView: View {
     private var subtitle: String {
         switch reason {
         case .dailyRenders(_, let lim):
-            return String(localized: "Free includes \(lim) video renders per day. Upgrade to Pro for unlimited.")
+            return String(localized: "Free gives you \(lim) videos a day. Pro gives you as many as you want.")
         case .dailyChats(_, let lim):
             return String(localized: "Free includes \(lim) AI chat messages per day. Upgrade for unlimited.")
         case .reedit:
-            return String(localized: "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats.")
+            return String(localized: "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want.")
         case .manual:
             return String(localized: "Go beyond your one free video a day — everything, unlimited.")
         case .lumen:
@@ -194,7 +194,7 @@ struct PaywallView: View {
         case .concurrency:
             return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:
-            return String(localized: "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats.")
+            return String(localized: "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want.")
         }
     }
 

@@ -133,7 +133,7 @@ struct CreditsRefundedMessage: View {
             Image(systemName: "arrow.uturn.backward.circle.fill")
                 .font(.system(size: 14))
                 .foregroundColor(.green.opacity(0.8))
-            Text("\(amount) credits refunded — that render didn't count")
+            Text("\(amount) credits back. That video didn't count.")
                 .font(.system(size: 14))
                 .foregroundColor(.white.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)

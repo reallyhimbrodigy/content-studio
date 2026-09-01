@@ -161,16 +161,16 @@ struct RenderProgressRing: View {
 
             if let onCancel, timeline.isCancellable {
                 Button(role: .destructive) { showCancelConfirm = true } label: {
-                    Text("Cancel render")
+                    Text("Stop making this")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.4))
                 }
-                .confirmationDialog(String(localized: "Cancel this render?"),
+                .confirmationDialog(String(localized: "Stop making this video?"),
                                     isPresented: $showCancelConfirm, titleVisibility: .visible) {
-                    Button(String(localized: "Cancel render"), role: .destructive) { onCancel() }
-                    Button(String(localized: "Keep rendering"), role: .cancel) {}
+                    Button(String(localized: "Stop making it"), role: .destructive) { onCancel() }
+                    Button(String(localized: "Keep going"), role: .cancel) {}
                 } message: {
-                    Text("This stops the edit before it starts — your daily render won't be used.")
+                    Text("This stops your video before it starts. It won't count against today's free one.")
                 }
             }
         }

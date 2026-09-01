@@ -4184,7 +4184,7 @@ private struct PushExplainerAlert: ViewModifier {
                 Analytics.track("push_softprompt", props: ["choice": "decline"])
             }
         } message: {
-            Text("Renders take a few minutes — want us to tell you the second yours is ready?")
+            Text("Videos take a few minutes. Want us to tell you when yours is ready?")
         }
     }
 }

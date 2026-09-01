@@ -540,7 +540,7 @@ struct MessageBubble: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 11))
                                 .foregroundColor(.green.opacity(0.85))
-                            Text("You weren't charged — this didn't use your daily render.")
+                            Text("You weren't charged. This didn't use today's free video.")
                                 .font(.system(size: 12))
                                 .foregroundColor(Color(.secondaryLabel))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1151,7 +1151,7 @@ struct PipelineProgressView: View {
                         Button("Cancel render", role: .destructive) { onCancel() }
                         Button("Keep rendering", role: .cancel) {}
                     } message: {
-                        Text("This stops the edit before it starts — your daily render won't be used.")
+                        Text("This stops your video before it starts. It won't count against today's free one.")
                     }
                 }
             }

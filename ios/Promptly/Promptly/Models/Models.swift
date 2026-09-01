@@ -862,23 +862,23 @@ enum PipelineCatalog {
     // view, since they'd flip to skipped the moment any later token
     // arrived.
     static let all: [PipelineStage] = [
-        PipelineStage(id: "upload_local", title: "Uploading your video",          icon: "arrow.up.circle",           authoritative: true,  parent: nil,      modes: ["full"]),
-        PipelineStage(id: "analyze",      title: "Preparing your footage",        icon: "magnifyingglass",           authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "transcribe",   title: "Transcribing every word",       icon: "waveform",                  authoritative: true,  parent: nil,      modes: ["full"]),
-        PipelineStage(id: "face_detect",  title: "Tracking faces frame-by-frame", icon: "face.smiling",              authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "shots",        title: "Detecting shot changes",        icon: "rectangle.split.3x1",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "trend",        title: "Matching viral style patterns", icon: "chart.line.uptrend.xyaxis", authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "plan_diff",    title: "Figuring out what to change",   icon: "wand.and.stars",            authoritative: true,  parent: nil,      modes: ["tweak"]),
-        PipelineStage(id: "plan",         title: "Writing your edit recipe",      icon: "pencil.and.outline",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "broll_search", title: "Sourcing B-roll cutaways",      icon: "film.stack",                authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
-        PipelineStage(id: "render",       title: "Rendering your edit",           icon: "sparkles",                  authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "timing",       title: "Timing cuts to the beat",       icon: "timer",                     authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "captions",     title: "Placing captions word-by-word", icon: "text.bubble",               authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "sfx",          title: "Layering sound effects",        icon: "speaker.wave.2",            authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "transitions",  title: "Stitching transitions",         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "encode",       title: "Final encode",                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "thumbnail",    title: "Picking your cover frame",      icon: "photo.on.rectangle",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "upload",       title: "Finishing your video",          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
+        PipelineStage(id: "upload_local", title: String(localized: "Sending your video"),          icon: "arrow.up.circle",           authoritative: true,  parent: nil,      modes: ["full"]),
+        PipelineStage(id: "analyze",      title: String(localized: "Getting your video ready"),        icon: "magnifyingglass",           authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "transcribe",   title: String(localized: "Writing down what you said"),       icon: "waveform",                  authoritative: true,  parent: nil,      modes: ["full"]),
+        PipelineStage(id: "face_detect",  title: String(localized: "Watching where faces move"), icon: "face.smiling",              authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "shots",        title: String(localized: "Finding where the scenes change"),        icon: "rectangle.split.3x1",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "trend",        title: String(localized: "Looking at what works well"), icon: "chart.line.uptrend.xyaxis", authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "plan_diff",    title: String(localized: "Deciding what to change"),   icon: "wand.and.stars",            authoritative: true,  parent: nil,      modes: ["tweak"]),
+        PipelineStage(id: "plan",         title: String(localized: "Making a plan for your video"),      icon: "pencil.and.outline",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "broll_search", title: String(localized: "Finding extra clips to add"),      icon: "film.stack",                authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
+        PipelineStage(id: "render",       title: String(localized: "Putting your video together"),           icon: "sparkles",                  authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "timing",       title: String(localized: "Matching the cuts to the music"),       icon: "timer",                     authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "captions",     title: String(localized: "Adding your captions"), icon: "text.bubble",               authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "sfx",          title: String(localized: "Adding sounds"),        icon: "speaker.wave.2",            authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "transitions",  title: String(localized: "Smoothing out the cuts"),         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "encode",       title: String(localized: "Almost done"),                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "thumbnail",    title: String(localized: "Choosing your cover picture"),      icon: "photo.on.rectangle",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
+        PipelineStage(id: "upload",       title: String(localized: "Finishing up"),          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
     ]
 
     static func stages(for mode: String) -> [PipelineStage] {
