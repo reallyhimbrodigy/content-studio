@@ -28086,6 +28086,391 @@
           }
         }
       }
+    },
+    "You've used today's free video": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "استخدمت الفيديو المجاني لليوم"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আজকের ফ্রি ভিডিওটি ব্যবহার হয়ে গেছে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du hast dein Gratis-Video für heute genutzt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya usaste tu vídeo gratis de hoy"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu as utilisé ta vidéo gratuite du jour"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आज का मुफ़्त वीडियो इस्तेमाल हो चुका है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kamu sudah pakai video gratis hari ini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今日の無料の1本は使いました"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आजको निःशुल्क भिडियो प्रयोग भइसक्यो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você já usou seu vídeo grátis de hoje"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آج کی مفت ویڈیو استعمال ہو چکی ہے"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used today's free video"
+          }
+        }
+      }
+    },
+    "Free gives you %lld videos a day. Pro gives you as many as you want.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المجاني يمنحك %lld فيديو في اليوم. برو يمنحك ما تشاء."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis bekommst du %lld Videos am Tag. Mit Pro so viele du willst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis te da %lld vídeos al día. Pro te da todos los que quieras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En gratuit tu as %lld vidéos par jour. Avec Pro, autant que tu veux."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मुफ़्त में रोज़ %lld वीडियो मिलते हैं। Pro में जितने चाहें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis memberi %lld video sehari. Pro sebanyak yang kamu mau."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無料は1日%lld本です。Proなら好きなだけ作れます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O grátis dá %lld vídeos por dia. O Pro dá quantos você quiser."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مفت میں روزانہ %lld ویڈیوز۔ Pro میں جتنی چاہیں۔"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
+          }
+        }
+      }
+    },
+    "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عدّل فيديو جاهزًا دون إرساله مرة أخرى. برو يتيح لك ذلك، وفيديوهات ومحادثات بلا حدود."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "শেষ হওয়া ভিডিও আবার না পাঠিয়েই বদলান। Pro-তে সেটা করা যায়, আর যত খুশি ভিডিও ও চ্যাট।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ändere ein fertiges Video, ohne es nochmal zu schicken. Mit Pro geht das — und so viele Videos und Chats du willst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia un vídeo terminado sin volver a enviarlo. Pro te deja hacerlo, y todos los vídeos y chats que quieras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifie une vidéo finie sans la renvoyer. Pro te le permet, avec autant de vidéos et de discussions que tu veux."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बना हुआ वीडियो दोबारा भेजे बिना बदलें। Pro में यह हो सकता है, और जितने चाहें वीडियो और चैट।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubah video yang sudah jadi tanpa mengirimnya lagi. Pro bisa, plus video dan obrolan sebanyak yang kamu mau."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "できあがった動画を送り直さずに変えられます。Proならできて、動画もチャットも好きなだけ。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बनिसकेको भिडियो फेरि नपठाई फेर्नुहोस्। Pro मा यो सम्भव छ, र जति चाहे भिडियो र च्याट।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mude um vídeo pronto sem enviar de novo. O Pro deixa, e ainda dá vídeos e conversas sem limite."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مکمل ویڈیو دوبارہ بھیجے بغیر بدلیں۔ Pro میں یہ ممکن ہے، اور جتنی چاہیں ویڈیوز اور چیٹس۔"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want."
+          }
+        }
+      }
+    },
+    "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المجاني يحفظ عددًا قليلًا من الفيديوهات فقط. برو يحفظ ويشارك كل واحد، وبلا حدود."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রিতে অল্প কিছু ভিডিও সেভ হয়। Pro সব সেভ করে, শেয়ার করে, আর যত খুশি বানাতে দেয়।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis kannst du nur ein paar Videos speichern. Pro speichert und teilt jedes — und du machst so viele du willst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis solo guarda unos pocos vídeos. Pro guarda y comparte todos, y te deja hacer los que quieras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En gratuit tu ne gardes que quelques vidéos. Pro garde et partage chacune, et tu en fais autant que tu veux."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मुफ़्त में सिर्फ़ कुछ वीडियो सेव होते हैं। Pro हर एक सेव और शेयर करता है, और जितने चाहें बनाएँ।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis hanya menyimpan beberapa video. Pro menyimpan dan membagikan semuanya, sebanyak yang kamu mau."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無料では数本しか保存できません。Proは全部保存して共有でき、好きなだけ作れます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निःशुल्कमा केही भिडियो मात्र सेभ हुन्छ। Pro ले सबै सेभ र सेयर गर्छ, जति चाहे बनाउन दिन्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O grátis guarda só alguns vídeos. O Pro guarda e compartilha todos, e deixa fazer quantos quiser."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مفت میں صرف چند ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ایک محفوظ اور شیئر کرتا ہے، جتنی چاہیں بنائیں۔"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want."
+          }
+        }
+      }
+    },
+    "Videos take a few minutes. Want us to tell you when yours is ready?": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الفيديو يستغرق بضع دقائق. تريد أن نخبرك عندما يجهز؟"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভিডিও হতে কয়েক মিনিট লাগে। আপনারটা তৈরি হলে জানাব?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos dauern ein paar Minuten. Sollen wir dir sagen, wenn deins fertig ist?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los vídeos tardan unos minutos. ¿Te avisamos cuando el tuyo esté listo?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les vidéos prennent quelques minutes. On te prévient quand la tienne est prête ?"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वीडियो में कुछ मिनट लगते हैं। तैयार होने पर बता दें?"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video butuh beberapa menit. Mau kami kabari kalau punyamu siap?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画は数分かかります。できたらお知らせしましょうか？"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भिडियो बन्न केही मिनेट लाग्छ। तयार भएपछि भनौं?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os vídeos levam alguns minutos. Quer que a gente avise quando o seu ficar pronto?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ویڈیو میں چند منٹ لگتے ہیں۔ تیار ہونے پر بتا دیں؟"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos take a few minutes. Want us to tell you when yours is ready?"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
