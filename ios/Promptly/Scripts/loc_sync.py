@@ -126,10 +126,59 @@ CONVERSION_SURFACES = conversion_surfaces()
 
 
 def find_stringsdata(derived):
+    """Every .stringsdata in the build tree, EXCLUDING stale ones.
+
+    THE STALENESS FILTER IS LOAD-BEARING. DerivedData accumulates one
+    .stringsdata per file PER CONFIGURATION — Debug-iphoneos,
+    Debug-iphonesimulator, Release-iphoneos — and they are only rewritten when
+    that configuration is rebuilt. Building for the simulator all week leaves
+    the device artifacts frozen at whatever the source said days ago.
+
+    Without this filter the gate reported three uncatalogued strings —
+    'Or start monthly for', 'off', '%@ %@ (%lld%% %@)' — from a Debug-iphoneos
+    artifact two days old. The current source has been a single interpolated
+    sentence since before that; both fresh configurations emit the correct
+    'Or start monthly for %@ (%lld%% off)'. The gate was reporting on code that
+    no longer exists and demanding translations for fragments that would have
+    baked English word order into eleven languages.
+
+    That is precisely the failure the gate's own stale-tree rule was written to
+    prevent — but that rule compares the newest source against the TOP-LEVEL
+    DerivedData path, which any build refreshes, so a stale per-configuration
+    artifact sails through it. The check has to be per file.
+
+    A false failure is worse than no gate: it trains people to ignore the one
+    that is telling the truth.
+    """
     out = subprocess.run(
         ["find", derived, "-path", "*Promptly.build*", "-name", "*.stringsdata"],
         capture_output=True, text=True)
-    return [l for l in out.stdout.splitlines() if l.strip()]
+    paths = [l for l in out.stdout.splitlines() if l.strip()]
+
+    # FILTER BY CONFIGURATION, NOT BY FILE. Per-file mtime is the obvious
+    # discriminator and it is wrong: an incremental build only rewrites
+    # .stringsdata for files it recompiled, so every UNCHANGED file's artifact
+    # looks old while being perfectly current. Filtering on it dropped the
+    # extraction from 231 conversion strings to 57 — a gate passing because it
+    # had stopped looking, which is a worse failure than the ghosts it fixed.
+    #
+    # The real unit of staleness is the configuration directory: a build
+    # refreshes one configuration as a whole, and the others sit frozen. So
+    # pick the configuration touched most recently and read only that one.
+    by_config = {}
+    for p in paths:
+        # .../Promptly.build/<Configuration>/Promptly.build/Objects-normal/...
+        parts = p.split("/Promptly.build/")
+        config = parts[1].split("/")[0] if len(parts) > 2 else os.path.dirname(p)
+        try:
+            by_config.setdefault(config, []).append((os.path.getmtime(p), p))
+        except OSError:
+            continue
+    if not by_config:
+        return []
+    # Newest FILE within each configuration stands for that build's recency.
+    freshest = max(by_config, key=lambda c: max(m for m, _ in by_config[c]))
+    return [p for _m, p in by_config[freshest]]
 
 
 def extract(derived):
