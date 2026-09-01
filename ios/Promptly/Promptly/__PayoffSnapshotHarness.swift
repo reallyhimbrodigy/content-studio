@@ -81,6 +81,7 @@ struct PayoffSnapshotHarnessView: View {
                 ["7": "videoType", "8": "attribution", "11": "audience",
                  "12": "videoType", "15": "reveal"][String(n)] ?? "audience",
                 forKey: "onboarding_v2_step")
+        case 20: o.debugForceFlag("progress_ring")
         case 19: o.debugForceFlag("progress_ring")
         case 17: o.debugForceFlag("progress_ring")
         case 18: o.debugForceFlag("before_after")
@@ -146,6 +147,7 @@ struct PayoffSnapshotHarnessView: View {
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
                 }
+            case 20: RingThreadView()
             case 19: RingStillView()
             case 17: labeled("RENDER RING — live ramp, cold through completion") {
                     RingMotionDriver()
@@ -266,6 +268,69 @@ struct PayoffSnapshotHarnessView: View {
         t.receive(stepToken: "render")
         m.stageTimeline = t
         return m
+    }
+
+    /// RENDER RING — IN THE THREAD.
+    ///
+    /// The stepped stills rendered the bubble alone on black, which is a fair
+    /// test of the composition and a useless test of the only question that
+    /// matters next: does it read as a MESSAGE. Alone on a screen, anything
+    /// reads as a screen.
+    ///
+    /// So this puts it where it lives — a real user bubble above it, a real
+    /// MessageBubble rendering the ring, the conversation scrollable, and the
+    /// composer's own bottom edge underneath. Same views the app uses; only the
+    /// data is mock.
+    ///
+    /// HONEST LIMIT: the bar at the bottom is a stand-in for the composer, not
+    /// EditorView's own `inputBar` (which is private to a view that needs auth,
+    /// a chat store and a live session to construct). It establishes the bottom
+    /// edge and the sense of a conversation continuing below; it is not a proof
+    /// of the composer itself.
+    struct RingThreadView: View {
+        private var pct: Int { Int(UserDefaults.standard.string(forKey: "ringProgress") ?? "45") ?? 45 }
+
+        private var userMsg: ChatMessage {
+            var m = ChatMessage(role: .user, content: "make this punchy with big captions")
+            return m
+        }
+
+        var body: some View {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        MessageBubble(message: userMsg)
+                        RingStillView()
+                        Color.clear.frame(height: 8)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                // The composer's bottom edge — enough to show the thread is a
+                // conversation with somewhere to type, not a full-screen state.
+                HStack(spacing: 10) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+                    Text("Reply to Promptly")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.35))
+                    Spacer()
+                    Image(systemName: "mic")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+            }
+        }
     }
 
     /// RENDER RING — STEPPED STILLS.

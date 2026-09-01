@@ -115,7 +115,13 @@ struct RenderProgressRing: View {
     private var traceValue: Double { min(max(trickle.displayed / 100.0, 0), 1) }
 
     var body: some View {
-        VStack(spacing: 16) {
+        // LEFT-ALIGNED, MESSAGE-WIDTH. It reads as a message because it sits
+        // where a message sits — not because it is in the thread, which it
+        // already was. Centering it full-width was the whole problem: every
+        // other assistant bubble hangs off the leading edge, so a centered block
+        // spanning the full width is the one shape in the conversation that
+        // belongs to no speaker, which is exactly how a modal looks.
+        VStack(alignment: .leading, spacing: 16) {
             ZStack {
                 frameContent
                     .frame(width: frameWidth, height: frameHeight)
@@ -148,6 +154,7 @@ struct RenderProgressRing: View {
                 // absorbs the longest translations rather than cutting them.
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .frame(maxWidth: 208, alignment: .leading)
                 .id(line)
                 .transition(.opacity)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: line)
@@ -167,7 +174,10 @@ struct RenderProgressRing: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+        // Hug the content and hang off the LEADING edge, like every other
+        // assistant bubble. Not maxWidth: .infinity — that stretched the block
+        // across the thread and centered it.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
         // Driven EXACTLY as PipelineProgressView drives it. Copying the contract
         // rather than inventing a trace-specific one is the point: the
