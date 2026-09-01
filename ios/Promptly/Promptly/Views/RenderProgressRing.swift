@@ -103,12 +103,34 @@ struct RenderProgressRing: View {
         return nil
     }
 
-    /// ONE line. The finer SSE message wins when present — it is the more
-    /// specific truth about this moment; the catalog stage is the fallback.
-    /// Never both, because stacking them re-creates the list this replaced.
+    /// ONE line. THE LOCAL CATALOG STAGE WINS; the server's message is the
+    /// fallback. This ordering used to be the other way round, and inverting it
+    /// is the difference between the plain-language pass being visible and being
+    /// decorative.
+    ///
+    /// WHY. `EditorView` assigns `stepMessage` straight from the SSE frame
+    /// (EditorView.swift:3483, `messages[i].stepMessage = event.message`). That
+    /// string is composed on the SERVER, so it is (a) not in the String Catalog
+    /// and therefore ENGLISH FOR EVERY USER IN EVERY LANGUAGE, and (b) untouched
+    /// by the rewrite that turned "Final encode" into "Almost done". With the
+    /// old ordering it won on every frame the server sent, which is most of a
+    /// render — so seventeen rewritten, translated stage names were the branch
+    /// almost nobody reached. I nearly shipped a pass that changed nothing.
+    ///
+    /// The trade is specificity for correctness, and it is worth taking: the
+    /// stage catalog is driven by the same token feed, so it tracks the same
+    /// progress at slightly coarser grain, and it is translated. A more precise
+    /// sentence in a language the reader does not speak is not more precise.
+    ///
+    /// The server message still shows when no stage is active — early frames
+    /// before the first token, and the ask-back pause — where it is the only
+    /// thing we have and English beats blank.
+    ///
+    /// SERVER-SIDE COPY IS A SEPARATE FIX and is Builder's: those strings need
+    /// the same plain-language pass, and they can never be translated from here.
     private var line: String {
-        if let m = subMessage, !m.isEmpty { return m }
         if let s = activeStage { return s.title }
+        if let m = subMessage, !m.isEmpty { return m }
         return String(localized: "Getting started…")
     }
 
