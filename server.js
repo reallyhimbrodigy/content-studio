@@ -10,6 +10,8 @@ const {
   isUserPro: isProfilePro,
   entitlementTier,
   tierFromEntitlement,
+  tierAfterGrant,
+  grantFromMs,
   unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
@@ -3373,9 +3375,12 @@ const server = http.createServer((req, res) => {
         }
 
         const { data: prof } = await supabaseAdmin
-          .from('profiles').select('pro_until').eq('id', referrerId).maybeSingle();
+          .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
         const beforeIso = prof?.pro_until || null;
-        const fromMs = Math.max(Date.now(), beforeIso ? new Date(beforeIso).getTime() : 0);
+        // A grant may only RAISE a tier. This wrote tier:'pro' unconditionally,
+        // so an active Max subscriber earning a referral was clobbered DOWN.
+        const tierAfter = tierAfterGrant(prof?.tier, 'pro');
+        const fromMs = grantFromMs(beforeIso);
         const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
 
         // LEDGER FIRST, provider_ok false. A row exists either way, so a failed
@@ -3389,7 +3394,7 @@ const server = http.createServer((req, res) => {
         }).select('id').maybeSingle();
 
         const { error: upErr } = await supabaseAdmin
-          .from('profiles').update({ tier: 'pro', pro_until: untilIso }).eq('id', referrerId);
+          .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
 
         if (!upErr && ledger?.id) {
           await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
@@ -6726,7 +6731,8 @@ const server = http.createServer((req, res) => {
 
         // 72 HOURS FROM NOW — never calendar days. A decline at 23:50 must get
         // 72 hours, not eight.
-        const untilIso = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
+        // untilIso is computed AFTER the profile read below — it depends on the
+        // existing pro_until and cannot be hoisted above it.
 
         // SAME ROLLING-30-DAY CAP the referral grants SUM against. Without this
         // the two paths together are an uncapped Pro faucet: referrals capped,
@@ -6752,8 +6758,13 @@ const server = http.createServer((req, res) => {
         }
 
         const { data: prof } = await supabaseAdmin
-          .from('profiles').select('pro_until').eq('id', authUser.id).maybeSingle();
+          .from('profiles').select('pro_until, tier').eq('id', authUser.id).maybeSingle();
         const beforeIso = (prof && prof.pro_until) || null;
+        // 72 hours FROM THE LATER OF now and any existing pro_until. This was an
+        // absolute `Date.now() + 72h`, which OVERWROTE a six-month Max
+        // subscription with three days the moment the user tapped Decline. The
+        // referral path always guarded this; this one never did.
+        const untilIso = new Date(grantFromMs(beforeIso) + 72 * 3600 * 1000).toISOString();
 
         // LEDGER FIRST, provider_ok:false — the referral grant's exact sequence,
         // so a failed grant leaves a visible row instead of nothing.
@@ -6789,7 +6800,8 @@ const server = http.createServer((req, res) => {
         }
 
         const { error: upErr } = await supabaseAdmin
-          .from('profiles').update({ tier: 'pro', pro_until: untilIso })
+          .from('profiles').update({ tier: tierAfterGrant(prof && prof.tier, 'pro'),
+                                    pro_until: untilIso })
           .eq('id', authUser.id);
         if (!upErr && ledger && ledger.id) {
           await supabaseAdmin.from('referral_rewards')
