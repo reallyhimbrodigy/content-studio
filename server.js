@@ -311,6 +311,12 @@ const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — 
 const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
+const _credits = require('./lib/credits');
+// Default OFF. A debit that can 402 every user in the product is armed by
+// an explicit env flip, after balances are verified -- not by a merge.
+const CREDITS_DEBIT_ENABLED =
+  String(process.env.CREDITS_DEBIT_ENABLED || '').trim() === '1';
+const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
   const id = `${scope}:${key}`;
@@ -2186,13 +2192,19 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message, credits_debited, credits_refunded_at')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
           if (data) {
             try {
               res.write(`data: ${JSON.stringify({
+                // TYPE DISCRIMINATOR (Frontend, 2026-08-31). Every SSE frame
+                // was an untagged status snapshot, so a client had no way to
+                // route anything else — CreditsRefundedMessage could not be
+                // wired because a refund frame would parse as a status update.
+                // Additive: existing clients ignore an unknown field.
+                type: 'job_status',
                 status: data.status,
                 progress: data.progress || 0,
                 step: data.current_step || '',
@@ -2209,6 +2221,19 @@ const server = http.createServer((req, res) => {
                 // is why a client that reconnects onto a completed job never learns
                 // to quit. Matches the poll path, which already sets final:true.
                 final: isTerminalJobStatus(data.status),
+                // CREDITS REFUND, CARRIED ON THE ROW rather than pushed. The
+                // refund lands in a background sweep, outside any request, so
+                // there is no open stream to push to at that moment. Both facts
+                // it needs are already columns, and the reason is a pure
+                // function of the row — so the snapshot reports it and a client
+                // that reconnects still sees it. No second channel, and the
+                // event cannot "go nowhere" because it is not a separate
+                // artifact that can be dropped.
+                creditsRefunded: data.credits_refunded_at ? {
+                  amount: data.credits_debited || 0,
+                  reasonCode: _refundLeg.creditsRefundReasonCode(data),
+                  at: data.credits_refunded_at,
+                } : null,
               })}\n\n`);
             } catch (e) {}
           }
@@ -2745,7 +2770,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2761,6 +2786,13 @@ const server = http.createServer((req, res) => {
     // §4: mark the first-run sample-clip demo so it's quota-exempt AND excluded
     // from activation metrics. Only set when true (column defaults false).
     if (demo) insertRow.demo = true;
+    // CREDITS RECEIPT, not a ledger. How much THIS job actually spent, so the
+    // refund leg does not have to guess the amount — NULL means never debited
+    // (re-edit, demo, or credits disabled) and the leg skips rather than
+    // assuming 10. Balance stays authoritative at RevenueCat.
+    if (Number.isInteger(creditsDebited) && creditsDebited > 0) {
+      insertRow.credits_debited = creditsDebited;
+    }
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -4038,7 +4070,11 @@ const server = http.createServer((req, res) => {
         const contents = [];
 
         const jobCtx = jobContextLine(recentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '');
+        // reply_language — the assistant answers in the USER's language. Empty
+        // string for English, so the common path stays byte-identical.
+        const _replyLang = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLine = require('./lib/reply-language').replyLanguageInstruction(_replyLang);
+        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '') + _langLine;
 
         // Add conversation history
         for (const h of history.slice(-18)) {
@@ -4257,7 +4293,14 @@ const server = http.createServer((req, res) => {
 
         // Build Gemini contents (same shape as /api/chat).
         const streamJobCtx = jobContextLine(streamRecentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '');
+        // SECOND CONSUMER. /api/chat builds this prompt TWICE — once here for
+        // the streaming path and once above for the non-streaming one. Threading
+        // the language into only one of them would answer the same user in two
+        // languages depending on which path their client took, and the bug
+        // would look like a flaky model rather than a missed call site.
+        const _replyLangS = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLineS = require('./lib/reply-language').replyLanguageInstruction(_replyLangS);
+        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '') + _langLineS;
         const contents = [];
         for (const h of history.slice(-18)) {
           if (h.role === 'user' || h.role === 'assistant') {
@@ -5688,6 +5731,69 @@ const server = http.createServer((req, res) => {
             }
           }
 
+          // ── CREDITS DEBIT (ruling 1: server-side, never the client) ────────
+          // BEFORE the insert and therefore before spawn. Spawn-then-debit
+          // spends GPU on a render the user cannot pay for.
+          //
+          // NO PRE-READ: RevenueCat validates the balance and deducts ATOMICALLY,
+          // returning 422 with nothing deducted when short. Reading first would
+          // only open a race between the read and the spend — two concurrent
+          // renders could each see 10 and each spend it.
+          //
+          // A demo is quota-exempt and must stay credit-exempt too, or the
+          // first-run sample clip would charge a user 10 credits.
+          let _creditsDebited = null;
+          // ARMED DELIBERATELY, NOT BY MERGE. REVENUECAT_SECRET_KEY /
+          // REVENUECAT_PROJECT_ID are ALREADY set for entitlement sync and the
+          // live webhook, so isConfigured() is true in production the moment
+          // this deploys. Both failure paths here are fail-closed BY DESIGN:
+          // an unprovisioned CRD currency returns RC_ERROR -> 503 (no spawn),
+          // and a user with no granted balance returns 422 -> 402. Correct
+          // behaviour, and a total render outage if balances are not in place
+          // first. So the debit needs its own switch, flipped after a real
+          // balance read -- never as a side effect of shipping the code.
+          // Set CREDITS_DEBIT_ENABLED=1 to arm. The BALANCE endpoint is NOT
+          // gated: it is read-only and cannot block a render.
+          if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
+              && _credits.shouldDebit({ mode: 'full' })) {
+            try {
+              await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
+              _creditsDebited = _credits.COST_PER_RENDER;
+            } catch (e) {
+              if (e && e.code === 'INSUFFICIENT') {
+                // 402 carries `needed` ONLY. With no pre-read the server never
+                // learns the balance on this path and RC's 422 does not report
+                // it; promising a balance here would be a contract we cannot
+                // keep. The client calls /api/credits/balance if it wants it.
+                console.log('  [credits] 402 insufficient userId=%s', authUser.id);
+                return { status: 402, body: {
+                  // TYPED, so the client can switch on `type` instead of
+                  // string-matching `error`. Same discriminator convention as
+                  // the SSE frames.
+                  type: 'insufficient_credits',
+                  error: 'insufficient_credits', kind: 'credits',
+                  // NO `route`. The in-thread treatment is RULED, so a routing
+                  // hint here is a second authority telling the client
+                  // something the ruling already decided — and when they
+                  // disagree, the payload silently wins. The server reports the
+                  // fact (insufficient, needed 10); the client owns the
+                  // treatment.
+                  needed: _credits.COST_PER_RENDER,
+                  // NOT a balance: with no pre-read the server never learns it
+                  // on this path, and RC's 422 does not report one.
+                  balanceKnown: false,
+                } };
+              }
+              // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
+              // A refusal and an outage are different failures and must not be
+              // collapsed — one is the user's problem, the other is ours.
+              console.error('  [credits] grant path unavailable:', e && e.code, e && e.message);
+              return { status: 503, body: {
+                error: 'credits_unavailable', kind: 'credits', retryable: true,
+              } };
+            }
+          }
+
           const created = await createQueuedVideoJob({
             userId: authUser.id,
             videoUrl,
@@ -5697,6 +5803,7 @@ const server = http.createServer((req, res) => {
             appVersion: clientAppVersion(req),
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
+            creditsDebited: _creditsDebited,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
@@ -5705,6 +5812,19 @@ const server = http.createServer((req, res) => {
             // logged milliseconds ago — and treat as a replay. A DEMO logs no
             // render charge, so it has nothing to unwind — skipping the delete is
             // load-bearing: otherwise it would wrongly erase a REAL render event.
+            // Same unwind for CREDITS as for the render charge — one job, one
+            // debit. A replay that kept the debit would silently charge 10 for
+            // a job that never runs.
+            if (_creditsDebited) {
+              try {
+                await _credits.credit(authUser.id, _creditsDebited);
+                console.log('  [credits] replay unwind refunded %d to %s',
+                  _creditsDebited, authUser.id);
+              } catch (e) {
+                console.warn('  [credits] replay unwind FAILED (user is down %d):',
+                  _creditsDebited, e && e.message);
+              }
+            }
             if (!isDemo) {
               try {
                 const { data: ev } = await supabaseAdmin
@@ -6119,6 +6239,11 @@ const server = http.createServer((req, res) => {
           resolvedBroll: Array.isArray(orig.resolved_broll) ? orig.resolved_broll : null,
           trendSnapshot: orig.trend_snapshot || null,
           changeRequest,
+          // The assistant replies in the USER's language. Same shared helper
+          // /api/chat and /api/chat/actions use — one mechanism, so a user is
+          // not answered in two different languages depending on the surface.
+          // Validated against the twelve; anything else is 'en'.
+          replyLanguage: require('./lib/reply-language').parseReplyLanguage(body),
           oldVibe: orig.vibe_input || '',
           parentJobId: originalJobId,
         });
@@ -6482,7 +6607,17 @@ const server = http.createServer((req, res) => {
         try { used = await getFeatureUsageCount(supabaseAdmin, authUser.id, 'export'); }
         catch (e) { console.error('[export] usage-count failed — fail CLOSED (revenue wall):', e?.message); used = FREE_EXPORT_LIMIT; }
         if (used >= FREE_EXPORT_LIMIT) {
-          return sendJson(res, 402, { error: 'upgrade_required', free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT });
+          return sendJson(res, 402, {
+            type: 'free_export_spent',
+            error: 'upgrade_required',
+            free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT,
+            // THE SERVER KNOB Frontend asked for. The client was inferring
+            // "spent" by comparing two numbers it had to be given separately;
+            // the server already knows and can just say so. Inference from a
+            // pair of counters silently breaks the moment FREE_EXPORT_LIMIT
+            // moves, which it is env-configurable to do.
+            freeExportSpent: true,
+          });
         }
       }
 
@@ -6520,6 +6655,209 @@ const server = http.createServer((req, res) => {
   // Register an APNs device token for the current user. Idempotent —
   // upserts on the unique token column. Bumps last_seen_at on every call so
   // we can prune long-dead tokens with a cron job later if needed.
+  // ── POST /api/reverse-trial/grant ────────────────────────────────────────
+  // The client CANNOT grant this. grant_referral_reward/qualify_referral were
+  // revoked from `authenticated` after three throwaway accounts took a week of
+  // unmetered Pro; a client-side 72-hour self-grant reopens that hole under a
+  // friendlier name.
+  if (parsed.pathname === '/api/reverse-trial/grant' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'reverse-trial', authUser.id, 10, 3600)) return;
+
+        // GATED ON THE KEYCHAIN BUILD. 241 shipped identifierForVendor cached in
+        // UserDefaults, which does NOT survive reinstall — a grant keyed on it
+        // would re-grant on every delete/reinstall. Ships DARK: with
+        // REVERSE_TRIAL_MIN_BUILD unset the endpoint refuses, so it cannot go
+        // live against 241 by accident.
+        const _minBuild = parseInt(process.env.REVERSE_TRIAL_MIN_BUILD || '', 10);
+        if (!Number.isInteger(_minBuild)) {
+          return sendJson(res, 503, { error: 'reverse_trial_unavailable',
+                                      reason: 'min_build_unset' });
+        }
+        const _bm = String(clientAppVersion(req) || '').match(/\((\d+)\)/);
+        const _build = _bm ? parseInt(_bm[1], 10) : null;
+        if (!Number.isInteger(_build) || _build < _minBuild) {
+          // Refuse rather than grant on a weak key. A trial that leaks on older
+          // builds is worse than one that arrives a cycle late.
+          return sendJson(res, 409, { error: 'build_too_old',
+                                      min_build: _minBuild, build: _build });
+        }
+
+        const body = await readJsonBody(req);
+        const deviceId = String((body && body.device_id) || '').trim();
+        if (!deviceId || deviceId.length < 8 || deviceId.length > 128) {
+          return sendJson(res, 400, { error: 'device_id_required' });
+        }
+
+        // IDEMPOTENT: the PK on device_id is the enforcement. A prior grant
+        // returns the ORIGINAL pro_until — a double-tap on Decline cannot
+        // produce 144 hours.
+        // FAIL CLOSED ON A READ ERROR. Ignoring `error` here and testing only
+        // `data` is the silent-zero trap: a failed read returns null, which is
+        // INDISTINGUISHABLE from "no grant exists", and the endpoint would go
+        // on to grant again. RLS is enabled on reverse_trial_grants with NO
+        // policies, so any client other than service_role gets zero rows rather
+        // than an error — the same wrong answer by a different route. We use
+        // supabaseAdmin (service_role) everywhere here, and now a read failure
+        // refuses instead of re-granting.
+        const { data: prior, error: priorErr } = await supabaseAdmin
+          .from('reverse_trial_grants')
+          .select('device_id, user_id, granted_at, pro_until')
+          .eq('device_id', deviceId).maybeSingle();
+        if (priorErr) {
+          console.error('[reverse-trial] prior-grant read FAILED — refusing rather '
+            + 'than re-granting:', priorErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'prior_read_failed' });
+        }
+        if (prior) {
+          if (prior.user_id !== authUser.id) {
+            return sendJson(res, 409, { error: 'already_used',
+                                        device_id_seen_at: prior.granted_at });
+          }
+          return sendJson(res, 200, {
+            granted: true, already: true, pro_until: prior.pro_until,
+            expires_in_seconds: Math.max(0, Math.round(
+              (new Date(prior.pro_until).getTime() - Date.now()) / 1000)),
+          });
+        }
+
+        // 72 HOURS FROM NOW — never calendar days. A decline at 23:50 must get
+        // 72 hours, not eight.
+        const untilIso = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
+
+        // SAME ROLLING-30-DAY CAP the referral grants SUM against. Without this
+        // the two paths together are an uncapped Pro faucet: referrals capped,
+        // trials unbounded, both writing pro_until.
+        const { CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
+        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+        const { data: grants, error: grantsErr } = await supabaseAdmin
+          .from('referral_rewards').select('days_granted')
+          .eq('user_id', authUser.id).gte('granted_at', since);
+        if (grantsErr) {
+          // Same trap: a failed cap read looks like "nothing granted in 30
+          // days" and would let the grant through, uncapped.
+          console.error('[reverse-trial] cap read FAILED — refusing:', grantsErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'cap_read_failed' });
+        }
+        const used = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+        if (used + 3 > CAP_DAYS_PER_30D) {
+          // REFUSE, never truncate. A one-hour "72-hour trial" reads as broken
+          // rather than generous.
+          return sendJson(res, 409, { error: 'cap_exhausted',
+                                      cap: CAP_DAYS_PER_30D, used });
+        }
+
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('pro_until').eq('id', authUser.id).maybeSingle();
+        const beforeIso = (prof && prof.pro_until) || null;
+
+        // LEDGER FIRST, provider_ok:false — the referral grant's exact sequence,
+        // so a failed grant leaves a visible row instead of nothing.
+        // days_granted:3 is CAP ARITHMETIC; pro_until carries the exact 72h.
+        const { data: ledger } = await supabaseAdmin
+          .from('referral_rewards').insert({
+            user_id: authUser.id, days_granted: 3,
+            pro_until_before: beforeIso, pro_until_after: untilIso,
+            referral_ids: [], provider: 'db', provider_ok: false,
+          }).select('id').maybeSingle();
+
+        // CLAIM THE DEVICE BEFORE GRANTING. The PK insert is the one-shot gate;
+        // if two requests race, the loser gets a duplicate-key error and reads
+        // the winner's row rather than granting twice.
+        const { error: claimErr } = await supabaseAdmin
+          .from('reverse_trial_grants').insert({
+            device_id: deviceId, user_id: authUser.id,
+            pro_until: untilIso, app_build: _build,
+            reward_id: (ledger && ledger.id) || null,
+          });
+        if (claimErr) {
+          const { data: won } = await supabaseAdmin
+            .from('reverse_trial_grants').select('pro_until')
+            .eq('device_id', deviceId).maybeSingle();
+          if (won) {
+            return sendJson(res, 200, {
+              granted: true, already: true, pro_until: won.pro_until,
+              expires_in_seconds: Math.max(0, Math.round(
+                (new Date(won.pro_until).getTime() - Date.now()) / 1000)),
+            });
+          }
+          return sendJson(res, 503, { error: 'grant_unavailable' });
+        }
+
+        const { error: upErr } = await supabaseAdmin
+          .from('profiles').update({ tier: 'pro', pro_until: untilIso })
+          .eq('id', authUser.id);
+        if (!upErr && ledger && ledger.id) {
+          await supabaseAdmin.from('referral_rewards')
+            .update({ provider_ok: true }).eq('id', ledger.id);
+        }
+        // NOTE: no usage_events write and no export marking — the trial must not
+        // consume the free export.
+        console.log('  [reverse-trial] granted userId=%s build=%s until=%s',
+          authUser.id, _build, untilIso);
+        return sendJson(res, 201, {
+          granted: true, already: false, pro_until: untilIso,
+          expires_in_seconds: 72 * 3600,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[reverse-trial] grant failed:', e && e.message);
+        return sendJson(res, 503, { error: 'grant_unavailable' });
+      }
+    })();
+    return;
+  }
+
+  // ── GET /api/credits/balance — READ-THROUGH, never cached ────────────────
+  // Balance is authoritative at RevenueCat (ruling 4). This does NOT write a DB
+  // copy and does NOT fall back to a stored number on failure: a stale balance
+  // that looks authoritative is worse than no balance, because the client would
+  // render it as fact and let a user start a render they cannot pay for.
+  if (parsed.pathname === '/api/credits/balance' && req.method === 'GET') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'credits-balance', authUser.id, 60, 60)) return;
+        if (!_credits.isConfigured()) {
+          // Explicit, not a zero. "Credits are off" and "you have none" are
+          // different states and must not render the same.
+          return sendJson(res, 503, { error: 'credits_unavailable',
+                                      reason: 'not_configured' });
+        }
+        const b = await _credits.getBalance(authUser.id);
+        // resolveEntitlementDecision(fetchSubscriptionEntitlement(...)) is the
+        // real pair; an earlier draft called a `resolveEntitlement` that does
+        // not exist. It sat inside this try/catch, so the endpoint would have
+        // returned 503 forever while looking implemented.
+        let tier = 'free';
+        try {
+          const _ent = await fetchSubscriptionEntitlement(authUser.id);
+          const _dec = resolveEntitlementDecision(_ent);
+          if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
+        } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
+        return sendJson(res, 200, {
+          balance: b.balance,
+          currency_code: b.currency_code,
+          // found:false with balance:0 distinguishes "no row for our currency"
+          // from "this user has zero" — a bare 0 hides which one you are seeing.
+          found: b.found,
+          tier,
+          allowance: _credits.TIER_ALLOWANCE[tier] ?? null,
+          cost_per_render: _credits.COST_PER_RENDER,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[credits] balance read failed:', e && (e.code || e.message));
+        return sendJson(res, 503, { error: 'balance_unavailable' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/devices/register' && req.method === 'POST') {
     (async () => {
       try {

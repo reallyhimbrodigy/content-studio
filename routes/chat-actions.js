@@ -133,6 +133,10 @@ async function handle(req, res, deps) {
     const verdict = await chatActions.decideChatAction(message, {
       hasVideoAttached: Boolean(videoUrl),
       recentJobs,
+      // The assistant answers in the USER's language. Validated against the
+      // twelve by the shared helper — never an unvalidated string, because this
+      // is interpolated into a system prompt.
+      replyLanguage: require('../lib/reply-language').parseReplyLanguage(body),
     });
     const calledTool = verdict.turn && verdict.turn.kind === 'tool_call'
       ? verdict.turn.name : null;
