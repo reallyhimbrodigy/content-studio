@@ -26,12 +26,28 @@ struct ReferralProgressRow: View {
     let source: String
     /// Compact drops the reward line — for surfaces with a single row of space.
     var compact: Bool = false
+    /// What the first line says.
+    ///
+    /// `.progress` leads with the count ("2 of 3 friends joined") — right for a
+    /// surface someone returns to. `.invite` leads with the OFFER, for a
+    /// surface meeting someone who has not shared yet: "0 of 3 friends joined"
+    /// as an opening line states a failure before it states a reason to act.
+    var style: Style = .progress
+
+    enum Style { case progress, invite }
 
     @ObservedObject private var referrals = ReferralService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var count: Int { referrals.qualifiedCount }
+
+    /// The offer leads until there is progress worth leading with.
+    private var headline: String {
+        if isComplete { return ReferralCopy.progressComplete }
+        if style == .invite && count == 0 { return ReferralCopy.inviteOffer }
+        return ReferralCopy.progress(count, target: target)
+    }
     private var target: Int { ReferralService.rewardTarget }
     private var isComplete: Bool { count >= target }
 
@@ -48,8 +64,7 @@ struct ReferralProgressRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // The count leads. It is the thing that changed since last
                     // time, and the reason to look.
-                    Text(isComplete ? ReferralCopy.progressComplete
-                                    : ReferralCopy.progress(count, target: target))
+                    Text(headline)
                         .cType(15, .semibold)
                         .foregroundColor(.white)
                         .lineLimit(2)
@@ -63,7 +78,10 @@ struct ReferralProgressRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if !isComplete {
+                    // Pips appear once there is progress to show. Three empty
+                    // marks under an invitation is a picture of having done
+                    // nothing, shown to someone being asked to start.
+                    if !isComplete && (style == .progress || count > 0) {
                         pips
                             .padding(.top, 4)
                     }
@@ -87,8 +105,7 @@ struct ReferralProgressRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(isComplete ? ReferralCopy.progressComplete
-                                            : ReferralCopy.progress(count, target: target)))
+        .accessibilityLabel(Text(headline))
         .accessibilityHint(Text(ReferralCopy.shareAction))
         .task {
             // Read the server on every appearance. A count cached from the last

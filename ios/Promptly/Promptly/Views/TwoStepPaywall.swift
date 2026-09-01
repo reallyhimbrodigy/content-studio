@@ -21,8 +21,16 @@ import RevenueCat
 struct PaywallTierOption: Identifiable, Equatable {
     let allowance: Int
     let isMax: Bool
-    /// What the tier includes, short lines, in reading order. Pro lists what you
-    /// get; Max leads with "Everything in Pro, plus".
+    /// The card's name, with the multiplier folded in for Max ("Max (5x usage)")
+    /// when there is a meter to be a multiple of.
+    let title: String
+    /// "200 credits/month". Nil while the credits meter is dark — a credit
+    /// number for a meter that is not running is a claim about something the
+    /// user cannot spend.
+    let creditsLine: String?
+    /// What the tier includes, short lines, in reading order. Max shows Pro's
+    /// whole list plus its own additions, so the pricier card never reads as
+    /// the emptier one.
     let features: [String]
     /// The MONTHLY price, storefront-formatted.
     ///
@@ -49,6 +57,167 @@ struct PaywallDurationOption: Identifiable, Equatable {
     /// A PAID introductory offer, already phrased. Never a free-trial phrasing.
     let introLine: String?
     let isAnnual: Bool
+}
+
+/// A store product reduced to what the paywall actually renders.
+///
+/// WHY NOT JUST USE `Package`. RevenueCat's `Package` cannot be constructed —
+/// it only ever arrives from a live offering. That makes every mapping decision
+/// below (which tier, which is Max, what the card quotes, whether a saving
+/// badge appears) unreachable anywhere the store is unreachable: a simulator
+/// with no App Store account returns zero packages, so the paywall renders
+/// empty and any capture of it is a picture of nothing.
+///
+/// Reducing to a value type means the DERIVATION runs for real — with real
+/// product ids and real storefront prices — and only RevenueCat's own object is
+/// out of the picture. That is the difference between a screenshot of a layout
+/// and a screenshot of the paywall.
+struct PaywallProduct: Equatable {
+    let id: String
+    let localizedPrice: String
+    /// RevenueCat's own per-month string when it has one.
+    let localizedPricePerMonth: String?
+    let price: Decimal
+    /// The product's own formatter locale, so a computed per-month figure is
+    /// formatted in the storefront's currency rather than the device's.
+    let currencyLocale: Locale?
+    let unit: PaywallPeriodUnit
+    /// A PAID introductory offer, already phrased by `PaywallView.introOfferLine`.
+    let introLine: String?
+}
+
+enum PaywallPeriodUnit { case year, month, week, other }
+
+/// The mapping from products to what the two paywall steps show. Pure, static,
+/// and total — no store, no flags read from singletons, no view state.
+enum PaywallMapping {
+    /// Tiers present, ASCENDING by allowance, so Pro is read first and prices
+    /// climb left to right. Derived from `CreditAllowance`, so a tier
+    /// configured later sorts itself in without a build.
+    static func tierAllowances(_ products: [PaywallProduct]) -> [Int] {
+        Array(Set(products.compactMap { CreditAllowance.monthly(forProductId: $0.id) })).sorted()
+    }
+
+    static func productsInTier(_ all: [PaywallProduct], _ allowance: Int) -> [PaywallProduct] {
+        all.filter { CreditAllowance.monthly(forProductId: $0.id) == allowance }
+    }
+
+    /// Whole-percent saving of a tier's annual plan against twelve of its own
+    /// monthly plan, floored. Under 1% shows no badge — there is no deal to
+    /// advertise.
+    ///
+    /// PERIOD, NOT PACKAGE TYPE, and this is a bug fix rather than a
+    /// preference. `PlanSavings.percentOff` selects its two plans with
+    /// `packageType == .annual/.monthly`, and RevenueCat classifies the Max
+    /// products as `.custom` — so for Max both lookups miss, the function
+    /// returns nil, and the yearly row shows no badge at all. Max annual is
+    /// $799.99 against $1,079.88 for twelve monthly: a real 25% saving,
+    /// silently withheld on the tier the redesign exists to sell.
+    static func percentOff(in tierProducts: [PaywallProduct]) -> Int? {
+        guard let a = tierProducts.first(where: { $0.unit == .year }),
+              let m = tierProducts.first(where: { $0.unit == .month }) else { return nil }
+        let yearly = (a.price as NSDecimalNumber).doubleValue
+        let monthly12 = (m.price as NSDecimalNumber).doubleValue * 12.0
+        guard monthly12 > 0 else { return nil }
+        let pct = Int(((1.0 - yearly / monthly12) * 100.0).rounded(.down))
+        return pct >= 1 ? pct : nil
+    }
+
+    /// "$24.17/mo, billed yearly" — RevenueCat's own per-month price when it has
+    /// one, otherwise the yearly price divided by twelve in the storefront's
+    /// currency. Nil rather than wrong: a missing line costs a little
+    /// persuasion, a made-up one is a misquoted price.
+    static func perMonthLine(_ p: PaywallProduct) -> String? {
+        if let per = p.localizedPricePerMonth {
+            return String(localized: "\(per)/mo, billed yearly")
+        }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        if let loc = p.currencyLocale { f.locale = loc }
+        guard p.price > 0, let s = f.string(from: (p.price / 12) as NSDecimalNumber) else { return nil }
+        return String(localized: "\(s)/mo, billed yearly")
+    }
+
+    /// The price a tier card quotes: the MONTHLY product, so both cards are read
+    /// at the same billing period. A tier with no monthly SKU states its period
+    /// explicitly rather than quietly comparing unlike things.
+    static func cardPrice(_ tierProducts: [PaywallProduct]) -> String? {
+        if let m = tierProducts.first(where: { $0.unit == .month }) {
+            return String(localized: "\(m.localizedPrice)/mo")
+        }
+        guard let any = tierProducts.first else { return nil }
+        return "\(any.localizedPrice) / \(periodLabel(any.unit))"
+    }
+
+    static func periodLabel(_ unit: PaywallPeriodUnit) -> String {
+        switch unit {
+        case .year:  return String(localized: "Year")
+        case .month: return String(localized: "Month")
+        case .week:  return String(localized: "Week")
+        case .other: return String(localized: "Plan")
+        }
+    }
+
+    @MainActor
+    static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool) -> [PaywallTierOption] {
+        let allowances = tierAllowances(products)
+        let proAllowance = allowances.first
+        let maxAllowance = allowances.count > 1 ? allowances.last : nil
+        return allowances.map { allowance in
+            let isMax = allowances.count > 1 && allowance == maxAllowance
+            // Claims come from ProBenefits in both cases — the one file allowed
+            // to write a promise. A phrasing invented here would be a second
+            // copy of the pitch, which is the drift benefits-parity-gate exists
+            // to catch.
+            // EACH CARD QUOTES ITS OWN ALLOWANCE. Passing the Pro allowance
+            // into the Max list made the Max card read "20 videos a month" —
+            // Pro's number, on the tier that costs three times as much and
+            // grants five times as many. The card directly contradicted the
+            // "5x usage" in its own header, one line above.
+            let features: [String] = isMax
+                ? ProBenefits.maxCardList(proAllowance: proAllowance,
+                                          maxAllowance: maxAllowance,
+                                          creditsEnabled: creditsEnabled)
+                : ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
+                                           monthlyCredits: allowance)
+            // The multiple moved INTO the Max card's first line, so repeating
+            // it in the header would state the same fact twice in four words.
+            let title = isMax ? String(localized: "Max") : String(localized: "Pro")
+            return PaywallTierOption(
+                allowance: allowance,
+                isMax: isMax,
+                title: title,
+                creditsLine: ProBenefits.creditsLine(allowance: allowance,
+                                                     creditsEnabled: creditsEnabled),
+                features: features,
+                monthlyPrice: cardPrice(productsInTier(products, allowance)))
+        }
+    }
+
+    static func durationOptions(_ products: [PaywallProduct], allowance: Int) -> [PaywallDurationOption] {
+        let inTier = productsInTier(products, allowance)
+        let pct = percentOff(in: inTier)
+        // ORDER IS GUARANTEED HERE, not inherited. This used to return the
+        // caller's order, which happened to be right in the app (packages
+        // arrive through `sortedByDuration`) and wrong everywhere else — the
+        // pre-selected annual row rendered LAST, under two plans nobody had
+        // chosen. A list whose correctness depends on how it was handed in is a
+        // list that will eventually be handed in differently.
+        let order: [PaywallPeriodUnit: Int] = [.year: 0, .month: 1, .week: 2, .other: 3]
+        return inTier
+            .sorted { (order[$0.unit] ?? 3) < (order[$1.unit] ?? 3) }
+            .map { p in
+            let isAnnual = p.unit == .year
+            return PaywallDurationOption(
+                id: p.id,
+                label: periodLabel(p.unit),
+                price: p.localizedPrice,
+                perMonthLine: isAnnual ? perMonthLine(p) : nil,
+                percentOff: isAnnual ? pct : nil,
+                introLine: p.introLine,
+                isAnnual: isAnnual)
+        }
+    }
 }
 
 // MARK: - Layout
@@ -105,6 +274,12 @@ struct TwoStepPaywallLayout: View {
         VStack(spacing: 0) {
             header
 
+            // Balanced spacers top and bottom: the content sits in the middle of
+            // whatever room the device gives it. Hugging the top left ~350pt of
+            // black under the cards on an SE and read as a screen that had failed
+            // to finish loading.
+            Spacer(minLength: 8)
+
             // The title steps aside once a tier is chosen. It is the framing for
             // the first decision and pure overhead for the second, and on a
             // 667pt screen its two bold lines are the difference between the
@@ -130,18 +305,29 @@ struct TwoStepPaywallLayout: View {
 
             Spacer(minLength: 8)
 
-            if showsReferral {
-                // Compact: the paywall has one row of space for this, and the
-                // reward line is the first thing worth dropping. The COUNT is
-                // not optional — a user who already referred someone must see
-                // it here, which is the drift this component was built to stop.
-                ReferralProgressRow(source: referralSource, compact: true)
+            if showsReferralNow {
+                // PRO ONLY, AND ONLY ONCE CHOSEN. The reward is a week of Pro,
+                // so offering it beside Max is offering a downgrade as a prize,
+                // and offering it before a tier is picked competes with the
+                // decision the screen is asking for. It belongs in exactly one
+                // place: after someone has chosen the tier the reward is
+                // denominated in.
+                ReferralProgressRow(source: referralSource, compact: true, style: .invite)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
 
             footer
         }
+        // ACCEPT THE PROPOSED WIDTH. `.frame(width:)` on an ancestor only
+        // PROPOSES — a stack whose children prefer more simply overflows and
+        // centres, which is how this screen ran off both edges for a Max
+        // subscriber and only for a Max subscriber. The referral row happened to
+        // carry a `maxWidth: .infinity` and was silently pinning the whole
+        // layout's width; suppressing that row for Max removed the pin, and the
+        // cards and duration rows expanded to their ideal width. A layout must
+        // not depend on an optional child to know how wide it is.
+        .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
                    value: chosenTier)
         .background(Color.black.ignoresSafeArea())
@@ -166,9 +352,13 @@ struct TwoStepPaywallLayout: View {
 
     // MARK: Header
 
+    /// Top LEFT, where a back control belongs on iOS — the system puts it
+    /// there, so every user's hand already knows the corner. A white disc
+    /// rather than a bare grey glyph: on a black screen a thin 14pt chevron at
+    /// 60% opacity is close to invisible, and the one control that undoes a
+    /// decision should never be the hardest thing on screen to find.
     private var header: some View {
         HStack {
-            Spacer()
             Button {
                 // With a tier chosen, this collapses back to the comparison
                 // rather than closing. A close button that dismisses from the
@@ -180,13 +370,18 @@ struct TwoStepPaywallLayout: View {
                     onClose()
                 }
             } label: {
-                Image(systemName: chosenTier != nil ? "chevron.left" : "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                ZStack {
+                    Circle().fill(Color.white).frame(width: 32, height: 32)
+                    Image(systemName: chosenTier != nil ? "chevron.left" : "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                }
+                .frame(width: 44, height: 44)      // full 44pt touch target
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(chosenTier != nil ? "Back" : "Close"))
+            Spacer()
         }
         .padding(.horizontal, 8)
     }
@@ -199,6 +394,13 @@ struct TwoStepPaywallLayout: View {
                 tierCard(tier)
             }
         }
+        // Cards size to their CONTENT. Without this they split the screen's
+        // leftover height with the layout's spacer and grow to ~1000pt, leaving
+        // a long empty gap between the last feature and the price — the card
+        // looked padded out to fill a hole. Fixing the height here also equalises
+        // the two: the HStack proposes one height to both, so Pro's six rows and
+        // Max's seven still line their prices up.
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
     }
 
@@ -209,9 +411,20 @@ struct TwoStepPaywallLayout: View {
             select(tier.allowance)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                Text(tier.isMax ? String(localized: "Max") : String(localized: "Pro"))
-                    .cType(17, .bold)
-                    .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tier.title)
+                        .cType(17, .bold)
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // The allowance, under the name. Absent while the meter is
+                    // dark rather than shown as a number the user cannot spend.
+                    if let credits = tier.creditsLine {
+                        Text(credits)
+                            .cType(11, .semibold)
+                            .foregroundColor(.white.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
 
                 // WHAT YOU GET, ABOVE THE PRICE. The price is the cost of the
                 // thing; showing it first asks the reader to judge a number
@@ -228,16 +441,30 @@ struct TwoStepPaywallLayout: View {
                 // chevron restores them in one tap. Costs ~100pt, in every
                 // language.
                 if chosenTier == nil {
-                VStack(alignment: .leading, spacing: 5) {
+                if tier.isMax { Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 7) {
                     ForEach(tier.features, id: \.self) { line in
-                        HStack(alignment: .top, spacing: 5) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white.opacity(0.55))
-                                .padding(.top, 3)
+                        // The reference treatment from the shipping paywall: a
+                        // filled white disc with a black check. A grey 8pt tick
+                        // at 55% opacity read as plain text and disappeared
+                        // against the card; this is the mark the rest of the
+                        // product already uses for a promise.
+                        HStack(alignment: .top, spacing: 7) {
+                            // Ticks belong to the itemised card. Max states a
+                            // RELATIONSHIP to Pro in two sentences, and putting
+                            // the same discs beside them made the two columns
+                            // scan as the same checklist at two prices.
+                            if !tier.isMax {
+                                ZStack {
+                                    Circle().fill(Color.white).frame(width: 16, height: 16)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .heavy))
+                                        .foregroundColor(.black)
+                                }
+                            }
                             Text(line)
-                                .cType(11)
-                                .foregroundColor(.white.opacity(0.78))
+                                .cType(tier.isMax ? 14 : 13, tier.isMax ? .semibold : .medium)
+                                .foregroundColor(.white)
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                         }
@@ -360,19 +587,26 @@ struct TwoStepPaywallLayout: View {
 
     private var footer: some View {
         VStack(spacing: 6) {
-            Button {
-                if let id = selectedId { onPurchase(id) }
-            } label: {
-                Text(chosenTier == nil ? String(localized: "Choose a plan")
-                                       : String(localized: "Continue"))
-                    .cType(17, .bold)
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Capsule().fill(Color.white.opacity(canContinue ? 1 : 0.35)))
+            // NO DEAD BUTTON. A greyed "Choose a plan" sitting under two cards
+            // is a control that answers a question the cards are already
+            // asking, and after a card is tapped it was still greyed for an
+            // instant beside a decision the user had just made. Until a tier is
+            // chosen the CARDS are the call to action; once one is, this is a
+            // live CTA and nothing else.
+            if canContinue {
+                Button {
+                    if let id = selectedId { onPurchase(id) }
+                } label: {
+                    Text(continueTitle)
+                        .cType(17, .bold)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(.plain)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
             }
-            .buttonStyle(.plain)
-            .disabled(!canContinue)
 
             // The auto-renewal disclosure. Legally fixed wording, and it stays
             // whole — this is the one line on the screen that may not be
@@ -388,6 +622,22 @@ struct TwoStepPaywallLayout: View {
     }
 
     private var canContinue: Bool { chosenTier != nil && selectedId != nil }
+
+    /// Names the tier being bought, so the last control before a charge says
+    /// what it is charging for.
+    private var continueTitle: String {
+        guard let t = chosenTier, let opt = tiers.first(where: { $0.allowance == t })
+        else { return String(localized: "Continue") }
+        return opt.isMax ? String(localized: "Continue with Max")
+                         : String(localized: "Continue with Pro")
+    }
+
+    /// The referral offer belongs to Pro and only after Pro is chosen.
+    private var showsReferralNow: Bool {
+        guard showsReferral, let t = chosenTier,
+              let opt = tiers.first(where: { $0.allowance == t }) else { return false }
+        return !opt.isMax
+    }
 }
 
 // MARK: - Store wiring
@@ -414,145 +664,68 @@ struct TwoStepPaywall: View {
             subscription.offerings?.current?.availablePackages ?? [])
     }
 
-    /// Tiers present in the offering, ASCENDING by allowance, so Pro is read
-    /// first and the prices climb left to right. Still derived — a tier
-    /// configured later sorts itself into place without a build.
-    private var tierAllowances: [Int] {
-        Array(Set(packages.compactMap {
-            CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier)
-        })).sorted()
-    }
-
-    private func packages(inTier allowance: Int) -> [Package] {
-        packages.filter {
-            CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier) == allowance
-        }
-    }
-
-    /// The MONTHLY product for a tier — the price both cards quote.
+    /// Adapt RevenueCat's packages into the value type the mapping runs on.
     ///
-    /// Falls back to the annual only when a tier genuinely has no monthly SKU;
-    /// in that case the card would be quoting a different period from its
-    /// neighbour, so it says which period it is rather than quietly comparing
-    /// unlike things.
-    private func monthlyPackage(for allowance: Int) -> Package? {
-        let inTier = packages(inTier: allowance)
-        return inTier.first { $0.storeProduct.subscriptionPeriod?.unit == .month }
-    }
-
-    private func cardPrice(for allowance: Int) -> String? {
-        if let m = monthlyPackage(for: allowance) {
-            return String(localized: "\(m.storeProduct.localizedPriceString)/mo")
-        }
-        guard let any = packages(inTier: allowance).first else { return nil }
-        return "\(any.storeProduct.localizedPriceString) / \(TwoStepPaywall.periodLabel(any))"
-    }
-
-    private var tierOptions: [PaywallTierOption] {
-        let allowances = tierAllowances
-        let proAllowance = allowances.first
-        let maxAllowance = allowances.count > 1 ? allowances.last : nil
-        return allowances.map { allowance in
-            let isMax = allowances.count > 1 && allowance == maxAllowance
-            let features: [String] = isMax
-                ? ProBenefits.maxCardFeatures(proAllowance: proAllowance,
-                                              maxAllowance: maxAllowance,
-                                              creditsEnabled: onboarding.creditsEnabled)
-                // The Pro list is `ProBenefits.core` — the SAME six claims the
-                // existing paywall renders, already flag-gated on its first row
-                // and already translated. A card-specific list would be a
-                // second copy of the product's promises, which is the exact
-                // drift benefits-parity-gate exists to catch.
-                : ProBenefits.core.map(\.text)
-            return PaywallTierOption(
-                allowance: allowance,
-                isMax: isMax,
-                features: features,
-                monthlyPrice: cardPrice(for: allowance))
-        }
-    }
-
-    private func durationOptions(_ allowance: Int) -> [PaywallDurationOption] {
-        let inTier = packages(inTier: allowance)
-        return inTier.map { pkg in
-            let unit = pkg.storeProduct.subscriptionPeriod?.unit
-            let isAnnual = unit == .year
-            // offer_surfacing: the gate derives duration from
-            // `subscriptionPeriod` rather than `packageType`. RevenueCat
-            // classifies the Max products as `.custom`, so a packageType test
-            // would silently hide the intro line on exactly the tier this
-            // redesign adds.
+    /// This is the ONLY place that touches `Package`. Everything the screen
+    /// shows is derived past this line, which is what makes the derivation
+    /// runnable — and therefore reviewable — without a live store.
+    private var products: [PaywallProduct] {
+        packages.map { pkg in
+            let sp = pkg.storeProduct
+            let unit: PaywallPeriodUnit = {
+                switch sp.subscriptionPeriod?.unit {
+                case .year:  return .year
+                case .month: return .month
+                case .week:  return .week
+                default: break
+                }
+                // Fall back to the package type only when the product carries
+                // no period at all.
+                switch pkg.packageType {
+                case .annual:  return .year
+                case .monthly: return .month
+                case .weekly:  return .week
+                default:       return .other
+                }
+            }()
+            // offer_surfacing: gated on the flag and the export-gate reason,
+            // resolved here because the phrasing needs the StoreKit offer.
             let intro: String? = (onboarding.offerSurfacingEnabled
                                   && reason == .exportGate
-                                  && (isAnnual || unit == .month))
+                                  && (unit == .year || unit == .month))
                 ? PaywallView.introOfferLine(for: pkg) : nil
-            return PaywallDurationOption(
-                id: pkg.identifier,
-                label: Self.periodLabel(pkg),
-                price: pkg.storeProduct.localizedPriceString,
-                perMonthLine: isAnnual ? Self.perMonthLine(pkg) : nil,
-                percentOff: isAnnual ? PlanSavings.percentOff(in: inTier) : nil,
-                introLine: intro,
-                isAnnual: isAnnual)
+            return PaywallProduct(
+                id: sp.productIdentifier,
+                localizedPrice: sp.localizedPriceString,
+                localizedPricePerMonth: sp.localizedPricePerMonth,
+                price: sp.price,
+                currencyLocale: sp.priceFormatter?.locale,
+                unit: unit,
+                introLine: intro)
         }
-    }
-
-    /// "$24.16/mo, billed yearly" — RevenueCat's own per-month price when it has
-    /// one, otherwise the yearly price divided by twelve with the PRODUCT'S
-    /// formatter, so currency and locale come from StoreKit. Nil rather than
-    /// wrong: a missing line costs a little persuasion, a made-up one is a
-    /// misquoted price.
-    private static func perMonthLine(_ pkg: Package) -> String? {
-        if let per = pkg.storeProduct.localizedPricePerMonth {
-            return String(localized: "\(per)/mo, billed yearly")
-        }
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.locale = pkg.storeProduct.priceFormatter?.locale ?? Locale.current
-        guard pkg.storeProduct.price > 0,
-              let s = f.string(from: (pkg.storeProduct.price / 12) as NSDecimalNumber)
-        else { return nil }
-        return String(localized: "\(s)/mo, billed yearly")
     }
 
     var body: some View {
-        TwoStepPaywallLayout(
+        let prods = products
+        return TwoStepPaywallLayout(
             title: PaywallView.title(
                 for: reason,
                 personalisationEnabled: onboarding.exportGatePersonalizationEnabled,
                 personalisedNoun: PaywallView.exportContentNoun(from: onboarding)),
-            tiers: tierOptions,
-            durations: durationOptions,
+            tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled),
+            durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             showsReferral: onboarding.referralProgressEnabled,
             referralSource: "paywall_two_step",
             onClose: { isPresented = false },
             onPurchase: { id in
-                guard let pkg = packages.first(where: { $0.identifier == id }) else { return }
+                guard let pkg = packages.first(where: {
+                    $0.storeProduct.productIdentifier == id
+                }) else { return }
                 Task {
                     let ok = await subscription.purchase(pkg, context: "two_step_paywall")
                     if ok { isPresented = false }
                 }
             })
         .task { if packages.isEmpty { await subscription.refreshOfferings() } }
-    }
-
-    /// "Year" / "Month" / "Week", from the product's own subscription period so
-    /// it is correct for a product RevenueCat classifies as `.custom` — which is
-    /// what the Max products arrive as.
-    static func periodLabel(_ pkg: Package) -> String {
-        if let p = pkg.storeProduct.subscriptionPeriod {
-            switch p.unit {
-            case .year:  return String(localized: "Year")
-            case .month: return String(localized: "Month")
-            case .week:  return String(localized: "Week")
-            default: break
-            }
-        }
-        switch pkg.packageType {
-        case .annual:  return String(localized: "Year")
-        case .monthly: return String(localized: "Month")
-        case .weekly:  return String(localized: "Week")
-        default:       return String(localized: "Plan")
-        }
     }
 }

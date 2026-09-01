@@ -62,6 +62,22 @@ enum ReferralCopy {
     /// written for the second paywall and is the same promise.
     static let offer = String(localized: "Every friend who makes a video earns you free Pro")
 
+    /// The paywall's invite line — RULED FLAT 2026-09-01.
+    ///
+    /// This states the quota, which the standing rule banned. The ban was
+    /// premised on the LADDER ("the first successful invite pays"), and the
+    /// ladder was never confirmed: `ladderConfirmed` is still false and the
+    /// server has always granted at THREE (`rewardTarget = 3`, seven days). So
+    /// the premise was the stale half, not the copy.
+    ///
+    /// With a flat 3-to-7 grant, naming three is the honest wording and hiding
+    /// it is the dishonest one: a user told "every friend earns you free Pro"
+    /// gets nothing for their first two successful invites, discovers that only
+    /// by counting, and concludes the reward does not arrive. The rule moved to
+    /// match the product rather than the copy being bent around the rule — the
+    /// resolution my own note on `offer` prescribed for exactly this case.
+    static let inviteOffer = String(localized: "Or invite 3 friends and get 1 week of Promptly Pro free.")
+
     /// The intermediate rewards, shown only if the LADDER survives Zac's
     /// ruling. Nil under a flat 3-to-7, where naming a partial reward that does
     /// not exist would repeat the defect this comment documents.

@@ -56,6 +56,16 @@ final class OnboardingState: ObservableObject {
     /// to the unlimited wording rather than inventing a number, so a missing
     /// value can never become a false claim about what money buys.
     @Published private(set) var creditsMonthlyAllowance: Int? = nil
+
+    #if DEBUG
+    /// Harness only: pose the server's `credits_monthly` so a capture can show
+    /// the ARMED claim ("20 videos a month") rather than the unlimited
+    /// fallback. Without this the allowance is nil in a simulator — no server
+    /// field, and `storeKitAllowance()` needs both a Pro entitlement and live
+    /// offerings — so a credits-armed capture silently shows the credits-dark
+    /// copy, which is the most misleading possible screenshot to review.
+    func debugSetCreditsAllowance(_ v: Int?) { if creditsMonthlyAllowance != v { creditsMonthlyAllowance = v } }
+    #endif
     /// The render-progress rebuild: framed source + ring, no bullet list.
     @Published private(set) var progressRingEnabled = false
     /// Before/after compare in the delivered-video bubble.
@@ -249,30 +259,30 @@ final class OnboardingState: ObservableObject {
     /// (screenshots of dark surfaces without a server flip). DEBUG only.
     func debugForceFlag(_ key: String) {
         switch key {
-        case "first_launch_paywall": firstLaunchPaywallEnabled = true
-        case "attribution_gate": attributionGateEnabled = true
+        case "first_launch_paywall": if firstLaunchPaywallEnabled != true { firstLaunchPaywallEnabled = true }
+        case "attribution_gate": if !attributionGateEnabled { attributionGateEnabled = true }
         case "onboarding_v2": onboardingV2Enabled = true
-        case "render_transparency": renderTransparencyEnabled = true
-        case "exportgate_personalization": exportGatePersonalizationEnabled = true
-        case "bad_render_suppressor": badRenderSuppressorEnabled = true
-        case "annual_dollar_line": annualDollarLineEnabled = true
-        case "offer_surfacing": offerSurfacingEnabled = true
-        case "two_step_paywall": twoStepPaywallEnabled = true
-        case "push_primer": pushPrimerEnabled = true
-        case "exportgate_two_page": exportGateTwoPageEnabled = true
+        case "render_transparency": if !renderTransparencyEnabled { renderTransparencyEnabled = true }
+        case "exportgate_personalization": if !exportGatePersonalizationEnabled { exportGatePersonalizationEnabled = true }
+        case "bad_render_suppressor": if !badRenderSuppressorEnabled { badRenderSuppressorEnabled = true }
+        case "annual_dollar_line": if !annualDollarLineEnabled { annualDollarLineEnabled = true }
+        case "offer_surfacing": if !offerSurfacingEnabled { offerSurfacingEnabled = true }
+        case "two_step_paywall": if !twoStepPaywallEnabled { twoStepPaywallEnabled = true }
+        case "push_primer": if !pushPrimerEnabled { pushPrimerEnabled = true }
+        case "exportgate_two_page": if !exportGateTwoPageEnabled { exportGateTwoPageEnabled = true }
         // The seven experiment flags. Their absence here was not a small gap —
         // it meant NONE of them could be turned on anywhere but a live server
         // flip, so none could be recorded, screenshotted, or reviewed before
         // shipping. A surface that cannot be seen before it ships is reviewed
         // by its users.
-        case "credits": creditsEnabled = true
-        case "progress_ring": progressRingEnabled = true
-        case "before_after": beforeAfterEnabled = true
-        case "instant_questions": instantQuestionsEnabled = true
-        case "reverse_trial": reverseTrialEnabled = true
-        case "reverse_trial_expiry": reverseTrialExpiryEnabled = true
-        case "paywall_personalization": paywallPersonalizationEnabled = true
-        case "referral_progress": referralProgressEnabled = true
+        case "credits": if !creditsEnabled { creditsEnabled = true }
+        case "progress_ring": if !progressRingEnabled { progressRingEnabled = true }
+        case "before_after": if !beforeAfterEnabled { beforeAfterEnabled = true }
+        case "instant_questions": if !instantQuestionsEnabled { instantQuestionsEnabled = true }
+        case "reverse_trial": if !reverseTrialEnabled { reverseTrialEnabled = true }
+        case "reverse_trial_expiry": if !reverseTrialExpiryEnabled { reverseTrialExpiryEnabled = true }
+        case "paywall_personalization": if !paywallPersonalizationEnabled { paywallPersonalizationEnabled = true }
+        case "referral_progress": if !referralProgressEnabled { referralProgressEnabled = true }
         // LOUD, not silent. `default: break` meant a mistyped key produced a
         // run that looked forced and wasn't — the harness would record the dark
         // state and it would be filed as "the surface doesn't work". A proof

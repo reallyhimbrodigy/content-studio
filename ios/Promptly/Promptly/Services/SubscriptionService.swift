@@ -49,6 +49,19 @@ final class SubscriptionService: ObservableObject {
     /// "hidden for Max users" everywhere except on the launch that matters.
     @Published private(set) var isMax: Bool = false
 
+    #if DEBUG
+    /// Sim-proof harness only: pose the Max entitlement so a capture can show
+    /// what a Max subscriber actually sees. DEBUG, and never called from app
+    /// code — the real value comes from RevenueCat in `applyCustomerInfo`.
+    /// Idempotent, and that is not a nicety. `@Published` fires on every
+    /// assignment, equal or not, and SwiftUI re-runs a View's `init` on each
+    /// update — so an unconditional set here became set -> publish -> update ->
+    /// set, a render loop that never settled. The harness caught it by refusing
+    /// to screenshot an unsettled screen; the production path has always
+    /// guarded the same way in `applyCustomerInfo`.
+    func debugSetMax(_ v: Bool) { if isMax != v { isMax = v } }
+    #endif
+
     /// THE source-of-truth Pro flag for every iOS gate that needs one.
     /// Returns true if EITHER RevenueCat's client cache (`isPro`) OR the
     /// server's `/api/usage` snapshot (`UsageService.shared.isPro`) says

@@ -57,13 +57,32 @@ SCARCITY_UI_RE='countdown|timeRemaining|secondsRemaining|expiresAt|deadline'
 # Matches copy promising the invited person something ("they get", "your friend
 # gets", "you both get"), and the invite-quota framing we banned separately.
 TWO_SIDED_RE='(they|your friend|the person you invite|whoever you invite|you both|both of you) (get|gets|receive|receives|earn|earns)|gift (them|your friend)|free .{0,20}for (them|your friend)'
-# INVITE-QUOTA framing — a separate ban with a separate reason, kept separate.
-# "Invite 3 friends" is not an App Review problem; it is a conversion one. It
-# states a quota before the user has shared even once, so the first share reads
-# as a third of a reward rather than a reward. The ladder exists precisely so
-# the FIRST successful invite pays. Merging this into the two-sided ban would
-# put a rejection risk and a copy preference under one label and one fix.
+# INVITE-QUOTA framing — RULE MOVED 2026-09-01, flat grant ruled.
+#
+# This banned naming a number ("invite 3 friends") on the premise that the
+# LADDER pays from the first successful invite, so a quota would understate what
+# the first share earns. That premise was never true: `ladderConfirmed` is still
+# false and the server has only ever granted at THREE (rewardTarget = 3, seven
+# days of Pro). The ban was protecting a reward model the product does not have.
+#
+# Under a flat 3-to-7 the quota IS the truth, and hiding it is the defect: a
+# user told "every friend earns you free Pro" receives nothing for their first
+# two qualified invites and concludes the reward does not arrive. So the rule
+# now bans the thing that is actually dishonest — a BARE quota, a number with no
+# reward attached to it. State three and state the week, or state neither.
+#
+# The old rule is not deleted, it is inverted for the ruled model; if the ladder
+# is ever actually shipped, this block moves back with it.
 INVITE_QUOTA_RE='invite [0-9]+ friends?|[0-9]+ (friends?|people) (to|who)|refer [0-9]+'
+# A quota is permitted only when the SAME string also names the reward.
+#
+# WORD BOUNDARIES ARE LOAD-BEARING. The first version of this was a bare
+# alternation, and "Or invite 3 friends today." passed it — "day" sits inside
+# "today". A gate that accepts a bare quota because the sentence happened to
+# contain the word "today" is the same false-green shape as matching
+# `shouldOffer` inside `shouldOfferSoftPrompt`: it reports PASS on the exact
+# defect it was written for.
+QUOTA_REWARD_RE='(^|[^[:alpha:]])(weeks?|days?|months?|free|pro)([^[:alpha:]]|$)'
 
 # Strip // line comments and /* */ block comments while preserving line count
 # and string literals (a quote-aware scan, so "https://…" inside a string never
@@ -141,10 +160,13 @@ while IFS= read -r -d '' f; do
 
   hits="$(printf '%s\n' "$stripped" | grep -nEi "$INVITE_QUOTA_RE" || true)"
   if [ -n "$hits" ]; then
-    violations=1
     while IFS= read -r h; do
-      echo "INVITE QUOTA    $f:$h"
-      echo "                (states a quota before the first share; the ladder pays from invite one)"
+      # Permitted when the same line names the reward the quota buys.
+      if echo "$h" | grep -qiE "$QUOTA_REWARD_RE"; then continue; fi
+      violations=1
+      echo "BARE QUOTA      $f:$h"
+      echo "                (names a number with no reward attached; state the"
+      echo "                 quota AND what it earns, or state neither)"
     done <<< "$hits"
   fi
 

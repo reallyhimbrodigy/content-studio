@@ -125,68 +125,78 @@ enum ProBenefits {
         }
         return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
     }
-
-    /// ONE line of value for a tier card, honest in BOTH flag states.
+    /// The SHORT form of the same promises, for a tier card roughly 165pt wide.
     ///
-    /// The two-step paywall shows a single line per tier, so that line has to
-    /// carry the whole difference between them — and it cannot state a credit
-    /// number while the meter is dark, because there is no such number yet.
+    /// WRITTEN HERE, which is the whole point. `core`'s phrasing is sized for a
+    /// full-width row and wraps to three lines in a column that narrow, so the
+    /// card needs shorter words — but a shorter phrasing invented inside the
+    /// paywall view would be a second copy of the product's promises, which is
+    /// exactly the drift benefits-parity-gate exists to stop. One file writes
+    /// claims; this is that file, so both lengths live and change together.
     ///
-    ///   credits ON  → the real allowance, derived from credits ÷ 10
-    ///   credits OFF → what is true today: Pro removes the daily cap, and Max
-    ///                 is Pro plus early access. Max is described RELATIVE to
-    ///                 Pro rather than with an invented number, which is the
-    ///                 only honest way to differentiate them without a meter.
+    /// ONE UNIT ON THIS SURFACE. With the meter armed the card header states the
+    /// allowance in CREDITS, so a "20 videos a month" row underneath would be
+    /// the same quantity in a second currency and the reader would have to know
+    /// the exchange rate (ten credits a video) to check the two lines agree. The
+    /// balance strip counts credits and the meter spends credits; the card says
+    /// credits too, and nothing on it converts. While the meter is dark there is
+    /// no credit number, so capacity is stated as what is then true.
     @MainActor
-    static func tierLine(isMax: Bool, creditsEnabled: Bool, monthlyCredits: Int?) -> String {
-        guard creditsEnabled, let c = monthlyCredits, c > 0 else {
-            return isMax
-                ? String(localized: "Everything in Pro, plus early access to new features")
-                : String(localized: "Unlimited videos, no daily cap")
+    static func cardFeatures(creditsEnabled: Bool, monthlyCredits: Int?) -> [String] {
+        var out: [String] = []
+        if !creditsEnabled || (monthlyCredits ?? 0) <= 0 {
+            out.append(String(localized: "Unlimited videos"))
         }
-        let videos = monthlyVideos(credits: c)
-        return isMax
-            ? String(localized: "\(videos) videos a month, plus early access to new features")
-            : String(localized: "\(videos) videos a month")
-    }
-
-    /// The MAX claim, shown only when a Max product is actually on offer.
-    ///
-    /// Gated on the credits flag with everything else, because "100 videos a
-    /// month" is a credits statement — with the meter dark there is no such
-    /// number and the line would be describing a product the user cannot get.
-    ///
-    /// The 100 is DERIVED, not typed: Max maps to 1000 credits and a video
-    /// costs 10, so the claim and the meter cannot drift. If Zac configures Max
-    /// at a different allowance, this sentence follows without an edit.
-    @MainActor
-    static func maxClaim(monthlyCredits: Int) -> Benefit {
-        Benefit(icon: "sparkles",
-                text: String(localized: "\(monthlyVideos(credits: monthlyCredits)) videos a month, plus early access to new features"))
-    }
-
-    /// The Max card's list: "Everything in Pro, plus" and what that plus IS.
-    ///
-    /// THE MULTIPLIER IS DERIVED, NOT TYPED. The brief says "5x the usage", and
-    /// 5x is what today's allowances happen to give (Max 2000 credits against
-    /// Pro 400). Writing 5 into the string would make it a claim that survives
-    /// the configuration that justified it — reprice either tier in RevenueCat
-    /// and the card keeps promising a multiple the product no longer delivers.
-    /// Computed from the two allowances, it simply follows.
-    ///
-    /// CREDITS DARK = NO MULTIPLE. Without a meter there are no allowances to
-    /// divide, so the usage line is dropped rather than guessed, and Max stands
-    /// on early access alone. Fewer claims, all of them true.
-    @MainActor
-    static func maxCardFeatures(proAllowance: Int?, maxAllowance: Int?,
-                                creditsEnabled: Bool) -> [String] {
-        var out = [String(localized: "Everything in Pro, plus")]
-        if creditsEnabled, let p = proAllowance, let m = maxAllowance, p > 0, m > p {
-            let times = m / p
-            if times >= 2 { out.append(String(localized: "\(times)x the usage")) }
-        }
-        out.append(String(localized: "Early access to new features"))
+        out += [
+            String(localized: "Auto captions and cuts"),
+            String(localized: "Re-edit any video"),
+            String(localized: "10 uploads at once"),
+            String(localized: "Unlimited AI chats"),
+            String(localized: "Save and share"),
+        ]
         return out
+    }
+
+    /// Max's card: TWO lines, and deliberately not a copy of Pro's list.
+    ///
+    /// Repeating Pro's six with identical ticks made the two cards read as the
+    /// same product at two prices — the eye scans matching columns and the only
+    /// difference it finds is the number at the bottom. Stating the relationship
+    /// instead says more in less space and puts the actual difference, the
+    /// multiple, into the sentence.
+    ///
+    /// The multiple is DERIVED and disappears with the meter: without credits
+    /// there is nothing for Max to be a multiple OF, so the line degrades to the
+    /// relationship alone rather than inventing a factor.
+    static func maxCardList(proAllowance: Int?, maxAllowance: Int?,
+                            creditsEnabled: Bool) -> [String] {
+        let lead: String = {
+            if let m = usageMultiple(proAllowance: proAllowance, maxAllowance: maxAllowance,
+                                     creditsEnabled: creditsEnabled) {
+                return String(localized: "Everything in Pro, plus \(m)x the usage")
+            }
+            return String(localized: "Everything in Pro")
+        }()
+        return [lead, String(localized: "Early access to our latest features")]
+    }
+
+    /// The usage multiple, DERIVED from the two allowances rather than typed, so
+    /// repricing a tier cannot leave a stale multiple on screen. Nil while the
+    /// meter is dark: with no credits there is no usage to be a multiple of.
+    static func usageMultiple(proAllowance: Int?, maxAllowance: Int?,
+                              creditsEnabled: Bool) -> Int? {
+        guard creditsEnabled, let p = proAllowance, let m = maxAllowance,
+              p > 0, m > p else { return nil }
+        let times = m / p
+        return times >= 2 ? times : nil
+    }
+
+    /// "200 credits/month" under a tier name. Nil while the meter is dark —
+    /// printing a credit number for a meter that is not running is a claim about
+    /// something the user cannot yet spend.
+    static func creditsLine(allowance: Int, creditsEnabled: Bool) -> String? {
+        guard creditsEnabled, allowance > 0 else { return nil }
+        return String(localized: "\(allowance) credits/month")
     }
 
     /// `core` is now COMPUTED, not a constant, and that is the whole fix.

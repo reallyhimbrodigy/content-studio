@@ -64,10 +64,49 @@ struct PayoffSnapshotHarnessView: View {
     /// export gate proved out as the single-page gate because the flag was
     /// still false when PaywallView's task ran. init() is the only
     /// deterministic seam.
+    /// Side effects run ONCE per process, not once per init.
+    ///
+    /// SwiftUI re-creates a View struct on every update, so `init` is not a
+    /// lifecycle hook — it is a function called an unbounded number of times.
+    /// Mutating global state there means every mutation schedules the update
+    /// that calls it again. With `@Published` firing on equal assignments too,
+    /// state 25 pinned the main thread hard enough for Sentry to file an app
+    /// hang, and the harness correctly refused to screenshot a screen that
+    /// never settled.
+    private static var didApplyFlags = false
+
     init() {
+        if Self.didApplyFlags { return }
+        Self.didApplyFlags = true
+        Self.applyFlags()
+    }
+
+    /// Re-assertable, because a one-shot at init is not enough.
+    ///
+    /// `OnboardingState` restores its flags from UserDefaults and from the
+    /// server AFTER init, so a flag forced once at construction is overwritten
+    /// a moment later and the screen renders in the wrong configuration —
+    /// state 28 lost its credits lines exactly this way. It went unnoticed
+    /// before only because `init` was being called in a loop, re-forcing the
+    /// flag on every pass; fixing the loop exposed the race it was hiding.
+    /// Every assignment underneath is guarded, so calling this again is free.
+    @MainActor
+    static func applyFlags() {
         let n = Int(UserDefaults.standard.string(forKey: "snapshotState") ?? "0") ?? 0
         let o = OnboardingState.shared
         switch n {
+        case 25:
+            // The capture must show suppression happening, not a hidden row.
+            SubscriptionService.shared.debugSetMax(true)
+            o.debugForceFlag("referral_progress")
+        case 28, 29, 30:
+            // Credits armed: the claims must switch to the real allowances —
+            // Pro "20 videos a month", Max "5x the usage". Both derived from
+            // CreditAllowance (200 / 1000), neither typed.
+            o.debugForceFlag("credits")
+            // Pro maps to 200 credits => 20 videos a month. Posed, because the
+            // real source is a server field a simulator never receives.
+            o.debugSetCreditsAllowance(200)
         case 6:  o.debugForceFlag("attribution_gate"); o.hasSeenAttributionGate = false
         case 7, 8, 11, 12, 15:
             o.debugForceFlag("onboarding_v2")
@@ -168,31 +207,82 @@ struct PayoffSnapshotHarnessView: View {
                     OnboardingState.shared.debugForceFlag("exportgate_personalization")
                     OnboardingState.shared.v2VideoType = "podcast"
                 }
-            case 22: FitProbe(label: "TWO-STEP cards WORST-CASE") {
+            case 22: bleed("step one — credits dark") {
                 TwoStepPaywallLayout(
-                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { _ in HarnessPaywallMock.durations },
+                    durations: { HarnessPaywallMock.durations($0) },
                     showsReferral: true,
                     referralSource: "harness")
             }
-            case 23: FitProbe(label: "TWO-STEP expanded WORST-CASE") {
+            case 23: bleed("Max selected") {
                 TwoStepPaywallLayout(
-                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { _ in HarnessPaywallMock.durations },
+                    durations: { HarnessPaywallMock.durations($0) },
                     showsReferral: true,
                     referralSource: "harness",
-                    initialTier: 2000)
+                    initialTier: 1000)
             }
-            case 24: FitProbe(label: "TWO-STEP expanded PRO-selected") {
+            case 24: bleed("Pro selected") {
                 TwoStepPaywallLayout(
-                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { _ in HarnessPaywallMock.durations },
+                    durations: { HarnessPaywallMock.durations($0) },
                     showsReferral: true,
                     referralSource: "harness",
-                    initialTier: 400)
+                    initialTier: 200)
+            }
+            case 25: bleed("PRO selected, viewer holds MAX — no referral") {
+                // showsReferral stays TRUE. The row must disappear on its own,
+                // through ReferralService.shouldOffer, or the suppression is
+                // not actually working — passing false here would prove
+                // nothing except that false hides a row.
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true,
+                    referralSource: "harness",
+                    initialTier: 200)
+            }
+            case 28: bleed("step one CREDITS ARMED") {
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true,
+                    referralSource: "harness")
+            }
+            case 29: bleed("Max selected CREDITS ARMED") {
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true,
+                    referralSource: "harness",
+                    initialTier: 1000)
+            }
+            case 30: FitProbe(label: "FIT step one CREDITS ARMED") {
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true, referralSource: "harness")
+            }
+            case 26: FitProbe(label: "FIT step one") {
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true, referralSource: "harness")
+            }
+            case 27: FitProbe(label: "FIT Max selected") {
+                TwoStepPaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    showsReferral: true, referralSource: "harness", initialTier: 1000)
             }
             case 16: OnboardingQuestionView(question: .audienceV2,
                                             progress: (1, 3), onSkip: {}) { _ in }
@@ -210,6 +300,9 @@ struct PayoffSnapshotHarnessView: View {
             await Task.yield()
             try? await Task.sleep(nanoseconds: 400_000_000)
             await Task.yield()
+            // Re-assert after OnboardingState's own restore has had a chance to
+            // run, so the capture shows the configuration that was asked for.
+            Self.applyFlags()
             try? await Task.sleep(nanoseconds: 400_000_000)
             settled = true
             print("SNAPSHOT_SETTLED \(state)")
@@ -262,6 +355,33 @@ struct PayoffSnapshotHarnessView: View {
         msgs.append(SerializedMessage(from: Self.completedMock))
         ChatStore.shared.scheduleSave(chatId: chat.id, messages: msgs)
         print("[snapshotPrimer] delivered mock appended to chat \(chat.id) — sheet expected ~0.9s (OS permission must be notDetermined)")
+    }
+
+    /// Full-bleed: the surface exactly as it ships, with a caption OVERLAID so
+    /// the capture is self-identifying without changing a single point of the
+    /// layout being reviewed.
+    @ViewBuilder
+    private func bleed<V: View>(_ caption: String, @ViewBuilder _ content: @escaping () -> V) -> some View {
+        // WIDTH MUST BE CONSTRAINED, and this is not cosmetic. Handed an
+        // unbounded width proposal, `frame(maxWidth: .infinity)` resolves to the
+        // content's IDEAL width — so with credits armed, "Early access to new
+        // features" preferred one line, the cards grew past 375pt, and the
+        // capture showed a paywall running off both edges. Nothing was wrong
+        // with the paywall: a sheet or full-screen cover always proposes the
+        // screen width. A harness that proposes something else is testing a
+        // layout the app never renders, and the resulting screenshot is a bug
+        // report about the harness.
+        GeometryReader { geo in
+            content()
+                .frame(width: geo.size.width, height: geo.size.height)
+                // NO CAPTION IN THE FRAME. The grey state label read as part of
+                // the product — it was reported as "the grey subtitle above the
+                // cards" and asked to be removed. A review capture must contain
+                // shipping pixels and nothing else; the state is identified by
+                // the filename instead.
+                .onAppear { print("SNAPSHOT_CAPTION \(caption)") }
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func labeled<V: View>(_ title: String, @ViewBuilder _ content: () -> V) -> some View {
@@ -657,47 +777,49 @@ private struct FitProbe<Content: View>: View {
     }
 }
 
-/// Worst-case paywall content for the fit probe: German (the longest of the
-/// twelve), Swiss francs (the widest price string), every optional line present.
-/// Shared by both probe states so a height difference between them is a
-/// difference in LAYOUT, not in the fixture.
+/// The LIVE products, run through the REAL mapping.
+///
+/// These are the five product ids in RevenueCat's `default` offering and their
+/// actual App Store Connect prices for the US storefront, read from the API on
+/// 2026-09-01 — not invented numbers. They are fed through `PaywallMapping`,
+/// the same code the shipping paywall calls, so what a capture shows is the
+/// real derivation: which tier a product belongs to, which tier is Max, what
+/// each card quotes, the saving percentage, and the per-month restatement.
+///
+/// WHY THIS EXISTS AT ALL. `Package` cannot be constructed, and StoreKit
+/// Testing only applies inside an Xcode debug session — not to a `simctl
+/// launch`. So a simulator capture of the store-wired view is a capture of an
+/// empty screen. This is the closest honest thing: real ids, real prices, real
+/// mapping, and only RevenueCat's own object stubbed out.
 private enum HarnessPaywallMock {
-    static let tiers: [PaywallTierOption] = [
-        PaywallTierOption(
-            allowance: 400, isMax: false,
-            features: [
-                "Unbegrenzte Videos",
-                "Untertitel, Schnitte und Grafiken — automatisch",
-                "Jedes fertige Video neu bearbeiten",
-                "Bis zu 10 Videos gleichzeitig hochladen",
-                "Unbegrenzte KI-Chats",
-                "Jedes Video speichern und teilen",
-            ],
-            monthlyPrice: "CHF 29.99/Mt."),
-        PaywallTierOption(
-            allowance: 2000, isMax: true,
-            features: [
-                "Alles aus Pro, plus",
-                "5x so viel Nutzung",
-                "Früher Zugriff auf neue Funktionen",
-            ],
-            monthlyPrice: "CHF 89.99/Mt."),
+    /// US storefront, from App Store Connect (2026-09-01).
+    static let products: [PaywallProduct] = [
+        PaywallProduct(id: "promptly_pro_weekly",  localizedPrice: "$10.99",
+                       localizedPricePerMonth: nil, price: 10.99,
+                       currencyLocale: Locale(identifier: "en_US"), unit: .week, introLine: nil),
+        PaywallProduct(id: "promptly_pro_monthly", localizedPrice: "$29.99",
+                       localizedPricePerMonth: nil, price: 29.99,
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introLine: nil),
+        PaywallProduct(id: "promptly_pro_yearly",  localizedPrice: "$289.99",
+                       localizedPricePerMonth: nil, price: 289.99,
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introLine: nil),
+        PaywallProduct(id: "promptly_max_monthly", localizedPrice: "$89.99",
+                       localizedPricePerMonth: nil, price: 89.99,
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introLine: nil),
+        PaywallProduct(id: "promptly_max_yearly",  localizedPrice: "$799.99",
+                       localizedPricePerMonth: nil, price: 799.99,
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introLine: nil),
     ]
 
-    static let durations: [PaywallDurationOption] = [
-        PaywallDurationOption(
-            id: "y", label: "Jahr", price: "CHF 289.99",
-            perMonthLine: "CHF 24.16/Mt., jährlich abgerechnet",
-            percentOff: 62,
-            introLine: "Einführungspreis: CHF 249.00 für deine ersten 3 Monate",
-            isAnnual: true),
-        PaywallDurationOption(
-            id: "m", label: "Monat", price: "CHF 29.99",
-            perMonthLine: nil, percentOff: nil, introLine: nil, isAnnual: false),
-        PaywallDurationOption(
-            id: "w", label: "Woche", price: "CHF 12.99",
-            perMonthLine: nil, percentOff: nil, introLine: nil, isAnnual: false),
-    ]
+    @MainActor
+    static var tiers: [PaywallTierOption] {
+        PaywallMapping.tierOptions(products,
+                                   creditsEnabled: OnboardingState.shared.creditsEnabled)
+    }
+
+    static func durations(_ allowance: Int) -> [PaywallDurationOption] {
+        PaywallMapping.durationOptions(products, allowance: allowance)
+    }
 }
 
 #endif
