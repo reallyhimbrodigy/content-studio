@@ -59,7 +59,7 @@ struct FirstLaunchPaywallView: View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
+            ConversionScroll {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 64)
 
@@ -145,13 +145,11 @@ struct FirstLaunchPaywallView: View {
                 // the uncapped version as the app's opening screen and never
                 // reaches the fixed one.
                 //
-                // Two frames, in this order, exactly as AuthView does it: the
-                // first caps the column, the second re-expands the container so
-                // the capped column CENTERS rather than hugging the leading
-                // edge. Capping alone would leave the content pinned left with
-                // dead space to the right — a different kind of broken.
-                .frame(maxWidth: 460)
-                .frame(maxWidth: .infinity)
+                // ConversionScroll owns both halves now: the width cap AND
+                // the vertical centering. The first iPad capture showed the
+                // capped column top-aligned with a third of the screen empty
+                // below it — fixed here rather than at this one call site, so
+                // every other conversion surface gets it too.
             }
 
             // ALWAYS dismissible — the exposure is the point, not a trap.

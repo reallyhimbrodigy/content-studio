@@ -50,3 +50,38 @@ extension View {
         modifier(ConversionColumn(width: width))
     }
 }
+
+/// A conversion surface's scroll container: capped width AND vertically
+/// centered when the content is shorter than the viewport.
+///
+/// WHY THE VERTICAL HALF MATTERS. Capping the width alone fixed the stretch and
+/// left a second defect visible in the first iPad capture: the column sat
+/// top-aligned with roughly a third of a 13-inch screen as dead black beneath
+/// the legal links. On a phone that never shows, because the content is taller
+/// than the viewport. On iPad it reads as a half-loaded page.
+///
+/// `minHeight` rather than a fixed height is the whole trick, and it is why this
+/// is safe on small devices: when the content is TALLER than the viewport — the
+/// 375pt iPhone case, where this paywall's CTA already sits below the fold — the
+/// constraint simply does not bind and the view scrolls exactly as before. It
+/// only ever adds height that was empty anyway.
+///
+/// A fixed height, or `containerRelativeFrame`, would size the content to the
+/// viewport and clip the overflow on those same small screens. That would turn
+/// an iPad polish fix into an iPhone regression, on the surface with App Review
+/// history.
+struct ConversionScroll<Content: View>: View {
+    var width: CGFloat = ConversionColumn.columnWidth
+    var showsIndicators: Bool = false
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView(showsIndicators: showsIndicators) {
+                content()
+                    .conversionColumn(width)
+                    .frame(minHeight: geo.size.height)
+            }
+        }
+    }
+}

@@ -230,7 +230,7 @@ struct PaywallView: View {
             if showingBenefitPage {
                 exportBenefitPage
             } else {
-            ScrollView(showsIndicators: false) {
+            ConversionScroll {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
 
@@ -363,12 +363,10 @@ struct PaywallView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 36)
                 }
-                // The main paywall column. This surface is presented BOTH as a
-                // sheet (an iPad pageSheet is already a ~704pt card) and as a
-                // fullScreenCover, and only the second one gets the whole
-                // window — so the cap has to live on the content, not be
-                // assumed from the presentation.
-                .conversionColumn()
+                // Presented BOTH as a sheet (an iPad pageSheet is already a
+                // ~704pt card) and as a fullScreenCover, and only the second
+                // gets the whole window — so the cap lives on the content
+                // rather than being assumed from the presentation.
             }
             }
 
@@ -445,7 +443,7 @@ struct PaywallView: View {
     /// didn't. No countdown, no scarcity: the only urgency named here is the
     /// real one (this video is finished and waiting).
     private var exportBenefitPage: some View {
-        ScrollView(showsIndicators: false) {
+        ConversionScroll {
             VStack(spacing: 0) {
                 Spacer().frame(height: 72)
 
@@ -851,6 +849,15 @@ struct PaywallView: View {
                         Text(dollarLine)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.5))
+                            // WRAPS. Caught in the iPad capture of the width
+                            // cap: inside a 460pt column this line truncated to
+                            // "save $28…", turning a specific savings claim into
+                            // a meaningless fragment — and it is a claim about
+                            // MONEY, so a truncated version is worse than none.
+                            // Previously it fit only because the row stretched
+                            // to the window; the cap that fixed the stretch is
+                            // what exposed this.
+                            .fixedSize(horizontal: false, vertical: true)
                             .onAppear {
                                 Analytics.track("annual_dollar_line_shown", props: ["context": reasonKey])
                             }
@@ -1085,7 +1092,7 @@ struct ProCelebrationView: View {
             }
             .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
+            ConversionScroll {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 88)
 
