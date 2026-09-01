@@ -5,7 +5,7 @@ const {
   refundJobCharge, sweepRefundLeg, DELETE_DELTA_CAP_MS, CHARGE_MATCH_WINDOW_MS,
 } = require('../lib/refund-leg');
 
-// ---- minimal supabase-js style fake: select / delete / update + eq/gte/lte/is ----
+// ---- minimal supabase-js style fake: select / delete / update + eq/gte/lte/is/not ----
 function makeFake(tables) {
   const state = { video_jobs: [...(tables.video_jobs || [])], usage_events: [...(tables.usage_events || [])] };
   function builder(table) {
@@ -20,6 +20,17 @@ function makeFake(tables) {
       gte(col, val) { filters.push((r) => r[col] >= val); return b; },
       lte(col, val) { filters.push((r) => r[col] <= val); return b; },
       is(col, val) { filters.push((r) => (val === null ? r[col] == null : r[col] === val)); return b; },
+      // .not(col, 'is', null) -- the sweep excludes NULL user_id SERVER-SIDE,
+      // because PostgREST serialises a JS null as the STRING "null" and the
+      // query dies with `invalid input syntax for type uuid`. The real client
+      // has .not(); this fake did not, so 11 guards went red on a change that
+      // was correct in production. Mock gap, not a product bug.
+      not(col, op, val) {
+        filters.push((r) => (op === 'is' && val === null
+          ? r[col] != null
+          : r[col] !== val));
+        return b;
+      },
       then(resolve) {
         const rows = state[table].filter((r) => filters.every((f) => f(r)));
         if (op === 'delete') {

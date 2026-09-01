@@ -312,6 +312,10 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
+// Default OFF. A debit that can 402 every user in the product is armed by
+// an explicit env flip, after balances are verified -- not by a merge.
+const CREDITS_DEBIT_ENABLED =
+  String(process.env.CREDITS_DEBIT_ENABLED || '').trim() === '1';
 const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
@@ -5739,7 +5743,18 @@ const server = http.createServer((req, res) => {
           // A demo is quota-exempt and must stay credit-exempt too, or the
           // first-run sample clip would charge a user 10 credits.
           let _creditsDebited = null;
-          if (!isDemo && _credits.isConfigured()
+          // ARMED DELIBERATELY, NOT BY MERGE. REVENUECAT_SECRET_KEY /
+          // REVENUECAT_PROJECT_ID are ALREADY set for entitlement sync and the
+          // live webhook, so isConfigured() is true in production the moment
+          // this deploys. Both failure paths here are fail-closed BY DESIGN:
+          // an unprovisioned CRD currency returns RC_ERROR -> 503 (no spawn),
+          // and a user with no granted balance returns 422 -> 402. Correct
+          // behaviour, and a total render outage if balances are not in place
+          // first. So the debit needs its own switch, flipped after a real
+          // balance read -- never as a side effect of shipping the code.
+          // Set CREDITS_DEBIT_ENABLED=1 to arm. The BALANCE endpoint is NOT
+          // gated: it is read-only and cannot block a render.
+          if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
               && _credits.shouldDebit({ mode: 'full' })) {
             try {
               await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
@@ -5757,7 +5772,13 @@ const server = http.createServer((req, res) => {
                   // the SSE frames.
                   type: 'insufficient_credits',
                   error: 'insufficient_credits', kind: 'credits',
-                  route: 'paywall', needed: _credits.COST_PER_RENDER,
+                  // NO `route`. The in-thread treatment is RULED, so a routing
+                  // hint here is a second authority telling the client
+                  // something the ruling already decided — and when they
+                  // disagree, the payload silently wins. The server reports the
+                  // fact (insufficient, needed 10); the client owns the
+                  // treatment.
+                  needed: _credits.COST_PER_RENDER,
                   // NOT a balance: with no pre-read the server never learns it
                   // on this path, and RC's 422 does not report one.
                   balanceKnown: false,
