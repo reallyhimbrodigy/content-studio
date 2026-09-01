@@ -122,4 +122,54 @@ if [ "$fails" -gt 0 ]; then
   exit 1
 fi
 
+# ── DESTRUCTIVE PAIRS ────────────────────────────────────────────────────
+# A confirmation dialog's two buttons must never be a MINIMAL PAIR — one being
+# the other with a negation bolted on. "Nicht weitermachen" against
+# "Weitermachen" is one word apart in a dialog where the wrong tap destroys work
+# in progress, and it is the shape careless translation produces by default: the
+# translator sees "Keep going" and its opposite, and negates.
+#
+# This checks the CATALOG rather than the source, because the defect only exists
+# per-language — the English pair is fine and every translation is a fresh
+# chance to reintroduce it.
+python3 - <<'PYEOF'
+import json, sys, unicodedata
+
+PAIRS = [("Stop making it", "Keep going")]
+# Negation words that turn one button into the other.
+NEG = ["nicht", "kein", "no", "not", "non", "pas", "ne", "tidak", "jangan",
+       "नहीं", "मत", "नगर", "ない", "しない", "لا", "نہیں", "না", "não"]
+
+cat = json.load(open("Promptly/Localizable.xcstrings"))["strings"]
+bad = []
+for destructive, safe in PAIRS:
+    if destructive not in cat or safe not in cat:
+        print(f"destructive-pair: CANNOT READ — {destructive!r} or {safe!r} missing from catalog")
+        sys.exit(2)
+    dl = cat[destructive]["localizations"]
+    sl = cat[safe]["localizations"]
+    for lang in sorted(set(dl) & set(sl)):
+        a = dl[lang]["stringUnit"]["value"].strip().lower()
+        b = sl[lang]["stringUnit"]["value"].strip().lower()
+        if a == b:
+            bad.append(f"{lang}: both buttons read {a!r}")
+            continue
+        # Strip any negation word from each and see if they collapse together.
+        def bare(t):
+            for n in NEG:
+                t = t.replace(n, "")
+            return " ".join(t.split())
+        if bare(a) and bare(a) == bare(b):
+            bad.append(f"{lang}: {a!r} vs {b!r} differ only by a negation")
+
+if bad:
+    print("destructive-pair: FAIL — a mis-tap here destroys work in progress")
+    for b in bad:
+        print("   ", b)
+    sys.exit(1)
+print(f"destructive-pair: PASS — {len(PAIRS)} dialog pair(s) lexically distinct in every language")
+PYEOF
+pair_rc=$?
+[ "$pair_rc" -ne 0 ] && exit "$pair_rc"
+
 echo "plain-language-gate: PASS — no engineering vocabulary in user-facing copy."
