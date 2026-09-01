@@ -185,7 +185,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld Credits erstattet — dieser Render zählte nicht"
+            "value": "%lld Credits erstattet — dieses Video hat nicht gezählt"
           }
         },
         "es": {
@@ -337,7 +337,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il vous reste %lld vidéos gratuites aujourd'hui"
+            "value": "Il te reste %lld vidéos gratuites aujourd'hui"
           }
         },
         "hi": {
@@ -477,7 +477,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld personnes que vous avez invitées ont réalisé une vidéo"
+            "value": "%lld personnes que tu as invitées ont fait une vidéo"
           }
         },
         "hi": {
@@ -489,7 +489,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld orang yang Anda undang telah membuat video"
+            "value": "%lld orang yang kamu undang telah membuat video"
           }
         },
         "ja": {
@@ -1039,7 +1039,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 personne que vous avez invitée a réalisé une vidéo"
+            "value": "1 personne que tu as invitée a fait une vidéo"
           }
         },
         "hi": {
@@ -1051,7 +1051,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 orang yang Anda undang telah membuat video"
+            "value": "1 orang yang kamu undang telah membuat video"
           }
         },
         "ja": {
@@ -1410,7 +1410,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Satu hari Pro setiap kali orang yang Anda undang membuat video pertamanya"
+            "value": "Satu hari Pro setiap kali orang yang kamu undang membuat video pertamanya"
           }
         },
         "ja": {
@@ -1896,7 +1896,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "N'importe quelle vidéo — jusqu'à 5 minutes. Nous vous prévenons dès que c'est prêt."
+            "value": "N'importe quelle vidéo — jusqu'à 5 minutes. On te prévient dès que c'est prêt."
           }
         },
         "hi": {
@@ -2657,7 +2657,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Render abbrechen"
+            "value": "Erstellung abbrechen"
           }
         },
         "es": {
@@ -2727,7 +2727,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diesen Render abbrechen?"
+            "value": "Erstellung wirklich abbrechen?"
           }
         },
         "es": {
@@ -2937,7 +2937,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Untertitel, Schnitte und Grafiken — automatisch"
+            "value": "Untertitel, Videoschnitt und Grafiken — automatisch"
           }
         },
         "es": {
@@ -3159,7 +3159,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vérifiez vos e-mails"
+            "value": "Vérifie tes e-mails"
           }
         },
         "hi": {
@@ -3171,7 +3171,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cek email Anda"
+            "value": "Cek email kamu"
           }
         },
         "ja": {
@@ -3376,7 +3376,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisissez votre langue"
+            "value": "Choisis ta langue"
           }
         },
         "hi": {
@@ -4719,7 +4719,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Impossible d'importer votre image — vérifiez votre connexion et réessayez."
+            "value": "Impossible d'importer ton image — vérifie ta connexion et réessaie."
           }
         },
         "hi": {
@@ -4731,7 +4731,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gambar Anda gagal diunggah — periksa koneksi dan coba lagi."
+            "value": "Gambarmu gagal dikirim — periksa koneksi dan coba lagi."
           }
         },
         "ja": {
@@ -4778,7 +4778,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Schnitte · Untertitel · B-roll"
+            "value": "Videoschnitt · Untertitel · B-roll"
           }
         },
         "en": {
@@ -4866,7 +4866,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Montage de votre clip %@"
+            "value": "On monte ton clip %@"
           }
         },
         "hi": {
@@ -4936,7 +4936,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Montage de votre vidéo"
+            "value": "On monte ta vidéo"
           }
         },
         "hi": {
@@ -5414,7 +5414,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beschreibe deinen Schnitt"
+            "value": "Sag, wie dein Video werden soll"
           }
         },
         "es": {
@@ -5426,7 +5426,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Décrivez votre montage"
+            "value": "Décris le montage que tu veux"
           }
         },
         "hi": {
@@ -5438,7 +5438,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jelaskan editan Anda"
+            "value": "Jelaskan editanmu"
           }
         },
         "ja": {
@@ -6119,7 +6119,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Schnittstil (optional)"
+            "value": "Bearbeitungsstil (optional)"
           }
         },
         "es": {
@@ -6189,7 +6189,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Schnitt-Vibe deines vorherigen Videos"
+            "value": "Vibe deines vorherigen Videos"
           }
         },
         "es": {
@@ -6201,7 +6201,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ambiance de montage de votre vidéo précédente"
+            "value": "Ambiance de montage de ta vidéo précédente"
           }
         },
         "hi": {
@@ -6213,7 +6213,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gaya editing video Anda sebelumnya"
+            "value": "Gaya editing videomu sebelumnya"
           }
         },
         "ja": {
@@ -6259,7 +6259,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Schnitte dauern ein paar Minuten. Wir geben dir sofort Bescheid, wenn dein nächster fertig ist — die App muss nicht offen bleiben."
+            "value": "Videos brauchen ein paar Minuten. Wir geben dir sofort Bescheid, wenn dein nächstes fertig ist — die App muss nicht offen bleiben."
           }
         },
         "es": {
@@ -6271,7 +6271,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un montage prend quelques minutes. On vous prévient dès que le prochain est prêt — pas besoin de laisser l'app ouverte."
+            "value": "Un montage prend quelques minutes. On te prévient dès que le prochain est prêt — pas besoin de laisser l'app ouverte."
           }
         },
         "hi": {
@@ -6539,7 +6539,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeder Take zum fertigen Schnitt, unbegrenzt"
+            "value": "Jeder Take zum fertigen Video, unbegrenzt"
           }
         },
         "es": {
@@ -6691,7 +6691,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tout ce que vous avez créé est toujours là. Passez à Pro pour continuer sans limites."
+            "value": "Tout ce que tu as créé est toujours là. Passe à Pro pour continuer sans limites."
           }
         },
         "hi": {
@@ -6703,7 +6703,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Semua yang Anda buat masih ada. Naik ke Pro untuk terus berkarya tanpa batas."
+            "value": "Semua yang kamu buat masih ada. Naik ke Pro untuk terus berkarya tanpa batas."
           }
         },
         "ja": {
@@ -6761,7 +6761,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tout est débloqué. Aucune limite quotidienne — créez autant que vous voulez."
+            "value": "Tout est débloqué. Aucune limite quotidienne — crée autant que tu veux."
           }
         },
         "hi": {
@@ -6773,7 +6773,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Semuanya terbuka. Tanpa batas harian — buat sebanyak yang Anda mau."
+            "value": "Semuanya terbuka. Tanpa batas harian — buat sebanyak yang kamu mau."
           }
         },
         "ja": {
@@ -6972,7 +6972,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Suit la langue de votre appareil. Modifiez-la dans Réglages iOS."
+            "value": "Suit la langue de ton appareil. Change-la dans Réglages iOS."
           }
         },
         "hi": {
@@ -6984,7 +6984,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mengikuti bahasa perangkat Anda. Ubah di Pengaturan iOS."
+            "value": "Mengikuti bahasa perangkatmu. Ubah di Pengaturan iOS."
           }
         },
         "ja": {
@@ -7114,7 +7114,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pour vos %@"
+            "value": "Pour tes %@"
           }
         },
         "hi": {
@@ -7126,7 +7126,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Untuk %@ Anda"
+            "value": "Untuk %@ kamu"
           }
         },
         "ja": {
@@ -7312,7 +7312,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Gratis-Tarif enthält %lld Video-Renders pro Tag. Mit Pro unbegrenzt."
+            "value": "Der Gratis-Tarif enthält %lld Videos pro Tag. Mit Pro unbegrenzt."
           }
         },
         "es": {
@@ -7382,7 +7382,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Gratis-Tarif enthält eine begrenzte Zahl gespeicherter Videos. Pro speichert und teilt jedes Video — dazu unbegrenzte Renders und Chats."
+            "value": "Der Gratis-Tarif enthält eine begrenzte Zahl gespeicherter Videos. Pro speichert und teilt jedes Video — dazu unbegrenzt viele neue Videos und Chats."
           }
         },
         "es": {
@@ -7818,7 +7818,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ravi que ça vous plaise !"
+            "value": "Content que ça te plaise !"
           }
         },
         "hi": {
@@ -7830,7 +7830,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Senang Anda suka!"
+            "value": "Senang kamu suka!"
           }
         },
         "ja": {
@@ -7888,7 +7888,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dépassez votre vidéo gratuite par jour — tout, en illimité."
+            "value": "Dépasse ta vidéo gratuite par jour — tout, en illimité."
           }
         },
         "hi": {
@@ -7946,7 +7946,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zufrieden mit diesem Schnitt?"
+            "value": "Zufrieden mit diesem Video?"
           }
         },
         "es": {
@@ -7958,7 +7958,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ce montage vous plaît ?"
+            "value": "Cette vidéo te plaît ?"
           }
         },
         "hi": {
@@ -8315,7 +8315,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Comment nous avez-vous connus ?"
+            "value": "Comment tu nous as connus ?"
           }
         },
         "hi": {
@@ -8327,7 +8327,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dari mana Anda tahu tentang kami?"
+            "value": "Dari mana kamu tahu tentang kami?"
           }
         },
         "ja": {
@@ -8603,7 +8603,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prix de lancement : %@ pour votre premier %@"
+            "value": "Prix de lancement : %@ pour ton premier %@"
           }
         },
         "hi": {
@@ -8615,7 +8615,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Harga perkenalan: %@ untuk %@ pertama Anda"
+            "value": "Harga perkenalan: %@ untuk %@ pertamamu"
           }
         },
         "ja": {
@@ -8679,7 +8679,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prix de lancement : %@/%@ pour votre premier %@"
+            "value": "Prix de lancement : %@/%@ pour ton premier %@"
           }
         },
         "hi": {
@@ -8691,7 +8691,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Harga perkenalan: %@/%@ untuk %@ pertama Anda"
+            "value": "Harga perkenalan: %@/%@ untuk %@ pertamamu"
           }
         },
         "ja": {
@@ -8962,7 +8962,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Code d'invitation appliqué. Connectez-vous pour terminer."
+            "value": "Code d'invitation appliqué. Connecte-toi pour terminer."
           }
         },
         "hi": {
@@ -9021,7 +9021,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Es ist wie ChatGPT fürs Videoschneiden — du sagst, was du willst, und es schneidet alles. Untertitel, Schnitte, Grafiken, alles."
+            "value": "Es ist wie ChatGPT fürs Videoschneiden — du sagst, was du willst, und es schneidet alles. Untertitel, Videoschnitt, Grafiken, alles."
           }
         },
         "es": {
@@ -9033,7 +9033,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "C'est comme ChatGPT pour le montage vidéo : vous dites ce que vous voulez et il monte tout. Sous-titres, coupes, graphismes, tout."
+            "value": "C'est comme ChatGPT pour le montage vidéo : tu dis ce que tu veux et il monte tout. Sous-titres, coupes, graphismes, tout."
           }
         },
         "hi": {
@@ -9045,7 +9045,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ini seperti ChatGPT untuk edit video — Anda tinggal bilang mau apa dan semuanya diedit. Teks, potongan, grafis, semuanya."
+            "value": "Ini seperti ChatGPT untuk edit video — kamu tinggal bilang mau apa dan semuanya diedit. Teks, potongan, grafis, semuanya."
           }
         },
         "ja": {
@@ -9174,7 +9174,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gardez chaque %@ que vous réalisez"
+            "value": "Garde chaque %@ que tu fais"
           }
         },
         "hi": {
@@ -9186,7 +9186,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simpan setiap %@ yang Anda buat"
+            "value": "Simpan setiap %@ yang kamu buat"
           }
         },
         "ja": {
@@ -9232,7 +9232,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Behalte jeden Schnitt, den du machst"
+            "value": "Behalte jedes Video, das du machst"
           }
         },
         "es": {
@@ -9256,7 +9256,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simpan setiap editan yang Anda buat"
+            "value": "Simpan setiap editan yang kamu buat"
           }
         },
         "ja": {
@@ -9454,7 +9454,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Faites publier votre entreprise sans monteur"
+            "value": "Fais publier ton entreprise sans monteur"
           }
         },
         "hi": {
@@ -9466,7 +9466,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bisnis Anda tetap posting tanpa editor"
+            "value": "Bisnismu tetap posting tanpa editor"
           }
         },
         "ja": {
@@ -9723,7 +9723,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Live-Vorschau deines Schnitts"
+            "value": "Live-Vorschau deines Videos"
           }
         },
         "es": {
@@ -9735,7 +9735,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aperçu en direct de votre montage"
+            "value": "Aperçu en direct de ton montage"
           }
         },
         "hi": {
@@ -9747,7 +9747,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pratinjau langsung editan Anda"
+            "value": "Pratinjau langsung editanmu"
           }
         },
         "ja": {
@@ -10143,7 +10143,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ändere fertige Schnitte ohne erneutes Hochladen. Pro schaltet die Neubearbeitung frei, dazu unbegrenzte Renders und Chats."
+            "value": "Ändere fertige Videos ohne erneutes Hochladen. Pro schaltet die Neubearbeitung frei, dazu unbegrenzt viele neue Videos und Chats."
           }
         },
         "es": {
@@ -10213,7 +10213,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dein Schnitt entsteht"
+            "value": "Dein Video entsteht"
           }
         },
         "es": {
@@ -10225,7 +10225,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Création de votre montage"
+            "value": "On crée ta vidéo"
           }
         },
         "hi": {
@@ -10237,7 +10237,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Membuat editan Anda"
+            "value": "Membuat editanmu"
           }
         },
         "ja": {
@@ -11143,7 +11143,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nouveau ici ? Saisissez votre e-mail — nous créerons votre compte."
+            "value": "Nouveau ici ? Entre ton e-mail — on crée ton compte."
           }
         },
         "hi": {
@@ -11155,7 +11155,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Baru di sini? Masukkan email Anda — kami akan membuatkan akunnya."
+            "value": "Baru di sini? Masukkan emailmu — kami akan membuatkan akunnya."
           }
         },
         "ja": {
@@ -12698,7 +12698,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lire votre vidéo montée"
+            "value": "Lire ta vidéo montée"
           }
         },
         "hi": {
@@ -12710,7 +12710,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Putar video hasil editan Anda"
+            "value": "Putar video hasil editanmu"
           }
         },
         "ja": {
@@ -12838,7 +12838,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Préparation de votre vidéo montée"
+            "value": "On prépare ta vidéo montée"
           }
         },
         "hi": {
@@ -12850,7 +12850,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Menyiapkan video hasil editan Anda"
+            "value": "Menyiapkan video hasil editanmu"
           }
         },
         "ja": {
@@ -13539,7 +13539,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Promptly le coupe, le sous-titre et colle à votre ambiance."
+            "value": "Promptly le coupe, le sous-titre et colle à ton ambiance."
           }
         },
         "hi": {
@@ -13551,7 +13551,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Promptly memotong, memberi caption, dan menyesuaikan dengan gaya Anda."
+            "value": "Promptly memotong, memberi caption, dan menyesuaikannya dengan gayamu."
           }
         },
         "ja": {
@@ -13609,7 +13609,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Promptly a besoin du micro et de la reconnaissance vocale pour transcrire ce que vous dites. Activez les deux dans Réglages."
+            "value": "Promptly a besoin du micro et de la reconnaissance vocale pour transcrire ce que tu dis. Active les deux dans Réglages."
           }
         },
         "hi": {
@@ -13621,7 +13621,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Promptly perlu akses mikrofon dan pengenalan suara untuk mengubah ucapan Anda jadi teks. Aktifkan keduanya di Pengaturan."
+            "value": "Promptly perlu akses mikrofon dan pengenalan suara untuk mengubah ucapanmu jadi teks. Aktifkan keduanya di Pengaturan."
           }
         },
         "ja": {
@@ -14170,7 +14170,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Retoucher ce que vous avez déjà créé reste gratuit."
+            "value": "Retoucher ce que tu as déjà créé reste gratuit."
           }
         },
         "hi": {
@@ -14182,7 +14182,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mengedit ulang apa pun yang sudah Anda buat tetap gratis."
+            "value": "Mengedit ulang apa pun yang sudah kamu buat tetap gratis."
           }
         },
         "ja": {
@@ -14649,7 +14649,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das Rendern dauert ein paar Minuten — sollen wir dir sofort Bescheid geben?"
+            "value": "Videos brauchen ein paar Minuten — sollen wir dir sofort Bescheid geben?"
           }
         },
         "es": {
@@ -14661,7 +14661,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le rendu prend quelques minutes — voulez-vous être prévenu dès que c'est prêt ?"
+            "value": "Le rendu prend quelques minutes — tu veux qu'on te prévienne dès que c'est prêt ?"
           }
         },
         "hi": {
@@ -15580,7 +15580,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistrez votre %@"
+            "value": "Enregistre ton %@"
           }
         },
         "hi": {
@@ -15592,7 +15592,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simpan %@ Anda"
+            "value": "Simpan %@ kamu"
           }
         },
         "ja": {
@@ -15638,7 +15638,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Speichere deinen Schnitt"
+            "value": "Speichere dein Video"
           }
         },
         "es": {
@@ -15650,7 +15650,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistrez votre montage"
+            "value": "Enregistre ton montage"
           }
         },
         "hi": {
@@ -15662,7 +15662,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simpan editan Anda"
+            "value": "Simpan editanmu"
           }
         },
         "ja": {
@@ -16210,7 +16210,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Partagez votre lien d'invitation"
+            "value": "Partage ton lien d'invitation"
           }
         },
         "hi": {
@@ -16222,7 +16222,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bagikan tautan undangan Anda"
+            "value": "Bagikan tautan undanganmu"
           }
         },
         "ja": {
@@ -16280,7 +16280,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Partagez votre vidéo"
+            "value": "Partage ta vidéo"
           }
         },
         "hi": {
@@ -16292,7 +16292,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bagikan video Anda"
+            "value": "Bagikan videomu"
           }
         },
         "ja": {
@@ -16688,7 +16688,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Damit Promptly den Schnitt anpassen kann."
+            "value": "Damit Promptly das Video anpassen kann."
           }
         },
         "es": {
@@ -17295,7 +17295,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Berlaku saat Anda membuka Promptly berikutnya."
+            "value": "Berlaku saat kamu membuka Promptly berikutnya."
           }
         },
         "ja": {
@@ -17341,7 +17341,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sprich mit Promptly wie mit einem Cutter. Untertitel, Schnitte, Grafiken — für dich erledigt."
+            "value": "Sprich mit Promptly wie mit einem Cutter. Untertitel, Videoschnitt, Grafiken — für dich erledigt."
           }
         },
         "es": {
@@ -17353,7 +17353,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Parlez à Promptly comme à un monteur. Sous-titres, coupes, graphismes — faits pour vous."
+            "value": "Parle à Promptly comme à un monteur. Sous-titres, coupes, graphismes — faits pour toi."
           }
         },
         "hi": {
@@ -17365,7 +17365,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bicaralah pada Promptly seperti pada editor. Teks, potongan, grafis — beres untuk Anda."
+            "value": "Bicaralah pada Promptly seperti pada editor. Teks, potongan, grafis — beres untukmu."
           }
         },
         "ja": {
@@ -17634,7 +17634,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dites-moi l'ambiance voulue et je m'occupe du montage. Essayez une suggestion ci-dessous, ou décrivez-la avec vos mots."
+            "value": "Dis-moi l'ambiance voulue et je m'occupe du montage. Essaie une suggestion ci-dessous, ou décris-la avec tes mots."
           }
         },
         "hi": {
@@ -17646,7 +17646,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ceritakan gaya yang Anda mau dan saya editkan. Coba salah satu saran di bawah — atau jelaskan dengan kata-kata Anda."
+            "value": "Ceritakan gaya yang kamu mau dan saya editkan. Coba salah satu saran di bawah — atau jelaskan dengan kata-katamu."
           }
         },
         "ja": {
@@ -18043,7 +18043,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das stoppt den Schnitt, bevor er beginnt — dein Tages-Render wird nicht verbraucht."
+            "value": "Das bricht ab, bevor es losgeht — dein Gratis-Video für heute bleibt dir erhalten."
           }
         },
         "es": {
@@ -18055,7 +18055,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cela arrête le montage avant qu'il ne commence — votre rendu du jour ne sera pas utilisé."
+            "value": "Cela arrête le montage avant qu'il ne commence — ton rendu du jour ne sera pas utilisé."
           }
         },
         "hi": {
@@ -18067,7 +18067,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ini menghentikan editan sebelum dimulai — render harian Anda tidak terpakai."
+            "value": "Ini menghentikan editan sebelum dimulai — render harianmu tidak terpakai."
           }
         },
         "ja": {
@@ -18125,7 +18125,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cette version a un problème que nous avons corrigé. Installez la mise à jour et vous repartez en quelques secondes."
+            "value": "Cette version a un problème que nous avons corrigé. Installe la mise à jour et tu repars en quelques secondes."
           }
         },
         "hi": {
@@ -18137,7 +18137,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Versi ini punya masalah yang sudah kami perbaiki. Ambil pembaruannya dan Anda kembali dalam hitungan detik."
+            "value": "Versi ini punya masalah yang sudah kami perbaiki. Ambil pembaruannya dan kamu kembali dalam hitungan detik."
           }
         },
         "ja": {
@@ -18195,7 +18195,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre compte et toutes vos données seront définitivement supprimés. Cette action est irréversible."
+            "value": "Ton compte et toutes tes données seront définitivement supprimés. Cette action est irréversible."
           }
         },
         "hi": {
@@ -18207,7 +18207,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ini akan menghapus akun dan semua data Anda secara permanen. Tindakan ini tidak bisa dibatalkan."
+            "value": "Ini akan menghapus akunmu dan semua datamu secara permanen. Tindakan ini tidak bisa dibatalkan."
           }
         },
         "ja": {
@@ -18604,7 +18604,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Erneut versuchen — startet den Render mit demselben Video und Vibe neu"
+            "value": "Erneut versuchen — erstellt dein Video noch einmal mit demselben Clip und Vibe"
           }
         },
         "es": {
@@ -20369,7 +20369,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nous n'avons pas pu le lire depuis votre photothèque. Sélectionnez-le à nouveau — ça marche en général."
+            "value": "Nous n'avons pas pu le lire depuis ta photothèque. Sélectionne-le à nouveau — ça marche en général."
           }
         },
         "hi": {
@@ -20381,7 +20381,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kami tidak bisa membacanya dari galeri Anda. Pilih lagi — biasanya berhasil."
+            "value": "Kami tidak bisa membacanya dari galerimu. Pilih lagi — biasanya berhasil."
           }
         },
         "ja": {
@@ -20796,7 +20796,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bon retour — une offre vous attend sur votre formule"
+            "value": "Bon retour — une offre t'attend sur ta formule"
           }
         },
         "hi": {
@@ -20808,7 +20808,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Selamat datang kembali — ada penawaran untuk paket Anda"
+            "value": "Selamat datang kembali — ada penawaran untuk paketmu"
           }
         },
         "ja": {
@@ -20867,7 +20867,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Que voulez-vous créer ?"
+            "value": "Que veux-tu créer ?"
           }
         },
         "hi": {
@@ -20879,7 +20879,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apa yang ingin Anda buat?"
+            "value": "Apa yang ingin kamu buat?"
           }
         },
         "ja": {
@@ -20937,7 +20937,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quel type de vidéos réalisez-vous ?"
+            "value": "Quel type de vidéos réalises-tu ?"
           }
         },
         "hi": {
@@ -20949,7 +20949,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video jenis apa yang Anda buat?"
+            "value": "Video jenis apa yang kamu buat?"
           }
         },
         "ja": {
@@ -21147,7 +21147,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Qu'avez-vous en tête ? Bugs, idées, n'importe quoi — ça nous arrive directement."
+            "value": "Qu'as-tu en tête ? Bugs, idées, n'importe quoi — ça nous arrive directement."
           }
         },
         "hi": {
@@ -21159,7 +21159,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apa yang Anda pikirkan? Bug, ide, apa saja — langsung sampai ke kami."
+            "value": "Apa yang kamu pikirkan? Bug, ide, apa saja — langsung sampai ke kami."
           }
         },
         "ja": {
@@ -21217,7 +21217,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pour qui réalisez-vous des vidéos ?"
+            "value": "Pour qui réalises-tu des vidéos ?"
           }
         },
         "hi": {
@@ -21229,7 +21229,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Untuk siapa Anda membuat video?"
+            "value": "Untuk siapa kamu membuat video?"
           }
         },
         "ja": {
@@ -21446,7 +21446,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda bisa mengubahnya kapan saja di Pengaturan."
+            "value": "Kamu bisa mengubahnya kapan saja di Pengaturan."
           }
         },
         "ja": {
@@ -21504,7 +21504,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous pouvez passer à Pro quand vous voulez — rien n'a été débité."
+            "value": "Tu peux passer à Pro quand tu veux — rien n'a été débité."
           }
         },
         "hi": {
@@ -21516,7 +21516,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda bisa naik ke Pro kapan saja — tidak ada biaya yang ditagih."
+            "value": "Kamu bisa naik ke Pro kapan saja — tidak ada biaya yang ditagih."
           }
         },
         "ja": {
@@ -21575,7 +21575,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "À vous de choisir"
+            "value": "À toi de choisir"
           }
         },
         "hi": {
@@ -21587,7 +21587,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda yang pilih"
+            "value": "Kamu yang pilih"
           }
         },
         "ja": {
@@ -21657,7 +21657,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda mendapat %lld hari Pro"
+            "value": "Kamu mendapat %lld hari Pro"
           }
         },
         "ja": {
@@ -21727,7 +21727,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda mendapat satu hari Pro"
+            "value": "Kamu mendapat satu hari Pro"
           }
         },
         "ja": {
@@ -21773,7 +21773,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Es wurde nichts berechnet — dein Tages-Render wurde nicht verbraucht."
+            "value": "Es wurde nichts berechnet — dein Gratis-Video für heute bleibt dir erhalten."
           }
         },
         "es": {
@@ -21785,7 +21785,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rien n'a été débité — cela n'a pas utilisé votre rendu du jour."
+            "value": "Rien n'a été débité — cela n'a pas utilisé ton rendu du jour."
           }
         },
         "hi": {
@@ -21797,7 +21797,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tidak ada biaya yang ditagih — ini tidak memakai render harian Anda."
+            "value": "Tidak ada biaya yang ditagih — ini tidak memakai render harianmu."
           }
         },
         "ja": {
@@ -21855,7 +21855,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous serez débité de %@ %@. Renouvellement automatique jusqu'à annulation — annulez à tout moment dans les réglages de votre compte Apple."
+            "value": "Tu seras débité de %@ %@. Renouvellement automatique jusqu'à annulation — annule à tout moment dans les réglages de ton compte Apple."
           }
         },
         "hi": {
@@ -21932,7 +21932,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous serez facturé %@ aujourd'hui. Renouvellement automatique jusqu'à annulation — annulez à tout moment dans les réglages de votre Apple Account."
+            "value": "Tu seras facturé %@ aujourd'hui. Renouvellement automatique jusqu'à annulation — annule à tout moment dans les réglages de ton Apple Account."
           }
         },
         "hi": {
@@ -22002,7 +22002,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous recevrez un e-mail de confirmation à votre nouvelle adresse."
+            "value": "Tu recevras un e-mail de confirmation à ta nouvelle adresse."
           }
         },
         "hi": {
@@ -22014,7 +22014,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda akan menerima email konfirmasi di alamat baru Anda."
+            "value": "Kamu akan menerima email konfirmasi di alamat barumu."
           }
         },
         "ja": {
@@ -22162,7 +22162,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Semua siap — %@ diperpanjang otomatis sampai Anda membatalkannya di Pengaturan."
+            "value": "Semua siap — %@ diperpanjang otomatis sampai kamu membatalkannya di Pengaturan."
           }
         },
         "ja": {
@@ -22310,7 +22310,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anda menggunakan Promptly Pro"
+            "value": "Kamu pakai Promptly Pro"
           }
         },
         "ja": {
@@ -22381,7 +22381,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kredit Anda habis untuk saat ini"
+            "value": "Kreditmu habis untuk saat ini"
           }
         },
         "ja": {
@@ -22451,7 +22451,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obrolan gratis Anda hari ini sudah habis"
+            "value": "Obrolan gratismu hari ini sudah habis"
           }
         },
         "ja": {
@@ -22497,7 +22497,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deine kostenlosen Renders für heute sind aufgebraucht"
+            "value": "Deine kostenlosen Videos für heute sind aufgebraucht"
           }
         },
         "es": {
@@ -22521,7 +22521,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Render gratis Anda hari ini sudah habis"
+            "value": "Render gratismu hari ini sudah habis"
           }
         },
         "ja": {
@@ -22591,7 +22591,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Penyimpanan gratis Anda sudah habis"
+            "value": "Penyimpanan gratismu sudah habis"
           }
         },
         "ja": {
@@ -22732,7 +22732,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Klip Anda masih siap — ketuk untuk mencoba lagi."
+            "value": "Klipmu masih siap — ketuk untuk coba lagi."
           }
         },
         "ja": {
@@ -22803,7 +22803,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kredit Anda diperbarui pada %@"
+            "value": "Kreditmu diperbarui pada %@"
           }
         },
         "ja": {
@@ -22849,7 +22849,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dein Schnitt ist fertig und wartet."
+            "value": "Dein Video ist fertig und wartet."
           }
         },
         "es": {
@@ -22861,7 +22861,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre montage est terminé et vous attend."
+            "value": "Ton montage est terminé et t'attend."
           }
         },
         "hi": {
@@ -22873,7 +22873,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Editan Anda selesai dan menunggu."
+            "value": "Editanmu selesai dan menunggu."
           }
         },
         "ja": {
@@ -22943,7 +22943,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Masukan Anda"
+            "value": "Masukanmu"
           }
         },
         "ja": {
@@ -22989,7 +22989,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dein fertiger Schnitt"
+            "value": "Dein fertiges Video"
           }
         },
         "es": {
@@ -23013,7 +23013,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Editan Anda yang sudah jadi"
+            "value": "Editanmu yang sudah jadi"
           }
         },
         "ja": {
@@ -23083,7 +23083,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bulan pertama Anda diskon %lld%%"
+            "value": "Bulan pertamamu diskon %lld%%"
           }
         },
         "ja": {
@@ -23153,7 +23153,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Langganan pertama Anda"
+            "value": "Langganan pertamamu"
           }
         },
         "ja": {
@@ -23223,7 +23223,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Langganan pertama Anda diskon %lld%%"
+            "value": "Langganan pertamamu diskon %lld%%"
           }
         },
         "ja": {
@@ -23293,7 +23293,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Minggu pertama Anda diskon %lld%%"
+            "value": "Minggu pertamamu diskon %lld%%"
           }
         },
         "ja": {
@@ -23363,7 +23363,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tahun pertama Anda diskon %lld%%"
+            "value": "Tahun pertamamu diskon %lld%%"
           }
         },
         "ja": {
@@ -23422,7 +23422,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre formule est active. Créez autant que vos crédits mensuels le permettent."
+            "value": "Ta formule est active. Crée autant que tes crédits mensuels le permettent."
           }
         },
         "hi": {
@@ -23434,7 +23434,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Paket Anda aktif. Berkarya sebanyak yang kredit bulanan Anda izinkan."
+            "value": "Paketmu aktif. Berkarya sebanyak yang kredit bulananmu izinkan."
           }
         },
         "ja": {
@@ -23504,7 +23504,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unggahan Anda tidak selesai"
+            "value": "Unggahanmu tidak selesai"
           }
         },
         "ja": {
@@ -23563,7 +23563,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre vidéo est prête — vous avez utilisé votre export gratuit"
+            "value": "Ta vidéo est prête — tu as utilisé ton export gratuit"
           }
         },
         "hi": {
@@ -23575,7 +23575,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video Anda siap — ekspor gratis Anda sudah terpakai"
+            "value": "Videomu siap — ekspor gratismu sudah terpakai"
           }
         },
         "ja": {
@@ -23645,7 +23645,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video Anda sudah siap 🎬"
+            "value": "Videomu sudah siap 🎬"
           }
         },
         "ja": {
@@ -23716,7 +23716,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video Anda sudah siap!"
+            "value": "Videomu sudah siap!"
           }
         },
         "ja": {
@@ -23786,7 +23786,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Video Anda sudah siap. %@. Ketuk dua kali untuk menonton."
+            "value": "Videomu sudah siap. %@. Ketuk dua kali untuk menonton."
           }
         },
         "ja": {
@@ -23851,7 +23851,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vos vidéos vous attendent"
+            "value": "Tes vidéos t'attendent"
           }
         },
         "hi": {
@@ -23921,7 +23921,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il vous reste %lld vidéos gratuites aujourd'hui"
+            "value": "Il te reste %lld vidéos gratuites aujourd'hui"
           }
         },
         "hi": {
@@ -24132,7 +24132,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "pour votre premier mois, puis %@/mois"
+            "value": "pour ton premier mois, puis %@/mois"
           }
         },
         "hi": {
@@ -24144,7 +24144,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "untuk bulan pertama Anda, lalu %@/bulan"
+            "value": "untuk bulan pertamamu, lalu %@/bulan"
           }
         },
         "ja": {
@@ -24202,7 +24202,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "pour votre première période, puis %@"
+            "value": "pour ta première période, puis %@"
           }
         },
         "hi": {
@@ -24214,7 +24214,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "untuk periode pertama Anda, lalu %@"
+            "value": "untuk periode pertamamu, lalu %@"
           }
         },
         "ja": {
@@ -24272,7 +24272,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "pour votre première semaine, puis %@/semaine"
+            "value": "pour ta première semaine, puis %@/semaine"
           }
         },
         "hi": {
@@ -24284,7 +24284,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "untuk minggu pertama Anda, lalu %@/minggu"
+            "value": "untuk minggu pertamamu, lalu %@/minggu"
           }
         },
         "ja": {
@@ -24342,7 +24342,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "pour votre première année, puis %@/an"
+            "value": "pour ta première année, puis %@/an"
           }
         },
         "hi": {
@@ -24354,7 +24354,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "untuk tahun pertama Anda, lalu %@/tahun"
+            "value": "untuk tahun pertamamu, lalu %@/tahun"
           }
         },
         "ja": {
@@ -24783,7 +24783,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "choisis pour vous par l'éditeur AI"
+            "value": "choisis pour toi par l'éditeur AI"
           }
         },
         "hi": {
@@ -25403,7 +25403,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Talking-Head-Schnitt"
+            "value": "Talking-Head-Video"
           }
         },
         "es": {
@@ -25977,7 +25977,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "vous@exemple.com"
+            "value": "nom@exemple.com"
           }
         },
         "hi": {
@@ -26048,7 +26048,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "votre entreprise"
+            "value": "ton entreprise"
           }
         },
         "hi": {
@@ -26060,7 +26060,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "bisnis Anda"
+            "value": "bisnismu"
           }
         },
         "ja": {
@@ -26119,7 +26119,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "votre équipe"
+            "value": "ton équipe"
           }
         },
         "hi": {
@@ -26131,7 +26131,7 @@
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "tim Anda"
+            "value": "timmu"
           }
         },
         "ja": {
@@ -26417,7 +26417,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unbegrenzte Renders"
+            "value": "Unbegrenzt viele neue Videos"
           }
         },
         "es": {
@@ -26583,7 +26583,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Que créez-vous ?"
+            "value": "Que crées-tu ?"
           }
         },
         "hi": {
@@ -27566,7 +27566,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wir passen die Schnitte an die Musik an"
+            "value": "Wir schneiden im Takt der Musik"
           }
         },
         "es": {
