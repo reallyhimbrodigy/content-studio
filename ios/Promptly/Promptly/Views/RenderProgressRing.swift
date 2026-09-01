@@ -1,33 +1,87 @@
 import SwiftUI
 
-/// The render, presented as the video itself: the source thumbnail framed, a
-/// progress ring around it, and ONE line naming the current stage.
+/// A rounded-rectangle progress trace that starts at TOP CENTER.
 ///
-/// WHAT THIS REPLACES AND WHY. `PipelineProgressView` showed a bar plus a
-/// running bullet list of completed stages. The list is the part that had to
-/// go: it turns a two-minute wait into a wall of machine vocabulary the reader
-/// has to parse, and it grows downward as the render proceeds so the message
-/// visibly bloats inside the thread. The user does not need a manifest of what
-/// already finished — they need to know it is alive and roughly how far along.
+/// `RoundedRectangle().trim()` would be the one-liner, but its path begins at
+/// the end of the top-left corner arc, so the fill starts from the upper-left
+/// and reads as though the render began somewhere arbitrary. A progress trace
+/// has a natural origin — top centre, like a clock — and on a tall 9:16 frame
+/// the difference is obvious rather than pedantic.
 ///
-/// IT IS A MESSAGE, NOT A MODAL. This sits in a chat thread, so it carries no
-/// card chrome, no border, no elevated surface and no separate background: the
-/// thumbnail IS the object, and the ring is drawn on it. Anything heavier reads
-/// as a dialog that has been pasted into the conversation.
+/// Rotating a `RoundedRectangle` to fake it does not work either: rotation turns
+/// the whole non-square frame on its side.
+private struct FrameTrace: Shape {
+    var cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(cornerRadius, min(rect.width, rect.height) / 2)
+        let midX = rect.midX
+        var p = Path()
+        // Top edge, from centre to the top-right corner.
+        p.move(to: CGPoint(x: midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        p.addArc(center: CGPoint(x: rect.maxX - r, y: rect.minY + r), radius: r,
+                 startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        p.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        p.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        p.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r), radius: r,
+                 startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.addLine(to: CGPoint(x: midX, y: rect.minY))
+        return p
+    }
+}
+
+/// The render, presented as the footage itself: the user's own frame, large, in
+/// a device-shaped container, with the progress tracing that container's edge
+/// and ONE line of stage text under it.
 ///
-/// THE DATA UNDERNEATH IS UNCHANGED. Same `StageTimeline`, same 17-stage server
-/// feed, same `TrickleProgress`. The ring is driven by the trickle, NOT by the
-/// backend percentage — a self-driving continuous ramp that never freezes or
-/// snaps backwards. Mirroring the backend pct is what produced the stuck-at-99
-/// behaviour this project has already fixed once; re-introducing it here
-/// because a ring "looks smoother" would undo that silently.
+/// REBUILT 2026-08-31 after review. The first version was rejected, and the
+/// notes are worth keeping because each one names a different way a chat message
+/// can start behaving like an app screen:
+///   - The frame was a CIRCLE. Video is not round. A circle crops a 9:16 clip to
+///     its centre square and throws away most of the shot the user picked, so
+///     the one thing the surface is supposed to show is the thing it hid.
+///   - It was SMALL — an icon beside text rather than the subject of the
+///     message.
+///   - It sat under a bordered card carrying the prompt and a row of feature
+///     chips, which is settings-panel furniture. In a thread it reads as a
+///     dialog pasted into the conversation.
+///   - The prompt inside that card TRUNCATED. A half-sentence in quotation marks
+///     is worse than no sentence: it looks like the product misquoting the user.
+///   - And the frame was usually EMPTY, which is the defect underneath the other
+///     four — see the thumbnail note below.
+///
+/// THE EMPTY FRAME WAS A PERSISTENCE BUG, not a styling one. The only source was
+/// `VideoAttachment.thumbnail`, a UIImage held in memory and never written to
+/// storage; `SerializedMessage` persists `attachmentThumbnailUrl` instead. So the
+/// image survived exactly as long as the process did, and every reload — every
+/// relaunch, every chat switch, every scroll that recycled the row — left the
+/// ring framing nothing. Styling the empty state would have made a permanent
+/// blank look intentional. It now falls back to the persisted URL.
+///
+/// IT IS A MESSAGE, NOT A MODAL: no card, no border, no elevated surface, no
+/// icon row. The footage is the object and the trace is drawn on it.
+///
+/// THE DATA UNDERNEATH IS UNCHANGED. Same `StageTimeline`, same 17-stage feed,
+/// same `TrickleProgress`. The trace is driven by the trickle, NOT by the
+/// backend percentage — mirroring the backend pct is what produced the
+/// stuck-at-99 behaviour this project already fixed once, and a redesign is
+/// exactly the moment that regression sneaks back in.
 struct RenderProgressRing: View {
     @ObservedObject var timeline: StageTimeline
     let progress: Int
-    /// The source clip's own frame. Nil until the picker's thumbnail resolves —
-    /// the ring stands alone rather than showing a grey placeholder box, which
-    /// would read as a failed image.
+    /// The source clip's frame, in memory. Present on the launch that picked the
+    /// clip and nil on every reload after it.
     var thumbnail: UIImage? = nil
+    /// The PERSISTED frame. Survives relaunch and row recycling, which the
+    /// UIImage does not, and is what keeps the container from being empty for
+    /// most of a render's life.
+    var thumbnailUrl: String? = nil
     var subMessage: String? = nil
     var finishing: Bool = false
     var onCancel: (() -> Void)? = nil
@@ -36,67 +90,64 @@ struct RenderProgressRing: View {
     @State private var showCancelConfirm = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Large enough to be the subject of the message. 9:16, the shape of the
+    /// footage people actually bring, so a vertical clip fills it rather than
+    /// being cropped to fit a frame of some other proportion.
+    private let frameWidth: CGFloat = 208
+    private var frameHeight: CGFloat { frameWidth * 16 / 9 }
+    private let corner: CGFloat = 26
+
     private var activeStage: PipelineStage? {
         if let did = timeline.currentDerivedId, let s = timeline.stages.first(where: { $0.id == did }) { return s }
         if let cid = timeline.currentStageId, let s = timeline.stages.first(where: { $0.id == cid }) { return s }
         return nil
     }
 
-    /// One line. The finer SSE message wins when present, because it is the more
-    /// specific truth about what is happening right now; the catalog stage is
-    /// the fallback. Never both — stacking them re-creates the list.
+    /// ONE line. The finer SSE message wins when present — it is the more
+    /// specific truth about this moment; the catalog stage is the fallback.
+    /// Never both, because stacking them re-creates the list this replaced.
     private var line: String {
         if let m = subMessage, !m.isEmpty { return m }
         if let s = activeStage { return s.title }
         return String(localized: "Getting started…")
     }
 
-    private var ringValue: Double { min(max(trickle.displayed / 100.0, 0), 1) }
+    private var traceValue: Double { min(max(trickle.displayed / 100.0, 0), 1) }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             ZStack {
-                // The video, framed. Square-ish so it reads as the subject
-                // rather than as an icon beside text.
-                Group {
-                    if let t = thumbnail {
-                        Image(uiImage: t)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        // No placeholder chrome — just the ring's own ground.
-                        Color.white.opacity(0.04)
-                    }
-                }
-                .frame(width: 148, height: 148)
-                .clipShape(Circle())
-                // Slightly dimmed while working so the ring reads as the
-                // foreground element and the frame does not compete with it.
-                .opacity(finishing ? 1.0 : 0.82)
+                frameContent
+                    .frame(width: frameWidth, height: frameHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                    // Held slightly back while working so the trace reads as the
+                    // live element; full strength at the finish.
+                    .opacity(finishing ? 1.0 : 0.88)
 
-                Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 3)
-                    .frame(width: 164, height: 164)
+                // The unfilled track. Faint — it should suggest the path without
+                // competing with the progress itself.
+                FrameTrace(cornerRadius: corner + 3)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 3)
+                    .frame(width: frameWidth + 6, height: frameHeight + 6)
 
-                Circle()
-                    .trim(from: 0, to: ringValue)
+                FrameTrace(cornerRadius: corner + 3)
+                    .trim(from: 0, to: traceValue)
                     .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .frame(width: 164, height: 164)
-                    .rotationEffect(.degrees(-90))
-                    .animation(reduceMotion ? nil : .linear(duration: 0.12), value: ringValue)
+                    .frame(width: frameWidth + 6, height: frameHeight + 6)
+                    .animation(reduceMotion ? nil : .linear(duration: 0.12), value: traceValue)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(line))
             .accessibilityValue(Text("\(Int(trickle.displayed))%"))
 
             Text(line)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white.opacity(0.85))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 24)
-                // The line changes often; without an id the text animates as a
-                // character-level diff, which reads as jitter.
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.white.opacity(0.9))
+                // ONE line, and it never truncates mid-word into an ellipsis:
+                // these are short catalog titles that fit, and the scale floor
+                // absorbs the longest translations rather than cutting them.
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .id(line)
                 .transition(.opacity)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: line)
@@ -105,7 +156,7 @@ struct RenderProgressRing: View {
                 Button(role: .destructive) { showCancelConfirm = true } label: {
                     Text("Cancel render")
                         .font(.system(size: 13))
-                        .foregroundColor(.red.opacity(0.75))
+                        .foregroundColor(.white.opacity(0.4))
                 }
                 .confirmationDialog(String(localized: "Cancel this render?"),
                                     isPresented: $showCancelConfirm, titleVisibility: .visible) {
@@ -117,13 +168,10 @@ struct RenderProgressRing: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        // Driven EXACTLY as PipelineProgressView drives it — rehydrate on
-        // appear so a recreated view starts at true progress rather than 0,
-        // feed the backend value in as a ceiling clamped below 100 until real
-        // completion, and let the animator own all motion and monotonicity.
-        // Copying this contract rather than inventing a ring-specific one is
-        // the point: the presentation changed, the progress semantics did not.
+        .padding(.vertical, 8)
+        // Driven EXACTLY as PipelineProgressView drives it. Copying the contract
+        // rather than inventing a trace-specific one is the point: the
+        // presentation changed twice now, the progress semantics have not.
         .onAppear {
             trickle.rehydrate(to: finishing ? progress : min(progress, 99))
             if finishing { trickle.complete() }
@@ -134,6 +182,26 @@ struct RenderProgressRing: View {
         }
         .onChange(of: finishing) { _, done in
             if done { trickle.complete() }
+        }
+    }
+
+    /// In-memory frame first, persisted URL second, and a quiet ground last.
+    /// The ground is deliberately plain — no icon, no "no preview" label. A
+    /// placeholder graphic in a container this large would announce a missing
+    /// image; an empty tone just reads as a frame that has not painted yet.
+    @ViewBuilder private var frameContent: some View {
+        if let t = thumbnail {
+            Image(uiImage: t).resizable().aspectRatio(contentMode: .fill)
+        } else if let u = thumbnailUrl, let url = URL(string: u) {
+            AsyncImage(url: url) { phase in
+                if case .success(let img) = phase {
+                    img.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Color.white.opacity(0.05)
+                }
+            }
+        } else {
+            Color.white.opacity(0.05)
         }
     }
 }

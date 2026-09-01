@@ -328,7 +328,15 @@ struct MessageBubble: View {
                     // making, so the multi-minute wait reads as a craft in progress
                     // (not a dead spinner). Honest — these are what every edit gets.
                     // Hidden on the ask-back pause (the AskCard owns that moment).
-                    if let vibe = message.originalVibe, status != "needs_input" {
+                    // THE CARD IS SUPPRESSED WHEN THE RING IS ON. PlanPreviewCard
+                    // is a bordered box carrying the prompt in quotes plus a row
+                    // of feature chips — settings-panel furniture that reads as a
+                    // dialog pasted into the thread, and its quoted prompt
+                    // truncated, which looks like the product misquoting the
+                    // user. The rebuilt ring is meant to be the whole message:
+                    // footage, trace, one line, nothing else.
+                    if let vibe = message.originalVibe, status != "needs_input",
+                       !OnboardingState.shared.progressRingEnabled {
                         PlanPreviewCard(vibe: vibe)
                             .padding(.bottom, 10)
                     }
@@ -391,6 +399,17 @@ struct MessageBubble: View {
                             // from the attachment, not from thumbnailUrl (which is
                             // the RESULT's poster and does not exist yet mid-render).
                             thumbnail: message.videoAttachment?.thumbnail,
+                            // The PERSISTED frame, so the container is not empty
+                            // on every reload. The UIImage above lives only as
+                            // long as the process; this is what SerializedMessage
+                            // actually writes to storage.
+                            // The PERSISTED frame. Verified round-trip:
+                            // SerializedMessage writes it from
+                            // videoAttachment.remoteThumbnailUrl (Models:347)
+                            // and restores it back into the same field on load
+                            // (Models:441) — so this is populated after a
+                            // relaunch, where the UIImage above is not.
+                            thumbnailUrl: message.videoAttachment?.remoteThumbnailUrl,
                             subMessage: message.stepMessage,
                             finishing: message.isFinishing,
                             onCancel: onCancel
