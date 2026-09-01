@@ -36,6 +36,10 @@ struct ReferralProgressRow: View {
     private var isComplete: Bool { count >= target }
 
     var body: some View {
+        if referrals.shouldOffer { row }
+    }
+
+    private var row: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             Task { await referrals.presentShareSheet(source: source) }

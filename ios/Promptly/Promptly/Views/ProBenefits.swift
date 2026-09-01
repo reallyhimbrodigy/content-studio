@@ -126,6 +126,30 @@ enum ProBenefits {
         return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
     }
 
+    /// ONE line of value for a tier card, honest in BOTH flag states.
+    ///
+    /// The two-step paywall shows a single line per tier, so that line has to
+    /// carry the whole difference between them — and it cannot state a credit
+    /// number while the meter is dark, because there is no such number yet.
+    ///
+    ///   credits ON  → the real allowance, derived from credits ÷ 10
+    ///   credits OFF → what is true today: Pro removes the daily cap, and Max
+    ///                 is Pro plus early access. Max is described RELATIVE to
+    ///                 Pro rather than with an invented number, which is the
+    ///                 only honest way to differentiate them without a meter.
+    @MainActor
+    static func tierLine(isMax: Bool, creditsEnabled: Bool, monthlyCredits: Int?) -> String {
+        guard creditsEnabled, let c = monthlyCredits, c > 0 else {
+            return isMax
+                ? String(localized: "Everything in Pro, plus early access to new features")
+                : String(localized: "Unlimited videos, no daily cap")
+        }
+        let videos = monthlyVideos(credits: c)
+        return isMax
+            ? String(localized: "\(videos) videos a month, plus early access to new features")
+            : String(localized: "\(videos) videos a month")
+    }
+
     /// The MAX claim, shown only when a Max product is actually on offer.
     ///
     /// Gated on the credits flag with everything else, because "100 videos a
@@ -139,6 +163,30 @@ enum ProBenefits {
     static func maxClaim(monthlyCredits: Int) -> Benefit {
         Benefit(icon: "sparkles",
                 text: String(localized: "\(monthlyVideos(credits: monthlyCredits)) videos a month, plus early access to new features"))
+    }
+
+    /// The Max card's list: "Everything in Pro, plus" and what that plus IS.
+    ///
+    /// THE MULTIPLIER IS DERIVED, NOT TYPED. The brief says "5x the usage", and
+    /// 5x is what today's allowances happen to give (Max 2000 credits against
+    /// Pro 400). Writing 5 into the string would make it a claim that survives
+    /// the configuration that justified it — reprice either tier in RevenueCat
+    /// and the card keeps promising a multiple the product no longer delivers.
+    /// Computed from the two allowances, it simply follows.
+    ///
+    /// CREDITS DARK = NO MULTIPLE. Without a meter there are no allowances to
+    /// divide, so the usage line is dropped rather than guessed, and Max stands
+    /// on early access alone. Fewer claims, all of them true.
+    @MainActor
+    static func maxCardFeatures(proAllowance: Int?, maxAllowance: Int?,
+                                creditsEnabled: Bool) -> [String] {
+        var out = [String(localized: "Everything in Pro, plus")]
+        if creditsEnabled, let p = proAllowance, let m = maxAllowance, p > 0, m > p {
+            let times = m / p
+            if times >= 2 { out.append(String(localized: "\(times)x the usage")) }
+        }
+        out.append(String(localized: "Early access to new features"))
+        return out
     }
 
     /// `core` is now COMPUTED, not a constant, and that is the whole fix.

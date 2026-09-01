@@ -112,7 +112,7 @@ struct AppShell: View {
             )
         ) {
             if let reason = appState.paywallReason {
-                PaywallView(
+                UpgradePaywall(
                     isPresented: Binding(
                         get: { appState.paywallReason != nil },
                         set: { if !$0 { appState.dismissPaywall() } }

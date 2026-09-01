@@ -115,6 +115,7 @@ struct EditorView: View {
                     // chat — the ask lands at the payoff, not at a wall. Flag:
                     // postrender_referral (server, default off).
                     if onboardingState.postrenderReferralEnabled,
+                       ReferralService.shared.shouldOffer,
                        !UserDefaults.standard.bool(forKey: "postrender_referral_shown"),
                        messages.contains(where: { $0.jobStatus == "completed" }) {
                         PostRenderReferralCard {

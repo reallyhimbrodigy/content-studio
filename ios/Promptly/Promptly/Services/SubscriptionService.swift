@@ -30,12 +30,24 @@ final class SubscriptionService: ObservableObject {
     /// Entitlement identifier configured in RevenueCat dashboard
     /// (Entitlements → "pro"). Must match exactly — case-sensitive.
     static let proEntitlementId = "pro"
+    /// The Max entitlement, configured alongside `pro` in RevenueCat. A Max
+    /// subscriber holds BOTH — `pro` is what gates features, `max` is what
+    /// identifies the tier.
+    static let maxEntitlementId = "max"
 
     /// Offering identifier in RevenueCat dashboard. "default" is the
     /// out-of-the-box current offering; rename here if you change it.
     static let defaultOfferingId = "default"
 
     @Published var isPro: Bool = false
+    /// Whether the user holds the Max entitlement.
+    ///
+    /// Published, not computed off `lastCustomerInfo`, because SwiftUI cannot
+    /// observe a plain stored property — a view reading a computed `hasMax`
+    /// would render once with the pre-fetch value and never update when the
+    /// entitlement arrived. That is the failure mode where a surface is
+    /// "hidden for Max users" everywhere except on the launch that matters.
+    @Published private(set) var isMax: Bool = false
 
     /// THE source-of-truth Pro flag for every iOS gate that needs one.
     /// Returns true if EITHER RevenueCat's client cache (`isPro`) OR the
@@ -527,6 +539,10 @@ final class SubscriptionService: ObservableObject {
         let entitled = info.entitlements[Self.proEntitlementId]?.isActive == true
         if entitled != isPro {
             isPro = entitled
+        }
+        let maxEntitled = info.entitlements[Self.maxEntitlementId]?.isActive == true
+        if maxEntitled != isMax {
+            isMax = maxEntitled
         }
         // Self-heal divergence: RevenueCat says Pro but the server profile
         // hasn't caught up (webhook lag/failure, restore on a fresh install,

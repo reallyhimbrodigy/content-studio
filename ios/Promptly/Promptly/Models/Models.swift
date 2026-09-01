@@ -707,7 +707,7 @@ final class AppState: ObservableObject {
             return
         }
         weak var hostRef: UIViewController?
-        let paywall = PaywallView(
+        let paywall = UpgradePaywall(
             isPresented: Binding(get: { true }, set: { shown in if !shown { hostRef?.dismiss(animated: true) } }),
             reason: reason
         )

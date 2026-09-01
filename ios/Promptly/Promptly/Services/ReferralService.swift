@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 
 /// The referral program's client legs (conversion workstream; schema live
 /// server-side 2026-08-21). Three responsibilities:
@@ -31,12 +32,44 @@ final class ReferralService: ObservableObject {
     /// grant_referral_reward; mirrored here for display only.
     static let rewardTarget = 3
 
+    /// Whether the referral loop should be OFFERED to this user at all.
+    ///
+    /// Max subscribers are excluded (ruled 2026-09-01). The referral reward is
+    /// subscription time, and someone already on the top tier has nothing to
+    /// win — so the ask is work with no payoff, on the surface of the product
+    /// they pay the most for. Worse, the post-render card is the live one: a
+    /// Max user finishes a render and gets asked to recruit three friends for a
+    /// reward they cannot receive.
+    ///
+    /// THIS IS ONE PROPERTY, READ BY EVERY SURFACE, on purpose. The count and
+    /// the share button drifted apart once already by being decided
+    /// per-surface, and there are six places that show one or the other. A rule
+    /// enforced in six copies is a rule that is about to be enforced in five.
+    @MainActor
+    var shouldOffer: Bool { !SubscriptionService.shared.isMax }
+
     /// My referral code, cached once fetched (also lives on profiles.referral_code).
     @Published private(set) var myCode: String?
     /// Qualified-but-uncounted referrals toward the next reward, for display.
     @Published private(set) var qualifiedCount: Int = 0
 
-    private init() {}
+    private var cancellables = Set<AnyCancellable>()
+
+    private init() {
+        // Republish when the Max entitlement changes.
+        //
+        // `shouldOffer` reads SubscriptionService, but SwiftUI only redraws a
+        // view when an object the view OBSERVES changes. Six surfaces observe
+        // this service; none of them observe SubscriptionService for this
+        // purpose. Without this forward, a user who upgrades to Max keeps
+        // seeing the referral ask until something unrelated happens to redraw
+        // the screen — which is indistinguishable from the suppression not
+        // working, and would be reported as exactly that.
+        SubscriptionService.shared.$isMax
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
 
     // MARK: - Deep link intake (?ref=CODE on any URL that reaches the app)
 

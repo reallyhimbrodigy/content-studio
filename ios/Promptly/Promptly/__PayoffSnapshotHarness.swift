@@ -168,6 +168,32 @@ struct PayoffSnapshotHarnessView: View {
                     OnboardingState.shared.debugForceFlag("exportgate_personalization")
                     OnboardingState.shared.v2VideoType = "podcast"
                 }
+            case 22: FitProbe(label: "TWO-STEP cards WORST-CASE") {
+                TwoStepPaywallLayout(
+                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { _ in HarnessPaywallMock.durations },
+                    showsReferral: true,
+                    referralSource: "harness")
+            }
+            case 23: FitProbe(label: "TWO-STEP expanded WORST-CASE") {
+                TwoStepPaywallLayout(
+                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { _ in HarnessPaywallMock.durations },
+                    showsReferral: true,
+                    referralSource: "harness",
+                    initialTier: 2000)
+            }
+            case 24: FitProbe(label: "TWO-STEP expanded PRO-selected") {
+                TwoStepPaywallLayout(
+                    title: "Sichere dir deine Aufnahme, bevor sie verschwindet",
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { _ in HarnessPaywallMock.durations },
+                    showsReferral: true,
+                    referralSource: "harness",
+                    initialTier: 400)
+            }
             case 16: OnboardingQuestionView(question: .audienceV2,
                                             progress: (1, 3), onSkip: {}) { _ in }
             default: labeled("§6 RESULT — video · post package · Share hero") { resultBubble }
@@ -571,4 +597,107 @@ struct PayoffSnapshotHarnessView: View {
         return m
     }
 }
+
+/// Measures whether a screen actually FITS, instead of leaving it to the eye.
+///
+/// The requirement on the two-step paywall is "fits without scrolling on the
+/// smallest supported iPhone" — and a screenshot cannot prove that. A view that
+/// overflows its container still renders a perfectly plausible-looking still:
+/// SwiftUI clips it, and the clipped part is exactly the part not in the
+/// picture. Reviewing the capture would confirm the layout every time it failed.
+///
+/// MEASURING THE IDEAL HEIGHT, NOT THE LAID-OUT ONE. This is the trap: read the
+/// content's geometry after normal layout and you get the container height back,
+/// because the container is what constrained it — the probe then prints PASS for
+/// every input, including a view twice too tall. `.fixedSize(vertical: true)`
+/// makes the content take the height it actually WANTS, ignoring the proposal,
+/// and that number is the one worth comparing. Spacers collapse to their
+/// `minLength` under fixedSize, so what is measured is the MINIMUM the screen
+/// can occupy: if that exceeds the safe area, it must scroll, and no amount of
+/// squeezing elsewhere will save it.
+private struct FitProbe<Content: View>: View {
+    let label: String
+    @ViewBuilder var content: () -> Content
+    /// Every distinct height, not just the first. The first layout pass is not
+    /// necessarily the screen under test — a probe that latches on `onAppear`
+    /// reports whatever rendered before the state settled, which on step two
+    /// was step one, empty, passing comfortably. Print each change and read the
+    /// last line.
+    @State private var last: CGFloat = -1
+
+    private func report(_ need: CGFloat, _ have: CGFloat) {
+        guard abs(need - last) > 0.5 else { return }
+        last = need
+        let verdict = need <= have + 0.5 ? "PASS" : "FAIL"
+        print(String(format: "TWOSTEP_FIT %@ | need=%.1f have=%.1f overflow=%.1f %@",
+                     label, need, have, max(0, need - have), verdict))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let have = geo.size.height
+            content()
+                .frame(width: geo.size.width)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(
+                    GeometryReader { inner in
+                        Color.clear
+                            .onAppear { report(inner.size.height, have) }
+                            .onChange(of: inner.size.height) { _, h in report(h, have) }
+                    }
+                )
+                .frame(height: have, alignment: .top)
+                .clipped()
+                // The container's true bottom edge. If content crosses it in
+                // the still, the still shows the failure too.
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(Color.red.opacity(0.9)).frame(height: 1)
+                }
+        }
+    }
+}
+
+/// Worst-case paywall content for the fit probe: German (the longest of the
+/// twelve), Swiss francs (the widest price string), every optional line present.
+/// Shared by both probe states so a height difference between them is a
+/// difference in LAYOUT, not in the fixture.
+private enum HarnessPaywallMock {
+    static let tiers: [PaywallTierOption] = [
+        PaywallTierOption(
+            allowance: 400, isMax: false,
+            features: [
+                "Unbegrenzte Videos",
+                "Untertitel, Schnitte und Grafiken — automatisch",
+                "Jedes fertige Video neu bearbeiten",
+                "Bis zu 10 Videos gleichzeitig hochladen",
+                "Unbegrenzte KI-Chats",
+                "Jedes Video speichern und teilen",
+            ],
+            monthlyPrice: "CHF 29.99/Mt."),
+        PaywallTierOption(
+            allowance: 2000, isMax: true,
+            features: [
+                "Alles aus Pro, plus",
+                "5x so viel Nutzung",
+                "Früher Zugriff auf neue Funktionen",
+            ],
+            monthlyPrice: "CHF 89.99/Mt."),
+    ]
+
+    static let durations: [PaywallDurationOption] = [
+        PaywallDurationOption(
+            id: "y", label: "Jahr", price: "CHF 289.99",
+            perMonthLine: "CHF 24.16/Mt., jährlich abgerechnet",
+            percentOff: 62,
+            introLine: "Einführungspreis: CHF 249.00 für deine ersten 3 Monate",
+            isAnnual: true),
+        PaywallDurationOption(
+            id: "m", label: "Monat", price: "CHF 29.99",
+            perMonthLine: nil, percentOff: nil, introLine: nil, isAnnual: false),
+        PaywallDurationOption(
+            id: "w", label: "Woche", price: "CHF 12.99",
+            perMonthLine: nil, percentOff: nil, introLine: nil, isAnnual: false),
+    ]
+}
+
 #endif

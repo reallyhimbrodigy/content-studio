@@ -95,6 +95,10 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var badRenderSuppressorEnabled = false
     @Published private(set) var annualDollarLineEnabled = false
     @Published private(set) var offerSurfacingEnabled = false
+    /// The paywall as two decisions (tier, then duration) instead of one
+    /// four-product list. Dark until flipped; off = today's PaywallView,
+    /// byte-identical.
+    @Published private(set) var twoStepPaywallEnabled = false
     @Published private(set) var pushPrimerEnabled = false
     /// Amendment 2026-08-27: the export gate as TWO pages (benefits written
     /// against the stated content type, then plans + price). Its own flag so
@@ -171,6 +175,7 @@ final class OnboardingState: ObservableObject {
             badRenderSuppressorEnabled = (obj?["bad_render_suppressor"] as? String) == "on"
             annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
             offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
+            twoStepPaywallEnabled = (obj?["two_step_paywall"] as? String) == "on"
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
@@ -189,6 +194,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(badRenderSuppressorEnabled, forKey: "bad_render_suppressor_enabled")
             UserDefaults.standard.set(annualDollarLineEnabled, forKey: "annual_dollar_line_enabled")
             UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
+            UserDefaults.standard.set(twoStepPaywallEnabled, forKey: "two_step_paywall_enabled")
             UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
             UserDefaults.standard.set(exportGateTwoPageEnabled, forKey: "exportgate_two_page_enabled")
             // The seven experiment flags persist too. They were added without a
@@ -224,6 +230,7 @@ final class OnboardingState: ObservableObject {
             badRenderSuppressorEnabled = UserDefaults.standard.bool(forKey: "bad_render_suppressor_enabled")
             annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
             offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
+            twoStepPaywallEnabled = UserDefaults.standard.bool(forKey: "two_step_paywall_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
             creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")
@@ -250,6 +257,7 @@ final class OnboardingState: ObservableObject {
         case "bad_render_suppressor": badRenderSuppressorEnabled = true
         case "annual_dollar_line": annualDollarLineEnabled = true
         case "offer_surfacing": offerSurfacingEnabled = true
+        case "two_step_paywall": twoStepPaywallEnabled = true
         case "push_primer": pushPrimerEnabled = true
         case "exportgate_two_page": exportGateTwoPageEnabled = true
         // The seven experiment flags. Their absence here was not a small gap —

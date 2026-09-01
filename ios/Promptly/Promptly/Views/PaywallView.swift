@@ -161,7 +161,20 @@ struct PaywallView: View {
     /// `presentPaywall(_:exportContext:)`). Nil → generic header, today's copy.
     var exportContextOverride: ExportGatePaywallContext? = nil
 
-    private var title: String {
+    /// The reason→title mapping. ONE body, read by both paywalls — the instance
+    /// property below forwards to it, so there is no second copy to drift.
+    ///
+    /// The export-gate branch has THREE outcomes, not two, and all three live
+    /// here: a captured noun names the thing; personalisation on without a noun
+    /// still asks in the personalised voice; the flag off returns today's copy
+    /// byte-identical. Collapsing the middle case is a silent copy regression —
+    /// it reads as "out of free saves" to a user the flag was meant to address.
+    ///
+    /// Live state is PASSED IN rather than read from a singleton, so this stays
+    /// a pure function of its arguments and the caller owns the state read.
+    static func title(for reason: PaywallReason,
+                      personalisationEnabled: Bool = false,
+                      personalisedNoun: String? = nil) -> String {
         switch reason {
         case .dailyRenders: return String(localized: "You've used today's free video")
         case .dailyChats:   return String(localized: "You're out of free chats for today")
@@ -170,14 +183,18 @@ struct PaywallView: View {
         case .lumen:        return String(localized: "Unlock Promptly Pro")
         case .concurrency:  return String(localized: "One video at a time on Free")
         case .exportGate:
-            // exportgate_personalization: the named ask — THEIR video, by name
-            // when onboarding captured one. Flag off = today's copy, byte-identical.
-            if onboardingStateRef.exportGatePersonalizationEnabled {
-                if let noun = exportContentNoun { return String(localized: "Save your \(noun)") }
+            if personalisationEnabled {
+                if let noun = personalisedNoun { return String(localized: "Save your \(noun)") }
                 return String(localized: "Save your edit")
             }
             return String(localized: "You're out of free saves")
         }
+    }
+
+    private var title: String {
+        Self.title(for: reason,
+                   personalisationEnabled: onboardingStateRef.exportGatePersonalizationEnabled,
+                   personalisedNoun: exportContentNoun)
     }
     private var subtitle: String {
         switch reason {
@@ -297,7 +314,8 @@ struct PaywallView: View {
                         // buy — the curious get a non-paying path. Outside the
                         // radio selection; never wedges the buy button. Flag:
                         // ambient_wall_referral (server, default off).
-                        if case .manual = reason, onboardingStateRef.ambientWallReferralEnabled {
+                        if case .manual = reason, onboardingStateRef.ambientWallReferralEnabled,
+                           referralsRef.shouldOffer {
                             ambientReferralRow
                                 .onAppear { ReferralService.shared.trackImpression(source: "ambient_wall") }
                                 .padding(.horizontal, 24)
@@ -566,7 +584,12 @@ struct PaywallView: View {
     /// The user's own content type from the onboarding intent (the same raw
     /// keys SecondPaywallView personalizes on) — names the export-gate ask
     /// ("Save your highlight reel"). Nil when onboarding captured nothing.
-    private var exportContentNoun: String? {
+    private var exportContentNoun: String? { Self.exportContentNoun(from: onboardingStateRef) }
+
+    /// The user's own word for the thing they are making, shared by both
+    /// paywalls so the personalised ask cannot say one noun on one screen and a
+    /// different noun on the other.
+    static func exportContentNoun(from onboardingStateRef: OnboardingState) -> String? {
         // Render-caught 2026-08-27: this read ONLY the wall flow's `intents`,
         // so a user who came through onboarding v2 (which writes v2Making)
         // could never get a personalised gate — the two flows write different
@@ -733,15 +756,15 @@ struct PaywallView: View {
     /// unconditionally nil for `.freeTrial` offers (freemium law: no
     /// trial-phrased surface, ever). Display-only; RC applies whatever offer
     /// the account is eligible for at purchase, so the flow is unchanged.
-    private func introOfferLine(for pkg: Package) -> String? {
+    static func introOfferLine(for pkg: Package) -> String? {
         guard let offer = pkg.storeProduct.introductoryDiscount,
               offer.paymentMode != .freeTrial else { return nil }
         let price = offer.localizedPriceString
-        let span = offerSpan(offer.subscriptionPeriod, count: offer.numberOfPeriods)
+        let span = Self.offerSpan(offer.subscriptionPeriod, count: offer.numberOfPeriods)
         switch offer.paymentMode {
         case .payAsYouGo:
             // Recurring intro price, per period, for the first N periods.
-            return String(localized: "Intro price: \(price)/\(offerNoun(offer.subscriptionPeriod)) for your first \(span)")
+            return String(localized: "Intro price: \(price)/\(Self.offerNoun(offer.subscriptionPeriod)) for your first \(span)")
         default:
             // payUpFront: one intro charge covering the whole span.
             return String(localized: "Intro price: \(price) for your first \(span)")
@@ -749,7 +772,7 @@ struct PaywallView: View {
     }
 
     /// Bare period noun — our OWN copy, never StoreKit metadata.
-    private func offerNoun(_ period: RevenueCat.SubscriptionPeriod) -> String {
+    static func offerNoun(_ period: RevenueCat.SubscriptionPeriod) -> String {
         switch period.unit {
         case .day:   return String(localized: "day")
         case .week:  return String(localized: "week")
@@ -760,7 +783,7 @@ struct PaywallView: View {
 
     /// Total span of an intro offer ("3 months" / "month") from the store's
     /// own period × numberOfPeriods — never a hand-written duration.
-    private func offerSpan(_ period: RevenueCat.SubscriptionPeriod, count: Int) -> String {
+    static func offerSpan(_ period: RevenueCat.SubscriptionPeriod, count: Int) -> String {
         let total = period.value * max(count, 1)
         switch period.unit {
         case .day:   return total == 1 ? String(localized: "day") : String(localized: "\(total) days")
@@ -944,7 +967,7 @@ struct PaywallView: View {
                     if onboardingStateRef.offerSurfacingEnabled,
                        reason == .exportGate,
                        pkg.packageType == .annual || pkg.packageType == .monthly,
-                       let offerLine = introOfferLine(for: pkg) {
+                       let offerLine = Self.introOfferLine(for: pkg) {
                         Text(offerLine)
                             .cType(11, .medium)
                             .foregroundColor(.white.opacity(0.65))
@@ -1116,7 +1139,7 @@ struct AbandonRecoveryOverlay: View {
                 // the qualifier. Only sheet-decliners ever see this, so it
                 // cannot cannibalise a willing buyer by construction. Flag:
                 // abandon_referral (server, default off).
-                if onboarding.abandonReferralEnabled {
+                if onboarding.abandonReferralEnabled, referrals.shouldOffer {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await referrals.presentShareSheet(source: "abandon") }

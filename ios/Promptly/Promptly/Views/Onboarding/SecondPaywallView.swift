@@ -215,6 +215,14 @@ struct SecondPaywallView: View {
     /// already uses across its three mounts — a third mount cannot be added
     /// without instrumentation, because there is no mount-site step to forget.
     private var referralRow: some View {
+        // Gated on the view's own root, not at either mount — same reasoning as
+        // the impression tracking above. There are two mount sites here and a
+        // third is one edit away; a rule applied per-mount is a rule that gets
+        // forgotten at the next one.
+        Group { if referrals.shouldOffer { referralRowBody } }
+    }
+
+    private var referralRowBody: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             Task { await referrals.presentShareSheet(source: "paywall2") }
