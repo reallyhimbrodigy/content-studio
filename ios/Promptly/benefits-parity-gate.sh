@@ -52,7 +52,20 @@ fi
 # a short list degrades to the generic claim rather than crashing — but a core
 # of fewer than two entries would silently disable personalisation everywhere,
 # which is a defect the compiler cannot see.
-core_count=$(sed -n '/static let core: \[Benefit\] = \[/,/^    \]/p' "$SOURCE_OF_TRUTH" | grep -c 'Benefit(icon:')
+# The range must close on EITHER terminator: `core` was a stored array ending in
+# `]`, and is now a COMPUTED property ending in `}`. When it changed, this
+# extraction silently returned zero, `grep -c` exited non-zero under
+# `set -o pipefail`, and the gate died with NO OUTPUT AT ALL — reporting a
+# failure it could not explain, on a tree with no violation. A gate that fails
+# on the correct answer is the second time that shape has appeared today (the
+# localization gate did it when plural variations arrived), so it is worth
+# naming: extraction patterns encode a SHAPE, and shapes change.
+#
+# `|| true` so an empty match is a reported 0 rather than a silent death.
+# -E, because this runs under BSD sed on macOS where `\|` alternation is a GNU
+# extension that does not match and does not error — it just silently finds
+# nothing. That is how this returned 0 twice while looking correct.
+core_count=$(sed -nE '/static (let|var) core: \[Benefit\]/,/^    []}]$/p' "$SOURCE_OF_TRUTH" | grep -c 'Benefit(icon:' || true)
 if [ "${core_count:-0}" -lt 2 ]; then
   echo "benefits-parity: FAILED — ProBenefits.core holds ${core_count:-0} claim(s);"
   echo "  personalised() writes slots 0 and 1, so fewer than two silently"

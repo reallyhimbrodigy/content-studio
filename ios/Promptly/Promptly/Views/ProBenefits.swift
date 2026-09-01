@@ -81,6 +81,36 @@ enum ProBenefits {
                        text: String(localized: "\(monthlyVideos(credits: c)) videos a month"))
     }
 
+    /// The paywall SUBTITLE, gated by the same flag as the benefit row.
+    ///
+    /// THE BENEFIT ROW WAS GATED AND THIS WAS NOT, which is a worse state than
+    /// neither being gated: the moment credits arm, the checklist would switch
+    /// to "20 videos a month" while the sentence directly above it still said
+    /// "one free video a day — everything, unlimited". One screen, two limits,
+    /// contradicting each other.
+    ///
+    /// WHAT IS ACTUALLY TRUE, verified against lib/tier-capabilities.js rather
+    /// than assumed, because the answer decides whether this is a bug or a
+    /// cosmetic worry:
+    ///   credits DARK (live today): free renderLimit = FREE_DAILY_RENDERS = 1
+    ///     per DAY, Pro renderLimit = Infinity. So "one free video a day" and
+    ///     "everything, unlimited" are both TRUE right now. The pre-credits copy
+    ///     is correct-for-now; it only LOOKS stale.
+    ///   credits ARMED: free 30/month = 3 videos, Pro 200/month = 20. Both
+    ///     halves become false together.
+    ///
+    /// So this ships the honest sentence in each state rather than rewriting to
+    /// the credit numbers early — which would be false in the other direction,
+    /// the failure mode that reads as conservative and therefore goes unnoticed.
+    @MainActor
+    static var paywallSubtitle: String {
+        let o = OnboardingState.shared
+        guard o.creditsEnabled, let monthly = o.creditsMonthlyAllowance, monthly > 0 else {
+            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
+        }
+        return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
+    }
+
     /// `core` is now COMPUTED, not a constant, and that is the whole fix.
     ///
     /// `headlineVideoClaim` existed with the right logic and ZERO CALLERS — the

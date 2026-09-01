@@ -188,9 +188,9 @@ struct PaywallView: View {
         case .reedit:
             return String(localized: "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want.")
         case .manual:
-            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
+            return ProBenefits.paywallSubtitle
         case .lumen:
-            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
+            return ProBenefits.paywallSubtitle
         case .concurrency:
             return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:

@@ -100,7 +100,7 @@ struct TrialWallView: View {
                         .multilineTextAlignment(.center)
                     Text(context == .lapsed
                          ? "Everything you made is still here. Go Pro to keep creating without limits."
-                         : "Go beyond your one free video a day — everything, unlimited.")
+                         : ProBenefits.paywallSubtitle)
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))
                         .multilineTextAlignment(.center)
