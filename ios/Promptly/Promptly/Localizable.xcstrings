@@ -31080,9 +31080,21 @@
       "extractionState": "manual",
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld videos a month, plus early access to new features"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video a month, plus early access to new features"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos a month, plus early access to new features"
+                }
+              }
+            }
           }
         },
         "ar": {
@@ -31098,21 +31110,57 @@
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Videos im Monat, plus früher Zugang zu neuen Funktionen"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Video im Monat, plus früher Zugang zu neuen Funktionen"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Videos im Monat, plus früher Zugang zu neuen Funktionen"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vídeos al mes, y acceso anticipado a lo nuevo"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo al mes, y acceso anticipado a lo nuevo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos al mes, y acceso anticipado a lo nuevo"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vidéos par mois, et accès en avant-première aux nouveautés"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéo par mois, et accès en avant-première aux nouveautés"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéos par mois, et accès en avant-première aux nouveautés"
+                }
+              }
+            }
           }
         },
         "hi": {
@@ -31140,9 +31188,21 @@
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vídeos por mês, e acesso antecipado às novidades"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo por mês, e acesso antecipado às novidades"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos por mês, e acesso antecipado às novidades"
+                }
+              }
+            }
           }
         },
         "ur": {
