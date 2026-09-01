@@ -23,9 +23,15 @@ struct FirstRunHero: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // ONE Spacer each side. There were TWO below and one above, which
+            // pushes the content block above the container's centre at ANY
+            // height — unconditional, not a measurement. On this surface that
+            // matters: 1,611 of 4,931 signups (33%) never start an upload, and
+            // the upload button is the only thing on the screen. Lifting the
+            // single conversion action toward the top of the reachable area is
+            // the wrong direction on a phone held one-handed.
             Spacer()
             uploadBody
-            Spacer()
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

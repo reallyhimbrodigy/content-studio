@@ -81,6 +81,7 @@ struct PayoffSnapshotHarnessView: View {
                 ["7": "videoType", "8": "attribution", "11": "audience",
                  "12": "videoType", "15": "reveal"][String(n)] ?? "audience",
                 forKey: "onboarding_v2_step")
+        case 21: break   // width proof needs no flag
         case 20: o.debugForceFlag("progress_ring")
         case 19: o.debugForceFlag("progress_ring")
         case 17: o.debugForceFlag("progress_ring")
@@ -147,6 +148,7 @@ struct PayoffSnapshotHarnessView: View {
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
                 }
+            case 21: WidthProofView()
             case 20: RingThreadView()
             case 19: RingStillView()
             case 17: labeled("RENDER RING — live ramp, cold through completion") {
@@ -268,6 +270,43 @@ struct PayoffSnapshotHarnessView: View {
         t.receive(stepToken: "render")
         m.stageTimeline = t
         return m
+    }
+
+    /// WIDTH PROOF — a conversion surface rendered at an exact point width.
+    ///
+    /// WHY WIDTH RATHER THAN ROTATION. The question the iPad caps answer is "does
+    /// this layout hold at width W". `simctl` exposes no rotation API, and the
+    /// GUI-scripting route needs accessibility permissions this environment does
+    /// not have — so rotating the device is not available here. Constraining the
+    /// container IS available, and it tests the thing the caps actually govern.
+    ///
+    /// HONEST LIMIT: this proves layout-at-width. It does NOT prove
+    /// orientation-specific behaviour — safe-area insets differ in landscape,
+    /// and a real Split View also changes the size class. Treat a pass here as
+    /// necessary and not sufficient.
+    ///
+    ///   -snapshotState 21 -widthPt 507
+    ///     320  Slide Over, the narrowest real container
+    ///     507  Split View 1/2 on an 11-inch
+    ///    1024  iPad portrait
+    ///    1366  iPad landscape, 12.9-inch
+    struct WidthProofView: View {
+        private var w: CGFloat {
+            CGFloat(Int(UserDefaults.standard.string(forKey: "widthPt") ?? "1024") ?? 1024)
+        }
+        var body: some View {
+            HStack(spacing: 0) {
+                PaywallView(isPresented: .constant(true), reason: .manual)
+                    .frame(width: w)
+                    // A hard edge so the capture shows where the container ends
+                    // and the dead space begins — without it a centred column
+                    // and a stretched one look alike in a screenshot.
+                    .overlay(alignment: .trailing) {
+                        Rectangle().fill(Color.red.opacity(0.5)).frame(width: 2)
+                    }
+                Spacer(minLength: 0)
+            }
+        }
     }
 
     /// RENDER RING — IN THE THREAD.

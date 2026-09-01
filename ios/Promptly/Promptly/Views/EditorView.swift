@@ -958,6 +958,15 @@ struct EditorView: View {
                             .frame(width: 30, height: 30)
                             .background(Color.white)
                             .clipShape(Circle())
+                            // VISUAL 30, TOUCH 44. The glyph stays the size it
+                            // was designed at; only the hit region grows to the
+                            // HIG minimum. Applied INSIDE the Button label —
+                            // padding applied outside a Button is not part of
+                            // its hit test, which is why the existing
+                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // added nothing.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
                     .opacity(canSend || isChatStreaming ? 0 : 1)
@@ -973,6 +982,15 @@ struct EditorView: View {
                             .frame(width: 30, height: 30)
                             .background(Color.white)
                             .clipShape(Circle())
+                            // VISUAL 30, TOUCH 44. The glyph stays the size it
+                            // was designed at; only the hit region grows to the
+                            // HIG minimum. Applied INSIDE the Button label —
+                            // padding applied outside a Button is not part of
+                            // its hit test, which is why the existing
+                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // added nothing.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
                     .opacity(canSend && !isChatStreaming ? 1 : 0)
@@ -997,6 +1015,15 @@ struct EditorView: View {
                             .frame(width: 30, height: 30)
                             .background(Color.white)
                             .clipShape(Circle())
+                            // VISUAL 30, TOUCH 44. The glyph stays the size it
+                            // was designed at; only the hit region grows to the
+                            // HIG minimum. Applied INSIDE the Button label —
+                            // padding applied outside a Button is not part of
+                            // its hit test, which is why the existing
+                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // added nothing.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
                     .opacity(isChatStreaming ? 1 : 0)
