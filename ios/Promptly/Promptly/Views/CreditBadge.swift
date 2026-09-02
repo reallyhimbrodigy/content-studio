@@ -56,7 +56,7 @@ struct CreditBadge: View {
                         bolt
                         Text(value, format: .number)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.92))
+                            .foregroundColor(.white.opacity(value == 0 ? 0.45 : 0.92))
                             .monospacedDigit()   // width must not jitter as digits change
                             .contentTransition(.numericText(countsDown: !refunding))
                     }
@@ -64,8 +64,18 @@ struct CreditBadge: View {
                     .frame(height: 30)
                     // The PILL stays neutral and flat. No glow, no gradient —
                     // the glyph carries the identity.
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+                    //
+                    // ZERO DIMS, IT DOES NOT ALARM (ruled). Red is the colour of
+                    // something being wrong, and nothing is wrong — the user
+                    // spent what they bought, which is the currency working as
+                    // intended. Dimming says SPENT: the badge recedes the way an
+                    // empty wallet does, still legible, still tappable, making
+                    // no accusation. An error colour here would also collide
+                    // with the failure states in the thread below, where red
+                    // means a render actually broke.
+                    .background(Capsule().fill(Color.white.opacity(value == 0 ? 0.05 : 0.08)))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(value == 0 ? 0.07 : 0.10), lineWidth: 1))
+                    .opacity(value == 0 ? 0.75 : 1.0)
                     .contentShape(Capsule())
                     .scaleEffect(pulse ? 1.06 : 1.0)
                 }

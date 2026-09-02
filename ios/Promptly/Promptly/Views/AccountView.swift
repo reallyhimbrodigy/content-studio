@@ -11,6 +11,11 @@ struct AccountView: View {
     // the only way an SQL-comped user sees the Pro affordance.
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var usage = UsageService.shared
+    /// The Credits section and the upgrade path both read live state: the
+    /// balance so the row updates when a top-up lands, and the flags so the
+    /// section stays dark until the meter is armed and Max is purchasable.
+    @ObservedObject private var credits = CreditsService.shared
+    @ObservedObject private var onboarding = OnboardingState.shared
 
     @State private var userName = ""
     @State private var userEmail = ""
@@ -84,6 +89,23 @@ struct AccountView: View {
                         }
                         cardDivider
                         upgradeOrManageRow
+                    }
+
+                    // ── CREDITS ──
+                    // Its own section, and only while the meter is live. The
+                    // balance is also in the header badge, but the header shows
+                    // a number and nothing else; this is where the number is
+                    // explained — what the allowance is, when it renews, and
+                    // how to buy more.
+                    if onboarding.creditsEnabled {
+                        settingsGroup("Credits") {
+                            creditsBalanceRow
+                            cardDivider
+                            cardRow("Buy more credits", trailing: .none) {
+                                Analytics.track("credits_topup_open", props: ["source": "account"])
+                                AppState.shared.showCredits = true
+                            }
+                        }
                     }
 
                     // ── SETTINGS ──
@@ -350,7 +372,16 @@ struct AccountView: View {
                     .font(.system(size: 16))
                     .foregroundColor(.white)
                 Spacer()
-                if effectiveIsPro {
+                // THE ACTUAL TIER, not a Pro/Free binary. With Max live, a Max
+                // subscriber reading "PRO" is being told they are on the tier
+                // below the one they pay for.
+                if subscription.isMax {
+                    Text("MAX")
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(Color.white, in: Capsule())
+                        .foregroundColor(.black)
+                } else if effectiveIsPro {
                     PROBadge()
                 } else {
                     Text("FREE")
@@ -366,35 +397,109 @@ struct AccountView: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Subscription")
-        .accessibilityValue(effectiveIsPro ? "Pro" : "Free")
+        .accessibilityValue(subscription.isMax ? "Max" : (effectiveIsPro ? "Pro" : "Free"))
     }
 
-    /// The accent CTA row. Free/comped-out → gold "Upgrade to Promptly Pro" into
-    /// the paywall; Pro/comped → "Manage subscription" to Apple. Never both.
+    /// The accent CTA row — an UPGRADE PATH ONLY WHEN ONE EXISTS.
+    ///
+    /// This read `effectiveIsPro ? "Manage subscription" : "Upgrade to Promptly
+    /// Pro"`, a binary written when Pro was the only paid tier. With Max live
+    /// that is wrong at both ends: a Max subscriber was offered an upgrade to
+    /// the tier BELOW the one they pay for, and a Pro subscriber was shown no
+    /// path to Max at all.
+    ///
+    /// Three states now, and the top tier is defined by what is actually
+    /// purchasable: while `max_tier` is dark Pro IS the top tier, so a Pro
+    /// subscriber correctly sees Manage rather than an upgrade to something
+    /// nobody can buy. That keeps this row honest without a second flag check
+    /// at the call site.
+    private var canUpgrade: Bool {
+        if subscription.isMax { return false }
+        if !effectiveIsPro { return true }
+        return onboarding.maxTierEnabled   // Pro -> Max, only once Max is real
+    }
+
     private var upgradeOrManageRow: some View {
         Button {
-            if effectiveIsPro {
-                openExternal("https://apps.apple.com/account/subscriptions")
-            } else {
+            if canUpgrade {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 AppState.shared.presentPaywall(.manual)
+            } else {
+                openExternal("https://apps.apple.com/account/subscriptions")
             }
         } label: {
             HStack(spacing: 10) {
-                if !effectiveIsPro {
+                if canUpgrade {
                     Image(systemName: "sparkles")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(PromptlyGold.gradient)
                 }
-                Text(effectiveIsPro ? "Manage subscription" : "Upgrade to Promptly Pro")
-                    .font(.system(size: 16, weight: effectiveIsPro ? .regular : .semibold))
-                    .foregroundColor(effectiveIsPro ? .white : PromptlyGold.solid)
+                Text(upgradeLabel)
+                    .font(.system(size: 16, weight: canUpgrade ? .semibold : .regular))
+                    .foregroundColor(canUpgrade ? PromptlyGold.solid : .white)
                 Spacer()
                 chevron
             }
             .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var upgradeLabel: String {
+        if !canUpgrade { return String(localized: "Manage subscription") }
+        return effectiveIsPro
+            ? String(localized: "Upgrade to Promptly Max")
+            : String(localized: "Upgrade to Promptly Pro")
+    }
+
+    /// Balance, allowance and renewal in one row.
+    ///
+    /// Every line is OMITTED rather than guessed. `balance` is nil until the
+    /// server has actually been read, and a zero printed from an unread balance
+    /// is the same false claim the badge refuses to make — so an unknown
+    /// balance shows a dash, not a zero. The allowance line only appears when a
+    /// tier allowance is known, and the renewal line only when the server sent
+    /// a date.
+    private var creditsBalanceRow: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Balance")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+                if let sub = creditsSubtitle {
+                    Text(sub)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            // `Text(balance.map { "\(  $0 )" })` looked harmless and put a bare
+            // `%lld` in the string catalog — the interpolation reads as a
+            // localizable key with no sentence around it, untranslatable by
+            // anyone who ever opens the catalog. `format: .number` also gets
+            // locale-correct digits and grouping, which the interpolation did
+            // not, and matches how CreditBadge renders the same value.
+            Group {
+                if let b = credits.balance {
+                    Text(b, format: .number)
+                        .foregroundColor(b == 0 ? .secondary : .white)
+                } else {
+                    Text(verbatim: "—").foregroundColor(.secondary)
+                }
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .monospacedDigit()
+        }
+        .padding(.horizontal, 16).frame(minHeight: 52)
+    }
+
+    /// "200 credits/month - about 20 videos". Derived from the same constants
+    /// the paywall uses, so the two cannot disagree about what money buys.
+    private var creditsSubtitle: String? {
+        guard let monthly = onboarding.creditsMonthlyAllowance ?? ProBenefits.storeKitAllowance(),
+              monthly > 0 else { return nil }
+        let videos = ProBenefits.monthlyVideos(credits: monthly)
+        return String(localized: "\(monthly) credits a month - about \(videos) videos")
     }
 
     // MARK: - Profile row

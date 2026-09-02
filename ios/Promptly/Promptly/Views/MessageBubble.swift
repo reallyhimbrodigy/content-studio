@@ -530,8 +530,16 @@ struct MessageBubble: View {
                         // one — the surface simply omits that line rather than
                         // inventing a date, for the same reason it omits an
                         // unread balance.
+                        // TO THE TOP-UP, NOT THE PAYWALL. This sent the user to
+                        // `.manual` — the upgrade paywall — which answers the
+                        // wrong question: a Pro subscriber who has spent their
+                        // monthly credits is already on the tier the paywall
+                        // sells, so it offered them what they had just been
+                        // charged for. What they are out of is CREDITS, and the
+                        // screen that sells credits is the top-up.
                         CreditsExhaustedMessage(refreshDate: nil) {
-                            AppState.shared.presentPaywall(.manual)
+                            Analytics.track("credits_topup_open", props: ["source": "exhausted_bubble"])
+                            AppState.shared.showCredits = true
                         }
                     } else if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
                         CreditsRefundedMessage(amount: refunded)

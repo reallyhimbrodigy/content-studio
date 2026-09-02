@@ -297,6 +297,17 @@ struct PaywallLayout: View {
     /// skipped rather than changing any other part of the layout.
     @ObservedObject private var onboarding = OnboardingState.shared
 
+    /// `-preselectPlan <productId>` — DEBUG only, nil in Release.
+    static var debugPreselectedPlan: String? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-preselectPlan"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+        #else
+        return nil
+        #endif
+    }
+
     /// The CTA's accent. Saturated, and used by NOTHING else here — white reads
     /// as neutral or dismiss on iOS, which is the wrong signal for the one
     /// control the screen exists for. The recommended badge is gold, so this is
@@ -394,7 +405,16 @@ struct PaywallLayout: View {
             tierAllowance = initialTierAllowance ?? recommendedTier?.allowance
         }
         if selectedId == nil, let t = activeTier {
-            selectedId = preferredRow(in: t)?.id
+            // APP REVIEW ARTIFACT (DEBUG). Apple wants one capture PER PRODUCT,
+            // and a subscription group's products differ only by the duration
+            // row selected here — so the tier arg alone cannot produce a
+            // monthly shot. Release ignores this entirely.
+            if let want = Self.debugPreselectedPlan,
+               let row = durations(t.allowance).first(where: { $0.id == want }) {
+                selectedId = row.id
+            } else {
+                selectedId = preferredRow(in: t)?.id
+            }
         }
     }
 
