@@ -11,10 +11,13 @@ const {
   entitlementTier,
   tierFromEntitlement,
   tierAfterGrant,
+  tierRank,
   grantFromMs,
   unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
+  tieredEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
+  ENTITLEMENT_TIER_BY_LOOKUP_KEY,
   revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
@@ -876,6 +879,14 @@ function isUserPro(req) {
 // Static per project, so we memoise it for the process lifetime after the
 // first successful lookup.
 let _rcProEntitlementInternalId = null;
+// Last RevenueCat project reachability answer, refreshed in the background by
+// /api/health at most every 5 minutes. `value` stays null until the first probe
+// resolves — "not measured" must not read as "ok".
+const _rcHealthProbe = { at: 0, value: null };
+// { <internal entitlement id>: <tier> } for every lookup_key we understand.
+// Process-lifetime cache, same as the id above — entitlements are dashboard
+// artifacts that change on the order of never, and a restart re-reads them.
+let _rcEntitlementTierMap = null;
 
 // Process-lifetime probe of the RC PROJECT itself: null = never probed (or the
 // probe was transient-failed and will retry), 'ok' = project readable under the
@@ -909,6 +920,49 @@ async function resolveProEntitlementInternalId(projectId, secret) {
     /* fall through to null */
   }
   return null;
+}
+
+/**
+ * Resolve EVERY entitlement we understand, as { internalId: tier } (2026-09-02).
+ *
+ * The single-id resolver above answers "which entitlement is Pro". That question
+ * is why a Max purchase granted nothing: the Max products are attached to a
+ * `max` entitlement, `max` is not `pro`, so the customer's only active
+ * entitlement was filtered out and they resolved as NOT ENTITLED.
+ *
+ * Returns null (not {}) on any failure, so the caller can tell "RC said there
+ * are no entitlements we know" from "we could not ask" — the second falls back
+ * to the documented accept-any-active behaviour, the first does not.
+ */
+async function resolveEntitlementTierMap(projectId, secret) {
+  if (_rcEntitlementTierMap) return _rcEntitlementTierMap;
+  const url = `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const items = body && Array.isArray(body.items) ? body.items : [];
+    const map = {};
+    for (const e of items) {
+      const tier = e && ENTITLEMENT_TIER_BY_LOOKUP_KEY[String(e.lookup_key || '').trim()];
+      if (tier && e.id) map[e.id] = tier;
+    }
+    if (Object.keys(map).length === 0) return null;   // nothing recognised
+    _rcEntitlementTierMap = map;
+    // Loud once per process: a renamed lookup_key in the RC dashboard silently
+    // stops a tier resolving, and the symptom is "paying users look free".
+    const tiers = [...new Set(Object.values(map))].sort().join(',');
+    console.log(`[RevenueCat] entitlement map resolved: ${Object.keys(map).length} entitlement(s) -> tiers [${tiers}]`);
+    if (!Object.values(map).includes('max')) {
+      console.warn('[RevenueCat] NOTE: no entitlement with lookup_key "max" — Max purchases will resolve as Pro at best. Check the dashboard.');
+    }
+    return map;
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -961,7 +1015,10 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   }
 
   // null → accept any active entitlement (single-entitlement fallback).
-  const proEntId = await resolveProEntitlementInternalId(projectId, secret);
+  // TIER-AWARE since 2026-09-02: resolves EVERY entitlement we understand, not
+  // just 'pro'. With only the pro id, a customer holding the `max` entitlement
+  // matched nothing and a completed Max purchase granted them NOTHING.
+  const entTierMap = await resolveEntitlementTierMap(projectId, secret);
 
   const url =
     `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}` +
@@ -1009,7 +1066,7 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   }
   const body = await rcRes.json().catch(() => null);
   const items = body && Array.isArray(body.items) ? body.items : [];
-  const decision = proEntitlementFromV2ActiveList(items, proEntId, Date.now());
+  const decision = tieredEntitlementFromV2ActiveList(items, entTierMap, Date.now());
   if (!decision.active) {
     // Not entitled per RC. Grant-only: never downgrade here.
     return { ok: true, isPro: false, reason: 'RC_NOT_ACTIVE', proUntil: decision.proUntil };
@@ -1019,7 +1076,19 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   // rc_period_type are informational and owned by the webhook — we don't null
   // them out from this path.
   const update = {
-    tier: 'pro',
+    // THE RESOLVED TIER, not the literal 'pro' this used to write. A Max
+    // customer is now stored as 'max' and gets the Max credit allowance;
+    // before, the best case was being stored as 'pro' (allowance 200 instead
+    // of 1000) and the actual case was not being stored at all.
+    //
+    // DELIBERATELY *NOT* tierAfterGrant(). That guard exists for the referral
+    // and reverse-trial paths, where an unconditional `tier:'pro'` GRANT would
+    // clobber a real Max subscription downward. This path is different in kind:
+    // it MIRRORS RevenueCat's live active_entitlements. If RC says the max
+    // entitlement lapsed and only pro is active, then 'pro' is the truth and
+    // writing it is not a downgrade — it is the mirror doing its job. Wrapping
+    // this in tierAfterGrant would pin a lapsed Max forever.
+    tier: decision.tier,
     pro_until: decision.proUntil,
     rc_app_user_id: id,
     // Advance the webhook ordering stamp. This reconcile reflects RC's CURRENT
@@ -3627,9 +3696,26 @@ const server = http.createServer((req, res) => {
       // and is untouched here: it defaults to off (`|| ''` !== '1') and STAYS
       // off until CRD is provisioned and balances are granted. Arming this
       // meter before then shows users a balance that does not exist yet.
-      credits:
-        /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
-          ? 'on' : 'off',
+      // STRUCTURALLY GATED ON RC BEING REACHABLE (2026-09-02), not merely
+      // documented as a thing to remember. `credits.isConfigured()` is a
+      // PRESENCE test — it returns true for a mismatched project/key pair — so
+      // CREDITS=1 against a 404ing project would serve a meter that 503s for
+      // 100% of users, and nothing would have said so first. That pair has in
+      // fact been mismatched since 2026-08-10.
+      //
+      // So the env var is necessary but NOT sufficient: the meter reports 'on'
+      // only when the health probe has actually reached the project. FAIL
+      // CLOSED — 'off' while the probe is null (not yet measured, a few seconds
+      // after boot) and 'off' on any non-'ok'. A meter that is briefly dark
+      // self-heals on the next probe; a meter that is armed and broken is a
+      // support ticket from every user at once.
+      //
+      // Read `revenuecat.probe` below to tell "the operator left it off" from
+      // "the project is unreachable" — they render identically here on purpose,
+      // because both mean the same thing to a client: do not draw a balance.
+      credits: (/^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
+                && _rcHealthProbe.value === 'ok')
+        ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -3677,6 +3763,76 @@ const server = http.createServer((req, res) => {
       // signer means every paying user's export 403s.
       //
       // Booleans only. No URL, no key id, no expiry is exposed here.
+      // ── REVENUECAT CONFIG STATE (2026-09-02) ───────────────────────────
+      // WHY THIS EXISTS. On 2026-08-10 /sync was diagnosed as 100%
+      // NO_RC_CUSTOMER caused by a mismatched REVENUECAT_PROJECT_ID /
+      // REVENUECAT_SECRET_KEY pair, and a `CONFIG SUSPECT` log line was added to
+      // make it visible. It has been firing continuously ever since — 23 days —
+      // because a log line is only visible to someone already looking. This is
+      // the same disease as the event-allowlist smoke that ran where it could
+      // not see: a check nobody reads is not a check.
+      //
+      // The specific thing it prevents: `credits.isConfigured()` is a PRESENCE
+      // test, not a validity test — it returns true for a mismatched pair. So
+      // arming CREDITS=1 against a 404ing project ships a meter that 503s for
+      // 100% of users, and nothing in the system would say so first. `probe`
+      // below is the field that makes that structurally impossible to miss.
+      //
+      // PUBLIC ENDPOINT: booleans, enums and shape flags ONLY. No project id,
+      // no key fragment, nothing that is a secret or identifies the account.
+      revenuecat: (() => {
+        const projectId = (process.env.REVENUECAT_PROJECT_ID || '').trim();
+        const secret = (process.env.REVENUECAT_SECRET_KEY || '').trim();
+        const shape = (v, re) => (!v ? 'missing' : (re.test(v) ? 'ok' : 'malformed'));
+        // Refresh the reachability probe in the BACKGROUND, at most every 5
+        // minutes. Health is the pre-auth endpoint every client hits — it must
+        // never block on a third party. The response reports the LAST known
+        // answer; null means "not probed yet", which is deliberately distinct
+        // from 'ok' and from a failure.
+        // PROBE THE ENTITLEMENTS ENDPOINT, NOT THE BARE PROJECT (fixed
+        // 2026-09-02, hours after shipping the bare-project version).
+        //
+        // `GET /v2/projects/{id}` 404s under a VALID key — RC's v2 API does not
+        // serve a bare project read. The proof is in this very response: the
+        // bare-project probe reported http_404 while `entitlementTiers` read
+        // ['max','pro'], and that array can ONLY be populated by a 200 from
+        // /projects/{id}/entitlements. Two fields of the same object disagreeing
+        // is what exposed it.
+        //
+        // So the original probe was a FALSE RED — it could never read 'ok', and
+        // because `credits` is gated on it, CREDITS=1 could never have armed.
+        // I shipped that. The pre-existing `_rcProjectProbe` makes the SAME bare
+        // -project call, which means its 'CONFIG SUSPECT' alarm has been firing
+        // on a broken test — see the note at that function.
+        //
+        // /entitlements is the right probe: a real endpoint, read-only, cheap,
+        // and it exercises exactly the credential path the credits meter needs.
+        if (projectId && secret && Date.now() - _rcHealthProbe.at > 300000) {
+          _rcHealthProbe.at = Date.now();
+          fetch(`${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`, {
+            headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+            signal: AbortSignal.timeout(8000),
+          }).then((r) => { _rcHealthProbe.value = r.ok ? 'ok' : `http_${r.status}`; })
+            .catch(() => { _rcHealthProbe.value = 'unreachable'; });
+        }
+        return {
+          // What credits.isConfigured() actually means: both vars are SET.
+          // Never confuse this with "works" — that is `probe`.
+          configured: Boolean(projectId && secret),
+          projectIdShape: shape(projectId, /^proj/),
+          secretShape: shape(secret, /^sk_/),
+          // 'ok' | 'http_404' | 'unreachable' | null(not probed yet).
+          // ANYTHING other than 'ok' means every /sync 404s and the credits
+          // meter cannot read a balance. Do not arm CREDITS=1 on a non-'ok'.
+          probe: _rcHealthProbe.value,
+          // Which tiers the entitlement map resolved, once anything has asked
+          // RC. null = never resolved (or the lookup failed). Missing 'max'
+          // here means Max purchases cannot resolve as Max.
+          entitlementTiers: _rcEntitlementTierMap
+            ? [...new Set(Object.values(_rcEntitlementTierMap))].sort() : null,
+          creditsDebitArmed: CREDITS_DEBIT_ENABLED,
+        };
+      })(),
       cloudfront: (() => {
         try {
           const cf = require('./services/cloudfront');
@@ -3893,6 +4049,49 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // ── THE 244 CLIENT COHORT (2026-09-02) ────────────────────────────
+          // 25 events the client on app-conversion-surface already emits and
+          // this set did not know. Every one of them was being DROPPED by the
+          // SQL mirror — not rejected loudly, silently discarded — so each of
+          // the funnels below was half-blind on the server side while looking
+          // fine in PostHog. Allowlisted BEFORE 244 ships, so no cohort is
+          // measured through a hole.
+          //
+          // DEFERRED AUTH — the funnel the `deferred_auth` flag switches. Without
+          // these, "how many users abandoned at the auth gate" is unanswerable,
+          // which is the one question that decides whether to roll the flag back.
+          'auth_gate_shown', 'auth_gate_abandoned', 'auth_gate_resumed',
+          'auth_gate_resume_missing_product', 'purchase_blocked_unauthenticated',
+          // CREDITS — the meter's own funnel. These are the reason this matters
+          // now: arming CREDITS=1 without them means the credits surface ships
+          // with no server-side record of exhaustion or refund display.
+          'credits_exhausted', 'credits_exhausted_shown', 'credits_refund_shown',
+          'free_export_spent_shown',
+          // DOWNSELL — shown vs skipped is the same distinction as the offer
+          // reveal above: "no downsell existed" and "the user declined it" are
+          // opposite conclusions about one empty result.
+          'downsell_shown', 'downsell_skipped',
+          // REVERSE TRIAL — grant outcomes AND its two failure modes. The
+          // failures matter more than the grant: a grant with no duration and a
+          // missing device id are silent no-ops that would otherwise look like
+          // a user who simply never qualified.
+          'reverse_trial_granted', 'reverse_trial_ineligible',
+          'reverse_trial_unavailable', 'reverse_trial_device_id_missing',
+          'reverse_trial_grant_no_duration',
+          // REFERRAL ENTRY — opened / entered / rejected is the whole funnel;
+          // rejection rate is the signal that a code format is wrong.
+          'referral_code_field_opened', 'referral_code_entered',
+          'referral_code_entry_rejected',
+          // INSTANT QUESTIONS — shown/answered, the pair the flag is judged on.
+          'instant_question_shown', 'instant_question_answered',
+          // CLIENT-SIDE FAILURES that have no server trace by construction —
+          // same class as upload_never_started above. A keychain write that
+          // fails takes the device identity with it, and an unrecoverable
+          // picker asset is a pick that never becomes a job.
+          'device_id_keychain_write_failed', 'first_run_keychain_write_failed',
+          'picker_asset_unrecoverable',
+          // Onboarding language choice — segments every funnel above by locale.
+          'language_changed',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
@@ -4957,10 +5156,38 @@ const server = http.createServer((req, res) => {
           'REFUND',
         ]);
 
+        // TIER FROM THE EVENT (2026-09-02). RC webhook events carry
+        // `entitlement_ids` — an array of entitlement LOOKUP KEYS (not the
+        // internal ids the v2 REST API returns). Map them and take the highest
+        // rank, so a Max renewal writes 'max' instead of clobbering it to 'pro'.
+        //
+        // READ DEFENSIVELY: null when the field is absent or carries nothing we
+        // recognise, and the caller falls back to 'pro' — exactly today's
+        // behaviour, so a wrong assumption about this field cannot regress the
+        // Pro path. The absence is logged rather than assumed away, because
+        // "Max silently renews as Pro" is the failure it would cause.
+        const webhookTier = (() => {
+          const ids = Array.isArray(event.entitlement_ids) ? event.entitlement_ids : null;
+          if (!ids || ids.length === 0) return null;
+          let best = null; let bestRank = -1;
+          for (const raw of ids) {
+            const t = ENTITLEMENT_TIER_BY_LOOKUP_KEY[String(raw || '').trim()];
+            if (!t) continue;
+            const r = tierRank(t);
+            if (r > bestRank) { bestRank = r; best = t; }
+          }
+          return best;
+        })();
+        if (grantsPro.has(type) && !webhookTier) {
+          console.warn(`[RevenueCat] webhook ${type}: no usable entitlement_ids `
+            + `(${JSON.stringify(event.entitlement_ids ?? null)}) — falling back to tier 'pro'. `
+            + `A Max subscriber is protected by the raise-guard in applyTo, not by this value.`);
+        }
+
         let update = null;
         if (grantsPro.has(type)) {
           update = {
-            tier: 'pro',
+            tier: webhookTier || 'pro',
             pro_until: expirationIso,
             rc_app_user_id: appUserId,
             rc_product_id: productId,
@@ -5093,6 +5320,35 @@ const server = http.createServer((req, res) => {
           if (environment) extras.rc_environment = environment;
           if (useOrdering) extras.rc_last_event_ms = eventMs;
           const payload = { ...update, ...extras };
+          // RAISE-GUARD, GRANTS ONLY (2026-09-02). A grant may only ever RAISE a
+          // tier — the rule TIER_RANK/tierAfterGrant were written for. Without
+          // it, a RENEWAL webhook for a Max subscriber whose event carries no
+          // usable entitlement_ids writes 'pro' and silently demotes them, which
+          // is precisely the clobber the TIER_RANK comment describes.
+          //
+          // SCOPED TO GRANTS ON PURPOSE: EXPIRATION/REFUND write tier:'free',
+          // and 'free' ranks BELOW every paid tier. Applying this to a revoke
+          // would refuse the downgrade and make subscriptions unrevokable —
+          // a far worse bug than the one it fixes.
+          //
+          // The read-then-write race is safe here because tierAfterGrant is
+          // monotonic: two concurrent grants can only ever settle on the higher
+          // tier, never on a lower one.
+          if (grantsPro.has(type) && payload.tier) {
+            try {
+              const { data: cur } = await supabaseAdmin
+                .from('profiles').select('tier').eq('id', id).maybeSingle();
+              const raised = tierAfterGrant(cur && cur.tier, payload.tier);
+              if (raised !== payload.tier) {
+                console.log(`[RevenueCat] raise-guard: keeping stored tier '${raised}' `
+                  + `over incoming grant '${payload.tier}' for ${id}`);
+              }
+              payload.tier = raised;
+            } catch (_) {
+              // A failed read must not drop the grant. Worst case we write the
+              // incoming tier, which is exactly the pre-guard behaviour.
+            }
+          }
           let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
           if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
           let { data, error } = await q.select('id');

@@ -32,6 +32,47 @@ while read -r _local_ref _local_sha remote_ref remote_sha; do
 done
 [ "$gated" -eq 1 ] || exit 0
 
+# ── EVENT-ALLOWLIST PARITY — main only, BEFORE the quiet window ─────────────
+# WHY HERE AND NOWHERE ELSE (2026-09-02): this smoke already existed, already
+# ran in validate_deploy.js, and still let 25 client events reach `main`
+# unallowlisted — every one of them silently dropped by the SQL mirror while
+# PostHog looked fine.
+#
+# The reason is the shape of the check, not the check itself. The smoke reads
+# emitted events from the `app-*` CLIENT branches via `git show`. validate_deploy
+# runs as Render's buildCommand, and a Render build is a clone of main that has
+# never fetched those branches — so the scan finds nothing to compare, falls back
+# to the working tree, and PASSES. The gate ran in the one environment that
+# cannot see the evidence. That is a false green: absence rendered as success.
+#
+# A developer's machine HAS the app-* branches. So the check belongs on this
+# side of the push, and it runs BEFORE the quiet window deliberately — a
+# correctness failure should not make you wait for a window first.
+#
+# It is also placed ABOVE the PROMPTLY_ALLOW_BUSY_PUSH escape hatch on purpose:
+# that override exists for "deploy over in-flight work", which is a different
+# decision from "ship a half-blind funnel". One must not silently buy the other.
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ "${PROMPTLY_ALLOW_EVENT_DRIFT:-}" = "1" ]; then
+  echo "pre-push: ⚠️  PROMPTLY_ALLOW_EVENT_DRIFT=1 — event-allowlist parity SKIPPED."
+  echo "pre-push:    Any event the client emits and server.js does not allowlist is dropped by the SQL mirror."
+elif [ -n "$ROOT" ] && [ -f "$ROOT/lib/__smoke_event_allowlist.js" ] && command -v node >/dev/null 2>&1; then
+  echo "pre-push: main → autoDeploy. Checking event-allowlist parity with the client branches…"
+  if ! node "$ROOT/lib/__smoke_event_allowlist.js"; then
+    echo ""
+    echo "pre-push: ❌ PUSH BLOCKED — the client emits events server.js does not allowlist."
+    echo "pre-push:    Those events are DROPPED by the SQL mirror, silently. Add them to the"
+    echo "pre-push:    ALLOWED set in server.js (the smoke prints the exact list above)."
+    echo "pre-push:    Deliberate override: PROMPTLY_ALLOW_EVENT_DRIFT=1 git push origin main"
+    exit 1
+  fi
+else
+  echo "pre-push: ❌ BLOCKED — event-allowlist smoke could not run (need node + lib/__smoke_event_allowlist.js)."
+  echo "pre-push:    Same doctrine as the quiet window below: unmeasurable is not the same as safe."
+  echo "pre-push:    Override: PROMPTLY_ALLOW_EVENT_DRIFT=1 git push origin main"
+  exit 1
+fi
+
 if [ "${PROMPTLY_ALLOW_BUSY_PUSH:-}" = "1" ]; then
   echo "pre-push: ⚠️  PROMPTLY_ALLOW_BUSY_PUSH=1 — quiet-window gate SKIPPED for this push to main."
   echo "pre-push:    This deploys over whatever is in flight. Attribute any orphans in DEPLOY_LOG.md."

@@ -4,7 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { isUserPro, entitlementTier, tierFromEntitlement, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches,
-        tierRank, tierAfterGrant } = require('../lib/entitlement');
+        tierRank, tierAfterGrant, tieredEntitlementFromV2ActiveList, ENTITLEMENT_TIER_BY_LOOKUP_KEY } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -307,5 +307,73 @@ test('tierFromEntitlement: undefined decision → none (fails closed)', () => {
   test('TIER_RANK: max outranks pro, and a pro grant cannot lower max', () => {
     assert.ok(tierRank('max') > tierRank('pro'));
     assert.strictEqual(tierAfterGrant('max', 'pro'), 'max');
+  });
+}
+
+// ── TIERED ENTITLEMENT RESOLUTION (2026-09-02) ─────────────────────────────
+// THE BUG: RC carries a `max` entitlement with the Max products attached, and
+// resolution keyed on the single 'pro' entitlement id. A customer holding ONLY
+// `max` matched nothing -> active:false -> a completed purchase granted NOTHING.
+{
+  const NOW = Date.now();
+  const soon = NOW + 30 * 864e5;
+  const later = NOW + 60 * 864e5;
+  const past = NOW - 864e5;
+  const MAXID = 'entl_max'; const PROID = 'entl_pro';
+  const MAP = { [MAXID]: 'max', [PROID]: 'pro' };
+  const it = (id, exp) => ({ entitlement_id: id, expires_at: exp });
+  const T = tieredEntitlementFromV2ActiveList;
+
+  test('tiered: max entitlement ONLY is ACTIVE and resolves max (the bug)', () => {
+    const r = T([it(MAXID, soon)], MAP, NOW);
+    assert.strictEqual(r.active, true);
+    assert.strictEqual(r.tier, 'max');
+  });
+  test('tiered: max + pro both attached (the interim guard) -> max wins', () => {
+    assert.strictEqual(T([it(MAXID, soon), it(PROID, soon)], MAP, NOW).tier, 'max');
+    assert.strictEqual(T([it(PROID, soon), it(MAXID, soon)], MAP, NOW).tier, 'max',
+      'order of the active list must not change the answer');
+  });
+  test('tiered: tier and expiry describe the SAME entitlement', () => {
+    // max 30d, pro 60d. Reporting max with pro's later expiry would grant Max
+    // access past the Max subscription.
+    const r = T([it(MAXID, soon), it(PROID, later)], MAP, NOW);
+    assert.strictEqual(r.tier, 'max');
+    assert.strictEqual(r.proUntil, new Date(soon).toISOString());
+  });
+  test('tiered: an EXPIRED max falls back to the active pro', () => {
+    const r = T([it(MAXID, past), it(PROID, later)], MAP, NOW);
+    assert.strictEqual(r.tier, 'pro');
+    assert.strictEqual(r.proUntil, new Date(later).toISOString());
+  });
+  test('tiered: pro-only is unchanged (no regression to the Pro path)', () => {
+    const r = T([it(PROID, soon)], MAP, NOW);
+    assert.strictEqual(r.active, true);
+    assert.strictEqual(r.tier, 'pro');
+  });
+  test('tiered: all expired / empty / unmapped -> inactive, tier null', () => {
+    assert.strictEqual(T([it(MAXID, past), it(PROID, past)], MAP, NOW).active, false);
+    assert.strictEqual(T([], MAP, NOW).active, false);
+    assert.strictEqual(T(null, MAP, NOW).active, false);
+    const un = T([it('entl_unknown', soon)], MAP, NOW);
+    assert.strictEqual(un.active, false, 'an unmapped entitlement must not grant');
+    assert.strictEqual(un.tier, null);
+  });
+  test('tiered: no map (lookup failed) keeps accept-any-active, and calls it PRO', () => {
+    const r = T([it('entl_whatever', soon)], null, NOW);
+    assert.strictEqual(r.active, true);
+    assert.strictEqual(r.tier, 'pro', 'an unidentified entitlement must never be promoted to max');
+  });
+  test('tiered: non-expiring max beats a dated one and reports null proUntil', () => {
+    const r = T([it(MAXID, soon), it(MAXID, null)], MAP, NOW);
+    assert.strictEqual(r.tier, 'max');
+    assert.strictEqual(r.proUntil, null);
+  });
+  test('ENTITLEMENT_TIER_BY_LOOKUP_KEY maps to tiers TIER_RANK actually knows', () => {
+    for (const [key, tier] of Object.entries(ENTITLEMENT_TIER_BY_LOOKUP_KEY)) {
+      assert.ok(tierRank(tier) > 0, `lookup_key '${key}' -> '${tier}' must be a ranked tier`);
+    }
+    assert.strictEqual(ENTITLEMENT_TIER_BY_LOOKUP_KEY.max, 'max');
+    assert.strictEqual(ENTITLEMENT_TIER_BY_LOOKUP_KEY.pro, 'pro');
   });
 }
