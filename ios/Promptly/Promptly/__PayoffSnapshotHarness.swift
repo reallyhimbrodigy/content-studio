@@ -219,6 +219,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness")
             }
@@ -227,6 +228,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness",
                     initialTier: 1000)
@@ -236,6 +238,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness",
                     initialTier: 200)
@@ -249,6 +252,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness",
                     initialTier: 200)
@@ -258,6 +262,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness")
             }
@@ -266,6 +271,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true,
                     referralSource: "harness",
                     initialTier: 1000)
@@ -275,6 +281,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true, referralSource: "harness")
             }
             case 26: FitProbe(label: "FIT step one") {
@@ -282,6 +289,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true, referralSource: "harness")
             }
             case 27: FitProbe(label: "FIT Max selected") {
@@ -289,6 +297,7 @@ struct PayoffSnapshotHarnessView: View {
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
                     showsReferral: true, referralSource: "harness", initialTier: 1000)
             }
             case 16: OnboardingQuestionView(question: .audienceV2,
@@ -817,6 +826,13 @@ private enum HarnessPaywallMock {
                        localizedPricePerMonth: nil, price: 799.99,
                        currencyLocale: Locale(identifier: "en_US"), unit: .year, introLine: nil),
     ]
+
+    /// The shared list, from the same mapping the app uses.
+    @MainActor
+    static var shared: [String] {
+        PaywallMapping.sharedFeatures(products,
+                                      creditsEnabled: OnboardingState.shared.creditsEnabled)
+    }
 
     @MainActor
     static var tiers: [PaywallTierOption] {

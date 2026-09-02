@@ -28,10 +28,11 @@ struct PaywallTierOption: Identifiable, Equatable {
     /// number for a meter that is not running is a claim about something the
     /// user cannot spend.
     let creditsLine: String?
-    /// What the tier includes, short lines, in reading order. Max shows Pro's
-    /// whole list plus its own additions, so the pricier card never reads as
-    /// the emptier one.
-    let features: [String]
+    // NO PER-CARD FEATURE LIST. The benefits are shared and sit ABOVE the
+    // cards now, so each card carries only what actually differs between the
+    // tiers: the allowance and the price. That is also what fixes the asymmetry
+    // — Pro's list boxed inside its card while Max sat beside it in plain text
+    // made the upsell read as the lesser product.
     /// The MONTHLY price, storefront-formatted.
     ///
     /// Both cards quote the same billing period on purpose. A weekly price
@@ -158,6 +159,15 @@ enum PaywallMapping {
         }
     }
 
+    /// The benefits both tiers share. From ProBenefits, the one file allowed to
+    /// write a promise — a phrasing invented here would be a second copy of the
+    /// pitch, the drift benefits-parity-gate exists to catch.
+    @MainActor
+    static func sharedFeatures(_ products: [PaywallProduct], creditsEnabled: Bool) -> [String] {
+        ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
+                                 monthlyCredits: tierAllowances(products).first)
+    }
+
     @MainActor
     static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool) -> [PaywallTierOption] {
         let allowances = tierAllowances(products)
@@ -166,22 +176,8 @@ enum PaywallMapping {
         return allowances.map { allowance in
             let isMax = allowances.count > 1 && allowance == maxAllowance
             // Claims come from ProBenefits in both cases — the one file allowed
-            // to write a promise. A phrasing invented here would be a second
-            // copy of the pitch, which is the drift benefits-parity-gate exists
-            // to catch.
-            // EACH CARD QUOTES ITS OWN ALLOWANCE. Passing the Pro allowance
-            // into the Max list made the Max card read "20 videos a month" —
-            // Pro's number, on the tier that costs three times as much and
-            // grants five times as many. The card directly contradicted the
-            // "5x usage" in its own header, one line above.
-            let features: [String] = isMax
-                ? ProBenefits.maxCardList(proAllowance: proAllowance,
-                                          maxAllowance: maxAllowance,
-                                          creditsEnabled: creditsEnabled)
-                : ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
-                                           monthlyCredits: allowance)
-            // The multiple moved INTO the Max card's first line, so repeating
-            // it in the header would state the same fact twice in four words.
+            // No per-card list: the benefits are shared above the cards, so a
+            // card is a name, an allowance and a price.
             let title = isMax ? String(localized: "Max") : String(localized: "Pro")
             return PaywallTierOption(
                 allowance: allowance,
@@ -189,7 +185,6 @@ enum PaywallMapping {
                 title: title,
                 creditsLine: ProBenefits.creditsLine(allowance: allowance,
                                                      creditsEnabled: creditsEnabled),
-                features: features,
                 monthlyPrice: cardPrice(productsInTier(products, allowance)))
         }
     }
@@ -252,6 +247,8 @@ struct TwoStepPaywallLayout: View {
     /// Durations for the chosen tier. Called only when a tier is chosen.
     let durations: (Int) -> [PaywallDurationOption]
     /// Whether to show the referral row. Off when the loop is unavailable.
+    /// The benefits BOTH tiers include, shown once above the cards.
+    let sharedFeatures: [String]
     let showsReferral: Bool
     let referralSource: String
     var onClose: () -> Void = {}
@@ -274,24 +271,36 @@ struct TwoStepPaywallLayout: View {
         VStack(spacing: 0) {
             header
 
-            // Balanced spacers top and bottom: the content sits in the middle of
-            // whatever room the device gives it. Hugging the top left ~350pt of
-            // black under the cards on an SE and read as a screen that had failed
-            // to finish loading.
-            Spacer(minLength: 8)
-
-            // The title steps aside once a tier is chosen. It is the framing for
-            // the first decision and pure overhead for the second, and on a
-            // 667pt screen its two bold lines are the difference between the
-            // duration rows fitting and not.
+            // FILLS THE SCREEN, and the flexible room is placed on purpose.
+            // Two equal spacers made the page a band floating in the middle
+            // with gutters above and below; a spacer at the TOP then claimed an
+            // equal share of the slack and left a dead zone over the mark. So
+            // the column starts high on a fixed lead, and the growing space
+            // sits BETWEEN the groups — title to list, list to cards — where it
+            // reads as breathing room instead of a hole.
             if chosenTier == nil {
+                Spacer(minLength: 0).frame(height: 12)
+
+                Image("PromptlyLogo")
+                    .renderingMode(.original)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 38, height: 38)
+                    .padding(.bottom, 10)
+
                 Text(title)
                     .cType(24, .bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+
+                Spacer(minLength: 16)
+
+                sharedBenefits
+                    .padding(.horizontal, 22)
+
+                Spacer(minLength: 16)
             }
 
             tierCards
@@ -309,9 +318,7 @@ struct TwoStepPaywallLayout: View {
                 // PRO ONLY, AND ONLY ONCE CHOSEN. The reward is a week of Pro,
                 // so offering it beside Max is offering a downgrade as a prize,
                 // and offering it before a tier is picked competes with the
-                // decision the screen is asking for. It belongs in exactly one
-                // place: after someone has chosen the tier the reward is
-                // denominated in.
+                // decision the screen is asking for.
                 ReferralProgressRow(source: referralSource, compact: true, style: .invite)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
@@ -319,14 +326,6 @@ struct TwoStepPaywallLayout: View {
 
             footer
         }
-        // ACCEPT THE PROPOSED WIDTH. `.frame(width:)` on an ancestor only
-        // PROPOSES — a stack whose children prefer more simply overflows and
-        // centres, which is how this screen ran off both edges for a Max
-        // subscriber and only for a Max subscriber. The referral row happened to
-        // carry a `maxWidth: .infinity` and was silently pinning the whole
-        // layout's width; suppressing that row for Max removed the pin, and the
-        // cards and duration rows expanded to their ideal width. A layout must
-        // not depend on an optional child to know how wide it is.
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
                    value: chosenTier)
@@ -334,6 +333,36 @@ struct TwoStepPaywallLayout: View {
         .onAppear {
             if let t = initialTier, chosenTier == nil { select(t) }
         }
+    }
+
+    /// ONE LIST, ABOVE THE CARDS, in the checkmark treatment the rest of the
+    /// product uses for a promise.
+    ///
+    /// Boxed inside Pro's card these read as Pro's features and Max's absence of
+    /// them read as less product — the opposite of what an upsell should do.
+    /// Shared, they are what BOTH tiers include, and the cards are left carrying
+    /// only the difference: 200 credits against 1,000, at two prices. That
+    /// comparison is then the thing the eye lands on, which is the whole point
+    /// of putting two tiers side by side.
+    private var sharedBenefits: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(sharedFeatures, id: \.self) { line in
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        Circle().fill(Color.white).frame(width: 18, height: 18)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(.black)
+                    }
+                    Text(line)
+                        .cType(14, .medium)
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Choosing a tier pre-selects its ANNUAL plan.
@@ -410,69 +439,21 @@ struct TwoStepPaywallLayout: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             select(tier.allowance)
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(tier.title)
-                        .cType(17, .bold)
-                        .foregroundColor(.white)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(tier.title)
+                    .cType(17, .bold)
+                    .foregroundColor(.white)
+
+                // The allowance — the ONE thing that differs besides price, and
+                // now the thing the eye lands on.
+                if let credits = tier.creditsLine {
+                    Text(credits)
+                        .cType(12, .semibold)
+                        .foregroundColor(.white.opacity(0.6))
                         .fixedSize(horizontal: false, vertical: true)
-                    // The allowance, under the name. Absent while the meter is
-                    // dark rather than shown as a number the user cannot spend.
-                    if let credits = tier.creditsLine {
-                        Text(credits)
-                            .cType(11, .semibold)
-                            .foregroundColor(.white.opacity(0.55))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
 
-                // WHAT YOU GET, ABOVE THE PRICE. The price is the cost of the
-                // thing; showing it first asks the reader to judge a number
-                // before they know what it buys.
-                //
-                // THE LISTS STAND DOWN ONCE A TIER IS CHOSEN, and this is a
-                // measurement, not a preference: at worst case — German, Swiss
-                // francs, an intro line on the annual row — the expanded screen
-                // came to 658pt against 647pt available. Eleven points over.
-                // Shaving spacing would have bought those eleven points and
-                // handed the same failure to whichever language is longest next
-                // time. The lists answer "which tier"; by the time the duration
-                // rows are on screen that question is answered, and the back
-                // chevron restores them in one tap. Costs ~100pt, in every
-                // language.
-                if chosenTier == nil {
-                if tier.isMax { Spacer(minLength: 0) }
-                VStack(alignment: .leading, spacing: 7) {
-                    ForEach(tier.features, id: \.self) { line in
-                        // The reference treatment from the shipping paywall: a
-                        // filled white disc with a black check. A grey 8pt tick
-                        // at 55% opacity read as plain text and disappeared
-                        // against the card; this is the mark the rest of the
-                        // product already uses for a promise.
-                        HStack(alignment: .top, spacing: 7) {
-                            // Ticks belong to the itemised card. Max states a
-                            // RELATIONSHIP to Pro in two sentences, and putting
-                            // the same discs beside them made the two columns
-                            // scan as the same checklist at two prices.
-                            if !tier.isMax {
-                                ZStack {
-                                    Circle().fill(Color.white).frame(width: 16, height: 16)
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .heavy))
-                                        .foregroundColor(.black)
-                                }
-                            }
-                            Text(line)
-                                .cType(tier.isMax ? 14 : 13, tier.isMax ? .semibold : .medium)
-                                .foregroundColor(.white)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-                }
-
-                Spacer(minLength: 6)
+                Spacer(minLength: 10)
 
                 if let price = tier.monthlyPrice {
                     Text(price)
@@ -482,8 +463,8 @@ struct TwoStepPaywallLayout: View {
                         .lineLimit(1)
                 }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.13 : 0.055))
@@ -707,6 +688,7 @@ struct TwoStepPaywall: View {
                 personalisedNoun: PaywallView.exportContentNoun(from: onboarding)),
             tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled),
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
+            sharedFeatures: PaywallMapping.sharedFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
             showsReferral: onboarding.referralProgressEnabled,
             referralSource: "paywall_two_step",
             onClose: { isPresented = false },
