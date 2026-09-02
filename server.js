@@ -3766,6 +3766,27 @@ const server = http.createServer((req, res) => {
       deferred_auth:
         /^(0|off|false|no)$/i.test(String(process.env.DEFERRED_AUTH ?? '').trim())
           ? 'off' : 'on',
+      // PAYWALL PERSONALISATION — armed 2026-09-02. Draws a lead line above the
+      // paywall headline derived from the two onboarding questions
+      // ("For your podcasts" / "For creators"), at both TwoStepPaywall and
+      // OfferRevealView. Nil-safe by design: when the questions were not
+      // answered the line is simply not drawn, because a generic fallback reads
+      // as personalisation that failed, which is worse than none.
+      //
+      // PRE-ARMED, AND IT DOES NOTHING UNTIL 244 SHIPS — measured, not assumed.
+      // The two questions live in OnboardingV2Flow's .audience/.videoType beats,
+      // which exist ONLY on the unreleased client branch: `main` has zero
+      // occurrences of those record() calls, and 14 days of onboarding_step
+      // events (812 of them, builds 235-243) contain not one `audience` or
+      // `video_type` step. So on every build in the field v2Audience/v2VideoType
+      // are nil, lead() returns nil, and nothing is drawn.
+      //
+      // Arming now is deliberate anyway: harmless on 235-243, and live the
+      // moment 244 lands without needing a second deploy — the same reasoning
+      // as allowlisting an event before the client emits it.
+      paywall_personalization:
+        /^(0|off|false|no)$/i.test(String(process.env.PAYWALL_PERSONALIZATION ?? '').trim())
+          ? 'off' : 'on',
       // ── credits + max_tier: SAME two-way control, OPPOSITE default ────────
       // These are NOT the two above and must not be copied from them. Those
       // were armed client-side (`= true`) and needed the key to turn OFF.
