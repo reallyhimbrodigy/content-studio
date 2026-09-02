@@ -112,9 +112,13 @@ test('FREEMIUM render: grandfathered trial + paid never blocked', () => {
 });
 
 // ── The chat gate ──────────────────────────────────────────────────────────
-test('FREEMIUM chat: free to 50 → paywall; trial + paid unlimited', () => {
-  assert.strictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 49, enforce: true }).allow, true);
-  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 50, enforce: true }),
+// 2026-09-02: was asserting the cap at 50. FREE_DAILY_CHATS was deliberately
+// cut 50 → 5 on 2026-07-24 and neither test file was updated, so this and its
+// twin in tier-capabilities.test.js had both been red ever since. Pre-existing;
+// found while adding the max row and fixed rather than left red.
+test('FREEMIUM chat: free to 5 → paywall; trial + paid unlimited', () => {
+  assert.strictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 4, enforce: true }).allow, true);
+  assert.deepStrictEqual(gateDecision({ tier: 'none', kind: 'chat', todayCount: 5, enforce: true }),
     { allow: false, route: 'paywall', status: 402 });
   assert.strictEqual(gateDecision({ tier: 'trial', kind: 'chat', todayCount: 1e6, enforce: true }).allow, true);
   assert.strictEqual(gateDecision({ tier: 'paid', kind: 'chat', todayCount: 1e6, enforce: true }).allow, true);
@@ -134,4 +138,30 @@ test('FREEMIUM upload: grandfathered trial + paid → 10', () => {
   assert.strictEqual(uploadDecision({ tier: 'trial', count: 10, enforce: true }).allow, true);
   assert.strictEqual(uploadDecision({ tier: 'paid', count: 10, enforce: true }).allow, true);
   assert.strictEqual(uploadDecision({ tier: 'paid', count: 11, enforce: true }).allow, false);
+});
+
+// ── MAX survives effectiveTier (2026-09-02) ────────────────────────────────
+// The bug this locks down: under enforcement, 'max' fell to `return 'free'`, so
+// a Max subscriber was resolved to the 1-render/day free tier while TIER_RANK
+// ranked max:40 ABOVE pro:30. That is what "effectiveTier lies" meant.
+test('effectiveTier: max survives enforcement (does NOT collapse to free)', () => {
+  assert.strictEqual(effectiveTier('max', true), 'max');
+  assert.notStrictEqual(effectiveTier('max', true), 'free');
+});
+test('effectiveTier: max survives with enforcement OFF too', () => {
+  assert.strictEqual(effectiveTier('max', false), 'max');
+});
+test('effectiveTier: paid/trial still collapse to paid, free still free', () => {
+  assert.strictEqual(effectiveTier('paid', true), 'paid');
+  assert.strictEqual(effectiveTier('trial', true), 'paid');
+  assert.strictEqual(effectiveTier('none', true), 'free');
+});
+// THE LOCKOUT GUARD. effectiveTier passing 'max' through is only safe because
+// tier-capabilities has a max row; without it this resolves to the fail-closed
+// default and every Max subscriber gets a 403 wall instead of the app.
+test('effectiveTier(max) + gateDecision: allowed, never routed to the wall', () => {
+  const d = gateDecision({ tier: 'max', kind: 'render', todayCount: 9999, enforce: true });
+  assert.strictEqual(d.allow, true, 'max must not be capped');
+  assert.notStrictEqual(d.route, 'wall', 'max must NEVER hit the wall');
+  assert.strictEqual(d.status, 200);
 });
