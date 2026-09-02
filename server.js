@@ -3917,7 +3917,8 @@ const server = http.createServer((req, res) => {
           // in isolation, which is why the drift survived this long.
           'auth_gate_abandoned', 'auth_gate_resume_missing_product', 'auth_gate_resumed',
           'auth_gate_shown', 'credits_exhausted', 'credits_exhausted_shown',
-          'credits_refund_shown', 'device_id_keychain_write_failed', 'downsell_shown',
+          'credits_refund_shown', 'credits_topup_open',
+          'device_id_keychain_write_failed', 'downsell_shown',
           'downsell_skipped', 'first_run_keychain_write_failed', 'free_export_spent_shown',
           'instant_question_answered', 'instant_question_shown', 'language_changed',
           'picker_asset_unrecoverable', 'purchase_blocked_unauthenticated', 'referral_code_entered',
