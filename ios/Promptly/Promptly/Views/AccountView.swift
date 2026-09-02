@@ -499,7 +499,7 @@ struct AccountView: View {
         guard let monthly = onboarding.creditsMonthlyAllowance ?? ProBenefits.storeKitAllowance(),
               monthly > 0 else { return nil }
         let videos = ProBenefits.monthlyVideos(credits: monthly)
-        return String(localized: "\(monthly) credits a month - about \(videos) videos")
+        return String(localized: "\(monthly) credits a month - about ^[\(videos) video](inflect: true)")
     }
 
     // MARK: - Profile row

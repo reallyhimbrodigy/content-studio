@@ -398,79 +398,79 @@
         }
       }
     },
-    "%lld credits a month - about %lld videos": {
+    "%lld credits a month - about ^[%lld video](inflect: true)": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld رصيد شهريًا — نحو %lld فيديو"
+            "value": "%lld رصيد شهريًا — نحو ^[%lld فيديو](inflect: true)"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "মাসে %lld ক্রেডিট — প্রায় %lld ভিডিও"
+            "value": "মাসে %lld ক্রেডিট — প্রায় ^[%lld ভিডিও](inflect: true)"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld Credits pro Monat – etwa %lld Videos"
+            "value": "%lld Credits pro Monat – etwa ^[%lld Video](inflect: true)"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld credits a month - about %lld videos"
+            "value": "%lld credits a month - about ^[%lld video](inflect: true)"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld créditos al mes: unos %lld vídeos"
+            "value": "%lld créditos al mes: unos ^[%lld vídeo](inflect: true)"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld crédits par mois — environ %lld vidéos"
+            "value": "%lld crédits par mois — environ ^[%lld vidéo](inflect: true)"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हर महीने %lld क्रेडिट — करीब %lld वीडियो"
+            "value": "हर महीने %lld क्रेडिट — करीब ^[%lld वीडियो](inflect: true)"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld kredit sebulan - sekitar %lld video"
+            "value": "%lld kredit sebulan - sekitar ^[%lld video](inflect: true)"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "月に %lld クレジット — 約 %lld 本の動画"
+            "value": "月に %lld クレジット — 約 ^[%lld 本の動画](inflect: true)"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "महिनामा %lld क्रेडिट — लगभग %lld भिडियो"
+            "value": "महिनामा %lld क्रेडिट — लगभग ^[%lld भिडियो](inflect: true)"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld créditos por mês - cerca de %lld vídeos"
+            "value": "%lld créditos por mês - cerca de ^[%lld vídeo](inflect: true)"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ماہانہ %lld کریڈٹس — تقریباً %lld ویڈیوز"
+            "value": "ماہانہ %lld کریڈٹس — تقریباً ^[%lld ویڈیو](inflect: true)"
           }
         }
       }
