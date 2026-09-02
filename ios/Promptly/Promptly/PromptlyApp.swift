@@ -1035,6 +1035,12 @@ enum FirstRunProofHarness {
             }
 
             s.hasCompletedOnboarding = true
+            // The REAL completion marks the Keychain key too (see
+            // OnboardingV2Flow.complete). Without this the walk ended in a state
+            // no user can reach — UserDefaults said done, the Keychain said
+            // never started — and any test of first-run persistence run against
+            // it would be testing the harness, not the app.
+            FirstRun.markSeen()
             s.v2Step = .done          // publishes the change; see note above
             print("[FirstRunProof] beat=chat")
             try? await Task.sleep(for: dwell)
