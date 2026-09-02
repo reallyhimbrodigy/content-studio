@@ -293,7 +293,7 @@ struct PaywallLayout: View {
                 .frame(width: 28, height: 28)
                 .padding(.bottom, 6)
 
-            Text(title)
+            Text(displayTitle)
                 .cType(22, .bold)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
@@ -355,6 +355,23 @@ struct PaywallLayout: View {
                    value: selectedId)
         .background(Color.black.ignoresSafeArea())
         .onAppear { if selectedId == nil { selectedId = initialSelectionId } }
+    }
+
+    /// The title follows the SELECTED TIER once there is one.
+    ///
+    /// Derived, not switched. `tier.title` comes from the same resolution the
+    /// rest of this file uses — `isMax` is `allowance == maxAllowance`, read
+    /// through `CreditAllowance` — so a third tier names itself with no edit
+    /// here. Two hardcoded strings behind an `if isMax` would have been a second
+    /// place that has to know Max exists, and keying off a product id would hit
+    /// the `.custom` trap that has already produced three defects.
+    ///
+    /// Before a selection the reason-derived title stands: a user who arrived
+    /// from the export gate should still see why they are here, and overriding
+    /// that on arrival would throw the routing away.
+    private var displayTitle: String {
+        guard let pick = selectedPick else { return title }
+        return String(localized: "Unlock Promptly \(pick.tier.title)")
     }
 
     /// The chosen row and the card it belongs to.
@@ -505,19 +522,54 @@ struct PaywallLayout: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
-            HStack(spacing: 6) {
-                Text(option.label)
-                    .cType(14, .semibold)
-                    .foregroundColor(.white.opacity(isSelected ? 1 : 0.8))
-                Spacer(minLength: 2)
-                Text(option.price)
-                    .cType(13)
-                    .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.55))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(option.label)
+                        .cType(14, .semibold)
+                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.8))
+                    Spacer(minLength: 2)
+                    Text(option.price)
+                        .cType(13)
+                        .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+                .frame(height: 24)
+
+                // The saving and the per-month restatement, on their own line
+                // because a column this narrow cannot carry them inline.
+                //
+                // BOTH COMPUTED. The percentage is floored from live storefront
+                // prices by `PaywallMapping.percentOff`, which selects its two
+                // plans by PERIOD — `packageType` returns `.custom` for Max, so
+                // the old selection missed both of Max's plans and silently
+                // withheld a real 25%. The per-month figure is the live yearly
+                // price over twelve, rounded rather than truncated: rounding up
+                // never understates what someone will pay.
+                if option.percentOff != nil || option.perMonthLine != nil {
+                    HStack(spacing: 5) {
+                        if let pct = option.percentOff {
+                            Text("\(pct)% OFF")
+                                .cType(9, .heavy)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .overlay(Capsule().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
+                        }
+                        if let perMonth = option.perMonthLine {
+                            Text(perMonth)
+                                .cType(9)
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.bottom, 2)
+                }
             }
             .padding(.horizontal, 8)
-            .frame(height: 28)
+            .padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(Color.white.opacity(isSelected ? 0.16 : 0.05)))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)

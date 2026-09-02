@@ -99,7 +99,7 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
-        case 32, 33:
+        case 32, 33, 34:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
         case 28, 29, 30:
@@ -297,6 +297,16 @@ struct PayoffSnapshotHarnessView: View {
                     showsReferral: true,
                     referralSource: "harness",
                     initialSelectionId: "promptly_pro_yearly")
+            }
+            case 34: bleed("MAX selected — title must follow the tier") {
+                PaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
+                    showsReferral: true, referralSource: "harness",
+                    initialSelectionId: "promptly_max_yearly")
             }
             case 30: FitProbe(label: "FIT step one CREDITS ARMED") {
                 PaywallLayout(
