@@ -292,8 +292,8 @@ struct PaywallLayout: View {
                 .renderingMode(.original)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 28, height: 28)
-                .padding(.bottom, 6)
+                .frame(width: 26, height: 26)
+                .padding(.bottom, 4)
 
             Text(displayTitle)
                 .cType(22, .bold)
@@ -301,14 +301,23 @@ struct PaywallLayout: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
 
             // The columns start under the title and TAKE the height. They used
             // to be content-sized with spacers either side, so the pitch sat in
             // the bottom 40% under an empty band and every element had been
             // shrunk to fit a space that was never the constraint.
             tierCards
-                .padding(.top, 12)
+                .padding(.top, 10)
+
+            // SOCIAL PROOF VOUCHES FOR THE PRODUCT, not for one tier. Inside the
+            // Max card it read as "Max has 25,000 creators", which is both a
+            // narrower claim and a stranger one — the rating is the app's.
+            Text("★ 4.8 · 25,000+ creators")
+                .cType(11, .semibold)
+                .foregroundColor(.white.opacity(0.6))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 5)
 
             Spacer(minLength: 6)
 
@@ -365,14 +374,14 @@ struct PaywallLayout: View {
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85),
                    value: selectedId)
         .background(Color.black.ignoresSafeArea())
-        .onAppear {
-            // PRO YEAR PRESELECTED. Nothing recommended is decision paralysis,
-            // and the previous default landed on Pro WEEK — the worst outcome
-            // available: $10.99 weekly annualises to about $571 against $289.99
-            // for the year, on the SKU that retains worst. A default that costs
-            // the user twice as much is not a neutral default.
-            selectedId = initialSelectionId ?? recommendedId
-        }
+        .onAppear { applyDefaultSelection() }
+        // AND AGAIN WHEN THE PRODUCTS ARRIVE. `onAppear` fires before the
+        // offering has loaded, so `recommendedId` was nil and the screen opened
+        // with NOTHING selected and no CTA at all — worse than the wrong
+        // default, because there is no way to buy until the user taps. A
+        // one-shot against data that arrives later is the same defect the credit
+        // badge had; the fix is the same shape.
+        .onChange(of: tiers) { _, _ in applyDefaultSelection() }
     }
 
     /// The title follows the SELECTED TIER once there is one.
@@ -404,6 +413,16 @@ struct PaywallLayout: View {
             return String(localized: "Start Yearly — Save \(pct)%")
         }
         return String(localized: "Get Promptly \(pick.tier.title)")
+    }
+
+    /// PRO YEAR PRESELECTED, and it must agree with the badge, the headline and
+    /// the CTA from the first frame.
+    ///
+    /// Idempotent: it only fills an EMPTY selection, so a later product refresh
+    /// cannot yank the row out from under someone who has already chosen.
+    private func applyDefaultSelection() {
+        guard selectedId == nil else { return }
+        selectedId = initialSelectionId ?? recommendedId
     }
 
     /// Pro's yearly row — the recommendation, DERIVED rather than named. Pro is
@@ -545,13 +564,13 @@ struct PaywallLayout: View {
                     }
                 }
             }
-            .padding(.top, 10)
+            .padding(.top, 8)
 
-            // SPACERS BOTH SIDES. With one spacer the durations were pinned to
-            // the bottom, so the shorter card — Max, with three bullets against
-            // Pro's five — showed a long gap that read as unfinished. Two
-            // spacers split the slack, centring the block in whatever room the
-            // taller card leaves. On the full card they collapse to nothing.
+            // SPACERS BOTH SIDES OF THE PRICE BLOCK. With one spacer the
+            // durations pinned to the bottom and the dead space just moved from
+            // one card to the other — which is what proved it was a layout
+            // problem and not a content one. Split evenly, the block centres in
+            // whatever room the taller card leaves, on BOTH sides.
             Spacer(minLength: 6)
 
             VStack(spacing: 4) {
@@ -567,18 +586,9 @@ struct PaywallLayout: View {
                 .cType(9)
                 .foregroundColor(.white.opacity(0.5))
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 6)
+                .padding(.top, 4)
 
-            // 1. SOCIAL PROOF, on Max only.
-            if tier.isMax {
-                Text("★ 4.8 · 25,000+ creators")
-                    .cType(9, .semibold)
-                    .foregroundColor(.white.opacity(0.55))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 3)
-            }
-
-            Spacer(minLength: 0)
+            Spacer(minLength: 6)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
