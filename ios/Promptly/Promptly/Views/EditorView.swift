@@ -683,6 +683,14 @@ struct EditorView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 tapAddVideo()
             },
+            onPrompt: { text in
+                // Fill the composer and focus it — the row is a starting point
+                // the user edits, not a command that fires. Sending on tap would
+                // dispatch a render nobody had reviewed.
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                inputText = text
+                focusInput()
+            },
             // Item 7: greet by first name when a display name exists (Apple
             // sign-in with name scope); email-OTP users have none → no line.
             greetName: AuthService.shared.currentUser?.user_metadata?.full_name?
@@ -1188,6 +1196,12 @@ struct EditorView: View {
         // never fight with what the user is typing.
         let suggestions: [String]? = {
             guard inputText.isEmpty else { return nil }
+            // NOT on the empty chat. The hero now offers three plain rows; a
+            // horizontal chip scroller underneath repeated the same job in a
+            // shape whose content ran off the right edge and read as clipped.
+            // The re-edit suggestions still show, because those appear against a
+            // finished video where there is no hero.
+            if messages.isEmpty && reeditSession == nil { return nil }
             return reeditSession != nil ? Self.reeditSuggestions : Self.featuredVibes
         }()
         if let suggestions {
@@ -1291,41 +1305,46 @@ struct EditorView: View {
             }
             .buttonStyle(.plain)
 
-            // The balance, always on screen. It self-hides when the flag is off
-            // or the balance is unknown, so this call site carries no condition
-            // — the same contract UsageMeterStrip uses.
-            CreditBadge()
             .accessibilityLabel("Show chats")
 
-            if !subscriptionService.effectiveIsPro {
-                UpgradePill { appState.presentPaywall(.manual) }
+            Spacer(minLength: 8)
 
-                // Conversion item 6 — the persistent value header: the free
-                // tier reads as a visible, finite resource instead of an
-                // invisible one. SERVER-derived count ONLY (the UsageMeter
-                // law: nil/unknown limit → show NOTHING, never a guessed
-                // number). Tap routes to the same manual paywall as the pill.
-                if let left = usageService.rendersLeft {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        appState.presentPaywall(.manual)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "film")
-                                .font(.system(size: 11, weight: .semibold))
-                            Text("\(left) today")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundColor(.white.opacity(left == 0 ? 0.9 : 0.7))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.white.opacity(0.08)))
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(left) free videos left today")
+            if !subscriptionService.effectiveIsPro {
+                // QUIET. The old pill carried a rotating conic-gradient border
+                // and a glow — the loudest object on a screen whose job is to
+                // get a video uploaded, competing with the content for the whole
+                // session rather than at the moment of the ask. Plain text, same
+                // destination.
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    appState.presentPaywall(.manual)
+                } label: {
+                    Text("Upgrade")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
+
+            // The balance, to the RIGHT of the upgrade action and small. It
+            // self-hides when the flag is off or the balance is unknown, so this
+            // call site carries no condition — the same contract
+            // UsageMeterStrip uses.
+            CreditBadge()
+
+            AccountAvatar()
+
+            // The old free-tier "N today" capsule is gone with the loud pill.
+            // It counted RENDERS while the meter counts CREDITS, so with credits
+            // armed the header would have carried two different units for the
+            // same allowance — the drift the benefits gate exists to catch, in
+            // the one place both numbers are visible at once. CreditBadge above
+            // is the single counter.
 
             Spacer(minLength: 8)
 

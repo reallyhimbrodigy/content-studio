@@ -1,21 +1,29 @@
 import SwiftUI
 
-/// First-run / empty-chat hero: the upload-first prompt shown whenever a chat has no
-/// messages yet (first run OR a return visit to an empty chat).
+/// The empty chat: three things you can do, stated plainly, sitting above the
+/// composer.
 ///
-/// Copy law (§4.2): honest and confident. Any video works; talking-head clips with
-/// clear audio are where Promptly shines; up to 5 minutes. No narrow rules, no
-/// rejection-implying hedges — the server-side routing/zero-reject work removed the
-/// old cliff, so the copy stops apologising for it.
+/// REBUILT 2026-09-02 against the ChatGPT reference. What went, and why:
+///   - the camera hero glyph — decoration that took the top third of an SE and
+///     said nothing the title did not
+///   - the big white Upload Video button — one loud action crowding out the two
+///     other things this product does
+///   - the vibe chip row — a horizontal scroller whose content ran off the edge
+///     and read as clipped
+///   - the "Any video works" footnote — reassurance nobody had asked for yet
 ///
-/// (The first-run sample-clip "Watch Promptly edit this" demo was removed — a stale
-/// pre-render is a poor first impression; this upload-first hero is the whole hero now.)
+/// What replaced them is three rows of plain text. The point of the reference
+/// shape is that an empty state should offer CHOICES at equal weight rather than
+/// a single shouted call to action: the user who wants to upload still uploads,
+/// and the two who did not know the product could caption or re-cut now see it.
 ///
-/// Deliberately UIKit-free in the body (haptics live in the caller's closures) so it
-/// renders standalone in the snapshot harness.
+/// Deliberately UIKit-free in the body (haptics live in the caller's closures)
+/// so it renders standalone in the snapshot harness.
 struct FirstRunHero: View {
     /// Open the picker to upload the user's own clip.
     let onUpload: () -> Void
+    /// Put a starting instruction in the composer and focus it.
+    var onPrompt: (String) -> Void = { _ in }
     /// Conversion item 7 — "Hey [name]," one line, real warmth, costs nothing.
     /// nil (no display name — email-OTP users often have none) → no greeting
     /// line at all, never a hollow "Hey there".
@@ -23,76 +31,70 @@ struct FirstRunHero: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ONE Spacer each side. There were TWO below and one above, which
-            // pushes the content block above the container's centre at ANY
-            // height — unconditional, not a measurement. On this surface that
-            // matters: 1,611 of 4,931 signups (33%) never start an upload, and
-            // the upload button is the only thing on the screen. Lifting the
-            // single conversion action toward the top of the reachable area is
-            // the wrong direction on a phone held one-handed.
             Spacer()
-            uploadBody
+
+            VStack(alignment: .leading, spacing: 0) {
+                if let name = greetName {
+                    Text("Hey \(name),")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 6)
+                }
+
+                Text("What are we making?")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 18)
+
+                // THREE ROWS, EQUAL WEIGHT. The upload is still first because it
+                // is still the thing most people came to do — but it is a row,
+                // not a billboard, so the other two are discoverable instead of
+                // being drowned by it.
+                actionRow(icon: "video.badge.plus",
+                          title: String(localized: "Upload a video"),
+                          action: onUpload)
+                actionRow(icon: "scissors",
+                          title: String(localized: "Cut a long video into clips")) {
+                    onPrompt(String(localized: "Cut this into short clips for social"))
+                }
+                actionRow(icon: "captions.bubble",
+                          title: String(localized: "Add captions and graphics")) {
+                    onPrompt(String(localized: "Add captions and graphics"))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
     }
 
-    private var uploadBody: some View {
-        VStack(spacing: 0) {
-            Image(systemName: "video.badge.plus")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 22)
-                .entrance()
-
-            if let name = greetName {
-                Text("Hey \(name),")
-                    .font(.system(size: 16, weight: .medium))
+    /// One row: a small glyph, a label, nothing else. No card, no fill, no
+    /// chevron — the whole row is the target and it reads as text, which is the
+    /// point of the reference.
+    private func actionRow(icon: String, title: String,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(.secondary)
-                    .padding(.bottom, 4)
-                    .entrance(delay: 0.06)
+                    .frame(width: 22, alignment: .center)
+                Text(title)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    // Wrap, never clip — the same rule the old subtitle broke at
+                    // 375pt.
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
-
-            Text("Upload a talking head video")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 36)
-                .padding(.bottom, 8)
-                .entrance(delay: 0.10)
-
-            Text("Promptly cuts it, captions it, and matches your vibe.")
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                // WRAP, NEVER CLIP. At 375pt this rendered as "…and matche…" —
-                // a sentence cut mid-word on the screen that explains the
-                // product. `fixedSize(vertical:)` makes the text take the height
-                // it needs instead of accepting a single squeezed line.
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 28)
-                .entrance(delay: 0.15)
-
-            Button(action: onUpload) {
-                Text("Upload Video")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 220, height: 48)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.white)
-            .foregroundStyle(.black)
-            .controlSize(.large)
-
-            Text("Any video works — up to 5 minutes. We'll notify you the moment it's ready.")
-                .font(.system(size: 13))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 44)
-                .padding(.top, 16)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 }
