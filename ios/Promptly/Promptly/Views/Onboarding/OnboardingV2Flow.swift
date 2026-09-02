@@ -67,7 +67,7 @@ struct OnboardingV2Flow: View {
             switch state.v2Step {
             case .audience:
                 OnboardingQuestionView(question: .audienceV2,
-                                       progress: (1, 3), onSkip: {},
+                                       progress: (1, 2), onSkip: {},
                                        onContinue: { picked in
                     record(step: "audience", value: picked.first) { state.v2Audience = $0 }
                     goingForward = true
@@ -75,26 +75,35 @@ struct OnboardingV2Flow: View {
                 }, autoDriveKey: motionProof ? "clients" : nil)
 
             case .videoType:
-                VideoTypeQuestionView(progress: (2, 3), onSkip: {},
+                VideoTypeQuestionView(progress: (2, 2), onSkip: {},
                                       onContinue: { picked in
                     record(step: "video_type", value: picked.first) { state.v2VideoType = $0 }
                     // The ONE question that still feeds the edit: its answer
                     // becomes the composer prefill → vibe_input on the render.
                     state.preselectedVibe = OnboardingQuestion.vibeV2(forVideoType: picked.first)
                     goingForward = true
-                    state.v2Step = .attribution
+                    // Straight to the ask. Attribution used to sit here — a
+                    // marketing question standing between the user and the
+                    // paywall, which is friction charged against conversion for
+                    // data that does not have to be collected first.
+                    state.v2Step = .paywall
                 }, autoDrive: motionProof ? ("podcast", "fast") : nil)
 
             case .attribution:
-                AttributionAskView(context: "onboarding_v2", progress: (3, 3)) {
+                // AFTER the ask, not before it. It is attribution, not
+                // commitment: it changes no pixel of the product and gates
+                // nothing, so asking it ahead of the paywall spent the user's
+                // patience on our analytics. No progress chrome — it is no
+                // longer step N of a set.
+                AttributionAskView(context: "onboarding_v2", progress: nil) {
                     state.persistAnswersToProfile()
-                    advanceFromAttribution()
+                    complete()
                 }
                 #if DEBUG
                 .task {
                     guard motionProof else { return }
                     try? await Task.sleep(nanoseconds: 1_600_000_000)
-                    advanceFromAttribution()
+                    complete()
                 }
                 #endif
 
@@ -108,7 +117,10 @@ struct OnboardingV2Flow: View {
                 FirstLaunchPaywallView(onFinished: { advanceFromPaywall() })
 
             case .reveal:
-                OfferRevealView(onDecline: { complete() }, onPurchased: { complete() })
+                OfferRevealView(onDecline: { declineToReferral() }, onPurchased: { afterAsk() })
+
+            case .referralCatch:
+                ReferralCatchBeat(onSkip: { afterAsk() })
 
             case .done:
                 Color.black.ignoresSafeArea()
@@ -136,20 +148,22 @@ struct OnboardingV2Flow: View {
 
     /// After Q3: the reveal only runs when there is a REAL offer to reveal and
     /// the user has not already subscribed on screen one.
-    /// Q3 now hands off to the PAYWALL, not the reveal.
-    ///
-    /// The reveal's skip test moved with it, to `advanceFromPaywall`, rather
-    /// than being evaluated here. That is not tidying: a user who BUYS on the
-    /// paywall must not then be shown a discount for what they just bought at
-    /// full price, and `subscription.isPro` only becomes true after that
-    /// purchase. Testing it before the paywall reads a value that the paywall
-    /// itself is about to change.
-    private func advanceFromAttribution() {
+    /// Decline is no longer a dead end: it steps to the referral rung.
+    private func declineToReferral() {
+        Analytics.track("offer_reveal_declined", props: ["context": "onboarding_v2"])
         goingForward = true
-        state.v2Step = .paywall
+        state.v2Step = .referralCatch
     }
 
-    /// Paywall → reveal, or straight out when there is nothing to reveal.
+    /// The one exit from the ASK sequence — paywall, reveal, referral all land
+    /// here. Attribution is the tail, so it is asked once no matter which rung
+    /// the user stopped on, and it cannot be reached before the ask.
+    private func afterAsk() {
+        goingForward = true
+        state.v2Step = .attribution
+    }
+
+    /// Paywall → reveal, or straight past it when there is nothing to reveal.
     private func advanceFromPaywall() {
         // The reveal honours the plan the user is already leaning on: yearly
         // offers now exist in all 175 territories, so an annual-leaning user
@@ -159,7 +173,9 @@ struct OnboardingV2Flow: View {
             Analytics.track("offer_reveal_skipped",
                             props: ["context": "onboarding_v2",
                                     "reason": subscription.isPro ? "already_pro" : "no_offer_on_products"])
-            complete()
+            // Nothing to reveal and nothing to catch: a user who already paid
+            // must not be offered a free week for inviting friends.
+            afterAsk()
         } else {
             goingForward = true
             state.v2Step = .reveal
@@ -272,6 +288,104 @@ extension OnboardingQuestion {
         case "vlogs":       return String(localized: "vlog")
         case "promo":       return String(localized: "promo")
         default:            return nil
+        }
+    }
+}
+
+// MARK: - The decline catch rung
+
+/// THE LAST RUNG of the first-run ask — shown to a user who has just declined
+/// the discount. 2026-09-02.
+///
+/// WHY IT EXISTS. "Decline offer" was a dead end: the user said no and the flow
+/// ended. The referral was present, but as one LINE on the reveal — a line
+/// beside a price, on a screen the declining user has already decided to
+/// ignore. Someone who has just refused to pay is the one person for whom "not
+/// ready to pay?" is the right question, and it deserves the whole screen
+/// rather than a footnote on the screen they rejected.
+///
+/// NOT AN ARGUMENT. There is no second attempt to sell here and no discount
+/// restated. A user who has declined twice is owed an exit that does not
+/// bargain, so the skip is a plain text link with plain words, and it is always
+/// visible without scrolling.
+///
+/// COPY COMES FROM `ReferralCopy`, the one file allowed to write the referral
+/// promise. Four surfaces once spelled it themselves and disagreed about the
+/// reward by a factor of seven; a fifth spelling it here would be that defect
+/// returning through a new door.
+struct ReferralCatchBeat: View {
+    let onSkip: () -> Void
+
+    @ObservedObject private var onboarding = OnboardingState.shared
+    @State private var shared = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 24)
+
+                Image("PromptlyLogo")
+                    .renderingMode(.original)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 28, height: 28)
+                    .padding(.bottom, 18)
+
+                Text(ReferralCopy.catchHeading)
+                    .cType(26, .bold)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                Text(ReferralCopy.catchOffer)
+                    .cType(15, .medium)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 10)
+
+                // The live count, when the user has already shared. It reports
+                // where they are rather than restating the ask — and it is the
+                // reason this rung is worth returning to.
+                if onboarding.referralProgressEnabled {
+                    ReferralProgressRow(source: "decline_catch", compact: true)
+                        .padding(.top, 18)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer(minLength: 16)
+
+                Button {
+                    Analytics.track("referral_share", props: ["source": "decline_catch"])
+                    shared = true
+                    Task { await ReferralService.shared.presentShareSheet(source: "decline_catch") }
+                } label: {
+                    Text(ReferralCopy.shareAction)
+                        .cType(16, .semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(Color(hex: "6C5CE7"))
+                        )
+                }
+                .padding(.horizontal, 20)
+
+                Button(action: onSkip) {
+                    Text(ReferralCopy.catchSkip)
+                        .cType(14, .medium)
+                        .foregroundColor(.white.opacity(0.55))
+                        .padding(.vertical, 14)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .onAppear {
+            Analytics.track("referral_shown", props: ["source": "decline_catch"])
         }
     }
 }

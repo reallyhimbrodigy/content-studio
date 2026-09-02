@@ -13824,6 +13824,83 @@
         }
       }
     },
+    "Invite 3 friends and get 1 week of Promptly Pro free.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ادعُ ٣ أصدقاء واحصل على أسبوع من Promptly Pro مجانًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "৩ জন বন্ধুকে আমন্ত্রণ করুন, ১ সপ্তাহ Promptly Pro ফ্রি পান।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lade 3 Freunde ein und erhalte 1 Woche Promptly Pro gratis."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite 3 friends and get 1 week of Promptly Pro free."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invita a 3 amigos y consigue 1 semana de Promptly Pro gratis."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitez 3 amis et obtenez 1 semaine de Promptly Pro offerte."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 दोस्तों को आमंत्रित करें और 1 सप्ताह Promptly Pro मुफ़्त पाएँ।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undang 3 teman dan dapatkan 1 minggu Promptly Pro gratis."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "友だちを3人招待すると、Promptly Pro が1週間無料になります。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "३ जना साथीलाई निम्तो दिनुहोस् र १ हप्ता Promptly Pro नि:शुल्क पाउनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convide 3 amigos e ganhe 1 semana de Promptly Pro grátis."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 دوستوں کو مدعو کریں اور 1 ہفتہ Promptly Pro مفت حاصل کریں۔"
+          }
+        }
+      }
+    },
     "Invite 3 friends who make a video — get a week of Pro": {
       "extractionState": "manual",
       "localizations": {
@@ -17421,6 +17498,83 @@
         }
       }
     },
+    "No thanks": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا، شكرًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "না, ধন্যবাদ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nein, danke"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No thanks"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No, gracias"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non merci"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नहीं, धन्यवाद"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak, terima kasih"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いいえ結構です"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पर्दैन, धन्यवाद"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não, obrigado"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نہیں شکریہ"
+          }
+        }
+      }
+    },
     "Not now": {
       "localizations": {
         "ar": {
@@ -17487,6 +17641,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "ابھی نہیں"
+          }
+        }
+      }
+    },
+    "Not ready to pay?": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لست مستعدًا للدفع؟"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এখনই টাকা দিতে প্রস্তুত নন?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch nicht bereit zu zahlen?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not ready to pay?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Aún no quieres pagar?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas prêt à payer ?"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अभी भुगतान के लिए तैयार नहीं?"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belum siap membayar?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだお支払いの準備ができていませんか？"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिले भुक्तानी गर्न तयार हुनुहुन्न?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não quer pagar?"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی ادائیگی کے لیے تیار نہیں؟"
           }
         }
       }

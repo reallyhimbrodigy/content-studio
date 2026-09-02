@@ -92,6 +92,28 @@ enum ReferralCopy {
     /// Section heading on surfaces that host the invite.
     static let heading = String(localized: "Get Pro free")
 
+    /// THE DECLINE CATCH — its own rung, not a line on the reveal.
+    ///
+    /// Written here rather than in the beat view for the same reason every
+    /// other string is: four surfaces once spelled the referral offer
+    /// themselves, which is the drift this file exists to end.
+    ///
+    /// Addressed to someone who has JUST declined a discount, which is why the
+    /// question is about readiness rather than interest. `inviteOffer` cannot
+    /// be reused verbatim: it opens with "Or" because it sits beside a price on
+    /// another screen, and on a rung of its own there is nothing inside the
+    /// sentence for it to be an alternative to.
+    static let catchHeading = String(localized: "Not ready to pay?")
+
+    /// Names the quota AND the reward in one string — the condition under which
+    /// trial-copy-gate permits a number, and the honest form under the flat
+    /// 3-to-7 grant (see `inviteOffer`).
+    static let catchOffer = String(localized: "Invite 3 friends and get 1 week of Promptly Pro free.")
+
+    /// The way past this rung. Deliberately plain: a user who has declined
+    /// twice is owed an exit that does not argue.
+    static let catchSkip = String(localized: "No thanks")
+
     /// The share-sheet CTA.
     static let shareAction = String(localized: "Share your invite link")
 

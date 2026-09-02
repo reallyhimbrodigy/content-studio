@@ -443,6 +443,13 @@ final class OnboardingState: ObservableObject {
         /// already-built copy on.
         case paywall
         case reveal       // the offer reveal (skipped when no real offer)
+        /// THE LAST RUNG (2026-09-02). "Decline offer" used to be a dead end —
+        /// the user said no to the discount and the flow simply ended, with the
+        /// referral reduced to one line ON the reveal that a declining user has
+        /// already decided to ignore. A user who has just refused to pay is the
+        /// one person for whom "not ready to pay?" is the right question, so it
+        /// gets its own rung instead of a line on the rung above.
+        case referralCatch
         case done         // → the picker (PromptlyApp re-branches)
 
         /// One name per beat, shared by the arrive and answer emitters. The

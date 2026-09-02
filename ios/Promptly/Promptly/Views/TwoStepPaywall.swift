@@ -290,6 +290,13 @@ struct PaywallLayout: View {
     @State private var tierAllowance: Int?
     @State private var selectedId: String?
 
+    /// Read for the personalised lead only. `PaywallLayout` is otherwise a pure
+    /// function of its inputs — which is what makes it renderable in the
+    /// harness without a store — so this is the one singleton it touches, and
+    /// it degrades to nothing when the flag is off or the questions were
+    /// skipped rather than changing any other part of the layout.
+    @ObservedObject private var onboarding = OnboardingState.shared
+
     /// The CTA's accent. Saturated, and used by NOTHING else here — white reads
     /// as neutral or dismiss on iOS, which is the wrong signal for the one
     /// control the screen exists for. The recommended badge is gold, so this is
@@ -311,6 +318,29 @@ struct PaywallLayout: View {
             // toggle directly beneath and by the CTA at the bottom, so naming it
             // here too would spend the largest type on the screen restating
             // something already said twice.
+            // PERSONALISED LEAD, from Q1 and Q2. It could not fire before:
+            // the paywall was a root branch ABOVE the question flow, so
+            // `v2Audience` and `v2VideoType` were always nil by the time this
+            // drew. The questions now run first, so the copy that was already
+            // built has something to read.
+            //
+            // ABOVE the headline and never inside it, matching OfferRevealView:
+            // the headline is the product's own claim, and user-derived text
+            // has no business inside it. Nil when the questions were skipped —
+            // and nil means it simply is not drawn, because a generic fallback
+            // reads as personalisation that failed, which is worse than none.
+            if onboarding.paywallPersonalizationEnabled,
+               let lead = PaywallPersonalization.lead(audience: onboarding.v2Audience,
+                                                      videoType: onboarding.v2VideoType) {
+                Text(lead)
+                    .cType(14, .medium)
+                    .foregroundColor(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+            }
+
             Text("Edit any video just by typing")
                 .cType(21, .bold)
                 .foregroundColor(.white)
