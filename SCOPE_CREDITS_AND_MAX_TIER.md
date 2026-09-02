@@ -141,13 +141,53 @@ capabilities('max') -> {appUsable:false, uploadMax:0, renderLimit:0, chatLimit:0
 > the app entirely** — `appUsable:false`, a 403 wall, not a paywall. The row must
 > land **first, or in the same commit**. Never the other order.
 
-**d) Nothing appears to WRITE `tier='max'`.** `PRO_ENTITLEMENT_ID = 'pro'` is a
-single hardcoded constant (`lib/entitlement.js:97`), and `entitlementTier()`
-collapses subscription states to `paid`/`trial`/`none`. Every write I found
-(`server.js:1016, 4940, 6863`, `3397`) writes `'pro'`. **I found no path that
-writes `'max'`** — flagged as a gap to confirm rather than asserted, since the
-write may be intended to come from a Max-specific RC entitlement that does not
-exist yet. Until it does, the row is inert: correct, tested, and never reached.
+**d) CONFIRMED 2026-09-02 — and it is worse than "inert".** Zac has created a
+`max` entitlement in RevenueCat with both Max products attached, so the
+entitlement exists. Nothing server-side reads it:
+
+- `resolveProEntitlementInternalId()` (`server.js:886`) resolves **one** id —
+  the entitlement whose `lookup_key === PRO_ENTITLEMENT_ID`, and
+  `PRO_ENTITLEMENT_ID = 'pro'` (`lib/entitlement.js:97`).
+- `proEntitlementFromV2ActiveList(items, proEntId)` then **filters the user's
+  active entitlements down to that single id**.
+- Both write sites hardcode `tier: 'pro'` (`server.js:~1016` sync, `~4940`
+  webhook). Nothing can store `'max'`.
+
+Run against the real function:
+
+```
+Pro subscriber (pro entitlement only)     -> active=true
+MAX subscriber, max entitlement ONLY      -> active=false   <-- NOT PRO
+MAX subscriber, max AND pro both attached -> active=true    (but stored as 'pro')
+```
+
+**So the outcome depends entirely on RC product attachment, and one branch is a
+paying user getting nothing:**
+
+- If the Max products are attached to **both** `max` and `pro`, a Max buyer is
+  granted Pro and stored as `tier='pro'` — they get Pro access and the **Pro
+  allowance of 200, not 1000**, and Max is invisible to the server.
+- If the Max products are attached to **`max` only**, `active=false` →
+  `RC_NOT_ACTIVE` → **isPro false → the buyer gets FREE.** A completed purchase
+  grants nothing.
+
+The single-entitlement fallback ("null → accept any active entitlement") does
+**not** rescue this: it only triggers when the lookup *fails*. With a `pro`
+entitlement present the lookup succeeds, so the strict filter always applies.
+
+**This is a live purchase-path risk the moment a Max product is buyable — it is
+not gated behind `max_tier`, which only controls client UI.** The capability row
+shipping dark does not touch it either way.
+
+**Fix (the next commit):** `PRO_ENTITLEMENT_ID` becomes a lookup_key → tier map
+(`{max: 'max', pro: 'pro'}`), resolution keeps the **highest-ranked** active
+entitlement via `tierRank`, and the two write sites write the resolved tier
+instead of the literal `'pro'`. `tierAfterGrant` already guarantees a later
+Pro-grant cannot lower a stored Max.
+
+**First, verify in the RC dashboard which entitlements the Max products are
+attached to** — that decides whether this is "Max buyers get Pro-level access
+and the wrong allowance" or "Max buyers get nothing".
 
 ### The build
 
