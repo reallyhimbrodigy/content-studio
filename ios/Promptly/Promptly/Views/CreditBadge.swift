@@ -23,9 +23,11 @@ import SwiftUI
 /// project has already paid once for treating an unreadable metric as a
 /// confident zero.
 struct CreditBadge: View {
-    /// Tapping a balance is the natural moment to want more of it, so it goes
-    /// to the same place Upgrade does.
-    var onTap: () -> Void = { AppState.shared.presentPaywall(.manual) }
+    /// Tapping a balance is the natural moment to want MORE of that balance, so
+    /// it opens the top-up screen rather than the subscription paywall. Someone
+    /// checking what they hold is asking to add to it; answering with a plan
+    /// comparison is answering a question they did not ask.
+    var onTap: () -> Void = { AppState.shared.showCredits = true }
 
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared

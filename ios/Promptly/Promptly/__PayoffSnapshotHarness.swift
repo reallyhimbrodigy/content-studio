@@ -99,6 +99,9 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
+        case 32, 33:
+            o.debugForceFlag("credits")
+            o.debugSetCreditsAllowance(200)
         case 28, 29, 30:
             // Credits armed: the claims must switch to the real allowances —
             // Pro "20 videos a month", Max "5x the usage". Both derived from
@@ -207,6 +210,22 @@ struct PayoffSnapshotHarnessView: View {
                     OnboardingState.shared.debugForceFlag("exportgate_personalization")
                     OnboardingState.shared.v2VideoType = "podcast"
                 }
+            case 32: bleed("CREDITS TOP-UP — packs POSED (SKUs not created yet)") {
+                // Prices posed. The real screen reads them from StoreKit and
+                // shows an honest empty state until the SKUs exist.
+                CreditsTopUpView(posedPacks: [
+                    CreditPack(id: "promptly_credits_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_credits_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_credits_20", videos: 20, price: "$39.99"),
+                ])
+            }
+            case 33: bleed("CREDITS TOP-UP — 20-pack selected, Max upsell") {
+                CreditsTopUpView(posedPacks: [
+                    CreditPack(id: "promptly_credits_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_credits_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_credits_20", videos: 20, price: "$39.99"),
+                ], preselectLargest: true)
+            }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
                 // NOT TwoStepPaywall directly. This renders the switch every
                 // entry point goes through, with no flag forced, so what appears

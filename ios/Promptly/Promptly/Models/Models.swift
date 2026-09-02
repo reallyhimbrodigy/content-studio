@@ -545,6 +545,8 @@ final class AppState: ObservableObject {
     /// own chat now.) `selectedTab` is retired to a constant 0 (Edit is the sole
     /// full-screen surface) — kept only so legacy guards still read 0.
     @Published var showAccount: Bool = false
+    /// The credits top-up sheet. Raised by the header badge.
+    @Published var showCredits: Bool = false
     /// Bumped by `landOnChat()` on every authenticated landing. EditorView
     /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
     /// keyboard up, ready to type a vibe (build 217).

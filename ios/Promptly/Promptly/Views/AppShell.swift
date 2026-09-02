@@ -116,6 +116,11 @@ struct AppShell: View {
         // Paywall presentation. Any view can request it by setting
         // AppState.shared.paywallReason; the sheet rises and clears the
         // reason on dismiss.
+        // Credits top-up. Anchored here with the other app-level sheets so the
+        // header badge does not have to own a presentation.
+        .sheet(isPresented: $appState.showCredits) {
+            CreditsTopUpView { appState.showCredits = false }
+        }
         // DEFERRED AUTH — the account ask, at the action that needs one.
         //
         // Anchored on AppShell rather than at each call site: purchase, export
