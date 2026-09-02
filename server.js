@@ -3594,6 +3594,36 @@ const server = http.createServer((req, res) => {
       deferred_auth:
         /^(0|off|false|no)$/i.test(String(process.env.DEFERRED_AUTH ?? '').trim())
           ? 'off' : 'on',
+      // ── credits + max_tier: SAME two-way control, OPPOSITE default ────────
+      // These are NOT the two above and must not be copied from them. Those
+      // were armed client-side (`= true`) and needed the key to turn OFF.
+      // These two default `= false` on the client AND were absent from
+      // /api/health, so they are DARK right now:
+      //   creditsEnabled  = false   (strict parse: absent key => false)
+      //   maxTierEnabled  = false   (`if let` parse: absent key leaves false)
+      // Emitting them with an 'on' default would therefore ARM two dark
+      // features, not make a live one reversible. So the default here is
+      // 'off' — today's behaviour, byte-for-byte — and the key exists so
+      // either can be flipped BOTH ways from Render without a build.
+      //
+      // Same no-silent-opposite property as above, inverted: only an explicit
+      // on-value arms. 1 / on / true / yes arm; unset, 0, off, false stay dark.
+      //
+      // max_tier is gated on App Store review of the Max product ("can be armed
+      // the moment Max clears review"). Arming it earlier surfaces a tier whose
+      // product is not approved.
+      max_tier:
+        /^(1|on|true|yes)$/i.test(String(process.env.MAX_TIER ?? '').trim())
+          ? 'on' : 'off',
+      // CREDITS is the DISPLAY meter only — the client cannot debit (RevenueCat
+      // Virtual Currencies is read-only on device). It is a DIFFERENT knob from
+      // CREDITS_DEBIT_ENABLED, which gates actual debiting at the dispatch site
+      // and is untouched here: it defaults to off (`|| ''` !== '1') and STAYS
+      // off until CRD is provisioned and balances are granted. Arming this
+      // meter before then shows users a balance that does not exist yet.
+      credits:
+        /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
+          ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
