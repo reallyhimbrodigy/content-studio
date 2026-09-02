@@ -94,6 +94,15 @@ struct PayoffSnapshotHarnessView: View {
     static func applyFlags() {
         let n = Int(UserDefaults.standard.string(forKey: "snapshotState") ?? "0") ?? 0
         let o = OnboardingState.shared
+        // MAX RENDERS ONLY WHERE IT IS ASKED FOR. `HarnessPaywallMock.tiers`
+        // now reads `maxTierEnabled` instead of defaulting the parameter to
+        // true, so a case that means to show Max has to arm the gate — and
+        // every case that does NOT appear here renders Pro-only, which is what
+        // ships. Stated as a list rather than folded into the switch below
+        // because those groupings are about `credits`, and one flag's grouping
+        // silently deciding another flag's state is how the default got past
+        // review in the first place.
+        if [23, 25, 29, 34, 35].contains(n) { o.debugForceFlag("max_tier") }
         switch n {
         case 25:
             // The capture must show suppression happening, not a hidden row.
@@ -274,6 +283,21 @@ struct PayoffSnapshotHarnessView: View {
                     durations: { HarnessPaywallMock.durations($0) },
                     
                     initialTierAllowance: 200)
+            }
+            // MAX SELECTED, CREDITS DARK — the state that actually ships if Max
+            // clears review, and the one case that did not exist. 34 is the only
+            // other Max-selected case and it forces `credits`, so every Max
+            // capture on file shows "1,000 credits/month · ≈ 100 videos · 5x
+            // usage credits" — three lines that all disappear with the meter
+            // dark. Reviewing Max from 34 approves a screen nobody can ship: with
+            // credits off, `usageMultiple` returns nil and Max stands on two
+            // lines. Deliberately absent from the credits-forcing list above.
+            case 35: bleed("MAX selected — credits dark, as it would ship") {
+                PaywallLayout(
+                    title: String(localized: "Unlock Promptly Pro"),
+                    tiers: HarnessPaywallMock.tiers,
+                    durations: { HarnessPaywallMock.durations($0) },
+                    initialTierAllowance: 1000)
             }
             case 34: bleed("MAX selected — title must follow the tier") {
                 PaywallLayout(
@@ -844,9 +868,22 @@ private enum HarnessPaywallMock {
     }
 
     @MainActor
+    /// THE MAX GATE MUST BE HONOURED HERE, not defaulted past. This omitted
+    /// `maxEnabled:` and took the parameter's `true` default, so every posed
+    /// paywall capture rendered Max — selectable, preselected on the Max cases,
+    /// with "Get Max · Year" as the CTA — while the shipping app correctly hides
+    /// it. The captures were not evidence of a paywall bug; they were evidence
+    /// of a harness that could not show the shipping configuration, which is
+    /// worse, because a reviewer approving those stills is approving a tier
+    /// nobody can buy.
+    ///
+    /// Reading the real flag means a Max case must FORCE `max_tier` to show Max
+    /// at all — so the capture is explicitly "Max as it looks when armed"
+    /// rather than "Max, silently, because a default said true".
     static var tiers: [PaywallTierOption] {
         PaywallMapping.tierOptions(products,
-                                   creditsEnabled: OnboardingState.shared.creditsEnabled)
+                                   creditsEnabled: OnboardingState.shared.creditsEnabled,
+                                   maxEnabled: OnboardingState.shared.maxTierEnabled)
     }
 
     static func durations(_ allowance: Int) -> [PaywallDurationOption] {

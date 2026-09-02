@@ -409,6 +409,16 @@ struct EditorView: View {
     private func focusInput() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-noAutoFocus") { return }
+        // THE HARNESS IMPLIES -noAutoFocus. It COVERS the app rather than
+        // replacing it, so this composer keeps focus underneath and the
+        // software keyboard draws ON TOP of the screen being reviewed — the
+        // first 17 Pro paywall capture lost its CTA, legal row and restore link
+        // that way, with nothing wrong with the paywall. Requiring a second
+        // launch argument to get a clean capture means every future capture is
+        // one forgotten flag away from being quietly unreviewable, and the
+        // reviewer cannot tell the difference. Inferring it here rather than at
+        // the call sites is the same reason this function exists at all.
+        if ProcessInfo.processInfo.arguments.contains("-snapshotPayoff") { return }
         #endif
         isInputFocused = true
     }
