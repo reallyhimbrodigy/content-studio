@@ -410,7 +410,10 @@ function _hasSubscriptionHistory(row) {
   if (row.rc_app_user_id) return true;
   if (row.pro_until) return true;
   const tier = String(row.tier || '').toLowerCase().trim();
-  return tier === 'pro' || tier === 'teams' || tier === 'premium';
+  // 'max' added 2026-09-02 — see lib/entitlement.js isUserPro. A Max row IS
+  // subscription history; omitting it made a paying Max account look like it
+  // had never subscribed.
+  return tier === 'pro' || tier === 'teams' || tier === 'premium' || tier === 'max';
 }
 
 // True when enforcement could actually deny THIS request, so the extra RC rescue
@@ -852,8 +855,11 @@ function isUserPro(req) {
   const tier = req?.user?.tier;
   if (req?.user?.isPro) return true;
   const normalizedTier = tier ? String(tier).toLowerCase().trim() : '';
-  if (normalizedTier === 'pro' || normalizedTier === 'paid' || normalizedTier === 'premium') return true;
-  if (plan && (plan === 'pro' || plan === 'teams')) return true;
+  // 'max' added 2026-09-02 to BOTH the tier and the plan check — the two read
+  // different fields (req.user.tier vs req.user.plan) and either can carry it.
+  if (normalizedTier === 'pro' || normalizedTier === 'paid'
+      || normalizedTier === 'premium' || normalizedTier === 'max') return true;
+  if (plan && (plan === 'pro' || plan === 'teams' || plan === 'max')) return true;
   return false;
 }
 

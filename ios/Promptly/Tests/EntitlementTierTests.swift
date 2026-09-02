@@ -94,6 +94,33 @@ check(EntitlementTier.free.limitHitRouting == .paywall, "free: limit → upgrade
 check(EntitlementTier.resolve(rc: .none, server: .free) == .free, "resolve(.none, .free) → .free")
 check(EntitlementTier.resolve(rc: .paid, server: .free) == .paid, "resolve(.paid, .free) → .paid (pro wins)")
 
+// ── MAX (2026-09-02) — mirrored cell-for-cell from lib/tier-capabilities.js ──
+check(EntitlementTier.paid < EntitlementTier.max, "ordering: paid < max (max is the top tier)")
+check(EntitlementTier.fromServer("max") == .max, "fromServer: max")
+check(EntitlementTier.fromServer("  MAX ") == .max, "fromServer: max is case-insensitive + trimmed")
+// Most-privileged-wins must not under-serve a Max subscriber when either
+// source lags — the same fail-generous rule the other tiers get.
+check(EntitlementTier.resolve(rc: .max, server: .paid) == .max,
+      "resolve(.max, .paid) → .max (RC ahead of a webhook lag)")
+check(EntitlementTier.resolve(rc: .paid, server: .max) == .max,
+      "resolve(.paid, .max) → .max (server ahead; never under-serve a payer)")
+check(EntitlementTier.resolve(rc: .none, server: .max) == .max,
+      "resolve(.none, .max) → .max (RC cache cold)")
+// Capability cells — identical to paid TODAY, asserted independently so a
+// future Max-only divergence breaks the cell it changes.
+check(EntitlementTier.max.appUsable, "max: appUsable")
+check(EntitlementTier.max.uploadMax == 10, "max: upload max 10")
+check(EntitlementTier.max.canRender(todayRenders: 9_999), "max: renders unlimited")
+check(EntitlementTier.max.canChat(todayChats: 9_999), "max: chats unlimited")
+check(EntitlementTier.max.canReedit, "max: re-edit")
+check(EntitlementTier.max.canUseLumen, "max: lumen")
+check(EntitlementTier.max.limitHitRouting == .unused, "max: never routes to a limit screen")
+check(EntitlementTier.max.capabilities == EntitlementTier.paid.capabilities,
+      "max cells match paid today (separate rows, equal values)")
+// The lockout regression, client side: max must never resolve to the wall row.
+check(EntitlementTier.max.capabilities != EntitlementTier.none.capabilities,
+      "max is NOT the fail-closed .none row")
+
 print("\n\(checks) checks, \(failures) failures")
 if failures > 0 { exit(1) }
 }

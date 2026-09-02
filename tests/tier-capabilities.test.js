@@ -90,12 +90,18 @@ test('limit-hit routing: none→wall, trial→paywall, paid→none', () => {
 });
 
 // ── FREEMIUM 'free' tier (2026-07-21 pivot) ─────────────────────────────────
-test("capabilities('free'): usable, 1 render/day, 1 upload, 50 chats, no reedit/lumen, paywall route", () => {
+test("capabilities('free'): usable, 1 render/day, 1 upload, 5 chats, no reedit/lumen, paywall route", () => {
   const c = capabilities('free');
   assert.strictEqual(c.appUsable, true);
   assert.strictEqual(c.renderLimit, 1); // 2026-07-23: tightened 2 → 1/day (conversion)
   assert.strictEqual(c.uploadMax, 1);
-  assert.strictEqual(c.chatLimit, 50);
+  // 2026-09-02: was asserting 50. FREE_DAILY_CHATS was deliberately cut 50 → 5
+  // on 2026-07-24 ("0 free users sent >5 chats/day in the prior 14 days") and
+  // this assertion was never updated — so this file's own law, "a cell without
+  // a green test does not exist", had been broken for that cell ever since.
+  // Pre-existing failure, found while adding the max row; fixed here rather
+  // than left red, because a suite with a known-red test cannot police a new one.
+  assert.strictEqual(c.chatLimit, 5);
   assert.strictEqual(c.reedit, false);
   assert.strictEqual(c.lumen, false);
   assert.strictEqual(c.limitHitRouting, 'paywall'); // upgrade, never a wall
@@ -110,4 +116,53 @@ test("free tier is USABLE — appUsable true (freemium is never a wall)", () => 
   assert.strictEqual(canUseLumen('free'), false);
   assert.strictEqual(canUpload('free', 1), true);
   assert.strictEqual(canUpload('free', 2), false);
+});
+
+// ── MAX (2026-09-02) ───────────────────────────────────────────────────────
+// A row without a green test does not exist (this file's standing law). Max's
+// cells are identical to `paid` TODAY — each is asserted on its own so a future
+// Max-only divergence breaks exactly the cell it changes, not a shared alias.
+test('MAX: appUsable=true', () => {
+  assert.strictEqual(appUsable('max'), true);
+});
+test('MAX: upload max = 10 (same as paid today)', () => {
+  assert.strictEqual(capabilities('max').uploadMax, 10);
+});
+test('MAX: renders/day unlimited', () => {
+  assert.strictEqual(capabilities('max').renderLimit, Infinity);
+  assert.strictEqual(canRender('max', 9999), true);
+});
+test('MAX: chats/day unlimited', () => {
+  assert.strictEqual(capabilities('max').chatLimit, Infinity);
+  assert.strictEqual(canChat('max', 9999), true);
+});
+test('MAX: re-edit allowed', () => {
+  assert.strictEqual(canReedit('max'), true);
+});
+test('MAX: lumen allowed', () => {
+  assert.strictEqual(canUseLumen('max'), true);
+});
+test('MAX: never routes to a limit screen', () => {
+  assert.strictEqual(denialRouting('max'), null);
+});
+test('MAX: canUpload allows 10, blocks 11 and 0', () => {
+  assert.strictEqual(canUpload('max', 10), true);
+  assert.strictEqual(canUpload('max', 11), false);
+  assert.strictEqual(canUpload('max', 0), false);
+});
+// THE REGRESSION THIS ROW EXISTS TO PREVENT. Before the row, capabilities('max')
+// fell through to the fail-closed default — appUsable:false — so a Max
+// subscriber got a 403 WALL, not a paywall. If the row is ever deleted this is
+// the test that fails, and it fails loudly rather than as a subtle downgrade.
+test('MAX: is NOT the fail-closed default row (the lockout regression)', () => {
+  const max = capabilities('max');
+  const unknown = capabilities('garbage');
+  assert.notDeepStrictEqual(max, unknown);
+  assert.strictEqual(unknown.appUsable, false, 'unknown must still fail closed');
+  assert.strictEqual(max.appUsable, true, 'max must NOT fail closed');
+});
+// Max is its own row, not an alias of paid — identical cells today, but they
+// must be independently addressable or a Max-only change cannot land.
+test('MAX: cells match paid today, as separate rows', () => {
+  assert.deepStrictEqual(capabilities('max'), capabilities('paid'));
 });

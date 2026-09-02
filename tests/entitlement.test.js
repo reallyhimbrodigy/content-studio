@@ -3,7 +3,8 @@
 // Run with:  node --test tests/entitlement.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isUserPro, entitlementTier, tierFromEntitlement, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches } = require('../lib/entitlement');
+const { isUserPro, entitlementTier, tierFromEntitlement, unknownPeriodPaid, proEntitlementFromV2ActiveList, revenuecatWebhookAuthMatches,
+        tierRank, tierAfterGrant } = require('../lib/entitlement');
 
 const NOW = Date.UTC(2026, 5, 18); // 2026-06-18, fixed so tests are deterministic
 const futureMs = NOW + 30 * 864e5; // +30 days, epoch ms (RC v2 format)
@@ -278,3 +279,33 @@ test('tierFromEntitlement: comp row → paid', () => {
 test('tierFromEntitlement: undefined decision → none (fails closed)', () => {
   assert.strictEqual(tierFromEntitlement(undefined, NOW), 'none');
 });
+
+// ── MAX is a PAID tier (2026-09-02) ────────────────────────────────────────
+// isUserPro returned FALSE for tier 'max' while TIER_RANK already ranked
+// max:40 above pro:30 — the codebase called Max the top tier and simultaneously
+// did not consider it paid. Downstream that meant /api/credits/balance derived
+// the allowance from isPro and reported 30 instead of 1000.
+{
+  const future = new Date(Date.now() + 30 * 864e5).toISOString();
+  test('isUserPro: max with a future pro_until is PRO', () => {
+    assert.strictEqual(isUserPro({ tier: 'max', pro_until: future, rc_app_user_id: 'rc_x' }), true);
+  });
+  test('isUserPro: max is pro alongside pro/teams/premium', () => {
+    for (const tier of ['pro', 'teams', 'premium', 'max']) {
+      assert.strictEqual(
+        isUserPro({ tier, pro_until: future, rc_app_user_id: 'rc_x' }), true, `${tier} must be pro`);
+    }
+  });
+  test('isUserPro: max still EXPIRES — pro_until is honoured, not bypassed', () => {
+    const past = new Date(Date.now() - 864e5).toISOString();
+    assert.strictEqual(isUserPro({ tier: 'max', pro_until: past, rc_app_user_id: 'rc_x' }), false);
+  });
+  test('isUserPro: free/garbage still NOT pro (no leak from the new branch)', () => {
+    assert.strictEqual(isUserPro({ tier: 'free', pro_until: future }), false);
+    assert.strictEqual(isUserPro({ tier: 'garbage', pro_until: future }), false);
+  });
+  test('TIER_RANK: max outranks pro, and a pro grant cannot lower max', () => {
+    assert.ok(tierRank('max') > tierRank('pro'));
+    assert.strictEqual(tierAfterGrant('max', 'pro'), 'max');
+  });
+}
