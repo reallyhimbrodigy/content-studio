@@ -3751,6 +3751,23 @@ const server = http.createServer((req, res) => {
       try {
         if (!body || typeof body.event !== 'string') return;
         const ALLOWED = new Set([
+          // ── MERGE 2026-09-02: the conversion-surface branch's events ────────
+          // Added when app-conversion-surface merged origin/main. The branch
+          // had been developing against a server tree 281 commits stale, so it
+          // shipped 25 client events this allowlist had never learned — and an
+          // unallowlisted event is DROPPED by the SQL mirror, silently, which
+          // is the exact half-blind instrument this gate exists to prevent.
+          // The merge is what surfaced them; nothing was wrong with either side
+          // in isolation, which is why the drift survived this long.
+          'auth_gate_abandoned', 'auth_gate_resume_missing_product', 'auth_gate_resumed',
+          'auth_gate_shown', 'credits_exhausted', 'credits_exhausted_shown',
+          'credits_refund_shown', 'device_id_keychain_write_failed', 'downsell_shown',
+          'downsell_skipped', 'first_run_keychain_write_failed', 'free_export_spent_shown',
+          'instant_question_answered', 'instant_question_shown', 'language_changed',
+          'picker_asset_unrecoverable', 'purchase_blocked_unauthenticated', 'referral_code_entered',
+          'referral_code_entry_rejected', 'referral_code_field_opened', 'reverse_trial_device_id_missing',
+          'reverse_trial_grant_no_duration', 'reverse_trial_granted', 'reverse_trial_ineligible',
+          'reverse_trial_unavailable',
           'paywall_view', 'offerings_loaded', 'offerings_load_failed',
           'purchase_attempt', 'purchase_error', 'trial_start',
           // 1.1.7: funnel head for the re-edit conversion path. Paired with
