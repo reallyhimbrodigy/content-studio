@@ -642,6 +642,10 @@ struct PromptlyApp: App {
                 let args = ProcessInfo.processInfo.arguments
                 if args.contains("-firstRunReset") { FirstRun.reset() }
                 if args.contains("-firstRunSeen") { FirstRun.markSeen() }
+                // The claim under test: the funnel is once per DEVICE, and a
+                // reinstall must not replay it. UserDefaults would; the Keychain
+                // should not. Printed so it can be read across an uninstall.
+                print("FIRSTRUN seen=\(FirstRun.seen)")
                 // Measure, do not guess. Two rounds of safe-area fixes changed
                 // nothing visible, which means the assumption about WHAT the app
                 // is being given is wrong. Print the actual insets.
