@@ -879,6 +879,10 @@ function isUserPro(req) {
 // Static per project, so we memoise it for the process lifetime after the
 // first successful lookup.
 let _rcProEntitlementInternalId = null;
+// Last RevenueCat project reachability answer, refreshed in the background by
+// /api/health at most every 5 minutes. `value` stays null until the first probe
+// resolves — "not measured" must not read as "ok".
+const _rcHealthProbe = { at: 0, value: null };
 // { <internal entitlement id>: <tier> } for every lookup_key we understand.
 // Process-lifetime cache, same as the id above — entitlements are dashboard
 // artifacts that change on the order of never, and a restart re-reads them.
@@ -3692,9 +3696,26 @@ const server = http.createServer((req, res) => {
       // and is untouched here: it defaults to off (`|| ''` !== '1') and STAYS
       // off until CRD is provisioned and balances are granted. Arming this
       // meter before then shows users a balance that does not exist yet.
-      credits:
-        /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
-          ? 'on' : 'off',
+      // STRUCTURALLY GATED ON RC BEING REACHABLE (2026-09-02), not merely
+      // documented as a thing to remember. `credits.isConfigured()` is a
+      // PRESENCE test — it returns true for a mismatched project/key pair — so
+      // CREDITS=1 against a 404ing project would serve a meter that 503s for
+      // 100% of users, and nothing would have said so first. That pair has in
+      // fact been mismatched since 2026-08-10.
+      //
+      // So the env var is necessary but NOT sufficient: the meter reports 'on'
+      // only when the health probe has actually reached the project. FAIL
+      // CLOSED — 'off' while the probe is null (not yet measured, a few seconds
+      // after boot) and 'off' on any non-'ok'. A meter that is briefly dark
+      // self-heals on the next probe; a meter that is armed and broken is a
+      // support ticket from every user at once.
+      //
+      // Read `revenuecat.probe` below to tell "the operator left it off" from
+      // "the project is unreachable" — they render identically here on purpose,
+      // because both mean the same thing to a client: do not draw a balance.
+      credits: (/^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
+                && _rcHealthProbe.value === 'ok')
+        ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -3742,6 +3763,58 @@ const server = http.createServer((req, res) => {
       // signer means every paying user's export 403s.
       //
       // Booleans only. No URL, no key id, no expiry is exposed here.
+      // ── REVENUECAT CONFIG STATE (2026-09-02) ───────────────────────────
+      // WHY THIS EXISTS. On 2026-08-10 /sync was diagnosed as 100%
+      // NO_RC_CUSTOMER caused by a mismatched REVENUECAT_PROJECT_ID /
+      // REVENUECAT_SECRET_KEY pair, and a `CONFIG SUSPECT` log line was added to
+      // make it visible. It has been firing continuously ever since — 23 days —
+      // because a log line is only visible to someone already looking. This is
+      // the same disease as the event-allowlist smoke that ran where it could
+      // not see: a check nobody reads is not a check.
+      //
+      // The specific thing it prevents: `credits.isConfigured()` is a PRESENCE
+      // test, not a validity test — it returns true for a mismatched pair. So
+      // arming CREDITS=1 against a 404ing project ships a meter that 503s for
+      // 100% of users, and nothing in the system would say so first. `probe`
+      // below is the field that makes that structurally impossible to miss.
+      //
+      // PUBLIC ENDPOINT: booleans, enums and shape flags ONLY. No project id,
+      // no key fragment, nothing that is a secret or identifies the account.
+      revenuecat: (() => {
+        const projectId = (process.env.REVENUECAT_PROJECT_ID || '').trim();
+        const secret = (process.env.REVENUECAT_SECRET_KEY || '').trim();
+        const shape = (v, re) => (!v ? 'missing' : (re.test(v) ? 'ok' : 'malformed'));
+        // Refresh the reachability probe in the BACKGROUND, at most every 5
+        // minutes. Health is the pre-auth endpoint every client hits — it must
+        // never block on a third party. The response reports the LAST known
+        // answer; null means "not probed yet", which is deliberately distinct
+        // from 'ok' and from a failure.
+        if (projectId && secret && Date.now() - _rcHealthProbe.at > 300000) {
+          _rcHealthProbe.at = Date.now();
+          fetch(`${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+            headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+            signal: AbortSignal.timeout(8000),
+          }).then((r) => { _rcHealthProbe.value = r.ok ? 'ok' : `http_${r.status}`; })
+            .catch(() => { _rcHealthProbe.value = 'unreachable'; });
+        }
+        return {
+          // What credits.isConfigured() actually means: both vars are SET.
+          // Never confuse this with "works" — that is `probe`.
+          configured: Boolean(projectId && secret),
+          projectIdShape: shape(projectId, /^proj/),
+          secretShape: shape(secret, /^sk_/),
+          // 'ok' | 'http_404' | 'unreachable' | null(not probed yet).
+          // ANYTHING other than 'ok' means every /sync 404s and the credits
+          // meter cannot read a balance. Do not arm CREDITS=1 on a non-'ok'.
+          probe: _rcHealthProbe.value,
+          // Which tiers the entitlement map resolved, once anything has asked
+          // RC. null = never resolved (or the lookup failed). Missing 'max'
+          // here means Max purchases cannot resolve as Max.
+          entitlementTiers: _rcEntitlementTierMap
+            ? [...new Set(Object.values(_rcEntitlementTierMap))].sort() : null,
+          creditsDebitArmed: CREDITS_DEBIT_ENABLED,
+        };
+      })(),
       cloudfront: (() => {
         try {
           const cf = require('./services/cloudfront');
