@@ -48,6 +48,23 @@ final class AuthGate: ObservableObject {
     /// Drives the sign-in presentation.
     @Published var isPresenting = false
 
+    /// The seam as a FUNCTION, so it can be executed rather than only read.
+    ///
+    /// The guards were wired at three call sites and verified by a gate that
+    /// reads the source — which proves the line is there, not that it does
+    /// anything. Naming the check gives every seam one implementation and makes
+    /// it callable from a probe, so "chat send refuses when signed out" becomes
+    /// something that can be RUN instead of argued from a grep.
+    ///
+    /// Returns true when the caller may proceed. When it returns false the
+    /// sign-in sheet is already rising and the intent is recorded.
+    @discardableResult
+    func allow(_ intent: Intent) -> Bool {
+        if AuthService.shared.currentUser?.id != nil { return true }
+        require(intent)
+        return false
+    }
+
     /// Stop, ask for an account, and remember why.
     func require(_ intent: Intent) {
         guard AuthService.shared.currentUser?.id == nil else { return }

@@ -126,7 +126,11 @@ final class OnboardingState: ObservableObject {
     ///
     /// The purchase guard is NOT gated on this flag — no purchase may complete
     /// without an account whether this is on or off.
-    @Published private(set) var deferredAuthEnabled = false
+    /// ARMED (2026-09-02), on the same terms as two_step_paywall and with the
+    /// same rollback cost: the server does not emit this key, so turning it OFF
+    /// needs the server to start emitting `deferred_auth: "off"` — a backend
+    /// change, not a client one.
+    @Published private(set) var deferredAuthEnabled = true
     @Published private(set) var pushPrimerEnabled = false
     /// Amendment 2026-08-27: the export gate as TWO pages (benefits written
     /// against the stated content type, then plans + price). Its own flag so
@@ -211,7 +215,12 @@ final class OnboardingState: ObservableObject {
             if let v = obj?["two_step_paywall"] as? String {
                 twoStepPaywallEnabled = v == "on"
             }
-            deferredAuthEnabled = (obj?["deferred_auth"] as? String) == "on"
+            // Same absent-key trap as two_step_paywall: `== "on"` on a key the
+            // server never sends is false, so this used to turn itself off on
+            // the first refresh and no client default could survive.
+            if let v = obj?["deferred_auth"] as? String {
+                deferredAuthEnabled = v == "on"
+            }
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
@@ -273,7 +282,9 @@ final class OnboardingState: ObservableObject {
             if UserDefaults.standard.object(forKey: "two_step_paywall_enabled") != nil {
                 twoStepPaywallEnabled = UserDefaults.standard.bool(forKey: "two_step_paywall_enabled")
             }
-            deferredAuthEnabled = UserDefaults.standard.bool(forKey: "deferred_auth_enabled")
+            if UserDefaults.standard.object(forKey: "deferred_auth_enabled") != nil {
+                deferredAuthEnabled = UserDefaults.standard.bool(forKey: "deferred_auth_enabled")
+            }
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
             creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")

@@ -2957,8 +2957,7 @@ struct EditorView: View {
         // The guard is here, at the TOP, so the composer keeps the text and the
         // transcript gains nothing. Returning after the bubble is appended would
         // show the user a message that is about to disappear.
-        if AuthService.shared.currentUser?.id == nil {
-            AuthGate.shared.require(.profileWrite("chat_send"))
+        guard AuthGate.shared.allow(.profileWrite("chat_send")) else {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }

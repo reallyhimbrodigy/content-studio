@@ -674,6 +674,15 @@ struct PromptlyApp: App {
                    let n = Int(args[i + 1]) {
                     CreditsService.shared.debugSetBalance(n)
                 }
+                // `-probeAuthSeams`: RUN the deferred-auth guards signed out
+                // instead of reading them. A gate that greps the source proves
+                // the line exists; this proves it does something.
+                if args.contains("-probeAuthSeams") {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(6))
+                        await AuthSeamProbe.run()
+                    }
+                }
                 // Measure, do not guess. Two rounds of safe-area fixes changed
                 // nothing visible, which means the assumption about WHAT the app
                 // is being given is wrong. Print the actual insets.

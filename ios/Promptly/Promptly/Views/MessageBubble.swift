@@ -1428,10 +1428,8 @@ final class VideoExporter: ObservableObject {
         // probe below would go out without an Authorization header and be
         // refused server-side, surfacing as a network-ish failure rather than
         // "you need an account".
-        if AuthService.shared.currentUser?.id == nil {
-            await MainActor.run { AuthGate.shared.require(.export(jobId: nil)) }
-            throw ExportError.notSignedIn
-        }
+        let allowed = await MainActor.run { AuthGate.shared.allow(.export(jobId: nil)) }
+        guard allowed else { throw ExportError.notSignedIn }
         let sourceUrl = try await resolveSaveSourceUrl()
         return try await ensureLocalFile(from: sourceUrl)
     }

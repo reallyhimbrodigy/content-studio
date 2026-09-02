@@ -31,7 +31,12 @@ check() { # file, function-regex, description, window
   local line
   line=$(grep -nE "$fn" "$f" | head -1 | cut -d: -f1)
   if [ -z "$line" ]; then echo "  $desc: function not found ($fn)"; FAIL=1; return; fi
-  if ! sed -n "${line},$((line + win))p" "$f" | grep -q "AuthGate.shared.require"; then
+  # Either entry point counts: `require` raises the gate directly, `allow` is
+  # the guard form that returns false and raises it. The seam moved to `allow`
+  # so it could be EXECUTED by a probe rather than only read by this gate, and
+  # this gate went red on code the probe had just proven refuses — a stale
+  # assertion is indistinguishable from a real failure at the moment you read it.
+  if ! sed -n "${line},$((line + win))p" "$f" | grep -qE "AuthGate\.shared\.(require|allow)"; then
     echo "  $desc does not raise the auth gate within $win lines of its entry"
     FAIL=1
   fi
@@ -49,6 +54,7 @@ fi
 
 # The gate itself must still exist and be presented somewhere.
 grep -q "func require(" Services/AuthGate.swift || { echo "  AuthGate.require is gone"; FAIL=1; }
+grep -q "func allow(" Services/AuthGate.swift || { echo "  AuthGate.allow is gone"; FAIL=1; }
 grep -rq "authGate.isPresenting" --include="*.swift" . || { echo "  AuthGate is never presented"; FAIL=1; }
 grep -rq "authGate.takePending()" --include="*.swift" . || { echo "  pending intent is never resumed"; FAIL=1; }
 
