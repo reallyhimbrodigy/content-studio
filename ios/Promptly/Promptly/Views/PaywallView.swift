@@ -754,9 +754,30 @@ struct PaywallView: View {
     /// offer_surfacing (a): the PAID introductory offer this product actually
     /// carries, stated in the store's own numbers. Nil when there is none — and
     /// unconditionally nil for `.freeTrial` offers (freemium law: no
-    /// trial-phrased surface, ever). Display-only; RC applies whatever offer
-    /// the account is eligible for at purchase, so the flow is unchanged.
+    /// trial-phrased surface, ever).
+    ///
+    /// NOT DISPLAY-ONLY, WHICH IS WHY THE ELIGIBILITY GUARD IS HERE. The old
+    /// docstring said "display-only; RC applies whatever offer the account is
+    /// eligible for at purchase, so the flow is unchanged" — true about the
+    /// FLOW and irrelevant to the CLAIM. `introductoryDiscount` describes the
+    /// PRODUCT; Apple grants one introductory offer per Apple ID per
+    /// subscription group, for ever. A returning user who already used theirs
+    /// reads "Intro price: $145.99 for your first year" and is charged $289.99
+    /// at the sheet. The purchase being correct is precisely what makes it a
+    /// false claim rather than a bug the user could notice beforehand.
+    ///
+    /// This is the same defect `intro-eligibility-gate.sh` was written for,
+    /// arriving through a third door. It was survivable while the line was
+    /// gated to `reason == .exportGate`; surfacing it on every entry point
+    /// widened the blast radius to every paywall a returning subscriber sees,
+    /// so the guard has to sit at the choke point rather than at each caller.
+    ///
+    /// Fails CLOSED — unfetched and unknown both read ineligible — so a slow
+    /// eligibility fetch costs a discount we could have advertised rather than
+    /// promising one Apple will not honour.
+    @MainActor
     static func introOfferLine(for pkg: Package) -> String? {
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
         guard let offer = pkg.storeProduct.introductoryDiscount,
               offer.paymentMode != .freeTrial else { return nil }
         let price = offer.localizedPriceString

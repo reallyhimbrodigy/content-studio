@@ -46,16 +46,61 @@ fi
 # secondary monthly line, and whether the screen renders at all — flows through
 # isRealOffer and percentOff. Requiring it there means a new claim cannot be
 # added that forgets to ask.
-for fn in isRealOffer percentOff; do
-  block=$(awk "/static func ${fn}/,/^    \}/" "$REVEAL")
+#
+# `introOfferLine` (PaywallView) IS THE THIRD CHOKE POINT, added 2026-09-02
+# after it shipped the same defect through a door this gate did not watch. It
+# renders "Intro price: $145.99 for your first year" from the PRODUCT's offer,
+# and was documented "display-only" on the reasoning that RevenueCat applies
+# the correct offer at purchase — true about the flow, and exactly why the
+# claim is false rather than merely stale: an ineligible returning subscriber
+# reads the discount and is charged full price with nothing to notice first.
+# Survivable while the line was gated to `reason == .exportGate`; commit
+# 74c5597 surfaced it on EVERY entry point, so it now reaches every paywall a
+# returning subscriber sees.
+PAYWALL="$SRC/Views/PaywallView.swift"
+for pair in "$REVEAL:isRealOffer" "$REVEAL:percentOff" "$PAYWALL:introOfferLine"; do
+  file="${pair%%:*}"; fn="${pair##*:}"
+  if [ ! -f "$file" ]; then
+    echo "MISSING         $(basename "$file") not found"; fail=1; continue
+  fi
+  block=$(awk "/static func ${fn}/,/^    \}/" "$file")
   if [ -z "$block" ]; then
-    echo "MISSING         $fn not found in OfferRevealView"; fail=1; continue
+    echo "MISSING         $fn not found in $(basename "$file")"; fail=1; continue
   fi
   if ! printf '%s' "$block" | grep -q "isEligibleForIntro"; then
     echo "UNCHECKED CLAIM $fn builds a discount claim without checking eligibility"
     fail=1
   fi
 done
+
+# ── 4. NO FOURTH DOOR: every file that reads the raw product offer must ask ─
+# Naming the three choke points stops those three from regressing; it does not
+# stop a fourth surface from reading `introductoryDiscount` and printing it.
+# That is how this defect arrived twice. So the check is on the CLASS: a file
+# that touches the product's offer must also mention the eligibility test.
+#
+# File-granular ON PURPOSE, and worth stating plainly rather than overselling:
+# this proves a file that makes offer claims KNOWS about eligibility, not that
+# every individual claim inside it is guarded. Per-claim proof needs the three
+# choke points above, which is why both halves exist. Coarse and total beats
+# precise and enumerable — a new paywall reading the offer fails this the day
+# it is written, before it has a name anyone thought to add to a list.
+# NO EXEMPTIONS, and the first draft of this check had one. It skipped `__*`
+# files for the snapshot harness — which turns out not to read the offer at
+# all, so the carve-out bought nothing and cost the whole guarantee: a probe
+# file named `__Probe.swift` reading `introductoryDiscount` passed clean. An
+# exemption written for a file that did not need it is how a gate develops a
+# documented bypass. If a harness ever does need to render offer fixtures, it
+# can mention the eligibility test in a comment and say why.
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if ! grep -q "isEligibleForIntro" "$f"; then
+    echo "UNGUARDED FILE  $(basename "$f") reads .introductoryDiscount but never"
+    echo "                mentions isEligibleForIntro — the product's offer is not"
+    echo "                this Apple ID's entitlement to it."
+    fail=1
+  fi
+done <<< "$(grep -rl "introductoryDiscount" --include="*.swift" "$SRC" 2>/dev/null || true)"
 
 if [ "$fail" -ne 0 ]; then
   echo ""
