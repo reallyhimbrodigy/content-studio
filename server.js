@@ -11,10 +11,13 @@ const {
   entitlementTier,
   tierFromEntitlement,
   tierAfterGrant,
+  tierRank,
   grantFromMs,
   unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
+  tieredEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
+  ENTITLEMENT_TIER_BY_LOOKUP_KEY,
   revenuecatWebhookAuthMatches,
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
@@ -876,6 +879,10 @@ function isUserPro(req) {
 // Static per project, so we memoise it for the process lifetime after the
 // first successful lookup.
 let _rcProEntitlementInternalId = null;
+// { <internal entitlement id>: <tier> } for every lookup_key we understand.
+// Process-lifetime cache, same as the id above — entitlements are dashboard
+// artifacts that change on the order of never, and a restart re-reads them.
+let _rcEntitlementTierMap = null;
 
 // Process-lifetime probe of the RC PROJECT itself: null = never probed (or the
 // probe was transient-failed and will retry), 'ok' = project readable under the
@@ -909,6 +916,49 @@ async function resolveProEntitlementInternalId(projectId, secret) {
     /* fall through to null */
   }
   return null;
+}
+
+/**
+ * Resolve EVERY entitlement we understand, as { internalId: tier } (2026-09-02).
+ *
+ * The single-id resolver above answers "which entitlement is Pro". That question
+ * is why a Max purchase granted nothing: the Max products are attached to a
+ * `max` entitlement, `max` is not `pro`, so the customer's only active
+ * entitlement was filtered out and they resolved as NOT ENTITLED.
+ *
+ * Returns null (not {}) on any failure, so the caller can tell "RC said there
+ * are no entitlements we know" from "we could not ask" — the second falls back
+ * to the documented accept-any-active behaviour, the first does not.
+ */
+async function resolveEntitlementTierMap(projectId, secret) {
+  if (_rcEntitlementTierMap) return _rcEntitlementTierMap;
+  const url = `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const items = body && Array.isArray(body.items) ? body.items : [];
+    const map = {};
+    for (const e of items) {
+      const tier = e && ENTITLEMENT_TIER_BY_LOOKUP_KEY[String(e.lookup_key || '').trim()];
+      if (tier && e.id) map[e.id] = tier;
+    }
+    if (Object.keys(map).length === 0) return null;   // nothing recognised
+    _rcEntitlementTierMap = map;
+    // Loud once per process: a renamed lookup_key in the RC dashboard silently
+    // stops a tier resolving, and the symptom is "paying users look free".
+    const tiers = [...new Set(Object.values(map))].sort().join(',');
+    console.log(`[RevenueCat] entitlement map resolved: ${Object.keys(map).length} entitlement(s) -> tiers [${tiers}]`);
+    if (!Object.values(map).includes('max')) {
+      console.warn('[RevenueCat] NOTE: no entitlement with lookup_key "max" — Max purchases will resolve as Pro at best. Check the dashboard.');
+    }
+    return map;
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -961,7 +1011,10 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   }
 
   // null → accept any active entitlement (single-entitlement fallback).
-  const proEntId = await resolveProEntitlementInternalId(projectId, secret);
+  // TIER-AWARE since 2026-09-02: resolves EVERY entitlement we understand, not
+  // just 'pro'. With only the pro id, a customer holding the `max` entitlement
+  // matched nothing and a completed Max purchase granted them NOTHING.
+  const entTierMap = await resolveEntitlementTierMap(projectId, secret);
 
   const url =
     `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}` +
@@ -1009,7 +1062,7 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   }
   const body = await rcRes.json().catch(() => null);
   const items = body && Array.isArray(body.items) ? body.items : [];
-  const decision = proEntitlementFromV2ActiveList(items, proEntId, Date.now());
+  const decision = tieredEntitlementFromV2ActiveList(items, entTierMap, Date.now());
   if (!decision.active) {
     // Not entitled per RC. Grant-only: never downgrade here.
     return { ok: true, isPro: false, reason: 'RC_NOT_ACTIVE', proUntil: decision.proUntil };
@@ -1019,7 +1072,19 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
   // rc_period_type are informational and owned by the webhook — we don't null
   // them out from this path.
   const update = {
-    tier: 'pro',
+    // THE RESOLVED TIER, not the literal 'pro' this used to write. A Max
+    // customer is now stored as 'max' and gets the Max credit allowance;
+    // before, the best case was being stored as 'pro' (allowance 200 instead
+    // of 1000) and the actual case was not being stored at all.
+    //
+    // DELIBERATELY *NOT* tierAfterGrant(). That guard exists for the referral
+    // and reverse-trial paths, where an unconditional `tier:'pro'` GRANT would
+    // clobber a real Max subscription downward. This path is different in kind:
+    // it MIRRORS RevenueCat's live active_entitlements. If RC says the max
+    // entitlement lapsed and only pro is active, then 'pro' is the truth and
+    // writing it is not a downgrade — it is the mirror doing its job. Wrapping
+    // this in tierAfterGrant would pin a lapsed Max forever.
+    tier: decision.tier,
     pro_until: decision.proUntil,
     rc_app_user_id: id,
     // Advance the webhook ordering stamp. This reconcile reflects RC's CURRENT
@@ -4983,10 +5048,38 @@ const server = http.createServer((req, res) => {
           'REFUND',
         ]);
 
+        // TIER FROM THE EVENT (2026-09-02). RC webhook events carry
+        // `entitlement_ids` — an array of entitlement LOOKUP KEYS (not the
+        // internal ids the v2 REST API returns). Map them and take the highest
+        // rank, so a Max renewal writes 'max' instead of clobbering it to 'pro'.
+        //
+        // READ DEFENSIVELY: null when the field is absent or carries nothing we
+        // recognise, and the caller falls back to 'pro' — exactly today's
+        // behaviour, so a wrong assumption about this field cannot regress the
+        // Pro path. The absence is logged rather than assumed away, because
+        // "Max silently renews as Pro" is the failure it would cause.
+        const webhookTier = (() => {
+          const ids = Array.isArray(event.entitlement_ids) ? event.entitlement_ids : null;
+          if (!ids || ids.length === 0) return null;
+          let best = null; let bestRank = -1;
+          for (const raw of ids) {
+            const t = ENTITLEMENT_TIER_BY_LOOKUP_KEY[String(raw || '').trim()];
+            if (!t) continue;
+            const r = tierRank(t);
+            if (r > bestRank) { bestRank = r; best = t; }
+          }
+          return best;
+        })();
+        if (grantsPro.has(type) && !webhookTier) {
+          console.warn(`[RevenueCat] webhook ${type}: no usable entitlement_ids `
+            + `(${JSON.stringify(event.entitlement_ids ?? null)}) — falling back to tier 'pro'. `
+            + `A Max subscriber is protected by the raise-guard in applyTo, not by this value.`);
+        }
+
         let update = null;
         if (grantsPro.has(type)) {
           update = {
-            tier: 'pro',
+            tier: webhookTier || 'pro',
             pro_until: expirationIso,
             rc_app_user_id: appUserId,
             rc_product_id: productId,
@@ -5119,6 +5212,35 @@ const server = http.createServer((req, res) => {
           if (environment) extras.rc_environment = environment;
           if (useOrdering) extras.rc_last_event_ms = eventMs;
           const payload = { ...update, ...extras };
+          // RAISE-GUARD, GRANTS ONLY (2026-09-02). A grant may only ever RAISE a
+          // tier — the rule TIER_RANK/tierAfterGrant were written for. Without
+          // it, a RENEWAL webhook for a Max subscriber whose event carries no
+          // usable entitlement_ids writes 'pro' and silently demotes them, which
+          // is precisely the clobber the TIER_RANK comment describes.
+          //
+          // SCOPED TO GRANTS ON PURPOSE: EXPIRATION/REFUND write tier:'free',
+          // and 'free' ranks BELOW every paid tier. Applying this to a revoke
+          // would refuse the downgrade and make subscriptions unrevokable —
+          // a far worse bug than the one it fixes.
+          //
+          // The read-then-write race is safe here because tierAfterGrant is
+          // monotonic: two concurrent grants can only ever settle on the higher
+          // tier, never on a lower one.
+          if (grantsPro.has(type) && payload.tier) {
+            try {
+              const { data: cur } = await supabaseAdmin
+                .from('profiles').select('tier').eq('id', id).maybeSingle();
+              const raised = tierAfterGrant(cur && cur.tier, payload.tier);
+              if (raised !== payload.tier) {
+                console.log(`[RevenueCat] raise-guard: keeping stored tier '${raised}' `
+                  + `over incoming grant '${payload.tier}' for ${id}`);
+              }
+              payload.tier = raised;
+            } catch (_) {
+              // A failed read must not drop the grant. Worst case we write the
+              // incoming tier, which is exactly the pre-guard behaviour.
+            }
+          }
           let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
           if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
           let { data, error } = await q.select('id');
