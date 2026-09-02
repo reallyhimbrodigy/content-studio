@@ -317,6 +317,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
+const _freeCredits = require('./lib/free-credits');
 // Default OFF. A debit that can 402 every user in the product is armed by
 // an explicit env flip, after balances are verified -- not by a merge.
 const CREDITS_DEBIT_ENABLED =
@@ -962,6 +963,102 @@ async function resolveEntitlementTierMap(projectId, secret) {
     return map;
   } catch (e) {
     return null;
+  }
+}
+
+/**
+ * LAZY FREE-TIER ALLOWANCE ROLL — called at the debit site and the balance read.
+ *
+ * Free users have no subscription product, so RevenueCat's recurring grant (what
+ * gives Pro 200 and Max 1000 on renewal) has nothing to hang on. This is the one
+ * allowance the server grants itself.
+ *
+ * NO CRON, deliberately. Granting monthly to every free profile is
+ * O(registered) — 19,478 accounts against 5,480 that rendered in 30 days, and
+ * RC rate-limits VC endpoints to 480/min. Lazy is O(active), needs no scheduler,
+ * and self-heals a missed month on next use.
+ *
+ * NEVER THROWS. Both call sites are on the render/read path; a credits problem
+ * must not take down a render. Every exit returns a reason string instead.
+ */
+async function ensureFreePeriodGrant(userId, { isPaid }) {
+  const skip = (reason) => ({ granted: 0, reason });
+  try {
+    // Paid tiers get their allowance FROM RevenueCat on renewal. Running this
+    // for them would top a spent-down Pro user up to the FREE 30 — replacing
+    // their 200 allowance with a smaller one.
+    if (isPaid) return skip('paid_tier');
+    if (!supabaseAdmin) return skip('no_db');
+    if (!_credits.isConfigured()) return skip('credits_not_configured');
+    // Same gate as the `credits` health flag: never write to a project we have
+    // not reached. isConfigured() is presence-only and cannot tell.
+    if (_rcHealthProbe.value !== 'ok') return skip('rc_unreachable');
+
+    const period = _freeCredits.periodKey();
+
+    // THE DEVICE CLAIM IS A PRECONDITION, not a separate feature. If the roll
+    // granted without one, the free allowance would be available to any account
+    // that simply never calls the claim endpoint — which is every account an
+    // abuser makes. The install guard is only real if the allowance depends on it.
+    const { data: claim, error: claimErr } = await supabaseAdmin
+      .from('free_credit_grants').select('device_id').eq('user_id', userId).limit(1);
+    if (claimErr) {
+      // FAIL CLOSED. A failed read is indistinguishable from "no claim", and
+      // treating it as "no claim" is the safe direction here (skip), whereas
+      // treating it as "claimed" would grant on an unverified device.
+      console.error('[free-credits] device-claim read FAILED — skipping:', claimErr.message);
+      return skip('claim_read_failed');
+    }
+    if (!claim || claim.length === 0) return skip('no_device_claim');
+
+    const { data: periodRow, error: perErr } = await supabaseAdmin
+      .from('free_credit_periods').select('user_id, period, provider_ok')
+      .eq('user_id', userId).eq('period', period).maybeSingle();
+    if (perErr) {
+      // FAIL CLOSED, and this one is the dangerous direction: a failed read
+      // reads as "no row", which decides `grant`, which credits again. This is
+      // the exact absence-versus-failure shape behind the refund-leg loop.
+      console.error('[free-credits] period read FAILED — refusing to grant:', perErr.message);
+      return skip('period_read_failed');
+    }
+
+    const decision = _freeCredits.decidePeriodGrant({
+      periodRow, period, currentPeriod: period });
+    if (decision.action === 'skip') return skip(decision.reason);
+
+    // CLAIM THE PERIOD BEFORE CREDITING. The (user_id, period) PK is the
+    // one-shot gate: two concurrent renders race, one inserts, the loser takes
+    // the duplicate-key error and grants nothing. provider_ok=false means the
+    // row exists before the money does, so a failed credit is a VISIBLE ROW
+    // rather than nothing.
+    if (decision.action === 'grant') {
+      const { error: insErr } = await supabaseAdmin
+        .from('free_credit_periods')
+        .insert({ user_id: userId, period, amount: 0, provider_ok: false });
+      if (insErr) return skip('period_claim_lost');   // another request won
+    }
+
+    // Delta is computed from the LIVE balance, which is what makes a retry of a
+    // never-landed row safe: if the credit actually succeeded last time, the
+    // balance already reflects it and the delta is 0.
+    const bal = await _credits.getBalance(userId);
+    const delta = _freeCredits.topUpDelta(bal.balance);
+    if (delta > 0) await _credits.credit(userId, delta);
+
+    await supabaseAdmin.from('free_credit_periods')
+      .update({ provider_ok: true, amount: delta, balance_before: bal.balance })
+      .eq('user_id', userId).eq('period', period);
+
+    if (delta > 0) {
+      console.log('  [free-credits] granted %s to userId=%s period=%s (balance was %s)',
+        delta, userId, period, bal.balance);
+    }
+    return { granted: delta, reason: decision.reason, period };
+  } catch (e) {
+    // A credits failure must never fail a render. The unlanded row remains
+    // queryable (provider_ok=false) so this is not silent.
+    console.error('[free-credits] grant failed (non-fatal):', e && (e.code || e.message));
+    return skip('exception');
   }
 }
 
@@ -4075,6 +4172,21 @@ const server = http.createServer((req, res) => {
           'picker_asset_unrecoverable',
           // Onboarding language choice — segments every funnel above by locale.
           'language_changed',
+          // FREE-TIER CREDITS (2026-09-02). Allowlisted BEFORE the client emits
+          // them, which is the whole lesson of the 25 above: those were dropped
+          // silently for a full release because the allowlist trailed the
+          // client. `granted` is the funnel's denominator — without it, "how
+          // many new accounts actually received their 30" is unanswerable.
+          // `device_claimed` is the 409: a second account on a device that
+          // already seeded one. Its RATE is the only signal that distinguishes
+          // ordinary device reuse (a family iPad) from farming, and a bare
+          // grant count cannot show it.
+          'free_credits_granted', 'free_credits_device_claimed',
+          // Caught by the pre-push parity gate on the run that added the two
+          // above — Frontend added it while wiring the top-up packs. Exactly
+          // the drift the gate was moved to pre-push to catch, found on a
+          // developer machine instead of a release later.
+          'credits_topup_open',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
@@ -6083,6 +6195,12 @@ const server = http.createServer((req, res) => {
           // gated: it is read-only and cannot block a render.
           if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
               && _credits.shouldDebit({ mode: 'full' })) {
+            // LAZY ROLL (write side) — BEFORE the debit, or a user whose month
+            // just turned over gets a 402 holding an allowance they are owed.
+            // This is the O(active) half of the no-cron design: the check runs
+            // once per render, and the (user_id, period) PK makes it a no-op for
+            // every render after the first of a period. Never throws.
+            await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
             try {
               await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
               _creditsDebited = _credits.COST_PER_RENDER;
@@ -7162,7 +7280,12 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 503, { error: 'credits_unavailable',
                                       reason: 'not_configured' });
         }
-        const b = await _credits.getBalance(authUser.id);
+        // TIER FIRST, then the free roll, then the balance — in that order.
+        // The roll needs to know whether this user is paid (paid tiers get their
+        // allowance from RevenueCat and must not be topped up to the free 30),
+        // and the balance must be read AFTER any grant or the caller is handed a
+        // number that was already stale when it was computed.
+        //
         // resolveEntitlementDecision(fetchSubscriptionEntitlement(...)) is the
         // real pair; an earlier draft called a `resolveEntitlement` that does
         // not exist. It sat inside this try/catch, so the endpoint would have
@@ -7173,6 +7296,11 @@ const server = http.createServer((req, res) => {
           const _dec = resolveEntitlementDecision(_ent);
           if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
         } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
+
+        // LAZY ROLL (read side). Never throws; a skip reason is not an error.
+        const _roll = await ensureFreePeriodGrant(authUser.id, { isPaid: tier !== 'free' });
+
+        const b = await _credits.getBalance(authUser.id);
         return sendJson(res, 200, {
           balance: b.balance,
           currency_code: b.currency_code,
@@ -7182,11 +7310,119 @@ const server = http.createServer((req, res) => {
           tier,
           allowance: _credits.TIER_ALLOWANCE[tier] ?? null,
           cost_per_render: _credits.COST_PER_RENDER,
+          // Why the free allowance did or did not roll on this read. A client
+          // showing 0 credits needs to distinguish "you have spent them" from
+          // "the grant could not run" — `no_device_claim` and `rc_unreachable`
+          // are different conversations with the user, and both render as a
+          // bare 0 without this.
+          free_grant: { granted: _roll.granted, reason: _roll.reason },
         });
       } catch (e) {
         if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
         console.error('[credits] balance read failed:', e && (e.code || e.message));
         return sendJson(res, 503, { error: 'balance_unavailable' });
+      }
+    })();
+    return;
+  }
+
+  // ── POST /api/credits/free-grant — claim this install, then seed the account
+  // Called once at sign-in. The DEVICE claim is what stops one phone seeding N
+  // accounts at 30 each; the monthly roll after it is per ACCOUNT, so a user
+  // with two devices gets 30/month, not 60.
+  if (parsed.pathname === '/api/credits/free-grant' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'free-grant', authUser.id, 30, 60)) return;
+
+        // GATED ON THE KEYCHAIN BUILD, same floor and same reason as the
+        // reverse trial: 241 shipped identifierForVendor cached in UserDefaults,
+        // which does NOT survive reinstall. Keyed on that, this endpoint is a
+        // delete-and-reinstall faucet for 30 credits. Ships DARK — with
+        // FREE_CREDITS_MIN_BUILD unset it refuses, so it cannot go live against
+        // a weak key by accident.
+        const _minBuild = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+        if (!Number.isInteger(_minBuild)) {
+          return sendJson(res, 503, { error: 'free_credits_unavailable',
+                                      reason: 'min_build_unset' });
+        }
+        const _bm = String(clientAppVersion(req) || '').match(/\((\d+)\)/);
+        const _build = _bm ? parseInt(_bm[1], 10) : null;
+        if (!Number.isInteger(_build) || _build < _minBuild) {
+          return sendJson(res, 409, { error: 'build_too_old',
+                                      min_build: _minBuild, build: _build });
+        }
+
+        const body = await readJsonBody(req);
+        const deviceId = String((body && body.device_id) || '').trim();
+        if (!deviceId || deviceId.length < 8 || deviceId.length > 128) {
+          return sendJson(res, 400, { error: 'device_id_required' });
+        }
+
+        // FAIL CLOSED ON A READ ERROR. A failed read returns null, which is
+        // INDISTINGUISHABLE from "this device is unseen" — and unseen decides
+        // `claim`, which grants. RLS with no policies returns zero rows rather
+        // than an error to any non-service-role client, which is the same wrong
+        // answer by a second route; we use supabaseAdmin here for that reason.
+        const { data: prior, error: priorErr } = await supabaseAdmin
+          .from('free_credit_grants')
+          .select('device_id, user_id, claimed_at').eq('device_id', deviceId).maybeSingle();
+        if (priorErr) {
+          console.error('[free-credits] prior-claim read FAILED — refusing rather '
+            + 'than re-granting:', priorErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'prior_read_failed' });
+        }
+
+        const decision = _freeCredits.decideDeviceClaim({ row: prior, userId: authUser.id });
+        if (decision.action === 'conflict') {
+          // A DIFFERENT account on a device that already seeded one. 409, not a
+          // grant — this is the multi-account case the PK exists for.
+          return sendJson(res, 409, { error: 'already_used',
+                                      device_claimed_at: prior.claimed_at });
+        }
+
+        if (decision.action === 'claim') {
+          const { error: insErr } = await supabaseAdmin
+            .from('free_credit_grants')
+            .insert({ device_id: deviceId, user_id: authUser.id, app_build: _build });
+          if (insErr) {
+            // Lost a race. Re-read and answer from the WINNER rather than
+            // guessing — the winner may be a different user, which is a 409.
+            const { data: won } = await supabaseAdmin
+              .from('free_credit_grants')
+              .select('user_id, claimed_at').eq('device_id', deviceId).maybeSingle();
+            if (won && won.user_id !== authUser.id) {
+              return sendJson(res, 409, { error: 'already_used',
+                                          device_claimed_at: won.claimed_at });
+            }
+            if (!won) return sendJson(res, 503, { error: 'grant_unavailable' });
+          }
+        }
+
+        // Paid tiers get their allowance from RevenueCat on renewal; the roll
+        // no-ops for them rather than replacing 200 with 30.
+        let isPaid = false;
+        try {
+          const _dec = resolveEntitlementDecision(await fetchSubscriptionEntitlement(authUser.id));
+          isPaid = Boolean(_dec && _dec.isPro);
+        } catch (_) { /* treat as free; topUpDelta never lowers a balance */ }
+
+        const roll = await ensureFreePeriodGrant(authUser.id, { isPaid });
+        return sendJson(res, 200, {
+          claimed: true,
+          already: decision.action === 'already_claimed',
+          granted: roll.granted,
+          reason: roll.reason,
+          period: roll.period || _freeCredits.periodKey(),
+          allowance: _freeCredits.FREE_MONTHLY_ALLOWANCE,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[free-credits] free-grant failed:', e && (e.code || e.message));
+        return sendJson(res, 503, { error: 'grant_unavailable' });
       }
     })();
     return;
