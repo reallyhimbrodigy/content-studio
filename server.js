@@ -3876,6 +3876,49 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // ── THE 244 CLIENT COHORT (2026-09-02) ────────────────────────────
+          // 25 events the client on app-conversion-surface already emits and
+          // this set did not know. Every one of them was being DROPPED by the
+          // SQL mirror — not rejected loudly, silently discarded — so each of
+          // the funnels below was half-blind on the server side while looking
+          // fine in PostHog. Allowlisted BEFORE 244 ships, so no cohort is
+          // measured through a hole.
+          //
+          // DEFERRED AUTH — the funnel the `deferred_auth` flag switches. Without
+          // these, "how many users abandoned at the auth gate" is unanswerable,
+          // which is the one question that decides whether to roll the flag back.
+          'auth_gate_shown', 'auth_gate_abandoned', 'auth_gate_resumed',
+          'auth_gate_resume_missing_product', 'purchase_blocked_unauthenticated',
+          // CREDITS — the meter's own funnel. These are the reason this matters
+          // now: arming CREDITS=1 without them means the credits surface ships
+          // with no server-side record of exhaustion or refund display.
+          'credits_exhausted', 'credits_exhausted_shown', 'credits_refund_shown',
+          'free_export_spent_shown',
+          // DOWNSELL — shown vs skipped is the same distinction as the offer
+          // reveal above: "no downsell existed" and "the user declined it" are
+          // opposite conclusions about one empty result.
+          'downsell_shown', 'downsell_skipped',
+          // REVERSE TRIAL — grant outcomes AND its two failure modes. The
+          // failures matter more than the grant: a grant with no duration and a
+          // missing device id are silent no-ops that would otherwise look like
+          // a user who simply never qualified.
+          'reverse_trial_granted', 'reverse_trial_ineligible',
+          'reverse_trial_unavailable', 'reverse_trial_device_id_missing',
+          'reverse_trial_grant_no_duration',
+          // REFERRAL ENTRY — opened / entered / rejected is the whole funnel;
+          // rejection rate is the signal that a code format is wrong.
+          'referral_code_field_opened', 'referral_code_entered',
+          'referral_code_entry_rejected',
+          // INSTANT QUESTIONS — shown/answered, the pair the flag is judged on.
+          'instant_question_shown', 'instant_question_answered',
+          // CLIENT-SIDE FAILURES that have no server trace by construction —
+          // same class as upload_never_started above. A keychain write that
+          // fails takes the device identity with it, and an unrecoverable
+          // picker asset is a pick that never becomes a job.
+          'device_id_keychain_write_failed', 'first_run_keychain_write_failed',
+          'picker_asset_unrecoverable',
+          // Onboarding language choice — segments every funnel above by locale.
+          'language_changed',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
