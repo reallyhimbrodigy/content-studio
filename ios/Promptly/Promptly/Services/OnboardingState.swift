@@ -198,6 +198,9 @@ final class OnboardingState: ObservableObject {
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
+            #if DEBUG
+            debugReapplyForcedFlags()   // the refresh must not undo a forced flag
+            #endif
             progressRingEnabled = (obj?["progress_ring"] as? String) == "on"
             beforeAfterEnabled = (obj?["before_after"] as? String) == "on"
             instantQuestionsEnabled = (obj?["instant_questions"] as? String) == "on"
@@ -267,7 +270,22 @@ final class OnboardingState: ObservableObject {
     #if DEBUG
     /// Sim-proof harness: force a conversion-build flag on locally
     /// (screenshots of dark surfaces without a server flip). DEBUG only.
+    /// Forced flags are STICKY.
+    ///
+    /// A one-shot force is clobbered by the very next server refresh, which
+    /// writes every flag from the payload — so the app reverts a second after
+    /// launch and the surface under test never appears. Cost a full
+    /// build-install-run cycle proving deferred auth "did not work" when the
+    /// flag had simply been overwritten. Remembering what was forced and
+    /// re-applying it after each refresh is the only version that holds.
+    private static var forcedKeys: Set<String> = []
+
+    func debugReapplyForcedFlags() {
+        for k in Self.forcedKeys { debugForceFlag(k) }
+    }
+
     func debugForceFlag(_ key: String) {
+        Self.forcedKeys.insert(key)
         switch key {
         case "first_launch_paywall": if firstLaunchPaywallEnabled != true { firstLaunchPaywallEnabled = true }
         case "attribution_gate": if !attributionGateEnabled { attributionGateEnabled = true }

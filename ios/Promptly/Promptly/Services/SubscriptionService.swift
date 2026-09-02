@@ -49,6 +49,16 @@ final class SubscriptionService: ObservableObject {
     /// "hidden for Max users" everywhere except on the launch that matters.
     @Published private(set) var isMax: Bool = false
 
+    /// Whether RevenueCat has answered about this device even once.
+    ///
+    /// Entitlements come from the App Store receipt, so an existing subscriber
+    /// on a NEW device is Pro before they sign in — RevenueCat just has not said
+    /// so yet at launch. Deciding to show a first-run paywall while this is
+    /// false means deciding on an unread value, and the answer arrives a moment
+    /// later: the paywall flashes at somebody who already pays. Nil-until-known
+    /// is the same rule the credit balance follows, for the same reason.
+    @Published private(set) var hasResolvedCustomerInfo = false
+
     #if DEBUG
     /// Sim-proof harness only: pose the Max entitlement so a capture can show
     /// what a Max subscriber actually sees. DEBUG, and never called from app
@@ -572,6 +582,7 @@ final class SubscriptionService: ObservableObject {
 
     fileprivate func applyCustomerInfo(_ info: CustomerInfo) {
         lastCustomerInfo = info
+        if !hasResolvedCustomerInfo { hasResolvedCustomerInfo = true }
         let entitled = info.entitlements[Self.proEntitlementId]?.isActive == true
         if entitled != isPro {
             isPro = entitled

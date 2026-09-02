@@ -245,6 +245,10 @@ struct PromptlyApp: App {
         // screenshot mode is the supported capture path for SwiftUI apps.
         phConfig.sessionReplayConfig.screenshotMode = true
         PostHogSDK.shared.setup(phConfig)
+        // The funnel key, registered before the first event so no session is
+        // ever missing it. Required before deferred auth arms: without it a
+        // UUID-keyed funnel reads the pre-auth top of funnel as a collapse.
+        Analytics.registerDeviceIdSuperProperty()
 
         // Boot RevenueCat. Pulls offerings + initial CustomerInfo so the
         // paywall has data ready the first time it's presented. Once the
@@ -366,7 +370,25 @@ struct PromptlyApp: App {
               // sold what they already pay for, once per install. The fix for
               // one defect created the other, which is why the user-type matrix
               // exists rather than spot-checking the happy path.
-              !subscription.isPro else { return false }
+              !subscription.isPro,
+              // AND WAIT FOR REVENUECAT TO ANSWER (2026-09-02, deferred auth).
+              //
+              // `isPro` starts false and becomes true a moment after launch when
+              // the receipt resolves. Under deferred auth the reinstall case is
+              // covered by the Keychain, but a NEW DEVICE on the same Apple ID
+              // has no Keychain entry and IS an existing subscriber — so
+              // deciding while `isPro` is merely not-yet-known flashes a paywall
+              // at someone who already pays. Decided, not accepted: the branch
+              // waits for the first resolution rather than reading an unread
+              // value. LaunchView is already on screen for its own 700ms, so the
+              // wait is usually invisible; `resolveDeadlinePassed` bounds it at
+              // 2s so a dead network cannot suppress the funnel forever.
+              // countdown-ok: a bounded internal wait for RevenueCat's first
+              // answer. Nothing counts down on screen and no time is shown to
+              // the user; this only stops a paywall being decided on an unread
+              // entitlement.
+              (subscription.hasResolvedCustomerInfo || resolveDeadlinePassed)
+        else { return false }
         return true
     }
 
@@ -427,6 +449,25 @@ struct PromptlyApp: App {
     /// floor: ~280ms entrance + ~420ms of idle "the runner is alive"
     /// before any handoff is allowed.
     @State private var launchMinElapsed = false
+
+    /// Bounds the wait for RevenueCat's first answer. Without a deadline a
+    /// device that cannot reach RevenueCat would never see the first-run funnel
+    /// at all — trading a brief flash for a permanent disappearance.
+    // countdown-ok: internal timeout flag, never rendered.
+    @State private var resolveDeadlinePassed = false
+
+    #if DEBUG
+    /// `-forceFlags a,b` — turn server flags on locally so the REAL app path can
+    /// be exercised, rather than a harness rendering a view in isolation. The
+    /// difference matters for deferred auth: the question is not what AppShell
+    /// looks like, it is what the SERVICES do when nothing is signed in, and
+    /// only the real root reaches them.
+    private static var forcedFlags: [String] {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-forceFlags"), i + 1 < args.count else { return [] }
+        return args[i + 1].split(separator: ",").map(String.init)
+    }
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -590,10 +631,26 @@ struct PromptlyApp: App {
             .environment(\.locale, onboarding.locale ?? .current)
             .preferredColorScheme(.dark)
             .task {
+                #if DEBUG
+                // Applied before anything reads a flag, and re-applied is free
+                // (every setter is guarded).
+                for f in Self.forcedFlags { OnboardingState.shared.debugForceFlag(f) }
+                // `-firstRunSeen` / `-firstRunReset`: the funnel is once per
+                // DEVICE and stored in the Keychain, so it cannot be replayed or
+                // skipped by reinstalling. Testing what comes AFTER it needs a
+                // way to say it already happened.
+                let args = ProcessInfo.processInfo.arguments
+                if args.contains("-firstRunReset") { FirstRun.reset() }
+                if args.contains("-firstRunSeen") { FirstRun.markSeen() }
+                #endif
                 // Minimum LaunchView display time so the entrance
                 // animation always completes. Runs in parallel with
                 // the auth check; whichever finishes later determines
                 // when the handoff fires.
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    resolveDeadlinePassed = true   // countdown-ok: internal timeout, not UI
+                }
                 Task {
                     try? await Task.sleep(for: .milliseconds(700))
                     launchMinElapsed = true

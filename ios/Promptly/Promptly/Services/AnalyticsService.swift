@@ -216,6 +216,24 @@ enum Analytics {
     /// pre-signup (hook video, quiz, wall views) detaches from the person who
     /// eventually converts. Person properties are the dimensions every funnel
     /// cuts by; tier updates ride through here as entitlement changes.
+    /// Register `device_id` as a PostHog super-property, once, at bootstrap.
+    ///
+    /// THE FUNNEL KEY MUST EXIST BEFORE THE FUNNEL MOVES. Under deferred auth
+    /// the top of the funnel runs with no user_id, so a UUID-keyed funnel will
+    /// read as a collapse the day the flag arms — not because fewer people
+    /// enter, but because the key is not there yet. `device_id` is on every
+    /// event either way (it is attached unconditionally in `track`), which makes
+    /// re-keying possible; registering it as a super-property makes it present
+    /// on PostHog events that never pass through `track`, so the two sinks
+    /// cannot disagree about who a session belonged to.
+    ///
+    /// It is deliberately NOT the distinct_id: identify() must still merge the
+    /// anonymous person onto the real one at sign-in, and overriding distinct_id
+    /// would break that merge.
+    static func registerDeviceIdSuperProperty() {
+        PostHogSDK.shared.register(["device_id": deviceIdForJoin])
+    }
+
     static func identify(userId: String, tier: String? = nil, preferredLanguage: String? = nil) {
         Task.detached(priority: .utility) {
             let (territory, _) = await storefront()
