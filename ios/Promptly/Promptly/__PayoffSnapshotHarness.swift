@@ -237,25 +237,19 @@ struct PayoffSnapshotHarnessView: View {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 23: bleed("Max selected") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 24: bleed("Pro selected") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 25: bleed("PRO selected, viewer holds MAX — no referral") {
                 // showsReferral stays TRUE. The row must disappear on its own,
@@ -265,63 +259,49 @@ struct PayoffSnapshotHarnessView: View {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 28: bleed("step one CREDITS ARMED") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 29: bleed("Max selected CREDITS ARMED") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
                     
-                    initialSelectionId: "promptly_pro_yearly")
+                    initialTierAllowance: 200)
             }
             case 34: bleed("MAX selected — title must follow the tier") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
                     
-                    initialSelectionId: "promptly_max_yearly")
+                    initialTierAllowance: 1000)
             }
             case 30: FitProbe(label: "FIT step one CREDITS ARMED") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 26: FitProbe(label: "FIT step one") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,)
+                    durations: { HarnessPaywallMock.durations($0) },)
             }
             case 27: FitProbe(label: "FIT with a duration selected") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
-                    sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
                     
-                    initialSelectionId: "promptly_pro_yearly")
+                    initialTierAllowance: 200)
             }
             case 16: OnboardingQuestionView(question: .audienceV2,
                                             progress: (1, 3), onSkip: {}) { _ in }

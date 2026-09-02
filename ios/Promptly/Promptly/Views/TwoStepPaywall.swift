@@ -265,24 +265,31 @@ enum PaywallMapping {
 struct PaywallLayout: View {
     let title: String
     let tiers: [PaywallTierOption]
-    /// Durations for a tier, shown INSIDE that tier's card.
     let durations: (Int) -> [PaywallDurationOption]
-    /// The benefits both tiers include.
-    let sharedFeatures: [String]
-    /// What Max adds, immediately above the cards.
-    let maxFeatures: [String]
     var onClose: () -> Void = {}
     var onPurchase: (String) -> Void = { _ in }
 
-    /// Capture aid: start with a duration already chosen, so the CTA state can
-    /// be photographed. A real user reaches it by tapping.
-    var initialSelectionId: String? = nil
+    /// Capture aid: open on this tier. A real user taps the toggle.
+    var initialTierAllowance: Int? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// ONE selection across BOTH cards — the tier and the duration are the same
-    /// decision now, not two. Nil means nothing chosen and no CTA.
+    /// A TIER TOGGLE, not two columns.
+    ///
+    /// The dead space moved from Max to Pro and back through three attempts at
+    /// centring, which is the signal that it was never a spacing bug: two
+    /// columns of unequal content cannot both fill a shared height. Showing one
+    /// tier at a time removes the geometry that caused it, and it drops the
+    /// prices on screen from five to two or three — the reader compares
+    /// durations within a tier instead of a five-price grid.
+    @State private var tierAllowance: Int?
     @State private var selectedId: String?
+
+    /// The CTA's accent. Saturated, and used by NOTHING else here — white reads
+    /// as neutral or dismiss on iOS, which is the wrong signal for the one
+    /// control the screen exists for. The recommended badge is gold, so this is
+    /// deliberately not gold.
+    private static let accent = Color(hex: "6C5CE7")
 
     var body: some View {
         VStack(spacing: 0) {
@@ -292,164 +299,94 @@ struct PaywallLayout: View {
                 .renderingMode(.original)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 26, height: 26)
-                .padding(.bottom, 4)
+                .frame(width: 24, height: 24)
+                .padding(.bottom, 6)
 
-            Text(displayTitle)
-                .cType(22, .bold)
+            // OUTCOME-LED. It sells the result; the tier name is carried by the
+            // toggle directly beneath and by the CTA at the bottom, so naming it
+            // here too would spend the largest type on the screen restating
+            // something already said twice.
+            Text("Edit any video just by typing")
+                .cType(21, .bold)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
 
-            // The columns start under the title and TAKE the height. They used
-            // to be content-sized with spacers either side, so the pitch sat in
-            // the bottom 40% under an empty band and every element had been
-            // shrunk to fit a space that was never the constraint.
-            tierCards
-                .padding(.top, 10)
+            tierToggle
+                .padding(.horizontal, 20)
 
-            // SOCIAL PROOF VOUCHES FOR THE PRODUCT, not for one tier. Inside the
-            // Max card it read as "Max has 25,000 creators", which is both a
-            // narrower claim and a stranger one — the rating is the app's.
+            if let tier = activeTier {
+                tierBody(tier)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    .transition(reduceMotion ? .opacity : .opacity)
+            }
+
+            Spacer(minLength: 8)
+
             Text("★ 4.8 · 25,000+ creators")
                 .cType(11, .semibold)
                 .foregroundColor(.white.opacity(0.6))
                 .frame(maxWidth: .infinity)
-                .padding(.top, 5)
+                .padding(.bottom, 6)
 
-            Spacer(minLength: 6)
-
-            // NO REFERRAL HERE (ruled 2026-09-02). It lives on the 50%-off
-            // offer screen only — a free-Pro alternative on the purchase surface
-            // competes with the decision this screen exists to close.
-
-            // NO CTA UNTIL A CHOICE IS MADE. A button that sits there greyed is
-            // a control answering a question the cards are still asking; one
-            // that ARRIVES is a response to something the user did. It names the
-            // purchase, so the last thing before a charge says what is being
-            // charged for.
-            if let pick = selectedPick {
-                VStack(spacing: 5) {
-                    Button {
-                        onPurchase(pick.option.id)
-                    } label: {
-                        Text(ctaTitle(for: pick))
-                            .cType(16, .bold)
-                            .foregroundColor(.black)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 46)
-                            .background(Capsule().fill(Color.white))
-                    }
-                    .buttonStyle(.plain)
-
-                    Text(TrialCopy.fineprint)
-                        .cType(9)
-                        .foregroundColor(.white.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    // REQUIRED BY APPLE on any surface that sells a
-                    // subscription: a link to the Terms (the EULA) and to the
-                    // Privacy Policy. Their absence is a rejection, and this
-                    // screen is about to become every upgrade entry point.
-                    HStack(spacing: 14) {
-                        Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
-                        Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
-                    }
-                    .cType(9)
-                    .foregroundColor(.white.opacity(0.45))
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .transition(reduceMotion ? .opacity
-                            : .move(edge: .bottom).combined(with: .opacity))
-            }
+            footer
         }
         .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85),
-                   value: selectedId)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88),
+                   value: tierAllowance)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedId)
         .background(Color.black.ignoresSafeArea())
-        .onAppear { applyDefaultSelection() }
-        // AND AGAIN WHEN THE PRODUCTS ARRIVE. `onAppear` fires before the
-        // offering has loaded, so `recommendedId` was nil and the screen opened
-        // with NOTHING selected and no CTA at all — worse than the wrong
-        // default, because there is no way to buy until the user taps. A
-        // one-shot against data that arrives later is the same defect the credit
-        // badge had; the fix is the same shape.
-        .onChange(of: tiers) { _, _ in applyDefaultSelection() }
+        .onAppear { applyDefaults() }
+        // The offering loads AFTER first render, so a one-shot default resolved
+        // against an empty list and left the screen with nothing selected and no
+        // CTA. Re-applied when the tiers arrive; idempotent, so it cannot yank a
+        // row out from under a choice already made.
+        .onChange(of: tiers) { _, _ in applyDefaults() }
     }
 
-    /// The title follows the SELECTED TIER once there is one.
-    ///
-    /// Derived, not switched. `tier.title` comes from the same resolution the
-    /// rest of this file uses — `isMax` is `allowance == maxAllowance`, read
-    /// through `CreditAllowance` — so a third tier names itself with no edit
-    /// here. Two hardcoded strings behind an `if isMax` would have been a second
-    /// place that has to know Max exists, and keying off a product id would hit
-    /// the `.custom` trap that has already produced three defects.
-    ///
-    /// Before a selection the reason-derived title stands: a user who arrived
-    /// from the export gate should still see why they are here, and overriding
-    /// that on arrival would throw the routing away.
-    private var displayTitle: String {
-        guard let pick = selectedPick else { return title }
-        return String(localized: "Unlock Promptly \(pick.tier.title)")
-    }
+    // MARK: Defaults — everything agrees on Pro Year
 
-    /// BENEFIT-LED, and derived from what is actually selected.
-    ///
-    /// "Continue to Purchase" leads with the word for the part the user is
-    /// wary of. When the selection carries a computed saving the button states
-    /// it — the saving is the reason to take that row — and otherwise it names
-    /// what they get. Both forms come from the selection, so neither can
-    /// describe a plan that is not chosen.
-    private func ctaTitle(for pick: (tier: PaywallTierOption, option: PaywallDurationOption)) -> String {
-        if pick.option.isAnnual, let pct = pick.option.percentOff {
-            return String(localized: "Start Yearly — Save \(pct)%")
+    private func applyDefaults() {
+        if tierAllowance == nil {
+            tierAllowance = initialTierAllowance ?? recommendedTier?.allowance
         }
-        return String(localized: "Get Promptly \(pick.tier.title)")
-    }
-
-    /// PRO YEAR PRESELECTED, and it must agree with the badge, the headline and
-    /// the CTA from the first frame.
-    ///
-    /// Idempotent: it only fills an EMPTY selection, so a later product refresh
-    /// cannot yank the row out from under someone who has already chosen.
-    private func applyDefaultSelection() {
-        guard selectedId == nil else { return }
-        selectedId = initialSelectionId ?? recommendedId
-    }
-
-    /// Pro's yearly row — the recommendation, DERIVED rather than named. Pro is
-    /// the lowest allowance (`tiers` is ascending) and yearly is the row flagged
-    /// `isAnnual`, so a repricing or a new tier cannot leave this pointing at a
-    /// product that no longer exists.
-    private func openLegal(_ urlString: String) {
-        guard let url = URL(string: urlString) else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private var recommendedId: String? {
-        guard let pro = tiers.first(where: { !$0.isMax }) ?? tiers.first else { return nil }
-        return durations(pro.allowance).first(where: { $0.isAnnual })?.id
-    }
-
-    /// The chosen row and the card it belongs to.
-    private var selectedPick: (tier: PaywallTierOption, option: PaywallDurationOption)? {
-        guard let id = selectedId else { return nil }
-        for tier in tiers {
-            if let opt = durations(tier.allowance).first(where: { $0.id == id }) {
-                return (tier, opt)
-            }
+        if selectedId == nil, let t = activeTier {
+            selectedId = preferredRow(in: t)?.id
         }
-        return nil
     }
 
+    /// Pro — the lowest allowance, derived. `tiers` is ascending.
+    private var recommendedTier: PaywallTierOption? {
+        tiers.first(where: { !$0.isMax }) ?? tiers.first
+    }
+
+    /// Yearly if the tier has one. Never weekly by default: $10.99 a week
+    /// annualises to about $571 against $289.99 for the year, on the SKU that
+    /// retains worst — a default that costs roughly twice as much is not
+    /// neutral.
+    private func preferredRow(in tier: PaywallTierOption) -> PaywallDurationOption? {
+        let rows = durations(tier.allowance)
+        return rows.first(where: { $0.isAnnual }) ?? rows.first
+    }
+
+    private var activeTier: PaywallTierOption? {
+        tiers.first(where: { $0.allowance == tierAllowance }) ?? tiers.first
+    }
+
+    private var selectedRow: PaywallDurationOption? {
+        guard let t = activeTier else { return nil }
+        return durations(t.allowance).first(where: { $0.id == selectedId })
+    }
+
+    /// The recommended row: Pro's yearly. The badge marks the RECOMMENDATION,
+    /// not the selection, so it stays put when the user moves.
+    private var recommendedRowId: String? {
+        guard let pro = recommendedTier else { return nil }
+        return preferredRow(in: pro)?.id
+    }
 
     // MARK: Header
 
@@ -474,82 +411,57 @@ struct PaywallLayout: View {
         .padding(.horizontal, 8)
     }
 
-    // MARK: Bullets
+    // MARK: Toggle
 
-    /// The checkmark treatment the rest of the product uses for a promise. The
-    /// bullets ARE the sell, so when this screen runs out of room the spacing
-    /// gives before they do.
-    private func bullets(_ lines: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            ForEach(lines, id: \.self) { line in
-                HStack(alignment: .top, spacing: 9) {
-                    ZStack {
-                        Circle().fill(Color.white).frame(width: 16, height: 16)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.black)
-                    }
-                    Text(line)
-                        .cType(13, .medium)
-                        .foregroundColor(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: Cards, each holding its own durations
-
-    private var tierCards: some View {
-        HStack(alignment: .top, spacing: 10) {
+    private var tierToggle: some View {
+        HStack(spacing: 4) {
             ForEach(tiers) { tier in
-                tierCard(tier)
+                let isOn = tier.allowance == tierAllowance
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    tierAllowance = tier.allowance
+                    // Moving tier moves the selection with it, so the CTA can
+                    // never name a row from the tier the user just left.
+                    selectedId = preferredRow(in: tier)?.id
+                } label: {
+                    Text(tier.title)
+                        .cType(15, .bold)
+                        .foregroundColor(isOn ? .black : .white.opacity(0.75))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(isOn ? Color.white : Color.clear)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .frame(maxHeight: .infinity)
-        .padding(.horizontal, 16)
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Color.white.opacity(0.08)))
     }
 
-    /// A tier as a bordered card: heading, credits, its own bullets, its own
-    /// durations.
-    ///
-    /// The card is back by preference (2026-09-02) after a bare-on-black pass.
-    /// What is KEPT from that pass is the part that was actually wrong before
-    /// it: the columns take the available height instead of floating in the
-    /// bottom 40%, and the type is sized to read rather than shrunk to fit. The
-    /// container was never the reason things were small — the layout was.
-    private func tierCard(_ tier: PaywallTierOption) -> some View {
-        let rows = durations(tier.allowance)
-        let isActive = selectedPick?.tier.allowance == tier.allowance
-        // WHICH TIER IS RECOMMENDED IS DERIVED — the card that owns the
-        // recommended row, not a hardcoded "Pro".
-        let isRecommended = recommendedId.map { rid in
-            durations(tier.allowance).contains { $0.id == rid }
-        } ?? false
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(tier.title)
-                .cType(21, .bold)
-                .foregroundColor(.white)
+    // MARK: The selected tier
 
+    private func tierBody(_ tier: PaywallTierOption) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             if let credits = tier.creditsLine {
                 Text(credits)
-                    .cType(14, .semibold)
-                    .foregroundColor(.white.opacity(0.7))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
+                    .cType(16, .bold)
+                    .foregroundColor(.white)
             }
             if let videos = tier.videosLine {
                 Text(videos)
-                    .cType(11)
-                    .foregroundColor(.white.opacity(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .cType(12)
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.top, 1)
             }
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(tier.features, id: \.self) { line in
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: 9) {
                         ZStack {
                             Circle().fill(Color.white).frame(width: 18, height: 18)
                             Image(systemName: "checkmark")
@@ -564,130 +476,142 @@ struct PaywallLayout: View {
                     }
                 }
             }
-            .padding(.top, 8)
+            .padding(.top, 10)
 
-            // SPACERS BOTH SIDES OF THE PRICE BLOCK. With one spacer the
-            // durations pinned to the bottom and the dead space just moved from
-            // one card to the other — which is what proved it was a layout
-            // problem and not a content one. Split evenly, the block centres in
-            // whatever room the taller card leaves, on BOTH sides.
-            Spacer(minLength: 6)
-
-            VStack(spacing: 4) {
-                ForEach(rows) { row in
+            VStack(spacing: 6) {
+                ForEach(durations(tier.allowance)) { row in
                     durationRow(row)
                 }
             }
+            .padding(.top, 10)
 
-            // 3. THE BENEFIT, not the legal line. "Auto-renews until cancelled"
-            // is a disclosure; this is a reason to say yes, so it sits with the
-            // plan rather than in the fine print.
             Text("Cancel anytime · no commitment")
-                .cType(9)
+                .cType(10)
                 .foregroundColor(.white.opacity(0.5))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
-
-            Spacer(minLength: 6)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(isRecommended ? Color(hex: "F4E4BC").opacity(0.07)
-                                    : Color.white.opacity(isActive ? 0.10 : 0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(isRecommended ? Color(hex: "F4E4BC").opacity(isActive ? 0.85 : 0.5)
-                                            : Color.white.opacity(isActive ? 0.55 : 0.12),
-                              lineWidth: isRecommended ? 1.5 : 1)
-        )
-        // The badge overhangs the top edge, the way a recommendation should read
-        // — attached to the card rather than another row inside it.
-        .overlay(alignment: .top) {
-            if isRecommended {
-                Text("RECOMMENDED")
-                    .cType(8, .heavy)
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color(hex: "F4E4BC")))
-                    .offset(y: -8)
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A duration row inside its card. Selection is a fill and a border — the
-    /// row is a control, so it looks like one.
+    /// UNMISTAKABLE WHEN SELECTED: a filled row with a full-strength border, not
+    /// a faint outline. It should be obvious at arm's length which row is
+    /// chosen, because the CTA is about to charge for it.
     private func durationRow(_ option: PaywallDurationOption) -> some View {
         let isSelected = selectedId == option.id
+        let isRecommended = option.id == recommendedRowId
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(option.label)
-                        .cType(14, .semibold)
-                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.8))
-                    Spacer(minLength: 2)
-                    Text(option.price)
-                        .cType(13)
-                        .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.55))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().strokeBorder(Color.white.opacity(isSelected ? 1 : 0.35), lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    if isSelected { Circle().fill(Color.white).frame(width: 11, height: 11) }
                 }
-                .frame(height: 24)
-
-                // The saving and the per-month restatement, on their own line
-                // because a column this narrow cannot carry them inline.
-                //
-                // BOTH COMPUTED. The percentage is floored from live storefront
-                // prices by `PaywallMapping.percentOff`, which selects its two
-                // plans by PERIOD — `packageType` returns `.custom` for Max, so
-                // the old selection missed both of Max's plans and silently
-                // withheld a real 25%. The per-month figure is the live yearly
-                // price over twelve, rounded rather than truncated: rounding up
-                // never understates what someone will pay.
-                if option.percentOff != nil || option.perMonthLine != nil {
-                    // STACKED, NOT INLINE. Side by side in a column this
-                    // narrow, Max's line rendered "$66.67/mo, billed yea…" —
-                    // cut mid-word on the sentence whose whole job is making
-                    // the yearly plan legible as the cheaper one. A clipped
-                    // price reads as an app that cannot state its own terms,
-                    // and it is the second time this exact line has truncated.
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(option.label)
+                            .cType(15, .semibold)
+                            .foregroundColor(.white)
                         if let pct = option.percentOff {
                             Text("\(pct)% OFF")
                                 .cType(9, .heavy)
-                                .foregroundColor(.white)
+                                .foregroundColor(.black)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
-                                .overlay(Capsule().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
-                        }
-                        if let perMonth = option.perMonthLine {
-                            Text(perMonth)
-                                .cType(9)
-                                .foregroundColor(.white.opacity(0.6))
-                                .fixedSize(horizontal: false, vertical: true)
+                                .background(Capsule().fill(Color.white))
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 2)
+                    if let perMonth = option.perMonthLine {
+                        Text(perMonth)
+                            .cType(10)
+                            .foregroundColor(.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 6)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if isRecommended {
+                        Text("RECOMMENDED")
+                            .cType(8, .heavy)
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color(hex: "F4E4BC")))
+                    }
+                    Text(option.price)
+                        .cType(15, .bold)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.white.opacity(isSelected ? 0.16 : 0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.white.opacity(isSelected ? 0.85 : 0), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(isSelected ? Color.white : Color.white.opacity(0.10),
+                              lineWidth: isSelected ? 2 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("\(option.label), \(option.price)"))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    // MARK: Footer
+
+    private var footer: some View {
+        VStack(spacing: 6) {
+            Button {
+                if let id = selectedId { onPurchase(id) }
+            } label: {
+                Text(ctaTitle)
+                    .cType(17, .bold)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Capsule().fill(Self.accent))
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedId == nil)
+            .opacity(selectedId == nil ? 0.5 : 1)
+
+            Text(TrialCopy.fineprint)
+                .cType(9)
+                .foregroundColor(.white.opacity(0.4))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Apple requires both on a surface that sells a subscription.
+            HStack(spacing: 14) {
+                Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
+                Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
+            }
+            .cType(9)
+            .foregroundColor(.white.opacity(0.45))
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
+    }
+
+    /// Names the tier AND the duration, so the last control before a charge says
+    /// exactly what is being charged for.
+    private var ctaTitle: String {
+        guard let tier = activeTier, let row = selectedRow else {
+            return String(localized: "Choose a plan")
+        }
+        return String(localized: "Get \(tier.title) · \(row.label)")
+    }
+
+    private func openLegal(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
     }
 }
 
@@ -758,8 +682,6 @@ struct TwoStepPaywall: View {
                 personalisedNoun: PaywallView.exportContentNoun(from: onboarding)),
             tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled),
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
-            sharedFeatures: PaywallMapping.sharedFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
-            maxFeatures: PaywallMapping.maxFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
             onClose: { isPresented = false },
             onPurchase: { id in
                 guard let pkg = packages.first(where: {
