@@ -380,6 +380,42 @@ final class SubscriptionService: ObservableObject {
     /// Products with no known allowance rank last among tiers rather than
     /// first — an unrecognised product should not lead the paywall.
     static func sortedByDuration(_ packages: [Package]) -> [Package] {
+        // THE MAX GATE LIVES HERE, because this is the one function every
+        // plan-listing surface already calls: the first-launch paywall, the
+        // trial wall, the second paywall, the legacy PaywallView, the offer
+        // reveal, the V2 flow and the two-step paywall's own product mapping.
+        //
+        // 74c5597 gated Max in `tierOptions` and called it "dropped at the
+        // SOURCE ... so it cannot leak into the toggle, the CTA, or a
+        // percentage computed across tiers." That was the source for ONE
+        // surface. FirstLaunchPaywallView never calls `tierOptions`, so on a
+        // real erased device the FIRST screen of the app listed four plans with
+        // **Max Yearly $799.99 preselected and badged BEST VALUE** — a product
+        // in MISSING_METADATA — and wrote it into `preselectedPlanID` as the
+        // funnel's default purchase intent. `first_launch` is 25% of paywall
+        // views (1,393 of 5,563; 1,277 users, 13 days to 2026-09-02).
+        //
+        // Gating each view separately would be the same mistake a fourth time.
+        // Every caller here is a presentation list — verified, not assumed — so
+        // filtering at this choke point reaches all of them, and a surface
+        // added later inherits it without knowing the rule exists.
+        //
+        // Mirrors `tierOptions(maxEnabled:)`: keep only the LOWEST allowance
+        // tier. A product we cannot price (`nil`) is KEPT — it cannot be
+        // positively identified as the higher tier, and silently hiding an
+        // unrecognised Pro SKU would be worse than the leak being fixed.
+        var packages = packages
+        if !OnboardingState.shared.maxTierEnabled {
+            let known = packages.compactMap {
+                CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier)
+            }
+            if let base = known.min(), known.contains(where: { $0 > base }) {
+                packages = packages.filter {
+                    let a = CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier)
+                    return a == nil || a == base
+                }
+            }
+        }
         func tierRank(_ p: Package) -> Int {
             guard let m = CreditAllowance.monthly(forProductId: p.storeProduct.productIdentifier)
             else { return Int.max }

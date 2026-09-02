@@ -33,6 +33,35 @@ struct FirstLaunchPaywallView: View {
     @State private var isPurchasing = false
     @State private var didPurchaseHere = false
 
+    /// THE MAX GATE APPLIES HERE TOO, and this screen was the hole in it.
+    ///
+    /// 74c5597 dropped Max "at the SOURCE in `tierOptions`, not filtered in the
+    /// view, so it cannot leak into the toggle, the CTA, or a percentage
+    /// computed across tiers." True of the two-step paywall, and this screen
+    /// never calls `tierOptions` — it reads `availablePackages` raw. So on a
+    /// real fresh install the FIRST screen of the app listed four plans, Max
+    /// among them, with **Max Yearly $799.99 preselected and badged BEST
+    /// VALUE** — a product in MISSING_METADATA that nobody can buy. Confirmed
+    /// on an erased device against live flags, not reasoned about.
+    ///
+    /// Worse than showing it: `packages.first` is also written to
+    /// `preselectedPlanID`, so the unbuyable SKU was the default purchase
+    /// intent carried into the rest of the funnel.
+    ///
+    /// Filtered at the SOURCE for the same reason 74c5597 gave — selection, the
+    /// CTA and `preselectedPlanID` all read this property, so gating it here
+    /// reaches every one of them.
+    ///
+    /// Mirrors `tierOptions(maxEnabled:)`: keep only the LOWEST allowance tier.
+    /// A product whose id we cannot price (`nil` allowance) is KEPT — it cannot
+    /// be positively identified as the higher tier, and silently hiding an
+    /// unrecognised Pro SKU would be a worse failure than the one being fixed.
+    /// The Max gate is applied inside `sortedByDuration`, not here. It was here
+    /// first, and one screen filtering itself is exactly how this defect
+    /// survived: 74c5597 gated Max in `tierOptions`, which this view never
+    /// calls, so it listed Max Yearly $799.99 preselected and BEST VALUE.
+    /// Fixing it locally would have left the trial wall, the second paywall and
+    /// the legacy PaywallView each one edit away from the same leak.
     private var packages: [Package] {
         SubscriptionService.sortedByDuration(subscription.offerings?.current?.availablePackages ?? [])
     }

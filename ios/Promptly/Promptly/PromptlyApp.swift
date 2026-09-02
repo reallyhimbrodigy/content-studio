@@ -540,6 +540,7 @@ struct PromptlyApp: App {
             .onAppear {
                 ReeditProofHarness.runIfRequested()
                 OnboardingProofHarness.runIfRequested()
+                FirstRunProofHarness.runIfRequested()
             }
             #endif
             // Spring-driven crossfade between launch ↔ authed ↔ unauthed
@@ -960,6 +961,73 @@ enum OnboardingProofHarness {
                 try? await Task.sleep(for: .milliseconds(2600))
             }
             print("[OnboardingProof] walk complete")
+        }
+    }
+}
+
+/// `-reproFirstRun` — walk the REAL first-launch sequence, in order, through the
+/// REAL root. 2026-09-02.
+///
+/// WHY THIS AND NOT THE SNAPSHOT HARNESS. `-snapshotPayoff` renders one view in
+/// isolation, so it can prove a screen looks right and can say nothing about
+/// what a new install actually SEES, or in what ORDER. The order is the thing
+/// under review here, and it is decided by the `if/else if` chain in `body` from
+/// live flag values — not by any single view. This drives that chain.
+///
+/// WHY NOT TAPS. There is no tap primitive in `simctl`, so a capture loop cannot
+/// press Continue. Every beat below is instead reached by setting the state the
+/// button would have set, which is what `-reproOnboarding` already does for the
+/// V1 beats — this is the V2 equivalent, since `onboarding_v2` is on and the V1
+/// walk therefore reaches a flow no new user can see.
+///
+/// SEED THE PERSISTED KEY, THEN SET THE PUBLISHED ONE. `OnboardingV2Flow`'s
+/// `restoreV2()` reads UserDefaults on appear, so assigning `v2Step` before the
+/// flow exists loses the race (render-caught 2026-08-27 — the view animated
+/// between two beats forever). The first beat is seeded; later beats assign
+/// directly, because by then the flow is on screen and its restore has run.
+///
+/// `hasCompletedOnboarding` is NOT `@Published` — it is a UserDefaults-backed
+/// computed property, so writing it alone re-renders nothing and the walk would
+/// appear to hang on the last question. Assigning `v2Step` afterwards is what
+/// publishes the change that re-evaluates the root.
+@MainActor
+enum FirstRunProofHarness {
+
+    private static var didRun = false
+
+    /// One dwell for every beat, long enough that a 1s capture loop lands at
+    /// least two frames inside each and never straddles a transition.
+    private static let dwell: Duration = .milliseconds(3400)
+
+    static func runIfRequested() {
+        guard !didRun else { return }
+        guard ProcessInfo.processInfo.arguments.contains("-reproFirstRun") else { return }
+        didRun = true
+        let s = OnboardingState.shared
+
+        // Beat 1 is whatever the root already chose from the live flags — the
+        // point of the walk is that this is NOT forced. Print it so the capture
+        // is labelled by what actually rendered.
+        UserDefaults.standard.set(OnboardingState.V2Step.audience.rawValue,
+                                  forKey: "onboarding_v2_step")
+
+        Task { @MainActor in
+            print("[FirstRunProof] beat=first_launch_paywall")
+            try? await Task.sleep(for: dwell)
+
+            // The paywall's own dismiss sets exactly this.
+            s.hasSeenFirstLaunchPaywall = true
+            for beat: OnboardingState.V2Step in [.audience, .videoType, .attribution, .reveal] {
+                s.v2Step = beat
+                print("[FirstRunProof] beat=\(beat.rawValue)")
+                try? await Task.sleep(for: dwell)
+            }
+
+            s.hasCompletedOnboarding = true
+            s.v2Step = .done          // publishes the change; see note above
+            print("[FirstRunProof] beat=chat")
+            try? await Task.sleep(for: dwell)
+            print("[FirstRunProof] walk complete")
         }
     }
 }
