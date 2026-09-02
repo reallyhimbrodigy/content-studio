@@ -3789,9 +3789,27 @@ const server = http.createServer((req, res) => {
         // never block on a third party. The response reports the LAST known
         // answer; null means "not probed yet", which is deliberately distinct
         // from 'ok' and from a failure.
+        // PROBE THE ENTITLEMENTS ENDPOINT, NOT THE BARE PROJECT (fixed
+        // 2026-09-02, hours after shipping the bare-project version).
+        //
+        // `GET /v2/projects/{id}` 404s under a VALID key — RC's v2 API does not
+        // serve a bare project read. The proof is in this very response: the
+        // bare-project probe reported http_404 while `entitlementTiers` read
+        // ['max','pro'], and that array can ONLY be populated by a 200 from
+        // /projects/{id}/entitlements. Two fields of the same object disagreeing
+        // is what exposed it.
+        //
+        // So the original probe was a FALSE RED — it could never read 'ok', and
+        // because `credits` is gated on it, CREDITS=1 could never have armed.
+        // I shipped that. The pre-existing `_rcProjectProbe` makes the SAME bare
+        // -project call, which means its 'CONFIG SUSPECT' alarm has been firing
+        // on a broken test — see the note at that function.
+        //
+        // /entitlements is the right probe: a real endpoint, read-only, cheap,
+        // and it exercises exactly the credential path the credits meter needs.
         if (projectId && secret && Date.now() - _rcHealthProbe.at > 300000) {
           _rcHealthProbe.at = Date.now();
-          fetch(`${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+          fetch(`${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`, {
             headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
             signal: AbortSignal.timeout(8000),
           }).then((r) => { _rcHealthProbe.value = r.ok ? 'ok' : `http_${r.status}`; })
