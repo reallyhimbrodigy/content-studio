@@ -290,8 +290,8 @@ struct PaywallLayout: View {
                 .renderingMode(.original)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 34, height: 34)
-                .padding(.bottom, 8)
+                .frame(width: 28, height: 28)
+                .padding(.bottom, 6)
 
             Text(title)
                 .cType(22, .bold)
@@ -299,14 +299,14 @@ struct PaywallLayout: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
 
             // The columns start under the title and TAKE the height. They used
             // to be content-sized with spacers either side, so the pitch sat in
             // the bottom 40% under an empty band and every element had been
             // shrunk to fit a space that was never the constraint.
             tierCards
-                .padding(.top, 10)
+                .padding(.top, 6)
 
             Spacer(minLength: 6)
 
@@ -333,7 +333,7 @@ struct PaywallLayout: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 48)
+                            .frame(height: 46)
                             .background(Capsule().fill(Color.white))
                     }
                     .buttonStyle(.plain)
@@ -425,7 +425,7 @@ struct PaywallLayout: View {
     // MARK: Cards, each holding its own durations
 
     private var tierCards: some View {
-        HStack(alignment: .top, spacing: 20) {
+        HStack(alignment: .top, spacing: 10) {
             ForEach(tiers) { tier in
                 tierCard(tier)
             }
@@ -434,16 +434,17 @@ struct PaywallLayout: View {
         .padding(.horizontal, 16)
     }
 
-    /// A column, bare on black. NO CONTAINER — no fill, no border, no rounded
-    /// corners.
+    /// A tier as a bordered card: heading, credits, its own bullets, its own
+    /// durations.
     ///
-    /// The boxes were doing nothing except taking room: they forced padding on
-    /// four sides, and everything inside had been shrunk to fit a frame that was
-    /// never the constraint. Off black, the same content reads at a comfortable
-    /// size in less space. The only rounded thing left on the screen is the
-    /// Continue button, which is rounded because it is a button.
+    /// The card is back by preference (2026-09-02) after a bare-on-black pass.
+    /// What is KEPT from that pass is the part that was actually wrong before
+    /// it: the columns take the available height instead of floating in the
+    /// bottom 40%, and the type is sized to read rather than shrunk to fit. The
+    /// container was never the reason things were small — the layout was.
     private func tierCard(_ tier: PaywallTierOption) -> some View {
         let rows = durations(tier.allowance)
+        let isActive = selectedPick?.tier.allowance == tier.allowance
         return VStack(alignment: .leading, spacing: 0) {
             Text(tier.title)
                 .cType(21, .bold)
@@ -457,7 +458,7 @@ struct PaywallLayout: View {
                     .padding(.top, 2)
             }
 
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: 7) {
                 ForEach(tier.features, id: \.self) { line in
                     HStack(alignment: .top, spacing: 8) {
                         ZStack {
@@ -474,46 +475,54 @@ struct PaywallLayout: View {
                     }
                 }
             }
-            .padding(.top, 14)
+            .padding(.top, 10)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 4) {
                 ForEach(rows) { row in
                     durationRow(row)
                 }
             }
         }
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(isActive ? 0.10 : 0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(isActive ? 0.55 : 0.12), lineWidth: 1)
+        )
     }
 
-    /// A bare row. The only mark of selection is a thin rule under it and full
-    /// white on the text — no capsule, no fill.
+    /// A duration row inside its card. Selection is a fill and a border — the
+    /// row is a control, so it looks like one.
     private func durationRow(_ option: PaywallDurationOption) -> some View {
         let isSelected = selectedId == option.id
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
-            VStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Text(option.label)
-                        .cType(15, .semibold)
-                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.72))
-                    Spacer(minLength: 2)
-                    Text(option.price)
-                        .cType(14, .medium)
-                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.55))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                }
-                .frame(height: 34)
-
-                Rectangle()
-                    .fill(Color.white.opacity(isSelected ? 0.9 : 0.12))
-                    .frame(height: isSelected ? 1.5 : 0.5)
+            HStack(spacing: 6) {
+                Text(option.label)
+                    .cType(14, .semibold)
+                    .foregroundColor(.white.opacity(isSelected ? 1 : 0.8))
+                Spacer(minLength: 2)
+                Text(option.price)
+                    .cType(13)
+                    .foregroundColor(.white.opacity(isSelected ? 0.95 : 0.55))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
             }
-            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.white.opacity(isSelected ? 0.16 : 0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Color.white.opacity(isSelected ? 0.85 : 0), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("\(option.label), \(option.price)"))
