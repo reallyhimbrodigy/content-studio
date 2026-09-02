@@ -40,4 +40,13 @@ enum Keychain {
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
+
+    /// Removal. Only the DEBUG harness needs this — a first-run funnel cannot be
+    /// re-tested on a device that has already seen it, and reinstalling does not
+    /// help because surviving reinstall is the entire point of storing it here.
+    @discardableResult
+    static func delete(_ key: String) -> Bool {
+        let status = SecItemDelete(query(key) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
 }

@@ -109,6 +109,13 @@ final class OnboardingState: ObservableObject {
     /// four-product list. Dark until flipped; off = today's PaywallView,
     /// byte-identical.
     @Published private(set) var twoStepPaywallEnabled = false
+    /// Deferred auth: the funnel runs BEFORE sign-in (paywall, questions,
+    /// reveal, chat), and an account is asked for at the first action that needs
+    /// one. Dark until flipped; off = today's auth-first order, unchanged.
+    ///
+    /// The purchase guard is NOT gated on this flag — no purchase may complete
+    /// without an account whether this is on or off.
+    @Published private(set) var deferredAuthEnabled = false
     @Published private(set) var pushPrimerEnabled = false
     /// Amendment 2026-08-27: the export gate as TWO pages (benefits written
     /// against the stated content type, then plans + price). Its own flag so
@@ -186,6 +193,7 @@ final class OnboardingState: ObservableObject {
             annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
             offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
             twoStepPaywallEnabled = (obj?["two_step_paywall"] as? String) == "on"
+            deferredAuthEnabled = (obj?["deferred_auth"] as? String) == "on"
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
@@ -205,6 +213,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(annualDollarLineEnabled, forKey: "annual_dollar_line_enabled")
             UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
             UserDefaults.standard.set(twoStepPaywallEnabled, forKey: "two_step_paywall_enabled")
+            UserDefaults.standard.set(deferredAuthEnabled, forKey: "deferred_auth_enabled")
             UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
             UserDefaults.standard.set(exportGateTwoPageEnabled, forKey: "exportgate_two_page_enabled")
             // The seven experiment flags persist too. They were added without a
@@ -241,6 +250,7 @@ final class OnboardingState: ObservableObject {
             annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
             offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
             twoStepPaywallEnabled = UserDefaults.standard.bool(forKey: "two_step_paywall_enabled")
+            deferredAuthEnabled = UserDefaults.standard.bool(forKey: "deferred_auth_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
             creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")
@@ -268,6 +278,7 @@ final class OnboardingState: ObservableObject {
         case "annual_dollar_line": if !annualDollarLineEnabled { annualDollarLineEnabled = true }
         case "offer_surfacing": if !offerSurfacingEnabled { offerSurfacingEnabled = true }
         case "two_step_paywall": if !twoStepPaywallEnabled { twoStepPaywallEnabled = true }
+        case "deferred_auth": if !deferredAuthEnabled { deferredAuthEnabled = true }
         case "push_primer": if !pushPrimerEnabled { pushPrimerEnabled = true }
         case "exportgate_two_page": if !exportGateTwoPageEnabled { exportGateTwoPageEnabled = true }
         // The seven experiment flags. Their absence here was not a small gap —

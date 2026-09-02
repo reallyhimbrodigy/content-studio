@@ -407,23 +407,46 @@ final class SubscriptionService: ObservableObject {
     @discardableResult
     func purchase(_ package: Package, context: String? = nil) async -> Bool {
         guard initialized else { return false }
-        // ROOT-CAUSE GUARD (2026-07-26): never purchase under an anonymous RC
-        // id. With a signed-in user, RC must be aliased to them FIRST — else the
+        // NO PURCHASE WITHOUT AN ACCOUNT. NON-NEGOTIABLE, AND NOT FLAG-GATED.
+        //
+        // This guard used to read `if currentUser != nil { ensureIdentified() }`
+        // — it enforced aliasing for a signed-IN user and did nothing at all for
+        // a signed-out one. That hole was harmless only because the paywall was
+        // unreachable before signup; restoring the pre-auth funnel makes it
+        // live, and an anonymous purchase lands on $RCAnonymousID where it
+        // cannot be attributed or reliably aliased (the no_profile_matched
+        // failure the 1.3.20 ordering fix exists for). Browsing moves before
+        // auth; the TRANSACTION does not.
+        //
+        // Inverted to a hard `guard`, so a signed-out caller is refused rather
+        // than falling through. The refusal records what the user was trying to
+        // buy so sign-in can resume it instead of dropping them at the start.
+        guard AuthService.shared.currentUser?.id != nil else {
+            var props: [String: Any] = [
+                "plan": planKey(package),
+                "product": package.storeProduct.productIdentifier,
+            ]
+            if let context { props["context"] = context }
+            Analytics.track("purchase_blocked_unauthenticated", props: props, durable: true)
+            AuthGate.shared.require(
+                .purchase(productId: package.storeProduct.productIdentifier,
+                          context: context ?? "paywall"))
+            return false
+        }
+        // With a signed-in user, RC must be aliased to them FIRST — else the
         // webhook fires with an app_user_id that matches no profile and the paid
         // entitlement is never written server-side (the device shows Pro; the
         // server never learns). A pre-purchase await closes that race.
-        if AuthService.shared.currentUser?.id != nil {
-            let ok = await ensureIdentified()
-            if !ok {
-                lastError = "We couldn't verify your account. Please try again in a moment."
-                var blockedProps: [String: Any] = [
-                    "plan": planKey(package),
-                    "product": package.storeProduct.productIdentifier,
-                ]
-                if let context { blockedProps["context"] = context }
-                Analytics.track("purchase_blocked_unidentified", props: blockedProps)
-                return false
-            }
+        let ok = await ensureIdentified()
+        if !ok {
+            lastError = "We couldn't verify your account. Please try again in a moment."
+            var blockedProps: [String: Any] = [
+                "plan": planKey(package),
+                "product": package.storeProduct.productIdentifier,
+            ]
+            if let context { blockedProps["context"] = context }
+            Analytics.track("purchase_blocked_unidentified", props: blockedProps)
+            return false
         }
         isLoadingPurchase = true
         defer { isLoadingPurchase = false }

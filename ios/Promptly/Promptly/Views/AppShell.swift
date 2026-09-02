@@ -23,6 +23,9 @@ import SwiftUI
 struct AppShell: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var chatStore = ChatStore.shared
+    @ObservedObject private var authGate = AuthGate.shared
+    // @Observable, not ObservableObject — SwiftUI tracks it directly.
+    @State private var auth = AuthService.shared
 
     private static let openSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
@@ -105,6 +108,26 @@ struct AppShell: View {
         // Paywall presentation. Any view can request it by setting
         // AppState.shared.paywallReason; the sheet rises and clears the
         // reason on dismiss.
+        // DEFERRED AUTH — the account ask, at the action that needs one.
+        //
+        // Anchored on AppShell rather than at each call site: purchase, export
+        // and profile writes all funnel through AuthGate, and a per-site sheet
+        // would mean a surface could raise the requirement and forget to
+        // present it. On success the pending intent is REPLAYED, so the user
+        // lands back in what they were doing instead of at the start.
+        .sheet(isPresented: Binding(
+            get: { authGate.isPresenting },
+            set: { if !$0 { authGate.cancel() } }
+        )) {
+            AuthView()
+                .onAppear {
+                    Analytics.track("signup_start", props: ["step": "auth_gate"])
+                }
+        }
+        .onChange(of: auth.isAuthenticated) { _, authed in
+            guard authed, let intent = authGate.takePending() else { return }
+            authGate.resume(intent)
+        }
         .sheet(
             isPresented: Binding(
                 get: { appState.paywallReason != nil },

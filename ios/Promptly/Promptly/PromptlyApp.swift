@@ -353,7 +353,11 @@ struct PromptlyApp: App {
         #endif
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
-              auth.isAuthenticated,
+              // DEFERRED AUTH (flag): the funnel runs before sign-in again, and
+              // "first run" is keyed on the KEYCHAIN so a reinstall does not
+              // replay a paywall at someone who may already be paying.
+              // UserDefaults would; it is erased with the app.
+              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated),
               // NEVER to an existing subscriber. This guard became necessary
               // BECAUSE of the reordering above: while the surface was gated on
               // `!auth.isAuthenticated`, a signed-out user had no known Pro
@@ -384,7 +388,8 @@ struct PromptlyApp: App {
               !onboarding.onboardingV2Enabled,
               onboarding.wallOnboardingEnabled != true,
               !onboarding.hasSeenAttributionGate,
-              auth.isAuthenticated else { return false }
+              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated)
+        else { return false }
         return true
     }
 
@@ -406,7 +411,7 @@ struct PromptlyApp: App {
         // keeping it would re-admit exactly the anonymous window being closed.
         guard onboarding.onboardingV2Enabled,
               !onboarding.hasCompletedOnboarding,
-              auth.isAuthenticated,
+              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated),
               // Same reasoning as the paywall. The reveal already self-skips for
               // Pro users, but the three questions would still have run — an
               // existing subscriber walked through an upsell funnel.
@@ -449,7 +454,10 @@ struct PromptlyApp: App {
                 } else if showWallOnboarding {
                     OnboardingFlow()
                         .transition(.opacity)
-                } else if auth.isAuthenticated {
+                } else if auth.isAuthenticated || onboarding.deferredAuthEnabled {
+                    // Deferred auth: browsing needs no account. The account is
+                    // asked for at the first action that requires one, through
+                    // AuthGate, which remembers the action and resumes it.
                     AppShell()
                         .transition(.opacity)
                 } else {

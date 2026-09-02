@@ -170,6 +170,10 @@ struct OnboardingV2Flow: View {
         Analytics.track("onboarding_completed", props: ["context": "onboarding_v2"])
         state.persistAnswersToProfile()
         state.hasCompletedOnboarding = true
+        // The first run is over, recorded in the KEYCHAIN so a reinstall does
+        // not replay it. `hasCompletedOnboarding` lives in UserDefaults and is
+        // erased with the app, which is exactly the case this guards.
+        FirstRun.markSeen()
         state.v2Step = .done
     }
 }
