@@ -449,6 +449,16 @@ final class OnboardingState: ObservableObject {
         /// already decided to ignore. A user who has just refused to pay is the
         /// one person for whom "not ready to pay?" is the right question, so it
         /// gets its own rung instead of a line on the rung above.
+        /// THE MIDDLE RUNG (2026-09-02): decline the annual offer, and the ask
+        /// steps DOWN in commitment before it steps sideways to the referral.
+        /// A user who refuses $145.99 for a year has not necessarily refused
+        /// $14.99 for a month, and going straight from the largest commitment
+        /// to "invite your friends" skips the one rung most likely to convert.
+        ///
+        /// Skipped when the monthly SKU carries no intro offer THIS user is
+        /// eligible for — the rung exists to present a real reduction, and
+        /// without one it is the same price on a smaller screen.
+        case monthlyDownsell
         case referralCatch
         case done         // → the picker (PromptlyApp re-branches)
 

@@ -117,7 +117,12 @@ struct OnboardingV2Flow: View {
                 FirstLaunchPaywallView(onFinished: { advanceFromPaywall() })
 
             case .reveal:
-                OfferRevealView(onDecline: { declineToReferral() }, onPurchased: { afterAsk() })
+                OfferRevealView(onDecline: { declineToMonthly() }, onPurchased: { afterAsk() })
+
+            case .monthlyDownsell:
+                MonthlyDownsellBeat(package: monthlyPackage,
+                                    onPurchased: { afterAsk() },
+                                    onSkip: { goingForward = true; state.v2Step = .referralCatch })
 
             case .referralCatch:
                 ReferralCatchBeat(onSkip: { afterAsk() })
@@ -148,11 +153,33 @@ struct OnboardingV2Flow: View {
 
     /// After Q3: the reveal only runs when there is a REAL offer to reveal and
     /// the user has not already subscribed on screen one.
-    /// Decline is no longer a dead end: it steps to the referral rung.
+    /// The MONTHLY package, when one exists. The downsell rung has nothing to
+    /// show without it.
+    private var monthlyPackage: Package? {
+        packages.first { $0.planPeriod == .month }
+    }
+
+    /// Declining the annual offer steps DOWN in commitment before it steps
+    /// sideways to the referral — but only when there is a real reduction to
+    /// show. `introOfferLine` is eligibility-gated and returns nil for a user
+    /// Apple will charge full price, so a rung that would present the standard
+    /// monthly price as if it were a concession is skipped rather than staged.
     private func declineToReferral() {
-        Analytics.track("offer_reveal_declined", props: ["context": "onboarding_v2"])
         goingForward = true
         state.v2Step = .referralCatch
+    }
+
+    private func declineToMonthly() {
+        Analytics.track("offer_reveal_declined", props: ["context": "onboarding_v2"])
+        guard let m = monthlyPackage, PaywallView.introOfferLine(for: m) != nil else {
+            Analytics.track("downsell_skipped",
+                            props: ["context": "onboarding_v2",
+                                    "reason": monthlyPackage == nil ? "no_monthly_sku" : "not_eligible"])
+            declineToReferral()
+            return
+        }
+        goingForward = true
+        state.v2Step = .monthlyDownsell
     }
 
     /// The one exit from the ASK sequence — paywall, reveal, referral all land
@@ -388,4 +415,101 @@ struct ReferralCatchBeat: View {
             Analytics.track("referral_shown", props: ["source": "decline_catch"])
         }
     }
+}
+
+
+// MARK: - The monthly downsell rung
+
+/// Rung two of the decline ladder: annual offer declined -> a month instead ->
+/// invite. 2026-09-02.
+///
+/// WHY IT EXISTS. The ladder went straight from the largest commitment on offer
+/// ($145.99 for a year) to "invite your friends", skipping the rung most likely
+/// to convert. Someone who will not commit to a year has not necessarily
+/// refused a month, and the monthly SKU carries its own PAY_AS_YOU_GO intro
+/// price — $14.99 against $29.99, configured across 175 territories.
+///
+/// EVERY NUMBER COMES FROM STOREKIT. The price and the intro terms are rendered
+/// by `PaywallView.introOfferLine`, which is eligibility-gated and returns nil
+/// for a user Apple will charge full price. So this rung cannot claim a
+/// reduction that will not be honoured — the exact defect that shipped on the
+/// export gate until this morning — and the flow skips the rung entirely rather
+/// than presenting the standard price as though it were a concession.
+struct MonthlyDownsellBeat: View {
+    let package: Package?
+    let onPurchased: () -> Void
+    let onSkip: () -> Void
+
+    @ObservedObject private var subscription = SubscriptionService.shared
+    @State private var isPurchasing = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer(minLength: 24)
+
+                Image("PromptlyLogo")
+                    .renderingMode(.original).resizable().aspectRatio(contentMode: .fit)
+                    .frame(width: 28, height: 28).padding(.bottom, 18)
+
+                Text(ReferralCopy.downsellHeading)
+                    .cType(26, .bold).foregroundColor(.white)
+                    .multilineTextAlignment(.center).padding(.horizontal, 24)
+
+                Text(ReferralCopy.downsellBody)
+                    .cType(15, .medium).foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28).padding(.top, 10)
+
+                if let pkg = package, let intro = PaywallView.introOfferLine(for: pkg) {
+                    Text(intro)
+                        .cType(15, .semibold)
+                        .foregroundColor(Color(hex: "E9D8A6"))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 28).padding(.top, 16)
+                    Text(pkg.storeProduct.localizedPriceString)
+                        .cType(13, .medium).foregroundColor(.white.opacity(0.5))
+                        .padding(.top, 4)
+                }
+
+                Spacer(minLength: 16)
+
+                Button {
+                    guard let pkg = package, !isPurchasing else { return }
+                    isPurchasing = true
+                    Task {
+                        let ok = await subscription.purchase(pkg, context: "monthly_downsell")
+                        isPurchasing = false
+                        if ok { onPurchased() }
+                    }
+                } label: {
+                    Group {
+                        if isPurchasing { ProgressView().tint(.white) }
+                        else { Text(ctaLabel).cType(16, .semibold).foregroundColor(.white) }
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color(hex: "6C5CE7")))
+                }
+                .disabled(package == nil || isPurchasing)
+                .padding(.horizontal, 20)
+
+                Button(action: onSkip) {
+                    Text(ReferralCopy.downsellSkip)
+                        .cType(14, .medium).foregroundColor(.white.opacity(0.55))
+                        .padding(.vertical, 14)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .onAppear { Analytics.track("downsell_shown", props: ["context": "onboarding_v2"]) }
+    }
+
+    /// The CTA never quotes a price. The intro line above it already states the
+    /// store's own terms, and a second number on the button is a second place
+    /// for the two to disagree.
+    private var ctaLabel: String { String(localized: "Continue monthly") }
 }

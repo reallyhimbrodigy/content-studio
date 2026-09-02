@@ -89,6 +89,19 @@ enum ReferralCopy {
         return String(localized: "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week")
     }
 
+
+    /// THE MONTHLY DOWNSELL — the rung between the annual offer and the invite.
+    ///
+    /// Lives here with the other decline-path copy so the ladder reads as one
+    /// piece of writing rather than three screens each inventing their own
+    /// voice. No number is written into these strings: the price and the intro
+    /// terms come from StoreKit through `PaywallView.introOfferLine`, which is
+    /// eligibility-gated, so this rung cannot state a discount Apple will not
+    /// honour — the defect that shipped on the export gate until today.
+    static let downsellHeading = String(localized: "Try a month instead?")
+    static let downsellBody = String(localized: "Same Pro features, one month at a time.")
+    static let downsellSkip = String(localized: "No thanks")
+
     /// Section heading on surfaces that host the invite.
     static let heading = String(localized: "Get Pro free")
 
