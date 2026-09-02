@@ -52,30 +52,27 @@ struct TrialWallView: View {
     // Benefits render via the shared PaywallFeatureChecklist (2026-08-26
     // rebuild) — one approved 5-bullet list for both purchase surfaces.
 
+    /// THE SHARED PAYWALL. This screen owned its own layout — its own package
+    /// rows, its own CTA — which is how the approved design reached `manual`
+    /// and not `door`. Entry-specific copy is a PARAMETER (`.trialWall`), and
+    /// its analytics context stays "door" via `PaywallView.reasonKey(for:)` so
+    /// the historical funnel split continues across the change.
+    ///
+    /// REACHABILITY, stated rather than implied: `wall_enforcement` is off, so
+    /// the server never returns `wallRequired` and this screen is effectively
+    /// dark (7 views / 1 user in the 13 days to 2026-09-02). Converted anyway
+    /// so it is correct if the knob is ever armed — a dark screen with a
+    /// divergent design is a regression waiting for a flag flip.
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let c = confirmed { confirmation(c) } else { wall }
-            if showAbandonRecovery {
-                AbandonRecoveryOverlay { withAnimation { showAbandonRecovery = false } }
-            }
-        }
+        TwoStepPaywall(
+            isPresented: Binding(get: { true }, set: { shown in if !shown { onPassed() } }),
+            reason: .trialWall
+        )
         .onAppear {
-            // UPGRADE-funnel entry (after free_limit_hit).
-            Analytics.track("upgrade_wall_viewed", props: (["context": contextKey] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
-            selectDefaultPackage()
-            if packages.isEmpty { Task { await subscription.refreshOfferings() } }
+            Analytics.track("upgrade_wall_viewed",
+                            props: (["context": contextKey] as [String: Any])
+                                .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         }
-        .onChange(of: subscription.offerings?.current?.availablePackages.count ?? 0) { _, _ in
-            selectDefaultPackage()
-        }
-    }
-
-    private func selectDefaultPackage() {
-        guard selectedPackage == nil else { return }
-        // Pre-selection follows the computed savings comparison (same live-price
-        // math as the badge — Aug-18 item closed at both files), not position 0.
-        selectedPackage = PlanSavings.defaultSelection(in: packages)
     }
 
     private var contextKey: String {

@@ -673,6 +673,13 @@ final class AppState: ObservableObject {
         case .concurrency:  limit = "second_upload"
         case .exportGate:   limit = "export"
         case .manual:       limit = nil
+        // NOT free-limit encounters. `free_limit_hit` is the head of the
+        // UPGRADE funnel — a free user hitting a Pro-gated cap. These three are
+        // scheduled surfaces (first run, the enforced wall, post-onboarding);
+        // counting them would inflate the cap metric with views nobody was
+        // blocked into. Listed explicitly rather than via `default` so the next
+        // reason added has to make this same decision on purpose.
+        case .firstLaunch, .trialWall, .secondPaywall: limit = nil
         }
         if let limit { Analytics.track("free_limit_hit", props: ["limit": limit]) }
     }
@@ -798,6 +805,16 @@ enum PaywallReason: Equatable, Hashable {
     /// blocked moment — a user trying to keep their own video — the day
     /// EXPORT_GATE_ENABLED arms. Inert until then (gate returns 501 → free save).
     case exportGate
+    /// The first-launch wall, now a beat inside OnboardingV2Flow. A REASON
+    /// rather than a separate view: the entry-specific headline and CTA are the
+    /// only things that differed, and four implementations of one paywall is
+    /// what let the approved design reach `manual` and not `first_launch`.
+    case firstLaunch
+    /// The enforced trial wall (`wall_enforcement`). Its analytics context
+    /// stays "door" so the existing funnel split is unbroken.
+    case trialWall
+    /// The post-onboarding second paywall (legacy V1 flow).
+    case secondPaywall
 }
 
 // MARK: - Pipeline stages (render progress narrative)

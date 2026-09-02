@@ -98,6 +98,15 @@ struct OnboardingV2Flow: View {
                 }
                 #endif
 
+            case .paywall:
+                // The SAME view the root used to present above this flow —
+                // rendered here instead, so it arrives with Q1/Q2 answered and
+                // its personalised lead can actually resolve. `onFinished`
+                // replaces the old mechanism (set hasSeenFirstLaunchPaywall,
+                // let the root fall through): inside the flow there is nothing
+                // to fall through to, so the beat has to advance itself.
+                FirstLaunchPaywallView(onFinished: { advanceFromPaywall() })
+
             case .reveal:
                 OfferRevealView(onDecline: { complete() }, onPurchased: { complete() })
 
@@ -127,7 +136,21 @@ struct OnboardingV2Flow: View {
 
     /// After Q3: the reveal only runs when there is a REAL offer to reveal and
     /// the user has not already subscribed on screen one.
+    /// Q3 now hands off to the PAYWALL, not the reveal.
+    ///
+    /// The reveal's skip test moved with it, to `advanceFromPaywall`, rather
+    /// than being evaluated here. That is not tidying: a user who BUYS on the
+    /// paywall must not then be shown a discount for what they just bought at
+    /// full price, and `subscription.isPro` only becomes true after that
+    /// purchase. Testing it before the paywall reads a value that the paywall
+    /// itself is about to change.
     private func advanceFromAttribution() {
+        goingForward = true
+        state.v2Step = .paywall
+    }
+
+    /// Paywall → reveal, or straight out when there is nothing to reveal.
+    private func advanceFromPaywall() {
         // The reveal honours the plan the user is already leaning on: yearly
         // offers now exist in all 175 territories, so an annual-leaning user
         // sees the ANNUAL offer rather than being switched to a monthly one.

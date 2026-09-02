@@ -432,6 +432,16 @@ final class OnboardingState: ObservableObject {
         case audience     // Q1: who are you making videos for?
         case videoType    // Q2: what kind of videos? (the one that feeds vibe)
         case attribution  // Q3: how did you hear about us? (gate merged in)
+        /// The full-price paywall, MOVED HERE 2026-09-02 (was a root branch
+        /// ABOVE this flow, so it ran before any question was answered).
+        ///
+        /// It reads Q1 and Q2 for its personalised lead — `ProBenefits
+        /// .personalised(audience:videoType:)` substitutes slots 0 and 1 from
+        /// those two answers. Shown first, both were nil, so every new user got
+        /// the generic list and the personalisation could not fire by
+        /// construction. Ordering it after the questions is what turns that
+        /// already-built copy on.
+        case paywall
         case reveal       // the offer reveal (skipped when no real offer)
         case done         // → the picker (PromptlyApp re-branches)
 

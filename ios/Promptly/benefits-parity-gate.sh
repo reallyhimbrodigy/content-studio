@@ -109,8 +109,21 @@ GOVERNED="Views/FirstLaunchPaywallView.swift Views/Onboarding/OfferRevealView.sw
 # Without this, a surface could pass rule 3 by simply showing no benefits.
 for rel in $GOVERNED; do
   f="$SRC/$rel"
-  if ! grep -q "ProBenefits" "$f"; then
-    echo "NOT WIRED      $rel does not reference ProBenefits — it shows no shared claims at all."
+  # DELEGATION COUNTS, and counts for MORE than a direct reference.
+  #
+  # 2026-09-02: FirstLaunchPaywallView stopped listing benefits itself and now
+  # renders TwoStepPaywall, which reads ProBenefits. This rule failed it — for
+  # doing a stronger version of what the rule asks. The rule's purpose is that
+  # no surface owns a second copy of the pitch; a view that renders the shared
+  # paywall cannot own one at all, because it renders no claims of its own.
+  #
+  # Requiring the direct reference would have pushed the fix backwards: to pass,
+  # the view would have to re-introduce its own benefit list. A gate that can
+  # only be satisfied by the architecture it was written against stops being a
+  # check and becomes a brake.
+  if ! grep -qE "ProBenefits|TwoStepPaywall" "$f"; then
+    echo "NOT WIRED      $rel neither references ProBenefits nor renders the"
+    echo "               shared paywall — it shows no shared claims at all."
     fail=1
   fi
 done

@@ -29,6 +29,12 @@ struct FirstLaunchPaywallView: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
 
+    /// Set when this screen is a BEAT inside OnboardingV2Flow rather than a
+    /// root branch. Nil for the legacy root presentation (v2 off), where
+    /// setting `hasSeenFirstLaunchPaywall` is enough for the root to fall
+    /// through on its own.
+    var onFinished: (() -> Void)?
+
     @State private var selectedPackage: Package?
     @State private var isPurchasing = false
     @State private var didPurchaseHere = false
@@ -77,297 +83,48 @@ struct FirstLaunchPaywallView: View {
         v.task {
             guard motionProof else { return }
             try? await Task.sleep(nanoseconds: 2_600_000_000)
-            withAnimation { onboarding.hasSeenFirstLaunchPaywall = true }
+            finish()   // through the one exit, so the beat advances under -motionProof too
         }
     }
     #else
     @ViewBuilder private func proofDriven<V: View>(_ v: V) -> some View { v }
     #endif
 
+    /// THE SHARED PAYWALL, not a second implementation of one.
+    ///
+    /// This view owned ~150 lines of its own layout — its own benefit rows, its
+    /// own package rows, its own CTA — and that is why the approved design
+    /// reached `manual` and never reached `first_launch`: no toggle, no social
+    /// proof, no cancel-anytime line, a different headline and a different CTA,
+    /// on the SECOND-LARGEST paywall surface in the product (1,393 of 5,563
+    /// views, 1,277 users, 13 days to 2026-09-02).
+    ///
+    /// Everything entry-specific is now a PARAMETER of the shared view: the
+    /// headline and the analytics context both derive from `.firstLaunch`
+    /// through `PaywallView.title(for:)` and `PaywallView.reasonKey(for:)`. A
+    /// design change now lands here and on every other entry at once, which is
+    /// the property whose absence produced the drift.
+    ///
+    /// The binding is write-only on purpose: the host decides what dismissal
+    /// MEANS (mark seen, advance the onboarding beat), so `false` routes to
+    /// `finish()` rather than to a local `@State` this view would then have to
+    /// keep in sync with the flow.
     private var realBody: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-
-            ConversionScroll(width: ConversionColumn.content) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 64)
-
-                    AnimatedPromptlyMark(size: 84, halo: true)
-                        .padding(.bottom, 18)
-
-                    Text("Videos that edit themselves")
-                        .cType(30, .heavy)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 28)
-                        .entrance(delay: 0.05)
-
-                    Text("Talk to Promptly like an editor. Captions, cuts, graphics — done for you.")
-                        .cType(16)
-                        .foregroundColor(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 10)
-                        .entrance(delay: 0.11)
-
-                    Spacer().frame(height: 26)
-
-                    benefits
-                        .padding(.horizontal, 30)
-                        .entrance(delay: 0.17)
-
-                    Spacer().frame(height: 24)
-
-                    if !packages.isEmpty {
-                        VStack(spacing: 10) {
-                            ForEach(packages, id: \.identifier) { pkg in
-                                packageRow(pkg)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .entrance(delay: 0.24)
-                    } else if subscription.isLoadingOfferings {
-                        ProgressView().tint(.white).padding(.vertical, 36)
-                    }
-                    // Offerings failed → no rows, no spinner: the wall still
-                    // shows the brand + benefits, and the X moves them on. A
-                    // first-launch wall must never strand a brand-new user.
-
-                    Spacer().frame(height: 22)
-
-                    ctaButton
-                        .padding(.horizontal, 24)
-                        .entrance(delay: 0.32)
-
-                    Text(TrialCopy.fineprint)
-                        .cType(11)
-                        .foregroundColor(.white.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 12)
-
-                    VStack(spacing: 12) {
-                        Button("Restore Purchases") {
-                            Task {
-                                if await subscription.restorePurchases() { finish() }
-                            }
-                        }
-                        .cType(13)
-                        .foregroundColor(.white.opacity(0.55))
-
-                        HStack(spacing: 18) {
-                            Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
-                            Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
-                        }
-                        .cType(12)
-                        .foregroundColor(.white.opacity(0.35))
-                    }
-                    .padding(.top, 18)
-                    .padding(.bottom, 40)
-                }
-                // THE PREVIOUSLY-REJECTED DEFECT, on the screen that renders
-                // FIRST. AuthView.swift:72 carries this same pair with the note
-                // that a full-width control "is what Apple flagged in the App
-                // Review rejection of build 151" — but this view is a root
-                // branch reached BEFORE AuthView (PromptlyApp.swift:444), so
-                // with the first_launch_paywall knob on, an iPad reviewer meets
-                // the uncapped version as the app's opening screen and never
-                // reaches the fixed one.
-                //
-                // ConversionScroll owns both halves now: the width cap AND
-                // the vertical centering. The first iPad capture showed the
-                // capped column top-aligned with a third of the screen empty
-                // below it — fixed here rather than at this one call site, so
-                // every other conversion surface gets it too.
-            }
-
-            // ALWAYS dismissible — the exposure is the point, not a trap.
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                Analytics.track("paywall_dismiss", props: ["context": "first_launch"])
-                finish()
-            } label: {
-                Image(systemName: "xmark")
-                    .cType(14, .semibold)
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
-                    .contentShape(Rectangle())
-            }
-            .padding(.top, 12)
-            .padding(.trailing, 16)
-            .accessibilityLabel("Not now")
-
-            if didPurchaseHere, let confirmation = subscription.lastConfirmation {
-                ProCelebrationView(price: confirmation.price) { finish() }
-                    .transition(.opacity)
-            }
+        TwoStepPaywall(
+            isPresented: Binding(get: { true },
+                                 set: { shown in if !shown { finish() } }),
+            reason: .firstLaunch
+        )
+        .onAppear {
+            Analytics.track("upgrade_wall_viewed",
+                            props: (["context": "first_launch"] as [String: Any])
+                                .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         }
-        .task {
-            // Canonical shared paywall-impression funnel; context segments it.
-            Analytics.track("upgrade_wall_viewed", props: (["context": "first_launch"] as [String: Any]).merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
-            if packages.isEmpty { await subscription.refreshOfferings() }
-            if selectedPackage == nil {
-                selectedPackage = packages.first
-                // Record the DEFAULT too: a user who never taps has still been
-                // shown a pre-selected plan, and the reveal must match what
-                // they actually saw highlighted.
-                OnboardingState.shared.preselectedPlanID = packages.first?.identifier
-            }
-        }
-        .onChange(of: subscription.offerings?.current?.availablePackages.count ?? 0) { _, _ in
-            if selectedPackage == nil {
-                selectedPackage = packages.first
-                // Record the DEFAULT too: a user who never taps has still been
-                // shown a pre-selected plan, and the reveal must match what
-                // they actually saw highlighted.
-                OnboardingState.shared.preselectedPlanID = packages.first?.identifier
-            }
-        }
-    }
-
-    // MARK: - Pieces
-
-    /// Reads ProBenefits.core — this screen owns NO list of its own. It used to
-    /// hard-code three rows while the offer reveal built four, so the two
-    /// screens a new user sees back-to-back promised different things about the
-    /// same product ("Upload up to 10 videos at a time" was on the reveal and
-    /// missing here). A shared source is the only fix that stays fixed.
-    private var benefits: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(ProBenefits.core) { b in
-                benefitRow(icon: b.icon, text: b.text)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func benefitRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .cType(15, .semibold)
-                .foregroundStyle(Color.white)
-                .frame(width: 24)
-            Text(text)
-                .cType(15)
-                .foregroundColor(.white.opacity(0.88))
-        }
-    }
-
-    private func packageRow(_ pkg: Package) -> some View {
-        let isSelected = selectedPackage?.identifier == pkg.identifier
-        let isFirst = pkg.identifier == packages.first?.identifier
-        return Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            selectedPackage = pkg
-            // Survive this screen: the offer reveal later honours THIS choice
-            // rather than the default plan.
-            OnboardingState.shared.preselectedPlanID = pkg.identifier
-            // `context` names the surface, same key the purchase_* terminals carry.
-            Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": "first_launch"].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.2), lineWidth: 2)
-                        .frame(width: 22, height: 22)
-                    if isSelected {
-                        Circle().fill(Color.white).frame(width: 12, height: 12)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        // Derived from the PRODUCT's period. This chain fell
-                        // through to "Promptly Pro" for both Max rows — because
-                        // Max arrives as PackageType.custom — so the live
-                        // first-launch paywall listed one plan name twice at two
-                        // different prices.
-                        Text(PlanPeriodCopy.adjective(pkg.planPeriod))
-                            .cType(16, .semibold)
-                            .foregroundColor(.white)
-                        if isFirst {
-                            Text("BEST VALUE")
-                                .cType(9, .heavy)
-                                .tracking(0.6)
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.white))
-                        }
-                    }
-                    Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
-                        .cType(13)
-                        .foregroundColor(.white.opacity(0.7))
-                    // Both SKUs in weekly terms: annual carries the per-week
-                    // anchor; the weekly SKU's price line is already per-week.
-                    if pkg.isAnnualPlan, let monthly = monthlyAnchor(for: pkg) {
-                        Text(monthly)
-                            .cType(11, .medium)
-                            .foregroundColor(.white.opacity(0.55))
-                    }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.08 : 0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? Color.white : Color.white.opacity(0.08),
-                            lineWidth: isSelected ? 1.5 : 0.5)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var ctaButton: some View {
-        Button {
-            guard let pkg = selectedPackage, !isPurchasing else { return }
-            isPurchasing = true
-            Task {
-                let ok = await subscription.purchase(pkg, context: "first_launch")
-                isPurchasing = false
-                if ok { withAnimation { didPurchaseHere = true } }
-                // Cancel/failure: stay put — the X remains the exit.
-            }
-        } label: {
-            HStack {
-                if isPurchasing { ProgressView().tint(.black) }
-                Text(isPurchasing ? "One moment…" : "Get Started")
-                    .cType(17, .bold)
-            }
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white))
-        }
-        .disabled(selectedPackage == nil || isPurchasing)
-        .opacity(selectedPackage == nil ? 0.5 : 1)
-    }
-
-    private func periodText(_ pkg: Package) -> String {
-        PlanPeriodCopy.perPeriod(pkg.planPeriod)
-    }
-
-    /// Re-ruled 2026-08-22: the ANNUAL anchor reads monthly (Apple's sheet
-    /// restates the full charge; per-week maximises the gap at commitment).
-    private func monthlyAnchor(for pkg: Package) -> String? {
-        if let perMonth = pkg.storeProduct.localizedPricePerMonth,
-           let line = TrialCopy.monthlyEquivalent(perMonthPrice: perMonth) {
-            return line
-        }
-        if let formatter = pkg.storeProduct.priceFormatter {
-            return TrialCopy.monthlyEquivalent(fromYearlyPrice: pkg.storeProduct.price, using: formatter)
-        }
-        return nil
     }
 
     private func finish() {
         withAnimation { onboarding.hasSeenFirstLaunchPaywall = true }
+        onFinished?()
     }
 
     private func openLegal(_ url: String) {

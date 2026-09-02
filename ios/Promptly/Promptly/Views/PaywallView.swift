@@ -182,6 +182,13 @@ struct PaywallView: View {
         case .manual:       return String(localized: "Unlock Promptly Pro")
         case .lumen:        return String(localized: "Unlock Promptly Pro")
         case .concurrency:  return String(localized: "One video at a time on Free")
+        // Entry-specific copy, PARAMETERISED rather than forked into another
+        // view. This is the whole point of the consolidation: the first-run
+        // headline was the only thing FirstLaunchPaywallView needed that the
+        // shared paywall did not already do.
+        case .firstLaunch:   return String(localized: "Videos that edit themselves")
+        case .trialWall:     return String(localized: "Unlock Promptly Pro")
+        case .secondPaywall: return String(localized: "Unlock Promptly Pro")
         case .exportGate:
             if personalisationEnabled {
                 if let noun = personalisedNoun { return String(localized: "Save your \(noun)") }
@@ -212,6 +219,13 @@ struct PaywallView: View {
             return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:
             return String(localized: "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want.")
+        // Scheduled surfaces, not cap encounters: nothing was blocked, so there
+        // is no limit to name. `paywallSubtitle` is the flag-aware general
+        // pitch — and it is the ONE subtitle that switches with the credits
+        // meter, which is what keeps these entries on the same model as the
+        // rest of the paywall.
+        case .firstLaunch, .trialWall, .secondPaywall:
+            return ProBenefits.paywallSubtitle
         }
     }
 
@@ -650,15 +664,26 @@ struct PaywallView: View {
     /// Short, stable key for the paywall's trigger reason — travels as the
     /// `context` prop on `upgrade_wall_viewed` so the funnel can attribute views
     /// to their source (daily cap, re-edit, Lumen, manual).
-    private var reasonKey: String {
+    private var reasonKey: String { Self.reasonKey(for: reason) }
+
+    /// The analytics context for a reason. Lifted out of the instance so every
+    /// paywall surface emits the SAME string for the same entry — the funnel
+    /// splits on this, and a second spelling silently forks a metric.
+    static func reasonKey(for reason: PaywallReason) -> String {
         switch reason {
-        case .dailyRenders: return "daily_renders"
-        case .dailyChats:   return "daily_chats"
-        case .reedit:       return "reedit"
-        case .manual:       return "manual"
-        case .lumen:        return "lumen"
-        case .concurrency:  return "concurrency"
-        case .exportGate:   return "export_gate"
+        case .dailyRenders:  return "daily_renders"
+        case .dailyChats:    return "daily_chats"
+        case .reedit:        return "reedit"
+        case .manual:        return "manual"
+        case .lumen:         return "lumen"
+        case .concurrency:   return "concurrency"
+        case .exportGate:    return "export_gate"
+        // The three entries that used to own their own views. Strings are the
+        // ones those views already emitted, so the historical split continues
+        // across the change instead of restarting.
+        case .firstLaunch:   return "first_launch"
+        case .trialWall:     return "door"
+        case .secondPaywall: return "post_onboarding"
         }
     }
 
