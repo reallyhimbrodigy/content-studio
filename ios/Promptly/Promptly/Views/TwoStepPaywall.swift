@@ -267,8 +267,6 @@ struct PaywallLayout: View {
     let sharedFeatures: [String]
     /// What Max adds, immediately above the cards.
     let maxFeatures: [String]
-    let showsReferral: Bool
-    let referralSource: String
     var onClose: () -> Void = {}
     var onPurchase: (String) -> Void = { _ in }
 
@@ -306,16 +304,13 @@ struct PaywallLayout: View {
             // the bottom 40% under an empty band and every element had been
             // shrunk to fit a space that was never the constraint.
             tierCards
-                .padding(.top, 6)
+                .padding(.top, 12)
 
             Spacer(minLength: 6)
 
-            if showsReferralNow {
-                ReferralProgressRow(source: referralSource, compact: true,
-                                    style: .invite, chromeless: true)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
-            }
+            // NO REFERRAL HERE (ruled 2026-09-02). It lives on the 50%-off
+            // offer screen only — a free-Pro alternative on the purchase surface
+            // competes with the decision this screen exists to close.
 
             // NO CTA UNTIL A CHOICE IS MADE. A button that sits there greyed is
             // a control answering a question the cards are still asking; one
@@ -327,7 +322,7 @@ struct PaywallLayout: View {
                     Button {
                         onPurchase(pick.option.id)
                     } label: {
-                        Text("Continue to Purchase · \(pick.tier.title) \(pick.option.label)")
+                        Text(ctaTitle(for: pick))
                             .cType(16, .bold)
                             .foregroundColor(.black)
                             .lineLimit(1)
@@ -343,6 +338,18 @@ struct PaywallLayout: View {
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    // REQUIRED BY APPLE on any surface that sells a
+                    // subscription: a link to the Terms (the EULA) and to the
+                    // Privacy Policy. Their absence is a rejection, and this
+                    // screen is about to become every upgrade entry point.
+                    HStack(spacing: 14) {
+                        Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
+                        Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
+                    }
+                    .cType(9)
+                    .foregroundColor(.white.opacity(0.45))
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
@@ -354,7 +361,14 @@ struct PaywallLayout: View {
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85),
                    value: selectedId)
         .background(Color.black.ignoresSafeArea())
-        .onAppear { if selectedId == nil { selectedId = initialSelectionId } }
+        .onAppear {
+            // PRO YEAR PRESELECTED. Nothing recommended is decision paralysis,
+            // and the previous default landed on Pro WEEK — the worst outcome
+            // available: $10.99 weekly annualises to about $571 against $289.99
+            // for the year, on the SKU that retains worst. A default that costs
+            // the user twice as much is not a neutral default.
+            selectedId = initialSelectionId ?? recommendedId
+        }
     }
 
     /// The title follows the SELECTED TIER once there is one.
@@ -374,6 +388,34 @@ struct PaywallLayout: View {
         return String(localized: "Unlock Promptly \(pick.tier.title)")
     }
 
+    /// BENEFIT-LED, and derived from what is actually selected.
+    ///
+    /// "Continue to Purchase" leads with the word for the part the user is
+    /// wary of. When the selection carries a computed saving the button states
+    /// it — the saving is the reason to take that row — and otherwise it names
+    /// what they get. Both forms come from the selection, so neither can
+    /// describe a plan that is not chosen.
+    private func ctaTitle(for pick: (tier: PaywallTierOption, option: PaywallDurationOption)) -> String {
+        if pick.option.isAnnual, let pct = pick.option.percentOff {
+            return String(localized: "Start Yearly — Save \(pct)%")
+        }
+        return String(localized: "Get Promptly \(pick.tier.title)")
+    }
+
+    /// Pro's yearly row — the recommendation, DERIVED rather than named. Pro is
+    /// the lowest allowance (`tiers` is ascending) and yearly is the row flagged
+    /// `isAnnual`, so a repricing or a new tier cannot leave this pointing at a
+    /// product that no longer exists.
+    private func openLegal(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private var recommendedId: String? {
+        guard let pro = tiers.first(where: { !$0.isMax }) ?? tiers.first else { return nil }
+        return durations(pro.allowance).first(where: { $0.isAnnual })?.id
+    }
+
     /// The chosen row and the card it belongs to.
     private var selectedPick: (tier: PaywallTierOption, option: PaywallDurationOption)? {
         guard let id = selectedId else { return nil }
@@ -385,10 +427,6 @@ struct PaywallLayout: View {
         return nil
     }
 
-    private var showsReferralNow: Bool {
-        guard showsReferral, let pick = selectedPick else { return false }
-        return !pick.tier.isMax
-    }
 
     // MARK: Header
 
@@ -462,6 +500,11 @@ struct PaywallLayout: View {
     private func tierCard(_ tier: PaywallTierOption) -> some View {
         let rows = durations(tier.allowance)
         let isActive = selectedPick?.tier.allowance == tier.allowance
+        // WHICH TIER IS RECOMMENDED IS DERIVED — the card that owns the
+        // recommended row, not a hardcoded "Pro".
+        let isRecommended = recommendedId.map { rid in
+            durations(tier.allowance).contains { $0.id == rid }
+        } ?? false
         return VStack(alignment: .leading, spacing: 0) {
             Text(tier.title)
                 .cType(21, .bold)
@@ -506,12 +549,28 @@ struct PaywallLayout: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(isActive ? 0.10 : 0.05))
+                .fill(isRecommended ? Color(hex: "F4E4BC").opacity(0.07)
+                                    : Color.white.opacity(isActive ? 0.10 : 0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(isActive ? 0.55 : 0.12), lineWidth: 1)
+                .strokeBorder(isRecommended ? Color(hex: "F4E4BC").opacity(isActive ? 0.85 : 0.5)
+                                            : Color.white.opacity(isActive ? 0.55 : 0.12),
+                              lineWidth: isRecommended ? 1.5 : 1)
         )
+        // The badge overhangs the top edge, the way a recommendation should read
+        // — attached to the card rather than another row inside it.
+        .overlay(alignment: .top) {
+            if isRecommended {
+                Text("RECOMMENDED")
+                    .cType(8, .heavy)
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color(hex: "F4E4BC")))
+                    .offset(y: -8)
+            }
+        }
     }
 
     /// A duration row inside its card. Selection is a fill and a border — the
@@ -651,8 +710,6 @@ struct TwoStepPaywall: View {
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             sharedFeatures: PaywallMapping.sharedFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
             maxFeatures: PaywallMapping.maxFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
-            showsReferral: onboarding.referralProgressEnabled,
-            referralSource: "paywall_two_step",
             onClose: { isPresented = false },
             onPurchase: { id in
                 guard let pkg = packages.first(where: {

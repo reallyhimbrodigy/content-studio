@@ -239,9 +239,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 23: bleed("Max selected") {
                 PaywallLayout(
@@ -249,9 +247,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 24: bleed("Pro selected") {
                 PaywallLayout(
@@ -259,9 +255,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 25: bleed("PRO selected, viewer holds MAX — no referral") {
                 // showsReferral stays TRUE. The row must disappear on its own,
@@ -273,9 +267,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 28: bleed("step one CREDITS ARMED") {
                 PaywallLayout(
@@ -283,9 +275,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 29: bleed("Max selected CREDITS ARMED") {
                 PaywallLayout(
@@ -294,8 +284,7 @@ struct PayoffSnapshotHarnessView: View {
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
                     maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true,
-                    referralSource: "harness",
+                    
                     initialSelectionId: "promptly_pro_yearly")
             }
             case 34: bleed("MAX selected — title must follow the tier") {
@@ -305,7 +294,7 @@ struct PayoffSnapshotHarnessView: View {
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
                     maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true, referralSource: "harness",
+                    
                     initialSelectionId: "promptly_max_yearly")
             }
             case 30: FitProbe(label: "FIT step one CREDITS ARMED") {
@@ -314,8 +303,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true, referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 26: FitProbe(label: "FIT step one") {
                 PaywallLayout(
@@ -323,8 +311,7 @@ struct PayoffSnapshotHarnessView: View {
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true, referralSource: "harness")
+                    maxFeatures: HarnessPaywallMock.maxLines,)
             }
             case 27: FitProbe(label: "FIT with a duration selected") {
                 PaywallLayout(
@@ -333,7 +320,7 @@ struct PayoffSnapshotHarnessView: View {
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
                     maxFeatures: HarnessPaywallMock.maxLines,
-                    showsReferral: true, referralSource: "harness",
+                    
                     initialSelectionId: "promptly_pro_yearly")
             }
             case 16: OnboardingQuestionView(question: .audienceV2,
