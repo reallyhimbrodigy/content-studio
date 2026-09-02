@@ -1406,6 +1406,13 @@ struct EditorView: View {
     /// on picker_opened separates assisted opens in every downstream read.
     func maybeAutoOpenPickerOnFirstSession() {
         guard onboardingState.firstSessionAutopickerEnabled,
+              // SIGNED IN, which this function's own comment already claimed
+              // ("the first authenticated session") and did not check. Under
+              // deferred auth it fired for anonymous users, so the first thing
+              // a new install did was open the system photo picker for an
+              // upload that could not start. Choosing a video you cannot use is
+              // a worse first impression than an empty screen.
+              AuthService.shared.currentUser?.id != nil,
               !UserDefaults.standard.bool(forKey: "first_session_autopicker_fired"),
               messages.filter({ !$0.isOnboarding }).isEmpty,
               pendingVideos.isEmpty, reeditSession == nil else { return }
@@ -2870,6 +2877,25 @@ struct EditorView: View {
         let hasVideos = !pendingVideos.isEmpty
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }
+
+        // AUTH SEAM — BEFORE THE MESSAGE IS ACCEPTED.
+        //
+        // Sending writes to the user's own chat row. Signed out, the whole
+        // persistence path fails SILENTLY: `getValidToken()` returns nil,
+        // `authedRequest` returns nil, and ChatStore catches and prints —
+        // createChat returns nil, flushPending re-queues forever. The message
+        // renders from local state, the user believes it is saved, and it is
+        // gone on relaunch. That is worse than a wall, because nothing looks
+        // wrong until the work is already lost.
+        //
+        // The guard is here, at the TOP, so the composer keeps the text and the
+        // transcript gains nothing. Returning after the bubble is appended would
+        // show the user a message that is about to disappear.
+        if AuthService.shared.currentUser?.id == nil {
+            AuthGate.shared.require(.profileWrite("chat_send"))
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
 
         // ── requires_vibe_change re-dispatch path ─────────────────────
         // Backend told us the source was fine but the vibe was the

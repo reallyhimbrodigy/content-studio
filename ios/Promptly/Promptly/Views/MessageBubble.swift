@@ -1352,9 +1352,15 @@ final class VideoExporter: ObservableObject {
         /// never shown as an error string, because "your video is ready" is
         /// not a failure and must not be dressed as one.
         case freeExportSpent
+        /// Signed out under deferred auth. A SENTINEL like the two above: the
+        /// sign-in sheet is already presenting, so surfacing an error string
+        /// underneath it would explain a problem the user is mid-way through
+        /// solving.
+        case notSignedIn
 
         var errorDescription: String? {
             switch self {
+            case .notSignedIn:       return nil
             case .freeExportSpent:   return "Free export already used"
             case .invalidUrl:        return "Invalid video URL"
             case .photosDenied:      return "Photos access was denied"
@@ -1417,6 +1423,15 @@ final class VideoExporter: ObservableObject {
     /// file. Collapsing every exit onto this one path is what closes the public-save
     /// leak the ungated share/library paths used to open.
     private func prepareGatedLocalFile() async throws -> URL {
+        // AUTH SEAM — every save and share funnels through here, so this is the
+        // only place the requirement has to be stated. Signed out, the gate
+        // probe below would go out without an Authorization header and be
+        // refused server-side, surfacing as a network-ish failure rather than
+        // "you need an account".
+        if AuthService.shared.currentUser?.id == nil {
+            await MainActor.run { AuthGate.shared.require(.export(jobId: nil)) }
+            throw ExportError.notSignedIn
+        }
         let sourceUrl = try await resolveSaveSourceUrl()
         return try await ensureLocalFile(from: sourceUrl)
     }

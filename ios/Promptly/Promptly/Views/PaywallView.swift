@@ -48,10 +48,10 @@ struct PROBadge: View {
 /// yearly/12 anchor already uses; no literals, no flags.
 enum PlanSavings {
     static func annual(in packages: [Package]) -> Package? {
-        packages.first { $0.packageType == .annual }
+        packages.first { $0.isAnnualPlan }
     }
     static func monthly(in packages: [Package]) -> Package? {
-        packages.first { $0.packageType == .monthly }
+        packages.first { $0.isMonthlyPlan }
     }
 
     /// Whole-percent saving of the annual plan vs 12 months of the monthly
@@ -76,7 +76,7 @@ enum PlanSavings {
     }
 
     static func weekly(in packages: [Package]) -> Package? {
-        packages.first { $0.packageType == .weekly }
+        packages.first { $0.isWeeklyPlan }
     }
 
     /// annual_dollar_line: the deal stated in money, under the %-badge —
@@ -345,7 +345,7 @@ struct PaywallView: View {
                     // where 61% of cancels originate. Localized key already in
                     // the catalog (14 languages).
                     if onboardingStateRef.yearlyFrameFixEnabled,
-                       let sel = selectedPackage, sel.packageType == .annual {
+                       let sel = selectedPackage, sel.isAnnualPlan {
                         Text("You'll be charged \(sel.storeProduct.localizedPriceString) today. Auto-renews until cancelled — cancel anytime in your Apple Account settings.")
                             .cType(12)
                             .foregroundColor(.white.opacity(0.55))
@@ -823,11 +823,11 @@ struct PaywallView: View {
                 default: return nil
                 }
             }
-            switch pkg.packageType {
-            case .annual: return String(localized: "Year")
-            case .monthly: return String(localized: "Month")
-            case .weekly: return String(localized: "Week")
-            default: return nil
+            switch pkg.planPeriod {
+            case .year:  return String(localized: "Year")
+            case .month: return String(localized: "Month")
+            case .week:  return String(localized: "Week")
+            case .other: return nil
             }
         }()
 
@@ -878,18 +878,18 @@ struct PaywallView: View {
                 @unknown default: return ""
                 }
             }
-            switch pkg.packageType {
-            case .annual: return String(localized: "year")
-            case .monthly: return String(localized: "month")
-            case .weekly: return String(localized: "week")
-            default: return ""
+            switch pkg.planPeriod {
+            case .year:  return String(localized: "year")
+            case .month: return String(localized: "month")
+            case .week:  return String(localized: "week")
+            case .other: return ""
             }
         }()
         // The discount badge is COMPUTED at render time from the same live
         // per-territory prices as the yearly/12 anchor — floor(1 − y/(12·m)),
         // never a hardcoded string, and only on the annual row when the
         // saving is real (2026-08-26 rebuild).
-        let pctOff: Int? = (pkg.packageType == .annual)
+        let pctOff: Int? = (pkg.isAnnualPlan)
             ? (currentPackages.flatMap { PlanSavings.percentOff(in: $0) })
             : nil
 
@@ -934,7 +934,7 @@ struct PaywallView: View {
                     // RE-RULED 2026-08-22: the annual anchor reads MONTHLY —
                     // the honest minimal-gap frame against Apple's sheet.
                     // Storefront-derived (RC per-month or ÷12), no literals.
-                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
+                    if pkg.isAnnualPlan, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .cType(12, .medium)
                             .foregroundColor(.white.opacity(0.65))
@@ -942,7 +942,7 @@ struct PaywallView: View {
                     // annual_dollar_line: the deal in dollars, computed from
                     // the SAME live storefront prices as the badge (weekly must
                     // exist AND annual genuinely cheaper — else no line).
-                    if pkg.packageType == .annual,
+                    if pkg.isAnnualPlan,
                        onboardingStateRef.annualDollarLineEnabled,
                        let dollarLine = currentPackages.flatMap({ PlanSavings.annualDollarLine(in: $0) }) {
                         Text(dollarLine)
@@ -966,7 +966,7 @@ struct PaywallView: View {
                     // month/year rows only. Free-trial offers never render.
                     if onboardingStateRef.offerSurfacingEnabled,
                        reason == .exportGate,
-                       pkg.packageType == .annual || pkg.packageType == .monthly,
+                       pkg.isAnnualPlan || pkg.isMonthlyPlan,
                        let offerLine = Self.introOfferLine(for: pkg) {
                         Text(offerLine)
                             .cType(11, .medium)

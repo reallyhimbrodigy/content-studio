@@ -323,8 +323,8 @@ struct OfferRevealView: View {
     /// The monthly package, only when it carries a genuinely cheaper paid
     /// intro AND is not already the plan being sold above.
     private var monthlyAlternative: Package? {
-        guard offerPackage?.packageType != .monthly else { return nil }
-        guard let m = packages.first(where: { $0.packageType == .monthly }) else { return nil }
+        guard offerPackage?.isMonthlyPlan != true else { return nil }
+        guard let m = packages.first(where: { $0.isMonthlyPlan }) else { return nil }
         return OfferReveal.isRealOffer(m) ? m : nil
     }
 
@@ -504,11 +504,11 @@ enum OfferReveal {
         guard let pct = percentOff(for: pkg) else {
             return String(localized: "Your first subscription")
         }
-        switch pkg.packageType {
-        case .annual:  return String(localized: "Your first year is \(pct)% off")
-        case .monthly: return String(localized: "Your first month is \(pct)% off")
-        case .weekly:  return String(localized: "Your first week is \(pct)% off")
-        default:       return String(localized: "Your first subscription is \(pct)% off")
+        switch pkg.planPeriod {
+        case .year:  return String(localized: "Your first year is \(pct)% off")
+        case .month: return String(localized: "Your first month is \(pct)% off")
+        case .week:  return String(localized: "Your first week is \(pct)% off")
+        case .other: return String(localized: "Your first subscription is \(pct)% off")
         }
     }
 
@@ -523,11 +523,11 @@ enum OfferReveal {
     /// the intro price applies to a first subscription, which we say plainly.
     static func termLine(for pkg: Package) -> String {
         let standard = pkg.storeProduct.localizedPriceString
-        switch pkg.packageType {
-        case .annual:  return String(localized: "for your first year, then \(standard)/year")
-        case .monthly: return String(localized: "for your first month, then \(standard)/month")
-        case .weekly:  return String(localized: "for your first week, then \(standard)/week")
-        default:       return String(localized: "for your first term, then \(standard)")
+        switch pkg.planPeriod {
+        case .year:  return String(localized: "for your first year, then \(standard)/year")
+        case .month: return String(localized: "for your first month, then \(standard)/month")
+        case .week:  return String(localized: "for your first week, then \(standard)/week")
+        case .other: return String(localized: "for your first term, then \(standard)")
         }
     }
 

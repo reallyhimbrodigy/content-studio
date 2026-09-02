@@ -162,9 +162,7 @@ struct SecondPaywallView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(pkg.packageType == .annual ? "Yearly"
-                             : pkg.packageType == .monthly ? "Monthly"
-                             : pkg.packageType == .weekly ? "Weekly" : "Promptly Pro")
+                        Text(PlanPeriodCopy.adjective(pkg.planPeriod))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                         if isFirst {
@@ -178,7 +176,7 @@ struct SecondPaywallView: View {
                     Text("\(pkg.storeProduct.localizedPriceString) \(periodText(pkg))")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.7))
-                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
+                    if pkg.isAnnualPlan, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.55))
@@ -301,12 +299,7 @@ struct SecondPaywallView: View {
     }
 
     private func periodText(_ pkg: Package) -> String {
-        switch pkg.packageType {
-        case .annual: return "per year"
-        case .monthly: return "per month"
-        case .weekly: return "per week"
-        default: return ""
-        }
+        PlanPeriodCopy.perPeriod(pkg.planPeriod)
     }
 
     /// Re-ruled 2026-08-22: the ANNUAL anchor reads monthly (Apple's sheet

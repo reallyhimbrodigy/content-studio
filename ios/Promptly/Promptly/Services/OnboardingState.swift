@@ -297,6 +297,10 @@ final class OnboardingState: ObservableObject {
         case "offer_surfacing": if !offerSurfacingEnabled { offerSurfacingEnabled = true }
         case "two_step_paywall": if !twoStepPaywallEnabled { twoStepPaywallEnabled = true }
         case "deferred_auth": if !deferredAuthEnabled { deferredAuthEnabled = true }
+        // A flag with no case here cannot be turned on anywhere but a live
+        // server flip, so it cannot be screenshotted or reviewed before it
+        // ships — the gap this switch's own comment describes.
+        case "first_session_autopicker": if !firstSessionAutopickerEnabled { firstSessionAutopickerEnabled = true }
         case "push_primer": if !pushPrimerEnabled { pushPrimerEnabled = true }
         case "exportgate_two_page": if !exportGateTwoPageEnabled { exportGateTwoPageEnabled = true }
         // The seven experiment flags. Their absence here was not a small gap —

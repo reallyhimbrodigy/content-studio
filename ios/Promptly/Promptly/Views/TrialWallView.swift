@@ -41,7 +41,7 @@ struct TrialWallView: View {
     /// old selection-based property hid the annual anchor whenever another row
     /// was selected).
     private func monthlyEquivalent(for pkg: Package) -> String? {
-        guard pkg.packageType == .annual,
+        guard pkg.isAnnualPlan,
               let price = pkg.storeProduct.pricePerMonth else { return nil }
         let f = NumberFormatter()
         f.numberStyle = .currency
@@ -142,7 +142,7 @@ struct TrialWallView: View {
                             Text(planTitle(pkg))
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(.white)
-                            if pkg.packageType == .annual, let m = monthlyEquivalent(for: pkg) {
+                            if pkg.isAnnualPlan, let m = monthlyEquivalent(for: pkg) {
                                 Text("that's \(m)/month, billed yearly")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
@@ -150,7 +150,7 @@ struct TrialWallView: View {
                             // annual_dollar_line: the deal in dollars — same
                             // live storefront math as PaywallView's row (weekly
                             // must exist AND annual genuinely cheaper).
-                            if pkg.packageType == .annual,
+                            if pkg.isAnnualPlan,
                                onboardingStateRef.annualDollarLineEnabled,
                                let dollarLine = PlanSavings.annualDollarLine(in: packages) {
                                 Text(dollarLine)
@@ -174,7 +174,7 @@ struct TrialWallView: View {
                     .overlay(alignment: .topTrailing) {
                         // Computed at render time from the live per-territory
                         // prices — floor(1 − y/(12·m)); never hardcoded.
-                        if pkg.packageType == .annual,
+                        if pkg.isAnnualPlan,
                            let pct = PlanSavings.percentOff(in: packages) {
                             Text("\(pct)% OFF")
                                 .font(.system(size: 10, weight: .heavy))
@@ -280,20 +280,10 @@ struct TrialWallView: View {
         // Bare nouns, our OWN labels — NEVER StoreKit's localizedTitle (the
         // Jul-24 rule; the old default branch here still fell back to it —
         // regression closed 2026-08-26).
-        switch pkg.packageType {
-        case .annual: return String(localized: "Year")
-        case .monthly: return String(localized: "Month")
-        case .weekly: return String(localized: "Week")
-        default: return "Promptly Pro"
-        }
+        PlanPeriodCopy.title(pkg.planPeriod)
     }
     private func periodLabel(_ pkg: Package?) -> String {
-        switch pkg?.packageType {
-        case .annual: return "year"
-        case .monthly: return "month"
-        case .weekly: return "week"
-        default: return "period"
-        }
+        PlanPeriodCopy.noun(pkg?.planPeriod ?? .other)
     }
 
     private func openLegal(_ urlString: String) {

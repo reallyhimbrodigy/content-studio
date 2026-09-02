@@ -248,10 +248,12 @@ struct FirstLaunchPaywallView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(pkg.packageType == .annual ? "Yearly"
-                             : pkg.packageType == .monthly ? "Monthly"
-                             : pkg.packageType == .weekly ? "Weekly"
-                             : "Promptly Pro")
+                        // Derived from the PRODUCT's period. This chain fell
+                        // through to "Promptly Pro" for both Max rows — because
+                        // Max arrives as PackageType.custom — so the live
+                        // first-launch paywall listed one plan name twice at two
+                        // different prices.
+                        Text(PlanPeriodCopy.adjective(pkg.planPeriod))
                             .cType(16, .semibold)
                             .foregroundColor(.white)
                         if isFirst {
@@ -269,7 +271,7 @@ struct FirstLaunchPaywallView: View {
                         .foregroundColor(.white.opacity(0.7))
                     // Both SKUs in weekly terms: annual carries the per-week
                     // anchor; the weekly SKU's price line is already per-week.
-                    if pkg.packageType == .annual, let monthly = monthlyAnchor(for: pkg) {
+                    if pkg.isAnnualPlan, let monthly = monthlyAnchor(for: pkg) {
                         Text(monthly)
                             .cType(11, .medium)
                             .foregroundColor(.white.opacity(0.55))
@@ -319,12 +321,7 @@ struct FirstLaunchPaywallView: View {
     }
 
     private func periodText(_ pkg: Package) -> String {
-        switch pkg.packageType {
-        case .annual: return "per year"
-        case .monthly: return "per month"
-        case .weekly: return "per week"
-        default: return ""
-        }
+        PlanPeriodCopy.perPeriod(pkg.planPeriod)
     }
 
     /// Re-ruled 2026-08-22: the ANNUAL anchor reads monthly (Apple's sheet

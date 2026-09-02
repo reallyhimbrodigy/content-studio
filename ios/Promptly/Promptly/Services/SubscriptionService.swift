@@ -385,33 +385,33 @@ final class SubscriptionService: ObservableObject {
             else { return Int.max }
             return -m   // higher allowance sorts first
         }
-        func rank(_ t: PackageType) -> Int {
-            switch t {
-            case .lifetime: return 0
-            case .annual: return 1
-            case .sixMonth: return 2
-            case .threeMonth: return 3
-            case .twoMonth: return 4
-            case .monthly: return 5
-            case .weekly: return 6
-            default: return 7
+        // DURATION FROM THE PRODUCT. Ranking on `packageType` put every Max
+        // plan in the `default` bucket — Max arrives as `.custom` — so within
+        // the Max tier the rows were ordered by whatever order the offering
+        // returned rather than by duration. Same root as the missing savings
+        // badge and the duplicated "Promptly Pro" label.
+        func rank(_ p: Package) -> Int {
+            switch p.planPeriod {
+            case .year:  return 1
+            case .month: return 5
+            case .week:  return 6
+            case .other: return 7
             }
         }
         return packages.enumerated()
             .sorted {
-                (tierRank($0.element), rank($0.element.packageType), $0.offset)
-                    < (tierRank($1.element), rank($1.element.packageType), $1.offset)
+                (tierRank($0.element), rank($0.element), $0.offset)
+                    < (tierRank($1.element), rank($1.element), $1.offset)
             }
             .map(\.element)
     }
 
+    /// Derived from the product's period, so a Max purchase is "yearly" or
+    /// "monthly" in the funnel rather than "other" — the analytics equivalent of
+    /// the same defect, where every Max row would land in a bucket that reads as
+    /// an unrecognised product.
     func planKey(_ pkg: Package) -> String {
-        switch pkg.packageType {
-        case .annual: return "yearly"
-        case .monthly: return "monthly"
-        case .weekly: return "weekly"
-        default: return "other"
-        }
+        PlanPeriodCopy.planKey(pkg.planPeriod)
     }
 
     @discardableResult

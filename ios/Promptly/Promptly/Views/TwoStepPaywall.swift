@@ -672,20 +672,13 @@ struct TwoStepPaywall: View {
     private var products: [PaywallProduct] {
         packages.map { pkg in
             let sp = pkg.storeProduct
+            // One resolver, shared with every other paywall surface.
             let unit: PaywallPeriodUnit = {
-                switch sp.subscriptionPeriod?.unit {
+                switch pkg.planPeriod {
                 case .year:  return .year
                 case .month: return .month
                 case .week:  return .week
-                default: break
-                }
-                // Fall back to the package type only when the product carries
-                // no period at all.
-                switch pkg.packageType {
-                case .annual:  return .year
-                case .monthly: return .month
-                case .weekly:  return .week
-                default:       return .other
+                case .other: return .other
                 }
             }()
             // offer_surfacing: gated on the flag and the export-gate reason,
