@@ -4,10 +4,32 @@ services:
     runtime: node
     branch: main
     rootDir: .
-    buildCommand: npm install --omit=dev
+    # GATE (TRUTH 2026-08-09): the 19 lib/__smoke_*.js safety smokes each encode
+    # a real past incident, and until today were wired into NOTHING — neither
+    # this build nor CI ran them. A red smoke now FAILS the build, so the
+    # previous version stays live. Verified prod-deps-only (no dev deps needed).
+    buildCommand: npm install --omit=dev && node validate_deploy.js
     startCommand: npm start
     autoDeploy: true
     envVars:
+      # [§2.1] LUMEN ACCESS. PREMIUM_PIPELINE_ENABLED was never declared here,
+      # which is why generated_scenes fired 0 in 2,074 jobs — the master gate of
+      # a five-way AND, unset and invisible. Declared now so it EXISTS as a knob
+      # (value set in the dashboard, sync:false). /api/health reports
+      # premium_pipeline so its state is a curl, not a log dig.
+      - key: PREMIUM_PIPELINE_ENABLED
+        sync: false
+      # The metered dial (§2.1 "default 0, never a doctrine") and the quota
+      # sized to unit cost. Absent = the code's own safe defaults (free 0,
+      # paid 30); declared here so they are visible knobs rather than folklore.
+      - key: LUMEN_FREE_RENDERS_PER_MONTH
+        sync: false
+      - key: LUMEN_PAID_RENDERS_PER_MONTH
+        sync: false
+      - key: LUMEN_BUDGET_USD_PER_RENDER
+        sync: false
+      - key: LUMEN_GLOBAL_DAILY_BUDGET_USD
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -73,4 +95,16 @@ crons:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
+        sync: false
+  - name: daily-scoreboard
+    runtime: node
+    schedule: "0 15 * * *"
+    buildCommand: npm install
+    startCommand: node scripts/scoreboard.js
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
         sync: false

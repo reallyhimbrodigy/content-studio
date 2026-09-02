@@ -1,0 +1,24 @@
+-- video_jobs.modal_call_id — the Modal FunctionCall id of the spawned render.
+--
+-- Without this, the reaper/watchdog cannot CANCEL a stalled container: the worker
+-- exposes a cancel_call endpoint (terminate_containers=True stops the bill), but
+-- content-studio has no Modal credentials and reaches Modal only over HTTP — so it
+-- needs the call_id to name WHICH call to cancel. Today the call_id lives only in
+-- the dispatcher's in-memory pending map (registerPendingModalJob); a reaper pass
+-- (or a future progress-aware watchdog) reads the DB row, which never carried it.
+-- Persisting it here is the precondition for both "the reaper can cancel" and "the
+-- watchdog can exist" (Zac 2026-08-04).
+--
+-- A dedicated column, NOT result.call_id: the worker overwrites `result` on every
+-- progress write, so a mid-render stall would lose it. modal_call_id is written
+-- once at spawn and never touched by the worker, so it survives to reap time.
+--
+-- Additive, idempotent, zero-risk. A nullable text column add takes no meaningful
+-- lock and cannot affect an in-flight insert. The dispatcher writes it best-effort
+-- (errors swallowed) and the reaper reads it in a separate swallowed query, so it
+-- is safe to apply this migration BEFORE or AFTER the server deploy — order does
+-- not matter, and a not-yet-applied column simply means "no cancel yet".
+--
+-- Run in the Supabase SQL editor (paste + Run). Safe to re-run.
+
+ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS modal_call_id text;

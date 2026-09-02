@@ -11,3 +11,13 @@ reference-videos/_last_analyses.json
 reference-videos/_last_style_guide.txt
 
 # Capacitor iOS build
+out/
+
+# Build-gate receipt: written by validate_deploy.js at BUILD time, read at boot.
+# Never committed — a checked-in receipt would describe some other machine.
+.gate_receipt.json
+.build_marker.json
+
+# Python bytecode — scripts/ now carries the delivery-gate instruments
+__pycache__/
+*.pyc

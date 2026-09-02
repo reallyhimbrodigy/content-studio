@@ -10,6 +10,8 @@ const {
   isUserPro: isProfilePro,
   entitlementTier,
   tierFromEntitlement,
+  tierAfterGrant,
+  grantFromMs,
   unknownPeriodPaid,
   proEntitlementFromV2ActiveList,
   PRO_ENTITLEMENT_ID,
@@ -17,15 +19,160 @@ const {
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
 const { resolveEnforce, effectiveTier, clientWallCapable, clientFreemium, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
-const { wallRequiredMessage } = require('./lib/failure-copy');
+const { wallRequiredMessage, sourceMissingMessage } = require('./lib/failure-copy');
 const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
+const { findDeadSourceJob } = require('./lib/source-presence');
+const apiLedger = require('./lib/api-outcome-ledger');
+const { makeJob404Guard } = require('./lib/job404-guard');
+const { isTerminalJobStatus, classifyLostTransition } = require('./lib/job-status');
+
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
+const { postAgentAlert } = require('./lib/agent-alert');
+const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
+const { checkSpendGuards, checkRejectionAttemptCap } = require('./lib/spend-guard');
+
+// Public result page for the completion-email deep link. `data` = { videoUrl,
+// thumbnailUrl } for a COMPLETED job, or null for anything else (missing /
+// processing / failed) → one neutral page that never confirms a job's state.
+// Self-contained (inline CSS), mobile-first (recipients open on a phone), no PII.
+const APP_STORE_URL = 'https://apps.apple.com/app/id6762497454';
+
+// Acquisition landing (/get). The store CTA carries data-store-link + a real
+// href, so normal browsers navigate straight to the App Store; inside a Meta/
+// TikTok in-app browser the escape module intercepts the tap and breaks out to
+// Safari (falling back to instructions). Self-contained, mobile-first, no PII.
+function renderGetLanding() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Get Promptly</title>
+  <style>
+    :root{color-scheme:dark}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+      padding:32px 24px calc(32px + env(safe-area-inset-bottom));text-align:center;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+      background:#0e0e10;color:#f5f4f2}
+    .wrap{width:100%;max-width:420px}
+    .brand{font-weight:800;font-size:17px;letter-spacing:.3px;color:#C8A95E;margin-bottom:28px}
+    h1{font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.02em;margin:0 0 14px}
+    p{font-size:17px;line-height:1.55;color:#a8a8ad;margin:0 0 32px}
+    .cta{display:block;width:100%;padding:17px 20px;border-radius:999px;text-decoration:none;
+      background:#C8A95E;color:#1a1a1a;font-weight:800;font-size:17px}
+    .note{margin-top:16px;font-size:13px;color:#77777e}
+  </style></head><body>
+  <div class="wrap">
+    <div class="brand">Promptly</div>
+    <h1>Make a scroll-stopping video in minutes.</h1>
+    <p>Upload a clip of yourself talking, tell Promptly the vibe, and get a captioned, edited short back — no timeline, no editing.</p>
+    <a class="cta" href="${APP_STORE_URL}" data-store-link>Download on the App Store</a>
+    <div class="note">Free to start — one video edit every day.</div>
+  </div>
+  <script src="/js/inapp-browser-escape.js"></script>
+  </body></html>`;
+}
+
+// Server-side funnel event → BOTH sinks (analytics_events + PostHog), keyed by
+// the Supabase user id (the same distinct_id the client identify()s as, so the
+// funnel joins across the client/server seam). Fire-and-forget; never blocks the
+// response. Used to light up the signup→upload region from SERVER-visible signals
+// while the client-side instrumentation waits on an App Store release (build 223).
+function serverFunnel(userId, event, props = {}) {
+  if (!userId || !supabaseAdmin) return;
+  try {
+    supabaseAdmin.from('analytics_events').insert({
+      event, anon_user_id: userId, user_id: userId, platform: 'server', app_version: 'server', props,
+    }).then(({ error }) => { if (error) console.warn(`[funnel] ${event} mirror failed:`, error.message); });
+    phCapture(userId, event, props);
+  } catch (e) { console.warn(`[funnel] ${event} failed:`, e && e.message); }
+}
+
+// Warm the render dispatcher on REAL upload intent (server-side, no client
+// release). The Modal warmup() endpoint (boot-only, no source) provisions the
+// cpu=8 dispatcher so the run_job dispatch ~10-90s later hits a WARM container
+// instead of racing a cold-start 502 ("trouble reaching the render service").
+// This is the exact signal warmup() was DESIGNED for ("fired at upload-start");
+// it replaces the frozen blanket client prewarm for cold-start reachability at
+// ~2% of the volume — real uploads only, not editor-open/composer-focus, and not
+// the 63% who never render. Fire-and-forget; a warm failure never touches the
+// upload. Kill switch: WARM_ON_INTENT=0.
+function warmDispatcherOnIntent() {
+  if (process.env.WARM_ON_INTENT === '0') return;
+  const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
+  const warmUrl = process.env.MODAL_WARMUP_URL || modalRunUrl.replace(/-run-job(\.|$)/, '-warmup$1');
+  if (!warmUrl) return;
+  Promise.resolve(fetch(warmUrl, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(8000),
+  })).then(() => {}, (e) => console.warn('[warm-on-intent] warmup failed (non-fatal):', e && e.message));
+}
+
+function renderResultPage(data) {
+  const esc = (s) => String(s || '').replace(/[<>"&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c]));
+  const body = data
+    ? `<div class="card">
+        <div class="brand">Promptly</div>
+        <h1>Your video is ready 🎬</h1>
+        <video controls playsinline preload="metadata" src="${esc(data.videoUrl)}"></video>
+        <a class="btn primary" href="${esc(data.videoUrl)}" download>Download video</a>
+        <a class="btn ghost" href="${APP_STORE_URL}">Open Promptly to edit or make another</a>
+      </div>`
+    : `<div class="card">
+        <div class="brand">Promptly</div>
+        <h1>This video isn't available</h1>
+        <p class="muted">The link may be old, or the video isn't ready yet. Open Promptly to find your videos.</p>
+        <a class="btn primary" href="${APP_STORE_URL}">Open Promptly</a>
+      </div>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Your Promptly video</title>
+  <style>
+    :root{color-scheme:light dark}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0e0e10;color:#f5f4f2}
+    .card{width:100%;max-width:480px;background:#17171a;border:1px solid #26262b;border-radius:20px;padding:28px;text-align:center}
+    .brand{font-weight:800;font-size:15px;letter-spacing:.3px;color:#C8A95E;margin-bottom:14px}
+    h1{font-size:22px;font-weight:700;line-height:1.3;margin:0 0 18px}
+    video{width:100%;border-radius:14px;background:#000;margin-bottom:18px;max-height:70vh}
+    .muted{color:#a0a0a8;font-size:15px;line-height:1.6;margin:0 0 20px}
+    .btn{display:block;width:100%;padding:14px 20px;border-radius:999px;text-decoration:none;font-weight:700;font-size:15px;margin-top:10px}
+    .primary{background:#C8A95E;color:#1a1a1a}
+    .ghost{background:transparent;color:#f5f4f2;border:1px solid #3a3a42}
+  </style></head><body>${body}</body></html>`;
+}
 const { sendLifecyclePush, buildCompletedAlert, buildFailedAlert, OWNER_USER_ID: LIFECYCLE_OWNER_USER_ID } = require('./lib/lifecycle-push');
+
+// BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11, reports/REQUEST_
+// DELIVERY_GATE_RECEIPT.md): validate_deploy.js writes .gate_receipt.json when
+// the 20-smoke gate passes during the Render build. Read ONCE at boot —
+// boot-time truth is the point (the receipt describes THIS build) — and served
+// on /api/health as `gate`. null = the file is absent = the build did not run
+// the gate (the fact nobody could establish from outside). Read failures never
+// affect boot.
+const BOOT_GATE_RECEIPT = require('./lib/gate-receipt').readGateReceipt(__dirname);
+
+// DAILY SCOREBOARD, IN-PROCESS (2026-08-12). Was a separate render.yaml cron
+// service whose existence has been [UNKNOWN] since it was added — the same
+// blueprint-sync question that turned out to be REAL for the build gate. Moved
+// into the process that is provably running. Idempotent: the scoreboard upserts
+// one row per UTC day, so catch-up on every boot cannot double-count. Started
+// below, after supabaseAdmin exists.
+// npm postinstall marker — read at boot beside the receipt. See
+// scripts/build-marker.js: together they say WHICH half of the build ran.
+const BOOT_BUILD_MARKER = require('./lib/gate-receipt').readBuildMarker(__dirname);
+
+// ARMED-BUT-UNVERIFIED alarm (2026-08-11). Say it once, loudly, at boot — hours
+// before the first free export rather than after it. The predicate is a pure
+// function in lib/gate-receipt so the smoke proves it actually fires; a warning
+// nobody has watched fire is not a warning. Logs only, never blocks boot.
+const _wmWarning = require('./lib/gate-receipt').watermarkArmingWarning(BOOT_GATE_RECEIPT);
+if (_wmWarning) console.error(_wmWarning);
 const {
   validateUploadRequest,
   validateSubmission,
@@ -37,6 +184,112 @@ const { validateFeedback } = require('./lib/feedback');
 const { isAnswerSubmission, validateAnswer, canAcceptAnswer } = require('./lib/ask');
 const { isJobCancellable } = require('./lib/cancel');
 const { isTrivialMessage, TRIVIAL_REPLY, isStatusQuestion, statusAnswerFromJob, jobContextLine } = require('./lib/chat-router');
+const { recordQuotaFailure } = require('./lib/quota-failure');
+
+// ── CHAT MODEL: PINNED, NEVER AN ALIAS (2026-08-17) ─────────────────────────
+// `gemini-flash-latest` is an ALIAS and it ROTATED UNDER US. The AI Studio usage
+// panel shows 1.87K 429s on Aug 8 with ZERO of every other error class, and the
+// per-model request curve runs 3.6 Flash -> 3.7 Flash -> ZERO. That is the
+// signature of the alias moving onto a model with NO PROVISIONED QUOTA on this
+// project: the limit is zero, so volume is irrelevant — chat runs ~0.3 req/min
+// against paid-tier limits in the thousands and still 429s on 100% of requests.
+//
+// A pin is not a preference here, it is the difference between a model we have
+// quota for and whichever model Google promoted this week. This is the same
+// lesson as `supabase==2.7.4`: a floating reference resolved to something nobody
+// chose, and the damage landed far from the change. The difference is that pin
+// was too tight on the wrong axis; this one is tight on the right one.
+//
+// ENV-OVERRIDABLE so the owner can move it from the dashboard the moment the
+// Rate Limit page names a model with confirmed quota — no deploy needed. The
+// DEFAULT must always be an explicit version; validate_deploy fails on an alias,
+// and startup logs loudly if the override reintroduces one.
+
+// ── TRANSIENT-429 BACKOFF (2026-08-17) ──────────────────────────────────────
+// MEASURED, 35-minute window: 28 upstream 429s, 100% of them the message "This
+// model is currently experiencing high demand. Spikes in demand are usually
+// temporary." — and 11 of them reached a USER as a 502 on a feature that had just
+// come back from nine days dead. Meanwhile 7 requests SUCCEEDED for 4 users in
+// the same window, which is the fact that justifies retrying: the contention is
+// INTERMITTENT, not total, so a second attempt lands often enough to matter.
+//
+// BOUNDED ON PURPOSE. Chat is interactive. A user waiting through an exponential
+// ladder feels worse than a fast honest error, so this is ONE extra attempt with
+// a short fixed delay and a hard ceiling — not a generic retry policy. If the
+// upstream is genuinely saturated the user still gets an answer quickly, just an
+// unhappy one.
+//
+// IT RETRIES ONLY `transient_capacity`. A billing 429 is permanent until a human
+// tops up an account: retrying it burns latency to reach the same wall, and it is
+// exactly the case the classifier exists to separate. quota_exceeded and any
+// unclassified shape also fall through untouched — when in doubt, do not retry.
+const CHAT_RETRY_DELAY_MS = Number(process.env.CHAT_RETRY_DELAY_MS || 450);
+const CHAT_RETRY_MAX_MS = 1200;   // hard ceiling on added interactive latency
+
+async function fetchGeminiWithTransientRetry(url, init, { route, model, userId }) {
+  const { parseQuotaFailure, recordRetryOutcome } = require('./lib/quota-failure');
+  let res = await fetch(url, init);
+  if (res.ok) return { res, retried: false, absorbed: false };
+
+  // Read the body ONCE — a Response body cannot be consumed twice, and the
+  // classifier needs it to decide whether a retry is even appropriate.
+  const firstBody = await res.text().catch(() => '');
+
+  // GATE ON CLASSIFICATION, NEVER ON STATUS CODE.
+  //
+  // This read `if (res.status !== 429) return` and returned BEFORE consulting the
+  // classifier — so it never retried anything. MEASURED: 21 consecutive overload
+  // responses carried classification=transient_capacity and http_status=503.
+  // Google returns 503 UNAVAILABLE for model overload; 429 is the quota/billing
+  // shape. The retry was keyed on a code the condition does not use.
+  //
+  // Worse, I called them "429s" all night — in reports, in commit messages, and
+  // in the watcher, which PRINTED a hardcoded "429" label rather than the row's
+  // actual http_status. The value was in the row the whole time. Same defect as
+  // the thinking-budget log: a display asserting a constant while the data says
+  // otherwise.
+  //
+  // The classifier already answers the only question that matters — is this
+  // condition transient — and it answers it from the MESSAGE, which is why it got
+  // this right when the status check did not. An overloaded upstream is retryable
+  // whether it says 429, 503, or whatever appears next.
+  const q = parseQuotaFailure(firstBody);
+  if (!q || q.classification !== 'transient_capacity') {
+    return { res, firstBody, retried: false, absorbed: false };
+  }
+
+  // Honour the upstream's own retryDelay when it gives one, clamped to the
+  // ceiling. Guessing longer than the server asked for is not politeness, it is
+  // latency the user pays for nothing.
+  let waitMs = CHAT_RETRY_DELAY_MS;
+  const rd = String((q && q.retry_delay) || '');
+  const m = rd.match(/^(\d+(?:\.\d+)?)s$/);
+  if (m) waitMs = Math.min(CHAT_RETRY_MAX_MS, Math.round(Number(m[1]) * 1000));
+  waitMs = Math.min(waitMs, CHAT_RETRY_MAX_MS);
+
+  console.log(`[chat-retry] ${route} transient 429 on ${model} — one retry in ${waitMs}ms`);
+  await new Promise((r) => setTimeout(r, waitMs));
+  const res2 = await fetch(url, init);
+  // BOTH outcomes are persisted. An absorbed retry writes no failure row, so
+  // without this the fix's own effect is invisible and "429s continue" cannot be
+  // told apart from "the retry never ran".
+  await recordRetryOutcome(supabaseAdmin, {
+    route, model, absorbed: res2.ok, waitMs, userId,
+  }).catch(() => {});
+  if (res2.ok) return { res: res2, retried: true, absorbed: true };
+  const secondBody = await res2.text().catch(() => '');
+  return { res: res2, firstBody: secondBody, retried: true, absorbed: false };
+}
+
+const CHAT_MODEL = (process.env.CHAT_MODEL || 'gemini-3.6-flash').trim();
+if (/-latest$|^gemini-(flash|pro)-latest$/.test(CHAT_MODEL)) {
+  console.error(`[chat-model] !! CHAT_MODEL="${CHAT_MODEL}" is an ALIAS. Aliases `
+    + 'rotate onto models with no provisioned quota — that is what took chat to '
+    + '100% 429 with zero other error classes. Pin an explicit version.');
+}
+console.log(`[chat-model] pinned: ${CHAT_MODEL}`);
+
+
 
 // [restored dep]
 function normalizePlanLabel(value) {
@@ -52,11 +305,20 @@ function normalizePlanLabel(value) {
 // Module-level state the restored rate-limiter + self-heal functions depend on.
 const _rateBuckets = new Map(); // `${scope}:${key}` -> { tokens, lastRefill }
 const _selfHealNextAllowed = new Map();
+// Caps runaway GET /api/video-jobs/:jobId poll loops on dead job_ids (see
+// lib/job404-guard.js). Module-level so the negative cache survives across requests.
+const _jobStatusGuard = makeJob404Guard();
 const SELF_HEAL_TTL_MS = 5 * 60 * 1000;       // after a DEFINITIVE RC answer
 const SELF_HEAL_ERROR_TTL_MS = 60 * 1000;     // after a TRANSIENT RC error — retry soon
 const isProduction = process.env.NODE_ENV === 'production';
 
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
+const _credits = require('./lib/credits');
+// Default OFF. A debit that can 402 every user in the product is armed by
+// an explicit env flip, after balances are verified -- not by a merge.
+const CREDITS_DEBIT_ENABLED =
+  String(process.env.CREDITS_DEBIT_ENABLED || '').trim() === '1';
+const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
   const id = `${scope}:${key}`;
@@ -432,6 +694,17 @@ function progressivePlaybackEnabled() {
   return /^(1|true|yes|on)$/i.test(String(process.env.PROGRESSIVE_PLAYBACK_ENABLED || '').trim());
 }
 
+// PREMIUM_PIPELINE_ENABLED — the LUMEN_READY master gate (Zac 2026-07-26). Pro
+// defaults to STANDARD: even an entitled Pro user whose (picker-less) client asks
+// for premium gets the standard (Flare) pipeline UNLESS this backend env is set.
+// Flip ON only after Lumen clears Zac's eye — Pass-2 reel approved AND one real
+// emitted designed scene passes in a finished video AND the C01-C24 blind scores
+// exist. No client build / App Store round trip — one env in Render. Same
+// forgiving matcher as progressivePlaybackEnabled so a plain "true" works.
+function premiumPipelineEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.PREMIUM_PIPELINE_ENABLED || '').trim());
+}
+
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const OPENAI_API_KEY = CLAUDE_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -598,6 +871,12 @@ function isUserPro(req) {
 // first successful lookup.
 let _rcProEntitlementInternalId = null;
 
+// Process-lifetime probe of the RC PROJECT itself: null = never probed (or the
+// probe was transient-failed and will retry), 'ok' = project readable under the
+// configured secret, 'http_NNN' = the project 404s/403s under this key — the
+// misconfig signature that makes every customer lookup 404 as NO_RC_CUSTOMER.
+let _rcProjectProbe = null;
+
 /**
  * Resolve the internal id for the 'pro' lookup_key from RevenueCat. Returns
  * null on any failure — callers treat null as "accept any active entitlement",
@@ -641,15 +920,18 @@ async function resolveProEntitlementInternalId(projectId, secret) {
  * a `.statusCode` on misconfiguration / RC outage so callers can surface a
  * 5xx WITHOUT writing the DB.
  */
-// True when a Supabase error is "column rc_last_event_ms doesn't exist" — i.e.
-// migration 20260701_rc_event_ordering hasn't been applied yet. Lets the webhook
-// + reconcile fall back to a plain write so they never 500 on the missing
-// column; the ordering guard activates automatically once the column exists.
+// True when a Supabase error is a missing-column error for an OPTIONAL RC
+// profile column — rc_last_event_ms (migration 20260701_rc_event_ordering) or
+// rc_environment (add-rc-environment-to-profiles). Lets the webhook + reconcile
+// fall back to a plain core write so they never 500 on a not-yet-applied column;
+// the ordering guard + sandbox tag each activate automatically once their column
+// exists. The PGRST204/42703 codes are column-agnostic (they cover both); the
+// message regex is the belt-and-braces fallback for error shapes with no code.
 function rcOrderingColumnMissing(error) {
   if (!error) return false;
   if (error.code === 'PGRST204' || error.code === '42703') return true;
   const blob = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
-  return /rc_last_event_ms/i.test(blob);
+  return /rc_last_event_ms|rc_environment/i.test(blob);
 }
 
 async function reconcileEntitlementFromRevenueCat(appUserId) {
@@ -690,8 +972,28 @@ async function reconcileEntitlementFromRevenueCat(appUserId) {
     err.statusCode = 502;
     throw err;
   }
-  // 404 = RC has never seen this customer (no purchase under this identity).
+  // 404 = RC has never seen this customer (no purchase under this identity) —
+  // OR the PROJECT id itself is wrong, which 404s identically and had every
+  // /sync ever made reading NO_RC_CUSTOMER (measured 2026-08-10: 100% of
+  // reconcile_result rows, including one 16s after a webhook-applied purchase).
+  // Disambiguate by probing the project itself once per process: a project
+  // that 404s under this key means REVENUECAT_PROJECT_ID / REVENUECAT_SECRET_KEY
+  // don't belong together — a misconfig, not a customer fact. Grant behavior
+  // is unchanged either way (isPro:false); only the REASON stops lying.
   if (rcRes.status === 404) {
+    if (_rcProjectProbe === null) {
+      try {
+        const probe = await fetch(
+          `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}`,
+          { headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+            signal: AbortSignal.timeout(10000) });
+        _rcProjectProbe = probe.ok ? 'ok' : `http_${probe.status}`;
+      } catch (_) { _rcProjectProbe = null; /* transient — re-probe next time */ }
+    }
+    if (_rcProjectProbe && _rcProjectProbe !== 'ok') {
+      console.error(`[RevenueCat] CONFIG SUSPECT: project ${projectId ? projectId.slice(0, 8) + '…' : '(empty)'} is ${_rcProjectProbe} under this secret key — every /sync will 404. Fix REVENUECAT_PROJECT_ID (must be the V2 "proj…" id) / REVENUECAT_SECRET_KEY (a V2 sk_ key for THAT project).`);
+      return { ok: true, isPro: false, reason: 'RC_CONFIG_SUSPECT', proUntil: null };
+    }
     return { ok: true, isPro: false, reason: 'NO_RC_CUSTOMER', proUntil: null };
   }
   if (!rcRes.ok) {
@@ -867,16 +1169,40 @@ function parseMultipartFormData(rawBuffer, contentType = '') {
 // (worker not yet updated) this returns true — so roll the worker's header out
 // FIRST, then set the env to switch enforcement on with zero downtime.
 function modalCallbackAuthed(req) {
-  const secret = process.env.MODAL_CALLBACK_SECRET || '';
-  if (!secret) return true;
+  // Trim BOTH sides. A trailing newline/space in the Render env value (extremely
+  // common on dashboard paste) makes lengths differ and 401s a CORRECT secret —
+  // the exact "dashboards match but the server 401s" symptom. main independently
+  // shipped the same trim + fingerprint; this keeps that AND stays FAIL-CLOSED.
+  const rawSecret = process.env.MODAL_CALLBACK_SECRET || '';
+  const secret = rawSecret.trim();
+  if (!secret) return false;   // FAIL CLOSED — a missing secret is misconfig, not open. Boot gate keeps it present.
   const got = String((req.headers && req.headers['x-modal-secret']) || '').trim();
-  if (!got || got.length !== secret.length) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
-  } catch {
-    return false;
+  let ok = false;
+  if (got && got.length === secret.length) {
+    try { ok = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret)); } catch { ok = false; }
   }
+  if (!ok) {
+    // Request-time diagnostic (Zac 2026-08-03: dashboards lied twice). Logs what
+    // the RUNNING process actually holds vs what the worker sent — first/last 4 +
+    // lengths only, never the whole secret. Compare to the worker's 04fa…7553:
+    // different first/last4 ⇒ stale process / wrong Render service; same first/last4
+    // but raw_len≠len ⇒ whitespace (now auto-trimmed). One request ends the guessing.
+    const fp = (s) => (s ? `${s.slice(0, 4)}…${s.slice(-4)} len=${s.length}` : '(empty)');
+    console.warn(`[modal-auth] 401 mismatch: server=${fp(secret)} raw_len=${rawSecret.length} got=${fp(got)}`);
+  }
+  return ok;
 }
+
+// BOOT WARN (Zac 2026-08-03): the request-time trim above silently normalises a
+// whitespace-tainted secret — good for uptime, but silent normalisation HIDES the
+// misconfiguration. Say it ONCE at startup so the next newline-paste is visible
+// rather than absorbed forever (a trailing newline 401'd every completion tonight).
+(() => {
+  const raw = process.env.MODAL_CALLBACK_SECRET || '';
+  if (raw && raw !== raw.trim()) {
+    console.error(`[modal-auth] ⚠️ BOOT: MODAL_CALLBACK_SECRET had surrounding whitespace (raw len=${raw.length} → trimmed ${raw.trim().length}) — normalising at runtime. FIX THE RENDER ENV VALUE (strip the trailing newline); the trim is a safety net, not the config.`);
+  }
+})();
 
 // SSRF guard for a client-supplied media URL that the GPU worker will download.
 // Rejects non-https and internal/loopback/link-local/private/metadata targets
@@ -1314,15 +1640,200 @@ function isProfileSettingsSchemaMissing(err) {
   );
 }
 
+// ── Daily scoreboard scheduler (see lib/scoreboard-scheduler.js) ─────────────
+// hasRow is injected so the scheduler never owns a DB client. It returns null
+// on ANY uncertainty (table absent, query error) and the scheduler then does
+// NOT run — an unknown is not a missing row, and running blindly every boot
+// would hammer the judge.
+if (String(process.env.SCOREBOARD_SCHEDULER_DISABLED || '') !== '1') {
+  try {
+    require('./lib/scoreboard-scheduler').startScoreboardScheduler({
+      hasRow: async (day) => {
+        try {
+          const { data, error } = await supabaseAdmin
+            .from('daily_scoreboard').select('day').eq('day', day).maybeSingle();
+          if (error) return null;
+          return Boolean(data);
+        } catch (_) {
+          return null;
+        }
+      },
+    });
+  } catch (e) {
+    console.error('[scoreboard] scheduler failed to start (non-fatal):', e?.message);
+  }
+}
+
 const server = http.createServer((req, res) => {
   try {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   const parsed = url.parse(req.url, true);
 
+  // Count this response's outcome once it finishes. Attaches a 'finish' listener
+  // and nothing else — it cannot delay, alter or fail the response. Placed at the
+  // ABSOLUTE TOP of the entry, BEFORE the /healthz early-return and every
+  // res.writeHead handler, so the 22 writeHead paths, unrouted 404s, AND the
+  // early health check all record their outcome — closing the blind spot the
+  // instrument itself named (Zac 2026-08-03). res.on('finish') fires once per
+  // response regardless of writeHead/sendJson, so one attach here covers all.
+  apiLedger.attach(req, res);
+
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end('OK');
+  }
+
+  // ── Internal: Gemini credential diagnostic (operator-only) ──────────────
+  // Two key-sets, two chat 502s: dashboards and local values lie — only the
+  // running process tells the truth (the MODAL_CALLBACK_SECRET saga again).
+  // Auth: exact Bearer match on the service-role key (operator-only by
+  // construction). Returns a FINGERPRINT of the running GEMINI_API_KEY (len +
+  // first/last4, NEVER the secret) plus the EXACT verdict of a live
+  // generateContent call — API_KEY_INVALID vs SERVICE_DISABLED vs a restriction
+  // — visible without Render logs or a local curl. Read-only; touches nothing.
+  if (parsed.pathname === '/api/internal/gemini-diag' && req.method === 'GET') {
+    (async () => {
+      // Both names — prod may set SUPABASE_SERVICE_KEY (the fallback), same as
+      // supabase-admin.js and the proof endpoint. Checking only _ROLE_KEY 401s
+      // when prod uses the other name (fail-closed on an empty svc).
+      const svc = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '').trim();
+      const got = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+      let authed = false;
+      if (svc && got.length === svc.length) {
+        try { authed = crypto.timingSafeEqual(Buffer.from(got), Buffer.from(svc)); } catch { authed = false; }
+      }
+      if (!authed) return sendJson(res, 401, { error: 'unauthorized' });
+
+      const raw = process.env.GEMINI_API_KEY || '';
+      const key = raw.trim();
+      const out = {
+        key_present: !!key,
+        key_len: key.length,
+        key_raw_len: raw.length,               // raw_len ≠ len ⇒ whitespace in the stored value
+        key_fp: key ? `${key.slice(0, 4)}…${key.slice(-4)}` : '(empty)',
+        model: 'gemini-2.5-flash',
+      };
+      try {
+        const r = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          }
+        );
+        out.gemini_http = r.status;
+        out.gemini_ok = r.status === 200;
+        const j = await r.json().catch(() => ({}));
+        out.gemini_error_status = j && j.error && j.error.status ? j.error.status : null;    // SERVICE_DISABLED | API_KEY_INVALID | ...
+        out.gemini_error_message = String((j && j.error && j.error.message) || '').slice(0, 300) || null;
+      } catch (e) {
+        out.gemini_http = 0;
+        out.gemini_ok = false;
+        out.gemini_error_status = 'FETCH_EXCEPTION';
+        out.gemini_error_message = String((e && e.message) || e).slice(0, 200);
+      }
+      // Which models can THIS key actually call generateContent on? List + test
+      // candidates so the chat model swap is a KNOWN-good value, not a guess that
+      // deprecates again (gemini-2.5-flash just did, for new-user keys).
+      try {
+        const lr = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+        const lj = await lr.json().catch(() => ({}));
+        out.models_available = (lj.models || [])
+          .filter((m) => /generateContent/.test((m.supportedGenerationMethods || []).join(',')))
+          .map((m) => String(m.name || '').replace('models/', ''));
+      } catch (e) { out.models_available = 'list_failed:' + String((e && e.message) || e).slice(0, 80); }
+      out.candidate_test = {};
+      for (const m of ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
+        try {
+          const cr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } }),
+          });
+          out.candidate_test[m] = cr.status;
+        } catch (e) { out.candidate_test[m] = 'exc'; }
+      }
+      // Chat-body test: gemini-flash-latest 200s on a minimal body but /api/chat
+      // sends system_instruction + thinkingConfig. Test the full shape WITH and
+      // WITHOUT thinkingConfig to pinpoint which param the newer model rejects.
+      const chatBase = {
+        system_instruction: { parts: [{ text: 'You are a helpful assistant.' }] },
+        contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+        generationConfig: { maxOutputTokens: 32, temperature: 0.8 },
+      };
+      out.chatbody_test = {};
+      for (const [label, body] of [
+        ['with_thinkingConfig', { ...chatBase, generationConfig: { ...chatBase.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }],
+        ['without_thinkingConfig', chatBase],
+      ]) {
+        try {
+          const cr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify(body),
+          });
+          const cj = await cr.json().catch(() => ({}));
+          out.chatbody_test[label] = {
+            http: cr.status,
+            reply: cj && cj.candidates && cj.candidates[0] && cj.candidates[0].content && cj.candidates[0].content.parts ? String(cj.candidates[0].content.parts[0].text || '').slice(0, 20) : null,
+            error_status: cj && cj.error && cj.error.status ? cj.error.status : null,
+            error_message: String((cj && cj.error && cj.error.message) || '').slice(0, 200) || null,
+          };
+        } catch (e) { out.chatbody_test[label] = { http: 0, error_message: String((e && e.message) || e).slice(0, 120) }; }
+      }
+      // EXACT real chat body: the true system prompt (hoisted fn) + the real
+      // generationConfig, so we see what /api/chat itself sends. The simplified
+      // body above 200s; if THIS fails, the difference is the real system prompt.
+      try {
+        const realSys = promptlyChatSystemPrompt();
+        out.real_system_prompt_len = realSys.length;
+        const rr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: realSys }] },
+            contents: [{ role: 'user', parts: [{ text: 'say PONG' }] }],
+            generationConfig: { maxOutputTokens: 2048, temperature: 0.8 },
+          }),
+        });
+        const rj = await rr.json().catch(() => ({}));
+        out.real_chat_test = {
+          http: rr.status,
+          finish_reason: rj && rj.candidates && rj.candidates[0] ? rj.candidates[0].finishReason : null,
+          reply: rj && rj.candidates && rj.candidates[0] && rj.candidates[0].content && rj.candidates[0].content.parts ? String(rj.candidates[0].content.parts[0].text || '').slice(0, 30) : null,
+          error_status: rj && rj.error && rj.error.status ? rj.error.status : null,
+          error_message: String((rj && rj.error && rj.error.message) || '').slice(0, 250) || null,
+          usage: rj && rj.usageMetadata ? rj.usageMetadata : null,
+        };
+      } catch (e) { out.real_chat_test = { http: 0, error_message: String((e && e.message) || e).slice(0, 200) }; }
+      // STREAM FRAME CAPTURE: what does gemini-flash-latest actually stream? The
+      // handler reads parts[0].text and gets nothing — capture the raw frame
+      // shapes so the fix parses the real structure (thought parts vs text).
+      try {
+        const sr = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say hello in one short sentence.' }] }], generationConfig: { maxOutputTokens: 256, temperature: 0.8 } }),
+        });
+        const reader = sr.body.getReader();
+        const dec = new TextDecoder();
+        let raw = '', frames = 0;
+        const t0 = Date.now();
+        while (frames < 6) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          raw += dec.decode(value, { stream: true });
+          frames++;
+          if (Date.now() - t0 > 12000) break;
+        }
+        reader.cancel().catch(() => {});
+        // Return the first data: frame's parsed shape so we see parts structure.
+        const firstData = raw.split('\n\n').map((f) => f.split('\n').find((l) => l.startsWith('data: '))).filter(Boolean)[0];
+        let shape = null;
+        if (firstData) { try { const p = JSON.parse(firstData.slice(6)); shape = { keys_candidate0_content: Object.keys((p.candidates && p.candidates[0] && p.candidates[0].content) || {}), parts: ((p.candidates && p.candidates[0] && p.candidates[0].content && p.candidates[0].content.parts) || []).map((x) => ({ hasText: typeof x.text === 'string', thought: !!x.thought, textSample: String(x.text || '').slice(0, 20) })) }; } catch (e) { shape = 'parse_fail'; } }
+        out.stream_capture = { http: sr.status, chunks: frames, raw_head: raw.slice(0, 600), first_frame_shape: shape };
+      } catch (e) { out.stream_capture = { error: String((e && e.message) || e).slice(0, 200) }; }
+      return sendJson(res, 200, out);
+    })();
+    return;
   }
 
   const cspNonce = crypto.randomBytes(16).toString('base64');
@@ -1644,6 +2155,16 @@ const server = http.createServer((req, res) => {
     const jobId = decodeURIComponent(sseStreamMatch[1] || '').trim();
     if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
 
+    // Runaway-reconnect guard. A client (on ANY shipped build) that reopens the
+    // SSE stream for the same job several times per second — a lifecycle churn we
+    // can't fix without a release — otherwise pays auth.getUser + 2 Supabase
+    // queries PER open (~15 round-trips/sec from one 2-job user). A real viewer
+    // holds ONE connection open for minutes; a storm reopens ~150x/min. Cap opens
+    // per job BEFORE spending any Supabase call — keyed on the URL's jobId so the
+    // throttle runs pre-auth. On 429 the client falls back to its 45s DB poll and
+    // SSEClient backs off to its 2s reconnect floor, so the storm self-dampens.
+    if (!checkRateLimit(res, 'sse-stream', jobId, 12, 60)) return;
+
     (async () => {
     // Authenticate + verify ownership BEFORE opening the stream. Without this,
     // anyone holding a job UUID could read its status + signed rendered_video_url.
@@ -1673,13 +2194,19 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message, credits_debited, credits_refunded_at')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
           if (data) {
             try {
               res.write(`data: ${JSON.stringify({
+                // TYPE DISCRIMINATOR (Frontend, 2026-08-31). Every SSE frame
+                // was an untagged status snapshot, so a client had no way to
+                // route anything else — CreditsRefundedMessage could not be
+                // wired because a refund frame would parse as a status update.
+                // Additive: existing clients ignore an unknown field.
+                type: 'job_status',
                 status: data.status,
                 progress: data.progress || 0,
                 step: data.current_step || '',
@@ -1690,6 +2217,25 @@ const server = http.createServer((req, res) => {
                 hlsManifestUrl: data.hls_manifest_url || null,
                 thumbnailUrl: data.thumbnail_url || null,
                 error: data.error_message || null,
+                // final:true on a terminal snapshot lets a correct client stop
+                // reconnecting the moment it connects to an already-finished job
+                // (SSEClient sets receivedFinalEvent → no reconnect). Its absence
+                // is why a client that reconnects onto a completed job never learns
+                // to quit. Matches the poll path, which already sets final:true.
+                final: isTerminalJobStatus(data.status),
+                // CREDITS REFUND, CARRIED ON THE ROW rather than pushed. The
+                // refund lands in a background sweep, outside any request, so
+                // there is no open stream to push to at that moment. Both facts
+                // it needs are already columns, and the reason is a pure
+                // function of the row — so the snapshot reports it and a client
+                // that reconnects still sees it. No second channel, and the
+                // event cannot "go nowhere" because it is not a separate
+                // artifact that can be dropped.
+                creditsRefunded: data.credits_refunded_at ? {
+                  amount: data.credits_debited || 0,
+                  reasonCode: _refundLeg.creditsRefundReasonCode(data),
+                  at: data.credits_refunded_at,
+                } : null,
               })}\n\n`);
             } catch (e) {}
           }
@@ -1783,7 +2329,13 @@ const server = http.createServer((req, res) => {
         // .select('id') so we KNOW whether this request won the transition —
         // when status flips to 'completed' here, the winner (and only the
         // winner) owns the lifecycle push below.
-        const { data: transitionRows } = await supabaseAdmin
+        // The error is CAPTURED, not discarded (2026-08-11). Dropping it made a
+        // failed write indistinguishable from a genuine zero-row match: both
+        // land here as `data == null`, and the stuck-job diagnostic below then
+        // reported one mechanism for two different faults. The cancel path at
+        // the /api/jobs/:id/cancel handler already captured its error; this one
+        // did not, which is how the distinction went missing.
+        const { data: transitionRows, error: transitionErr } = await supabaseAdmin
           .from('video_jobs')
           .update(updateData)
           .eq('id', job_id)
@@ -1791,6 +2343,69 @@ const server = http.createServer((req, res) => {
           .select('id');
         const wonCompletedTransition = status === 'completed'
           && Array.isArray(transitionRows) && transitionRows.length > 0;
+        // STUCK-JOB DIAGNOSTIC (lane/delivery 2026-08-11, TRUTH's b384e1c watch):
+        // two jobs completed at the worker and their rows NEVER flipped to
+        // 'completed' — the half-landed signature (progress=100/current_step=
+        // 'complete'/status='processing'). The two candidate mechanisms both
+        // become one loud, greppable line here on their next occurrence:
+        //   (a) a 'complete' step whose pct did not parse >=100 → this handler
+        //       computed status='processing' — the half-landed patch EXACTLY;
+        //   (b) a completed-status patch matching 0 rows on a NON-terminal row.
+        if (step === 'complete' && status !== 'completed') {
+          console.error(`[modal-progress] COMPLETE-WITHOUT-TERMINAL job=${job_id} pct=${JSON.stringify(pct)} `
+            + `parsed=${incomingPct} — status computed '${status}'; this writes the half-landed stuck row`);
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'terminal_flip_lost', platform: 'server',
+            props: { job_id, mechanism: 'complete_step_bad_pct', pct: String(pct).slice(0, 20) },
+          }).then(() => {}).catch(() => {});
+        } else if (status === 'completed' && !wonCompletedTransition
+                   && prevState
+                   && !['completed', 'failed', 'canceled', 'needs_input'].includes(String(prevState.status))) {
+          // FIRED FOR REAL on job 4f37eb44, twice, 2026-08-11 20:20:16Z and
+          // 20:22:37Z — 20 minutes after this diagnostic went live, on the
+          // post-hang-fix worker image. It named the branch and stopped there,
+          // because 'zero rows' still covers three different faults:
+          //
+          //   update_error        the write FAILED; data is null and the error
+          //                       was being discarded, so a failed write was
+          //                       indistinguishable from a matched-zero
+          //   lost_race_benign    a concurrent writer terminalized the row
+          //                       between our read and our write. First-terminal-
+          //                       wins working AS DESIGNED — not a defect, and
+          //                       counting it as one inflates the class
+          //   row_still_nonterminal  the row is STILL non-terminal after our
+          //                       write. THE REAL STUCK CLASS: the render is
+          //                       finished and the user will be told it failed
+          //                       when the fallback timer terminalises it
+          //
+          // The re-read costs one query and only on this path (which is
+          // supposed to be empty), and it is what makes the next occurrence
+          // self-explaining instead of another round of inference.
+          (async () => {
+            let nowStatus = null;
+            try {
+              const { data: nowRow } = await supabaseAdmin
+                .from('video_jobs').select('status').eq('id', job_id).maybeSingle();
+              nowStatus = nowRow?.status ?? null;
+            } catch (_) { /* diagnostic must never affect the response */ }
+            const cause = classifyLostTransition({ transitionErr, nowStatus });
+            console.error(`[modal-progress] TERMINAL-FLIP LOST job=${job_id} cause=${cause} — completed patch `
+              + `matched 0 rows while prev status='${prevState.status}', row now '${nowStatus}'`
+              + (transitionErr ? ` — UPDATE ERROR ${transitionErr.code || ''} ${transitionErr.message || ''}` : '')
+              + (cause === 'row_still_nonterminal'
+                ? ' — THE RENDER IS DONE AND THE ROW WILL STICK: the user gets a failure for a finished video'
+                : ''));
+            supabaseAdmin.from('analytics_events').insert({
+              event: 'terminal_flip_lost', platform: 'server',
+              props: {
+                job_id, mechanism: 'zero_rows_nonterminal', cause,
+                prev_status: prevState.status, now_status: nowStatus,
+                err_code: transitionErr?.code || null,
+                err: String(transitionErr?.message || '').slice(0, 160) || null,
+              },
+            }).then(() => {}).catch(() => {});
+          })();
+        }
 
         if (step === 'complete') {
           // Fast-path: tell the UI the video is ready as soon as the worker
@@ -1863,6 +2478,17 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Internal: render-failure alert (worker → owner push) ──
+  // AUTH PING (Zac 2026-08-03): a deploy-time round-trip target. deploy.sh POSTs
+  // here with the worker's live MODAL_CALLBACK_SECRET right after a worker deploy;
+  // a non-200 FAILS THE DEPLOY LOUDLY instead of the mismatch degrading silently
+  // into the recovery path for hours (which cost tonight). Uses the SAME
+  // modalCallbackAuthed as every real callback, so it proves the exact auth the
+  // completion POST will use. No side effects. Generalises to MODAL_RUN_SECRET.
+  if (parsed.pathname === '/api/internal/auth-ping' && req.method === 'POST') {
+    const authed = modalCallbackAuthed(req);
+    return sendJson(res, authed ? 200 : 401, authed ? { ok: true } : { error: 'unauthorized' });
+  }
+
   // The worker POSTs here when a job fails terminally with a REAL error (never
   // a designed rejection — those are honest and expected). Auth: the same
   // X-Modal-Secret the worker echoes on /api/modal-progress. Fire-and-forget:
@@ -1881,17 +2507,47 @@ const server = http.createServer((req, res) => {
         const detail = (body && body.detail) || '';
         const dur = body && body.duration_s;
         const elapsed = body && body.elapsed_s;
-        console.error(`[ALERT] render failure job=${jobId} code=${code}`
+        // SERVER-SIDE AT-FAULT GATE (Zac 2026-07-28): the worker's own alert gate
+        // (handler _NON_ALERTING_CODES) should only POST at-fault codes here, but
+        // enforce the split server-side too — a stale pre-gate worker container, a
+        // race, or any future caller must NEVER page the owner for a designed
+        // rejection or a non-actionable client-upload failure. Suppressed codes log
+        // a digest line (NOT [ALERT]) and skip the push; UNKNOWN + every unclassified
+        // code STILL page (loud-failsafe). Doubles as the diagnostic: an
+        // [ALERT-SUPPRESSED] line means a code was still arriving despite the worker gate.
+        const NON_ALERTING = new Set([
+          'NO_AUDIO_TRACK', 'NO_SPEECH', 'NO_SPEECH_NONENGLISH', 'NO_SPEECH_FACE',
+          'NOT_TALKING_HEAD', 'CLIP_TOO_LONG', 'CLIP_TOO_SHORT', 'WRONG_ORIENTATION',
+          'INVALID_FORMAT', 'EMPTY_UPLOAD', 'INVALID_SOURCE_URL', 'TRANSCRIPTION',
+          'TRANSCRIPTION_INCOMPLETE',
+          'UPLOAD_STALLED', 'UPLOAD_TIMEOUT', 'UPLOAD_NEVER_STARTED',
+        ]);
+        // category (Zac 2026-08-03): 'intake' = the client-upload family. It was
+        // digest-only (suppressed below) and thus INVISIBLE on the phone — 49
+        // users in 2 days. Intake alerts now BYPASS the suppression and page under
+        // their OWN collapsed thread, so a spike is visible without spamming the
+        // render-alert thread. 'render' (default) keeps the suppression so designed
+        // rejections stay digest-only.
+        const category = (body && body.category) || 'render';
+        const userId = body && body.user_id;
+        const isIntake = category === 'intake';
+        if (!isIntake && NON_ALERTING.has(code)) {
+          console.log(`[ALERT-SUPPRESSED] non-actionable code=${code} job=${jobId} — digest only, no owner push`);
+          return;
+        }
+        console.error(`[ALERT] ${category} failure job=${jobId} code=${code}`
+          + (userId ? ` user=${String(userId).slice(0, 8)}` : '')
           + (dur ? ` dur=${dur}s` : '') + (elapsed ? ` elapsed=${elapsed}s` : '')
           + (detail ? ` detail=${String(detail).slice(0, 200)}` : ''));
         const bodyLine = `job ${String(jobId).slice(0, 8)}`
+          + (userId ? ` · user ${String(userId).slice(0, 8)}` : '')
           + (dur ? ` · ${Math.round(dur)}s source` : '')
           + (elapsed ? ` · died @${Math.round(elapsed)}s` : '');
         await sendOwnerAlert({
           ownerUserId: SUBMISSION_OWNER_USER_ID,
-          title: `⚠️ [Promptly] render failed: ${code}`,
+          title: isIntake ? `📥 [Promptly] intake fail: ${code}` : `⚠️ [Promptly] render failed: ${code}`,
           body: bodyLine,
-          threadId: 'render-alert',
+          threadId: isIntake ? 'intake-alert' : 'render-alert',
           supabaseAdmin,
         });
       } catch (e) {
@@ -2013,8 +2669,65 @@ const server = http.createServer((req, res) => {
         // The worker's return value (success payload OR classified error envelope);
         // the dispatch tail branches on it exactly as it did on the sync response.
         const output = (body && (body.result || body.output)) || {};
-        const settled = settlePendingModalJob({ id: callId, status: 'completed', output });
+        const settled = settlePendingModalJob({ id: callId, status: 'completed', output, via: 'callback' });
         console.log(`[modal-complete] call=${callId} job=${(body && body.job_id) || '?'} settled=${settled}`);
+        // ORPHANED CALLBACK (lane/delivery 2026-08-10): settled=false means NO
+        // pending promise holds this call_id in THIS process — the worker's POST
+        // reached a process that isn't awaiting the job (a deploy/restart routed
+        // it to the fresh instance while the old one holds the map, or the map
+        // entry was already consumed). Every deploy orphans in-flight jobs this
+        // way (standing law, 2026-08-04). Until now the 202 swallowed the POST
+        // and the job's completion survived only through the worker's own
+        // durable row + the old process's nets. Make the orphan VISIBLE and
+        // repair the user-facing pieces that are claim-guarded/idempotent:
+        //   • analytics row (the scoreboard's orphan counter)
+        //   • completed_at backfill (the tail that would stamp it is gone)
+        //   • completion_delivery = 'orphan_callback' (first-stamp-wins)
+        //   • claim-guarded lifecycle push (no-op if any other path pushed)
+        // Deliberately NO status write and NO URL signing here — the worker's
+        // durable write owns the row; this only fills the gaps it can't.
+        const jobIdForOrphan = (body && body.job_id) || null;
+        if (!settled && jobIdForOrphan && supabaseAdmin) {
+          (async () => {
+            try {
+              supabaseAdmin.from('analytics_events').insert({
+                event: 'completion_callback_orphaned', platform: 'server',
+                props: { job_id: jobIdForOrphan, call_id: callId },
+              }).then(() => {}).catch(() => {});
+              const { data: row } = await supabaseAdmin
+                .from('video_jobs')
+                .select('status, user_id, vibe_input, completed_at')
+                .eq('id', jobIdForOrphan)
+                .maybeSingle();
+              if (String(row?.status || '') !== 'completed') {
+                console.warn(`[modal-complete] ORPHAN call=${callId} job=${jobIdForOrphan} row status=${row?.status || 'missing'} — durable write not landed; nets own recovery`);
+                return;
+              }
+              if (!row.completed_at) {
+                await supabaseAdmin.from('video_jobs')
+                  .update({ completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                  .eq('id', jobIdForOrphan)
+                  .is('completed_at', null);
+              }
+              const { error: cdErr } = await supabaseAdmin.from('video_jobs')
+                .update({ completion_delivery: 'orphan_callback' })
+                .eq('id', jobIdForOrphan)
+                .is('completion_delivery', null);
+              if (cdErr && !/completion_delivery/.test(cdErr.message || '')) {
+                console.warn(`[modal-complete] orphan marker soft-failed: ${cdErr.message}`);
+              }
+              if (row.user_id) {
+                sendLifecyclePush(supabaseAdmin, {
+                  jobId: jobIdForOrphan, userId: row.user_id, kind: 'completed',
+                  vibe: row.vibe_input || null,
+                }).catch(() => {});
+              }
+              console.log(`[modal-complete] ORPHAN repaired call=${callId} job=${jobIdForOrphan} (completed row: marker+completed_at+push-claim)`);
+            } catch (e) {
+              console.warn(`[modal-complete] orphan repair failed job=${jobIdForOrphan}: ${e && e.message}`);
+            }
+          })();
+        }
       } catch (e) {
         console.error('[modal-complete] error:', e && e.message ? e.message : e);
       }
@@ -2037,7 +2750,7 @@ const server = http.createServer((req, res) => {
         const output = body?.output;
         const error = body?.error || body?.message || null;
         console.log(`[modal] Webhook received: ${id || 'unknown'} status=${status || 'UNKNOWN'}`);
-        settlePendingModalJob({ id, status, output, error });
+        settlePendingModalJob({ id, status, output, error, via: 'webhook' });
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[modal] Webhook handler failed:', err.message);
@@ -2047,7 +2760,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false }) {
+  // Client build stamp for build-adoption bucketing. Explicit X-App-Version
+  // header (sent by 224+, format "1.3.6 (224)") wins; older live clients fall
+  // back to the build number the default iOS URLSession User-Agent carries
+  // ("Promptly/221 ..."). Null when neither is present — never guessed.
+  function clientAppVersion(req) {
+    const explicit = String((req && req.headers && req.headers['x-app-version']) || '').trim();
+    if (explicit) return explicit.slice(0, 40);
+    const ua = String((req && req.headers && req.headers['user-agent']) || '');
+    const m = ua.match(/Promptly\/(\S+)/i);
+    return m ? m[1].slice(0, 40) : null;
+  }
+
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2063,6 +2788,13 @@ const server = http.createServer((req, res) => {
     // §4: mark the first-run sample-clip demo so it's quota-exempt AND excluded
     // from activation metrics. Only set when true (column defaults false).
     if (demo) insertRow.demo = true;
+    // CREDITS RECEIPT, not a ledger. How much THIS job actually spent, so the
+    // refund leg does not have to guess the amount — NULL means never debited
+    // (re-edit, demo, or credits disabled) and the leg skips rather than
+    // assuming 10. Balance stays authoritative at RevenueCat.
+    if (Number.isInteger(creditsDebited) && creditsDebited > 0) {
+      insertRow.credits_debited = creditsDebited;
+    }
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -2090,6 +2822,20 @@ const server = http.createServer((req, res) => {
         throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
       }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
+    }
+    // Provenance stamps: build (adoption bucketing) + source_type/source_duration
+    // (measuring the iCloud reliability fix + deconfounding wait-time). Best-effort
+    // and DECOUPLED from the insert: a missing column (before the additive
+    // migration lands) comes back as an error object here, never a throw, so job
+    // creation can NEVER break on it. Not awaited — zero added latency.
+    if (data && data.id) {
+      const patch = {};
+      if (appVersion) patch.app_version = appVersion;
+      if (sourceType) patch.source_type = String(sourceType).slice(0, 16);
+      if (Number.isFinite(Number(sourceDuration))) patch.source_duration = Number(sourceDuration);
+      if (Object.keys(patch).length) {
+        supabaseAdmin.from('video_jobs').update(patch).eq('id', data.id).then(() => {}, () => {});
+      }
     }
     return data;
   }
@@ -2195,20 +2941,74 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
+        const _preBody = await readJsonBody(req);
+
+        // ── purpose: "chat_media" (§1 reference contract, 2026-08-23) ────────
+        // A chat image is NOT a video upload: it must not consume a render from
+        // the upload wall, it must not land under the world-readable `sources/`
+        // prefix, and it has no public URL by design. Branching BEFORE the wall
+        // is the point — routing chat attachments through the video door would
+        // silently bill a user a render for sending a photo.
+        if (String(_preBody?.purpose || '') === 'chat_media') {
+          const cm = require('./lib/chat-media');
+          const s3 = require('./services/s3');
+          if (!s3.isConfigured()) return sendJson(res, 500, { error: 'Storage not configured' });
+          let key;
+          try {
+            key = cm.buildKey(authUser.id, _preBody?.mime, _preBody?.fileName);
+          } catch (e) {
+            return sendJson(res, e.statusCode || 400, {
+              error: e.message,
+              allowed: Array.from(cm.ALLOWED_MIME),
+            });
+          }
+          // 1 hour, NOT the 7 days the video path uses. A chat image is picked
+          // and sent within seconds; the long TTL exists for background
+          // URLSession resumes that do not apply here, and a shorter-lived
+          // single-use PUT is strictly less to leak.
+          const uploadUrl = await s3.createPresignedPutUrl(key, 3600);
+          // No publicUrl. This prefix is private, and returning a public-shaped
+          // URL is precisely how the exports/ paywall became theatre.
+          return sendJson(res, 200, {
+            uploadUrl,
+            key,
+            mime: cm.normalizeMime(_preBody?.mime),
+            maxBytes: cm.MAX_MEDIA_BYTES,
+            maxPerMessage: cm.MAX_MEDIA_PER_MESSAGE,
+          });
+        }
+
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
           if (!dec.allow) return sendUploadDenial(res, dec, 'upload-url', authUser.id);
         }
-        const body = await readJsonBody(req);
+        const body = _preBody;
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
         const s3 = require('./services/s3');
         if (!s3.isConfigured()) {
           return sendJson(res, 500, { error: 'Storage not configured' });
         }
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
-        const uploadUrl = await s3.createPresignedPutUrl(key, 600);
+        // Presign TTL = 604800s (7 days, the SigV4 maximum). The whole
+        // UPLOAD_NEVER_STARTED mechanism was a background URLSession task resuming
+        // hours later with a baked-in presigned URL that had expired (600s, then
+        // 3600s — both too short for an offline-overnight resume → guaranteed S3
+        // 403 → source never lands). At 7 days it does not expire in any realistic
+        // resume window, which closes the class server-side and largely obviates
+        // the client "re-mint on retry" work. Risk: a 7-day validity window on a
+        // SINGLE-USE PUT to a random per-job key — low, and far lower than users
+        // losing videos. The only remaining cause is the local file itself
+        // disappearing (camera-roll delete / iCloud eviction) → the 224 app-owned
+        // copy at pick time.
+        const uploadUrl = await s3.createPresignedPutUrl(key, 604800);
         const publicUrl = s3.getPublicUrl(key);
+        // SERVER-TRUTH upload attempt — the user got far enough to request an
+        // upload URL. More reliable than the client's upload_started (which drops
+        // on weak networks), and it lights up the signup→upload region NOW without
+        // waiting on a client release. (223 adds the earlier client steps.)
+        serverFunnel(authUser.id, 'upload_url_requested', { path: 'single' });
+        warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
         return sendJson(res, 200, { uploadUrl, publicUrl, key });
       } catch (error) {
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
@@ -2243,8 +3043,16 @@ const server = http.createServer((req, res) => {
         }
 
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
-        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 3600);
+        // Part-URL presign: 7 days (was 3600s — the Aug-24 spike's mechanism:
+        // resume window expired = 51.3% of spike failures vs 26.8% baseline, with
+        // error_domain EMPTY on 100% because there IS no transport error — the
+        // 1h window killed backgrounded uploads by deadline, not by network.
+        // The single-PUT door already presigns 604800; the parts asymmetry was
+        // the defect. SigV4 caps at 7d. Client resumeTTL follows (6.5d margin).
+        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 604800);
         const publicUrl = s3.getPublicUrl(key);
+        serverFunnel(authUser.id, 'upload_url_requested', { path: 'multipart' }); // server-truth upload attempt
+        warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
         return sendJson(res, 200, { uploadId, partUrls, key, publicUrl });
       } catch (error) {
         console.error('[upload-multipart-init] error:', error?.message);
@@ -2503,19 +3311,426 @@ const server = http.createServer((req, res) => {
   // deploy-sanity pass can assert prod is running the commit we just pushed —
   // added after a blueprint-sync failure raised the question "is prod even
   // rolling new commits?" and nothing could answer it from outside.
+  // ── REFERRAL RECONCILE ───────────────────────────────────────────────────
+  // The payout path. Until now the loop was CLAIM-ONLY: a referral could be
+  // created and could never qualify or pay, because qualify_referral and
+  // grant_referral_reward were revoked from `authenticated` (correctly — they
+  // were exploitable) and nothing called them as service_role. Closing the
+  // claim path while the payout path is dead is the worst ordering, and the
+  // invite link is about to work for the first time.
+  //
+  // TRUSTS NOTHING IT IS TOLD. The referrer is taken from the auth token, never
+  // the body. Qualification is decided by whether the referred user actually
+  // has a completed render — never by referrals.qualified_at, which is a flag
+  // that was until recently settable by any authenticated caller.
+  if (parsed.pathname === '/api/referral/reconcile' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
+        const user = await requireSupabaseUser(req).catch(() => null);
+        if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        const referrerId = user.id;
+
+        const { reconcile } = require('./lib/referral-reconcile');
+        const { endTimeMs, CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
+
+        const { data: refs } = await supabaseAdmin
+          .from('referrals').select('id, referred_id, qualified_at, counted_at')
+          .eq('referrer_id', referrerId);
+        const rows = refs || [];
+        if (!rows.length) return sendJson(res, 200, { ok: true, days: 0, reason: 'no_referrals' });
+
+        // The fact the payout rests on, read directly rather than trusted.
+        const ids = rows.map((r) => r.referred_id).filter(Boolean);
+        const { data: jobs } = await supabaseAdmin
+          .from('video_jobs').select('user_id').in('user_id', ids).eq('status', 'completed');
+        const withRender = new Set((jobs || []).map((j) => j.user_id));
+
+        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+        const { data: grants } = await supabaseAdmin
+          .from('referral_rewards').select('days_granted').eq('user_id', referrerId).gte('granted_at', since);
+        const grantedInWindow = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+        const priorCounted = rows.filter((r) => r.counted_at).length;
+
+        const decision = reconcile({
+          referrerId, referrals: rows, referredWithRender: withRender, priorCounted, grantedInWindow,
+        });
+
+        // Qualified-with-no-render is a FINDING, not noise: it would mean
+        // qualification became reachable by something other than finishing a
+        // video. Recorded whether or not anything is granted.
+        const suspicious = decision.rejected.filter((r) => r.reason === 'qualified_without_render');
+        if (suspicious.length) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'referral_qualified_without_render', platform: 'server', app_version: 'server',
+            user_id: referrerId, props: { count: suspicious.length },
+          }).then(() => {}).catch(() => {});
+        }
+
+        if (decision.days <= 0) {
+          return sendJson(res, 200, {
+            ok: true, days: 0, reason: decision.reason,
+            eligible: decision.eligible.length, capped: decision.cap.capped,
+          });
+        }
+
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
+        const beforeIso = prof?.pro_until || null;
+        // A grant may only RAISE a tier. This wrote tier:'pro' unconditionally,
+        // so an active Max subscriber earning a referral was clobbered DOWN.
+        const tierAfter = tierAfterGrant(prof?.tier, 'pro');
+        const fromMs = grantFromMs(beforeIso);
+        const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
+
+        // LEDGER FIRST, provider_ok false. A row exists either way, so a failed
+        // grant is visible rather than absent — absence and failure are
+        // otherwise the same nothing.
+        const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
+          user_id: referrerId, days_granted: decision.days,
+          pro_until_before: beforeIso, pro_until_after: untilIso,
+          referral_ids: decision.eligible.map((e) => e.referred_id),
+          provider: 'db', provider_ok: false,
+        }).select('id').maybeSingle();
+
+        const { error: upErr } = await supabaseAdmin
+          .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
+
+        if (!upErr && ledger?.id) {
+          await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
+          await supabaseAdmin.from('referrals')
+            .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
+            .eq('referrer_id', referrerId)
+            .in('referred_id', decision.eligible.map((e) => e.referred_id));
+        }
+
+        supabaseAdmin.from('analytics_events').insert({
+          event: 'referral_reward_granted', platform: 'server', app_version: 'server',
+          user_id: referrerId,
+          props: { days: decision.days, capped: decision.cap.capped,
+                   withheld: decision.cap.withheld, cap: CAP_DAYS_PER_30D, provider_ok: !upErr },
+        }).then(() => {}).catch(() => {});
+
+        return sendJson(res, 200, {
+          ok: !upErr, days: decision.days, pro_until: untilIso,
+          capped: decision.cap.capped, withheld: decision.cap.withheld,
+        });
+      } catch (err) {
+        console.error('[referral/reconcile] error', err);
+        return sendJson(res, 500, { ok: false, error: 'reconcile_failed' });
+      }
+    })();
+    return;
+  }
+
+  // ── APPLE APP SITE ASSOCIATION ─────────────────────────────────────────────
+  // Referral attribution was measured at 0% ALL TIME: 57 users shared a link,
+  // 14 opened one, ZERO were ever attributed. Not a leak — a closed circuit.
+  // The share URL is https://usepromptly.app/?ref=CODE, but no AASA was served
+  // (404) and the app declared no associated-domains, so that link could never
+  // open the app. Not after a fresh install, and not even for users who already
+  // had it. ReferralService's own header said "universal links when the
+  // entitlement + AASA ship" — they never shipped.
+  //
+  // Apple's requirements, each of which has broken this for someone before:
+  //   • served over HTTPS with NO redirect (Apple does not follow them)
+  //   • Content-Type: application/json
+  //   • at /.well-known/apple-app-site-association (root path kept for older iOS)
+  //
+  // SCOPED TO REFERRAL LINKS ONLY. A bare "/" match would make every marketing
+  // page open the app, which is a worse bug than the one being fixed — so the
+  // component matches only URLs actually carrying a ?ref= code.
+  if ((parsed.pathname === '/.well-known/apple-app-site-association'
+       || parsed.pathname === '/apple-app-site-association') && req.method === 'GET') {
+    const body = JSON.stringify({
+      applinks: {
+        details: [
+          {
+            appIDs: ['8KT9332327.app.usepromptly.ios'],
+            components: [
+              { '/': '/', '?': { ref: '?*' }, comment: 'referral invite links only' },
+            ],
+          },
+        ],
+      },
+    });
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+      'Cache-Control': 'public, max-age=3600',
+    });
+    res.end(body);
+    return;
+  }
+
   if (parsed.pathname === '/api/health' && req.method === 'GET') {
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
+      // BUILD-GATE RECEIPT (TRUTH→DELIVERY request 2026-08-11): validate_deploy
+      // writes .gate_receipt.json on success; we read it ONCE at boot and expose
+      // it here beside rev. `null` is the load-bearing value — it PROVES the
+      // build did NOT run the gate (Render blueprint-sync can silently keep an
+      // old buildCommand; this converts the owner's build-log eyeball into a
+      // curl). Shape: {passed, total, at} mirroring the receipt's
+      // {smokes_passed, smokes_total, at}.
+      gate: BOOT_GATE_RECEIPT,
+      // npm postinstall marker (scripts/build-marker.js). Only meaningful when
+      // `gate` is null, and then it is decisive: non-null here means npm install
+      // ran and `node validate_deploy.js` did not — i.e. the live service is not
+      // running render.yaml's buildCommand, so the 24 safety smokes are gating
+      // nothing on Render. Both null means build writes never reach runtime.
+      build: BOOT_BUILD_MARKER,
       // The ONE knob, effective value. Pre-auth clients read this to route the
       // onboarding: 'on' → wall onboarding (hook → quiz → wall), 'off' →
       // today's legacy flow, byte-for-byte. Same knob that drives the server
       // gates — flip once, both halves move together. Default 'off' on any
       // client fetch failure.
+      // [§3.1/§6.1] LUMEN'S MASTER GATE, VISIBLE. generated_scenes fires 0/2,074
+      // and the cause chain ends at a three-way AND (isPro && client asked &&
+      // this flag). From outside the box the three were indistinguishable —
+      // the discriminator lived only in a Render log line nobody can curl. It
+      // is the same class as the build-gate receipt: an unanswerable question
+      // that stayed unanswered because answering it required access. Now it is
+      // a curl, for the owner and for me.
+      premium_pipeline: premiumPipelineEnabled(),
       wall_enforcement: wallEnabled() ? 'on' : 'off',
+      // Conversion item 1: the FIRST-LAUNCH dismissible paywall (iOS). A
+      // SEPARATE knob from wall_enforcement (that one drives the server gates
+      // and cannot be overloaded for a UI-only wall). Env-flipped, default
+      // OFF; the client caches last-known and defaults dark on fetch failure.
+      first_launch_paywall: String(process.env.FIRST_LAUNCH_PAYWALL || '') === '1' ? 'on' : 'off',
+      // Conversion standing workstream (2026-08-22): three referral-surfacing
+      // knobs, each its own flag so each ships/measures/kills independently.
+      //   postrender_referral  — the delight-moment card after a finished video
+      //   abandon_referral     — the second-chance referral on sheet-abandon
+      //                          (two-step ask: the decline is the qualifier)
+      //   ambient_wall_referral— the referral row on the manual/ambient wall
+      //                          (88% of exposure, 0.2-0.3% buy — give the
+      //                          curious a non-paying path)
+      postrender_referral: String(process.env.POSTRENDER_REFERRAL || '') === '1' ? 'on' : 'off',
+      abandon_referral: String(process.env.ABANDON_REFERRAL || '') === '1' ? 'on' : 'off',
+      ambient_wall_referral: String(process.env.AMBIENT_WALL_REFERRAL || '') === '1' ? 'on' : 'off',
+      // The SECOND-paywall referral row. It had no flag at all until
+      // 2026-08-29 — it shipped live to every wall-onboarding user while its
+      // three siblings sat dark, and it was the only one showing a progress
+      // promise ("0 of 3 friends have made a video") against attribution that
+      // has measured 0% all-time. Defaults OFF like the rest.
+      second_paywall_referral: String(process.env.SECOND_PAYWALL_REFERRAL || '') === '1' ? 'on' : 'off',
+      postrender_save_cta: String(process.env.POSTRENDER_SAVE_CTA || '') === '1' ? 'on' : 'off',
+      chat_media: String(process.env.CHAT_MEDIA || '') === '1' ? 'on' : 'off',
+      // ARMED by default (ruled 2026-08-26 — the audit's #1 cliff, 1,611 users). Env can still disable with FIRST_SESSION_AUTOPICKER=0.
+      first_session_autopicker: String(process.env.FIRST_SESSION_AUTOPICKER || '1') === '1' ? 'on' : 'off',
+      yearly_frame_fix: String(process.env.YEARLY_FRAME_FIX || '') === '1' ? 'on' : 'off',
+      // ARMED by default (shipped-today order 2026-08-27): a failed upload must tell the user when it's known. Env 0 disables.
+      upload_fail_notify: String(process.env.UPLOAD_FAIL_NOTIFY || '1') === '1' ? 'on' : 'off',
+      // Conversion build 2026-08-27 (post-235, coordinator-ordered): seven
+      // surfaces around the moment of desire, EACH its own flag, default OFF —
+      // arming order stays a ruling after 235's revenue-per-wall-view read.
+      //   attribution_gate          — resurrected "how did you hear" question in the LIVE first-session path
+      //   onboarding_v2             — <=4 screens, ends at the picker, content-type question feeds vibe prefill
+      //   render_transparency       — stage-truthful progress feed during the render wait (never fake stages)
+      //   exportgate_personalization— export gate shows the video's own thumbnail + named ask
+      //   bad_render_suppressor     — thin/passthrough render => NO paywall at the gate
+      //   annual_dollar_line        — "$X/wk billed annually — save $Y vs weekly", live StoreKit decimals, floored
+      //   offer_surfacing           — StoreKit2 paid intro + iOS18 win-back rendering (display-only until ASC offers exist; NEVER a trial)
+      //   push_primer               — post-first-delivery pre-permission primer; native prompt only on active tap
+      // ── THE NINE, ARMED TOGETHER (2026-08-30) ───────────────────────────
+      // Ruled armed together on release day; only first_launch_paywall was
+      // actually set, which left the funnel in its worst state: users got the
+      // FULL-PRICE ANCHOR on launch and never reached the three questions or
+      // the 50%-off reveal. An anchor without its discount is strictly worse
+      // than no anchor.
+      //
+      // Armed by DEFAULT rather than by Render env, because env changes were
+      // the step that silently did not happen. Each env var still overrides
+      // with '0' for an individual kill.
+      //
+      // KNOWN LIMIT: this only reaches build 236+. The v2 flow does not exist
+      // in 235 and below (51.8% of the fleet in the last 36h), so those users
+      // keep getting the anchor with no reveal available at any flag setting.
+      // /api/health receives no client version, so the flag cannot be served
+      // per-build without a client change — which would face the same adoption
+      // problem it is meant to solve.
+      attribution_gate: String(process.env.ATTRIBUTION_GATE || '1') === '1' ? 'on' : 'off',
+      onboarding_v2: String(process.env.ONBOARDING_V2 || '1') === '1' ? 'on' : 'off',
+      render_transparency: String(process.env.RENDER_TRANSPARENCY || '1') === '1' ? 'on' : 'off',
+      exportgate_personalization: String(process.env.EXPORTGATE_PERSONALIZATION || '1') === '1' ? 'on' : 'off',
+      bad_render_suppressor: String(process.env.BAD_RENDER_SUPPRESSOR || '1') === '1' ? 'on' : 'off',
+      annual_dollar_line: String(process.env.ANNUAL_DOLLAR_LINE || '1') === '1' ? 'on' : 'off',
+      offer_surfacing: String(process.env.OFFER_SURFACING || '1') === '1' ? 'on' : 'off',
+      push_primer: String(process.env.PUSH_PRIMER || '1') === '1' ? 'on' : 'off',
+      // Amendment 2026-08-27: the export gate as TWO pages (benefit case
+      // written against the stated content type, then plans + price). Its own
+      // flag so its contribution is readable separately.
+      exportgate_two_page: String(process.env.EXPORTGATE_TWO_PAGE || '1') === '1' ? 'on' : 'off',
+      // TWO-STEP PAYWALL — the ROLLBACK half of a client-armed flag (2026-09-02).
+      // The client armed `twoStepPaywallEnabled = true` by DEFAULT precisely
+      // because this key was absent: its parse is `if let v = obj["..."]`, so an
+      // absent key leaves the client default standing. That made the flag
+      // un-turn-off-able from the server — rolling it back needed a client
+      // release. Emitting the key restores the kill switch without a build.
+      // DELIBERATELY MORE TOLERANT than the flags above, and this is the one
+      // place it is worth the inconsistency: this is a ROLLBACK switch, reached
+      // for under pressure, and BOTH single-convention forms have a silent
+      // footgun. Strict '1'/'0' (the neighbours' form) serves "off" for
+      // TWO_STEP_PAYWALL=on. Raw passthrough (`|| 'on'`) serves "1" for
+      // TWO_STEP_PAYWALL=1 — the on-value all 24 neighbours use — which the
+      // client reads as OFF, since it compares the SERVED string to "on".
+      // Either way someone types a reasonable value and gets the opposite of
+      // what they meant, silently. So: only an explicit off-value turns it off.
+      // Kill with any of 0 / off / false / no. Unset, 1, or on all keep it ON.
+      two_step_paywall:
+        /^(0|off|false|no)$/i.test(String(process.env.TWO_STEP_PAYWALL ?? '').trim())
+          ? 'off' : 'on',
+      // DEFERRED AUTH — identical gap, armed the same day (2026-09-02) by the
+      // same absent-key mechanism, and its own client comment names the same
+      // rollback cost: "the server does not emit this key, so turning it OFF
+      // needs the server to start emitting deferred_auth: 'off' — a backend
+      // change, not a client one." Same tolerant off-values as above.
+      // NOTE the purchase guard is NOT gated on this flag — no purchase can
+      // complete without an account whether this is on or off — so flipping it
+      // changes funnel ORDER only, never that invariant.
+      deferred_auth:
+        /^(0|off|false|no)$/i.test(String(process.env.DEFERRED_AUTH ?? '').trim())
+          ? 'off' : 'on',
+      // ── credits + max_tier: SAME two-way control, OPPOSITE default ────────
+      // These are NOT the two above and must not be copied from them. Those
+      // were armed client-side (`= true`) and needed the key to turn OFF.
+      // These two default `= false` on the client AND were absent from
+      // /api/health, so they are DARK right now:
+      //   creditsEnabled  = false   (strict parse: absent key => false)
+      //   maxTierEnabled  = false   (`if let` parse: absent key leaves false)
+      // Emitting them with an 'on' default would therefore ARM two dark
+      // features, not make a live one reversible. So the default here is
+      // 'off' — today's behaviour, byte-for-byte — and the key exists so
+      // either can be flipped BOTH ways from Render without a build.
+      //
+      // Same no-silent-opposite property as above, inverted: only an explicit
+      // on-value arms. 1 / on / true / yes arm; unset, 0, off, false stay dark.
+      //
+      // max_tier is gated on App Store review of the Max product ("can be armed
+      // the moment Max clears review"). Arming it earlier surfaces a tier whose
+      // product is not approved.
+      max_tier:
+        /^(1|on|true|yes)$/i.test(String(process.env.MAX_TIER ?? '').trim())
+          ? 'on' : 'off',
+      // CREDITS is the DISPLAY meter only — the client cannot debit (RevenueCat
+      // Virtual Currencies is read-only on device). It is a DIFFERENT knob from
+      // CREDITS_DEBIT_ENABLED, which gates actual debiting at the dispatch site
+      // and is untouched here: it defaults to off (`|| ''` !== '1') and STAYS
+      // off until CRD is provisioned and balances are granted. Arming this
+      // meter before then shows users a balance that does not exist yet.
+      credits:
+        /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
+          ? 'on' : 'off',
+      // Version awareness (client update prompts, server-driven so copy and
+      // thresholds change WITHOUT a release):
+      //   latest_version         — what's live on the App Store (soft banner
+      //                            when the client is older; dismissible).
+      //   min_supported_version  — floor for the FORCED update cover, armed
+      //                            only when force_update='on' (broken-build
+      //                            emergencies only; default OFF).
+      //   update_notes           — one line of user-facing copy for the banner
+      //                            (optional; client has a default).
+      // All empty/off by default → the whole feature stays dark.
+      latest_version: String(process.env.LATEST_APP_VERSION || ''),
+      min_supported_version: String(process.env.MIN_SUPPORTED_APP_VERSION || ''),
+      force_update: String(process.env.FORCE_UPDATE || '') === '1' ? 'on' : 'off',
+      update_notes: String(process.env.UPDATE_NOTES || ''),
+      // Conversion item 5: the onboarding RESULTS WALL — real renders, curated
+      // server-side, swappable WITHOUT an app build (the stale-sample-demo
+      // lesson, structurally). RESULTS_WALL_JSON is a JSON array of
+      // {video_url, thumb_url}; unset/invalid → [] and the client skips the
+      // beat entirely (auto-advance, never a blank wall).
+      results_wall: (() => {
+        try { const v = JSON.parse(process.env.RESULTS_WALL_JSON || '[]'); return Array.isArray(v) ? v : []; }
+        catch { return []; }
+      })(),
       posthog: process.env.POSTHOG_API_KEY ? 'configured' : 'dark',
+      // Presence only (never the values) — the deploy-sanity readback drift-guard
+      // asserts these so a "preserve current values" sweep that drops either
+      // worker-auth secret is caught loudly instead of running open.
+      modal_run_secret: !!process.env.MODAL_RUN_SECRET,
+      modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
+      // CDN SIGNING, PROVEN FROM INSIDE THE PROCESS (2026-08-23).
+      //
+      // "the env var is set" is NOT the question. cloudfront.js computes
+      // signedMode from domain + KEY_PAIR_ID + a private key it must PARSE, and
+      // Render's env editor is known to turn a multi-line PEM into \n-escaped
+      // text. A malformed key leaves the vars present and the signer dead, and
+      // the old code then returned a BARE, NON-EXPIRING CDN url that looked
+      // exactly like a grant. My own guard read `cloudfront.signedMode` as
+      // undefined and took that branch silently, so a boolean sourced from
+      // env presence is not evidence.
+      //
+      // canSign actually RUNS the signer against a canary key and checks the
+      // result carries a Signature. That is the difference between "configured"
+      // and "working" — and with the exports prefix now behind
+      // Restrict-viewer-access, a dead
+      // signer means every paying user's export 403s.
+      //
+      // Booleans only. No URL, no key id, no expiry is exposed here.
+      cloudfront: (() => {
+        try {
+          const cf = require('./services/cloudfront');
+          let canSign = false;
+          if (cf.signedMode) {
+            const probe = cf.createSignedUrl('exports/__healthcheck__/probe.mp4', 60);
+            canSign = typeof probe === 'string' && /[?&]Signature=/.test(probe);
+          }
+          const out = {
+            enabled: !!cf.enabled,
+            signedMode: !!cf.signedMode,
+            unsignedMode: !!cf.unsignedMode,
+            canSign,
+            // TRUE means a key pair id IS configured and is not a key pair id
+            // (2026-08-23: it was the public key PEM). Distinct from plain
+            // unsigned mode, because this one is a live misconfiguration.
+            keyPairIdMalformed: !!cf.keyPairIdMalformed,
+          };
+          // canSign proves WE can sign. It does NOT prove CloudFront ACCEPTS the
+          // signature — that needs the key pair to be in the trusted key group
+          // bound to the restricted behaviour, which is configured in the AWS
+          // console, not here. Those are different failures with the same
+          // symptom, and the second one 403s every paying user's export.
+          //
+          // ?cfcanary=1 returns a 60s signed URL for a key that DELIBERATELY DOES
+          // NOT EXIST. Fetch it and the status is decisive:
+          //   404 / NoSuchKey  -> signature ACCEPTED, CloudFront forwarded to S3
+          //   403              -> signature REJECTED by the key group  (P0)
+          // Nothing is leaked: the object is absent, the signature is scoped to
+          // that exact URL, it dies in 60s, and Key-Pair-Id is public by
+          // construction — it rides in every signed URL a client already gets.
+          // Off by default so the default health payload stays a cheap boolean.
+          // ?cfcanary=1 (exports) or ?cfcanary=<prefix> for any RESTRICTED
+          // prefix. Every candidate is a hardcoded __healthcheck__ path under a
+          // prefix we own, and every one DELIBERATELY DOES NOT EXIST, so the
+          // probe can never mint a grant for real user data no matter what the
+          // query string says. The allowlist is the security boundary — a
+          // caller-supplied key here would be an open signing oracle.
+          const CANARY = {
+            exports: 'exports/__healthcheck__/probe.mp4',
+            'chat-media': 'chat-media/__healthcheck__/probe.png',
+            sources: 'sources/__healthcheck__/probe.mp4',
+            'renders-private': 'renders-private/__healthcheck__/probe.mp4',
+          };
+          const want = String(parsed.query?.cfcanary || '');
+          if (canSign && want) {
+            const k = want === '1' ? CANARY.exports : CANARY[want];
+            if (k) { out.canaryKey = k; out.canaryUrl = cf.createSignedUrl(k, 60); }
+            else { out.canaryError = `unknown prefix; allowed: ${Object.keys(CANARY).join(', ')}`; }
+          }
+          return out;
+        } catch (e) {
+          return { error: String(e && e.message || e).slice(0, 120) };
+        }
+      })(),
     });
   }
+
+  // (auth-ping endpoint lives above near the render-alert route — main added an
+  // equivalent one; deduped here to a single handler.)
 
   if (parsed.pathname === '/api/events' && req.method === 'POST') {
     (async () => {
@@ -2557,17 +3772,105 @@ const server = http.createServer((req, res) => {
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          // Picker instrumentation (UNS/first-run BUILD(1)): picker_opened on every
+          // present; picker_result {raw,resolved,dropped} on dismissal; and a durable
+          // picker_asset_unresolved when a picked result resolves to no PHAsset (the
+          // silent activation loss where a pick vanished with zero signal). Together
+          // they split the 34% non-pickers into didn't-tap / cancelled / picked-but-
+          // dropped. Allowlisted here AHEAD of the iOS build (dark until it ships) —
+          // the __smoke_event_allowlist cert scans app-* branches, so the emitters on
+          // app-uns-instrumentation already fail the deploy gate without this.
+          'picker_opened', 'picker_result', 'picker_asset_unresolved',
+          // Conversion build 2026-08-27 (post-235, seven flag-gated surfaces):
+          // allowlisted on main BEFORE the branch emitters ship (standing law).
+          'onboarding_v2_step', 'push_primer_viewed', 'push_primer_accepted',
+          'push_primer_declined', 'annual_dollar_line_shown', 'offer_line_shown',
+          'paywall_personalization_shown', 'paywall_suppressed_bad_render',
+          'purchase_blocked_unidentified', 'render_transparency_viewed',
+          'exportgate_benefit_viewed', 'exportgate_benefit_continue',
+          // Referral program (conversion workstream; schema live 2026-08-21):
+          // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
+          // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
+          'referral_share', 'referral_link_opened', 'referral_claimed',
+          // The DENOMINATOR the referral loop never had (2026-08-29). All four
+          // surfaces could report shares and none could report a share RATE, so
+          // the ladder's entire purpose — making the first invite pay, and
+          // thereby lifting that rate — was unmeasurable. Allowlisted before the
+          // surfaces arm, so the first cohort is not half-blind.
+          'referral_shown',
+          // Per-Apple-ID intro-offer eligibility check (2026-08-30). Carries
+          // eligible/checked so "nobody is eligible" is distinguishable from
+          // "we never asked" — the difference between a correct absence of
+          // discount claims and a broken eligibility fetch.
+          'intro_eligibility_checked',
+          // Transport-error mirror (HTTPClientError diagnosis, 2026-08-22): the
+          // iOS Sentry SDK auto-captures URLSession 5xx (enableCaptureFailedRequests
+          // default-on) into a class we cannot query programmatically; this event
+          // mirrors the SAME failures (upload part/PUT retries with status+conn)
+          // into the SQL mirror where every read runs. Volume-bounded client-side.
+          'upload_http_error',
+          // Onboarding question answers (Q1 audience / Q2 intent / Q3
+          // attribution). FIXES a live drift: the client emitted these via
+          // NON-LITERAL names (OnboardingQuestion.X.event) invisible to the
+          // gate's regex AND absent here — the SQL mirror silently dropped
+          // them while PostHog kept them. The 3-question rework emits them as
+          // literals; allowlisted so the mirror finally keeps the answers.
+          'onboarding_audience', 'onboarding_intent', 'onboarding_attribution',
+          // upload_attempt (1.3.7/225): durable {size_mb, path, src_key} fired at
+          // upload START so the failing (never-settled) population has a SIZE to
+          // band UNS by. Emitted on app-1.3.3; allowlisted here so the SQL mirror
+          // keeps it (PostHog does regardless).
+          'upload_attempt',
           'not_talking_head_rejected', 'no_speech_rejected', 'no_audio_rejected',
+          // 2026-08-02 — the SPLIT names. `not_talking_head_rejected` fires with
+          // props.proceeded:true on 68 of 109 events (62%): an event whose name
+          // ends in "_rejected" describes a NON-rejection most of the time. That
+          // naming produced a false 35.9% corrected-completion figure by counting
+          // 68 warnings as blocks. Server-side normalisation below rewrites the
+          // legacy name using props.proceeded, so the split works with the
+          // CURRENT client and no app release; these are allowlisted so a future
+          // client can also send them directly.
+          'not_talking_head_warned', 'not_talking_head_blocked',
           // 1.3.1 on-device pre-checks (audio/duration) + push soft-prompt. Without
           // these on the allowlist the SQL mirror silently drops them (the same
           // class that bit not_talking_head_rejected); PostHog gets them regardless.
           'too_short_rejected', 'too_long_rejected', 'push_softprompt',
+          // 1.3.4 (222) instruments — the upload/no-token blind spots + true
+          // activation. MUST be here or the SQL mirror (the DB our upload/no-token
+          // analysis queries) drops them while PostHog keeps them — half-blind.
+          'upload_failed', 'export_completed', 'push_permission',
+          // 1.3.4 in-app ready-state card (returning-user recovery funnel):
+          'ready_banner_shown', 'ready_banner_open', 'ready_banner_dismiss',
+          // Billing-identity hardening (blocked-pre-identity + RC identify diagnostics):
+          'purchase_blocked_unidentified', 'rc_identify_failed', 'rc_identify_mismatch',
+          // In-app-browser escape (web landing /get). Meta/TikTok webviews swallow
+          // App Store taps; these size the problem + measure the breakout funnel.
+          'inapp_landing', 'escape_attempted', 'escape_succeeded',
+          'escape_fallback_shown', 'fallback_retry', 'fallback_copy',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
           // RETENTION:
           'session_started',
-        ]);
+          'save_cta_shown',
+                  // OFFER-REVEAL FUNNEL (2026-08-28). `offer_reveal_viewed` is the
+          // DENOMINATOR for every reveal read — without it "reveal → purchase"
+          // cannot be computed in SQL at all. `skipped` is what separates "no
+          // real offer existed on the products" from "the user declined", which
+          // are opposite conclusions about the same empty result. Allowlisted
+          // BEFORE the onboarding_v2 flag flips, so the funnel is never
+          // half-blind for its first cohort.
+          'offer_reveal_viewed',
+          'offer_reveal_declined',
+          'offer_reveal_skipped',
+          // UPLOAD_NEVER_STARTED's reporting path (2026-08-28). This is the
+          // ONLY record that a pick died before becoming a job — there is no
+          // server-side trace of that failure by construction, so dropping this
+          // event returns the product's largest failure class to being
+          // completely unmeasurable. Carries error_code/error_subcode/
+          // error_cause in the worker's shape so both codebases union.
+          'upload_never_started',
+]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
           return;
@@ -2580,9 +3883,16 @@ const server = http.createServer((req, res) => {
         const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
         const props = (body.props && typeof body.props === 'object' && !Array.isArray(body.props))
           ? body.props : {};
+        // Event-name normalisation + Rule-7 actor resolution. See
+        // lib/analytics-normalize.js for the full why; pinned by
+        // lib/__smoke_analytics_normalize.js.
+        const _an = require('./lib/analytics-normalize');
+        const _event = _an.normalizeEventName(body.event, body.props);
+        const _anon = str(body.anon_user_id, 128);
         const row = {
-          event: body.event,
-          anon_user_id: str(body.anon_user_id, 128),
+          event: _event,
+          user_id: _an.resolveUserId(_anon),
+          anon_user_id: _anon,
           territory: str(body.territory, 8),
           storefront: str(body.storefront, 64),
           app_version: str(body.app_version, 32),
@@ -2663,6 +3973,7 @@ const server = http.createServer((req, res) => {
       "- Does NOT generate AI voiceovers or synthetic talking heads. Works only with the user's own uploaded clip.",
       '',
       'HOW TO ANSWER:',
+      "- YOUR IDENTITY: You are Promptly's own editing AI. If asked what you are, what model or technology you run on, who built or trains you, or whether you are ChatGPT/Gemini/Claude/an LLM — you are Promptly's AI, built by the Promptly team. NEVER say Gemini, Google, OpenAI, Anthropic, GPT, or any model or vendor name, and never call yourself 'a large language model.' Saying you are another company's model in a paid product is wrong. Deflect warmly to what you help with: editing their video.",
       "- NEVER reveal implementation details, internal architecture, specific AI models, libraries, services, vendors, file formats, or step-by-step pipeline internals. That's proprietary.",
       "- If someone asks 'how does it work' or 'what are the steps' or 'why does it take so long,' answer at a HIGH LEVEL only: 'I analyze your clip, figure out the best edit for the vibe you asked for, and render the result.' Do not name technologies. Do not list numbered pipeline steps.",
       "- You CAN list the user-facing features above when asked what the app does — those are public and marketed.",
@@ -2672,17 +3983,87 @@ const server = http.createServer((req, res) => {
     ].join('\n');
   }
 
+  // LANE-SEAM Step 4 mount (one line, specified by routes/chat-actions.js and
+  // applied by TRUTH). DARK behind PROMPTLY_CHAT_ACTIONS — unset ⇒ the handler
+  // 404s, so the route does not exist as far as any client can tell.
+  if (parsed.pathname === '/api/chat/actions' && req.method === 'POST') return require('./routes/chat-actions').handle(req, res, { requireSupabaseUser, readJsonBody, sendJson, supabaseAdmin, checkRateLimit, PORT });
+
+  // ── POST /api/chat/media-resolve ─────────────────────────────────────────
+  // {key} → {url, expiresIn}. The read half of the reference contract.
+  //
+  // Stored chat messages carry {kind, mime, key} and NEVER a URL, so nothing in
+  // a transcript can expire. The client calls this when it is about to display
+  // an image and again whenever a previously-resolved URL goes stale. That is
+  // the whole reason the wire shape is a key: there is no server writer for
+  // chats.messages (the client PATCHes it under RLS, and the one server writer
+  // CASes on updated_at after a lost update cost 180 completions), so a URL
+  // baked into a stored message could never be refreshed by us.
+  //
+  // Authorisation is the parse: assertOwnedKey compares the user id embedded in
+  // the key against the caller. No DB read, no join, nothing to forget.
+  if (parsed.pathname === '/api/chat/media-resolve' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'chat-media-resolve', authUser.id, 120, 60)) return;
+        const body = await readJsonBody(req).catch(() => ({}));
+        const cm = require('./lib/chat-media');
+        const s3 = require('./services/s3');
+        if (!s3.isConfigured()) return sendJson(res, 500, { error: 'Storage not configured' });
+
+        let key;
+        try {
+          key = cm.assertOwnedKey(authUser.id, body && body.key);
+        } catch (e) {
+          // 403 for someone else's key, and 403 for a malformed one — the two
+          // must not be distinguishable, or this becomes an oracle for probing
+          // which keys exist.
+          return sendJson(res, 403, { error: 'forbidden_key' });
+        }
+
+        // 404 before minting: a URL for an absent object would 403 at the CDN
+        // later and read to the client as an auth failure. objectExists returns
+        // null when it cannot tell (no ListBucket) — treat that as present and
+        // let the fetch decide, rather than hiding a real image.
+        const exists = await s3.objectExists(key);
+        if (exists === false) return sendJson(res, 404, { error: 'not_found' });
+
+        // 1 hour. Long enough to render a conversation, short enough that a
+        // leaked URL dies quickly — and re-resolve makes expiry a non-event.
+        const expiresIn = 3600;
+        const url = await s3.createPresignedGetUrl(key, expiresIn);
+        return sendJson(res, 200, { url, expiresIn, key });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: clientSafeMessage(error) });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/chat' && req.method === 'POST') {
     (async () => {
       try {
         const authUser = await requireSupabaseUser(req);
         const body = await readJsonBody(req);
         const message = String(body?.message || '').trim();
-        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+        // §1: a message may be images ALONE. Requiring text would make "what is
+        // this?" with a photo attached a 400 — the single most obvious thing a
+        // user does with an image, rejected by the boundary.
+        const _cm = require('./lib/chat-media');
+        let inboundMedia;
+        try {
+          inboundMedia = _cm.parseInboundMedia(authUser.id, body?.media);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 400, { error: e.message, ...(e.detail || {}) });
+        }
+        if (!message && !inboundMedia.length) {
+          return sendJson(res, 400, { error: 'Message is required' });
+        }
 
         // ── Class 1: trivial input (a bare comma, "...", stray character) ──
         // Never reaches Gemini, never burns quota, never becomes a render.
-        if (isTrivialMessage(message)) {
+        // Skipped when media rides along: "?" beside a photo is a real question.
+        if (!inboundMedia.length && isTrivialMessage(message)) {
           return sendJson(res, 200, { reply: TRIVIAL_REPLY });
         }
 
@@ -2704,7 +4085,9 @@ const server = http.createServer((req, res) => {
 
         // ── Class 2: status questions → deterministic answer from the row ──
         // No LLM, no quota: stage name + honest typical duration + freshness.
-        if (isStatusQuestion(message)) {
+        // Also skipped with media: "how's it going?" beside a screenshot is
+        // asking about the picture, and the canned status reply would ignore it.
+        if (!inboundMedia.length && isStatusQuestion(message)) {
           const answer = statusAnswerFromJob(recentJob);
           if (answer) return sendJson(res, 200, { reply: answer });
           // No job to talk about → fall through to the conversational LLM.
@@ -2741,14 +4124,22 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini request
         const contents = [];
 
         const jobCtx = jobContextLine(recentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '');
+        // reply_language — the assistant answers in the USER's language. Empty
+        // string for English, so the common path stays byte-identical.
+        const _replyLang = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLine = require('./lib/reply-language').replyLanguageInstruction(_replyLang);
+        const systemPrompt = promptlyChatSystemPrompt() + (jobCtx ? `\n\n${jobCtx}` : '') + _langLine;
 
         // Add conversation history
         for (const h of history.slice(-18)) {
@@ -2760,19 +4151,34 @@ const server = http.createServer((req, res) => {
           }
         }
 
-        // Add current message
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Add current message. Image parts come FIRST: Gemini grounds better
+        // when the referent precedes the question, and it makes a text-free
+        // attachment message ("<image>") a valid turn rather than an empty one.
+        let _inlineParts = [];
+        try {
+          _inlineParts = await _cm.inlinePartsForGemini(require('./services/s3'), inboundMedia);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 502, {
+            error: e.statusCode === 413 ? 'media_too_large' : 'media_unreadable',
+            ...(e.detail || {}),
+          });
+        }
+        const _userParts = [..._inlineParts];
+        if (message) _userParts.push({ text: message });
+        contents.push({ role: 'user', parts: _userParts });
 
         // Flash model for the chat path. The pro/preview model burns
         // 5-15s on simple replies — fine for the analysis pipeline,
         // unacceptable for an in-app chat where the value of an AI reply
         // is its instant feel. 2.5-flash returns in ~500-1500ms with
         // identical helpfulness for short mobile-chat answers.
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-          {
+        const _chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:generateContent`;
+        // AQ-format keys are rejected on ?key= (ACCESS_TOKEN_TYPE_UNSUPPORTED)
+        // and MUST travel in the x-goog-api-key header. Never send both — a
+        // query key + header triggers "Multiple authentication credentials".
+        const _chatInit = {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
             body: JSON.stringify({
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents,
@@ -2780,30 +4186,56 @@ const server = http.createServer((req, res) => {
                 // 1024 leaves headroom for "explain the pipeline" style
                 // questions without clipping mid-sentence. The system
                 // prompt holds replies short by default.
-                maxOutputTokens: 1024,
+                // Raised to 2048: gemini-flash-latest points to a thinking model
+                // (thinkingBudget:0 was rejected as INVALID_ARGUMENT — that param
+                // is what kept chat 502 after the model swap). Default thinking
+                // consumes output tokens, so give headroom for thinking + a full
+                // reply; the system prompt still holds replies short.
+                maxOutputTokens: 2048,
                 temperature: 0.8,
-                // Disable thinking — it adds 1-3s of latency for
-                // negligible quality gain on chit-chat. Flash defaults
-                // to a small thinking budget; explicitly zero it out.
-                thinkingConfig: { thinkingBudget: 0 },
               },
             }),
-          }
-        );
+          };
+        const _rr = await fetchGeminiWithTransientRetry(_chatUrl, _chatInit,
+          { route: '/api/chat', model: CHAT_MODEL, userId: authUser && authUser.id });
+        const geminiRes = _rr.res;
 
         if (!geminiRes.ok) {
-          const errText = await geminiRes.text().catch(() => '');
+          const errText = _rr.firstBody || '';
           console.error('[Chat] Gemini error:', geminiRes.status, errText);
+          // PERSIST THE QUOTA STORY, don't just log it. The ledger recorded
+          // `{code:502}` and nothing else, so "which quota, at what limit"
+          // required catching a Render log line before it scrolled. The 429
+          // body carries a structured QuotaFailure; throwing it away is what
+          // made this take a day.
+          await recordQuotaFailure(supabaseAdmin, {
+            route: '/api/chat', httpStatus: geminiRes.status, bodyText: errText,
+            userId: authUser && authUser.id, model: CHAT_MODEL,
+          }).catch(() => {});
           return sendJson(res, 502, { error: 'AI service error' });
         }
 
         const geminiData = await geminiRes.json();
-        const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Walk ALL parts, not parts[0]. Two defects fixed here:
+        //   (a) LIVE TODAY: a thinking model emits a THOUGHT part alongside the
+        //       answer. If the thought lands at parts[0] the answer is dropped
+        //       and a good reply becomes 502 empty_ai_reply. The STREAMING path
+        //       already fixed this ("reading only parts[0] would drop the
+        //       answer"); the one-shot path never got it. Same filter, so the
+        //       two entrances cannot drift again.
+        //   (b) "empty" meant "no text", making an image-only reply an error by
+        //       construction and blocking every later multimodal part.
+        const { decodeChatCandidate, isEmptyReply } = require('./lib/chat-reply');
+        const decoded = decodeChatCandidate(geminiData?.candidates?.[0]);
+        const reply = decoded.text;
         // Decode gate (server half): an empty candidate (safety block, model
         // hiccup) must be an ERROR, never a 200 with a blank reply — the
-        // client's retry handler needs a throw to fire.
-        if (!reply.trim()) {
-          console.error('[Chat] Gemini returned an empty candidate');
+        // client's retry handler needs a throw to fire. EMPTY now means neither
+        // text NOR attachment; a thought-only candidate is counted separately
+        // so it stops hiding inside one opaque 502.
+        if (isEmptyReply(decoded)) {
+          console.error(`[Chat] Gemini returned an empty candidate`
+            + `${decoded.thoughtOnly ? ' (thought-only — model reasoned but never answered)' : ''}`);
           return sendJson(res, 502, { error: 'empty_ai_reply' });
         }
 
@@ -2812,7 +4244,17 @@ const server = http.createServer((req, res) => {
         // the user's daily quota.
         await logUsageEvent(authUser.id, 'chat');
 
-        return sendJson(res, 200, { reply });
+        // §1 outbound: model-generated images are persisted to the PRIVATE
+        // prefix and returned as {kind, mime, key} — never a base64 blob. The
+        // client re-resolves the key via /api/chat/media-resolve on read, so a
+        // stored transcript holds nothing that can expire.
+        const attachments = await _cm.persistGeneratedAttachments(
+          require('./services/s3'), authUser.id, decoded.attachments,
+          (e) => console.error('[Chat] attachment persist failed:', e?.message)
+        );
+        // `attachments` is omitted entirely when empty rather than sent as [],
+        // so an older client that has never seen the field is byte-unaffected.
+        return sendJson(res, 200, attachments.length ? { reply, attachments } : { reply });
       } catch (error) {
         console.error('[Chat] Error:', error);
         return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Chat error' });
@@ -2832,7 +4274,19 @@ const server = http.createServer((req, res) => {
         const streamUser = await requireSupabaseUser(req);
         const body = await readJsonBody(req);
         const message = String(body?.message || '').trim();
-        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+        // §1: identical media handling to /api/chat. The client tries THIS
+        // endpoint first, so a boundary enforced only on the one-shot path
+        // would be enforced on the path almost nobody takes.
+        const _cmS = require('./lib/chat-media');
+        let streamMedia;
+        try {
+          streamMedia = _cmS.parseInboundMedia(streamUser.id, body?.media);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 400, { error: e.message, ...(e.detail || {}) });
+        }
+        if (!message && !streamMedia.length) {
+          return sendJson(res, 400, { error: 'Message is required' });
+        }
 
         // Router classes 1+2 (same as /api/chat — the client tries THIS
         // endpoint first, so the gates must live here too). Canned replies
@@ -2847,7 +4301,8 @@ const server = http.createServer((req, res) => {
           res.write('data: [DONE]\n\n');
           res.end();
         };
-        if (isTrivialMessage(message)) return emitCanned(TRIVIAL_REPLY);
+        // Media present → never canned. See /api/chat for the reasoning.
+        if (!streamMedia.length && isTrivialMessage(message)) return emitCanned(TRIVIAL_REPLY);
 
         let streamRecentJob = null;
         if (supabaseAdmin) {
@@ -2862,7 +4317,7 @@ const server = http.createServer((req, res) => {
             streamRecentJob = Array.isArray(jobs) ? jobs[0] || null : null;
           } catch (e) { /* best-effort */ }
         }
-        if (isStatusQuestion(message)) {
+        if (!streamMedia.length && isStatusQuestion(message)) {
           const answer = statusAnswerFromJob(streamRecentJob);
           if (answer) return emitCanned(answer);
         }
@@ -2894,12 +4349,23 @@ const server = http.createServer((req, res) => {
         }
 
         const history = Array.isArray(body?.history) ? body.history : [];
-        const geminiKey = process.env.GEMINI_API_KEY;
+        // Trim: a key pasted into the Render dashboard with a trailing newline
+        // is sent verbatim in the x-goog-api-key header → Gemini 401 → chat 502,
+        // indistinguishable from a wrong key. Same class as MODAL_CALLBACK_SECRET
+        // (e6f9a74). No-op on a clean value.
+        const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
         if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
 
         // Build Gemini contents (same shape as /api/chat).
         const streamJobCtx = jobContextLine(streamRecentJob);
-        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '');
+        // SECOND CONSUMER. /api/chat builds this prompt TWICE — once here for
+        // the streaming path and once above for the non-streaming one. Threading
+        // the language into only one of them would answer the same user in two
+        // languages depending on which path their client took, and the bug
+        // would look like a flaky model rather than a missed call site.
+        const _replyLangS = require('./lib/reply-language').parseReplyLanguage(body);
+        const _langLineS = require('./lib/reply-language').replyLanguageInstruction(_replyLangS);
+        const systemPrompt = promptlyChatSystemPrompt() + (streamJobCtx ? `\n\n${streamJobCtx}` : '') + _langLineS;
         const contents = [];
         for (const h of history.slice(-18)) {
           if (h.role === 'user' || h.role === 'assistant') {
@@ -2909,7 +4375,22 @@ const server = http.createServer((req, res) => {
             });
           }
         }
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Images first, then text — same ordering as /api/chat. Resolved BEFORE
+        // the SSE headers go out: an unreadable or oversized image must be a
+        // clean typed JSON error, and once `res.writeHead` has fired the only
+        // way left to report it is an error frame the client may not surface.
+        let _sInline = [];
+        try {
+          _sInline = await _cmS.inlinePartsForGemini(require('./services/s3'), streamMedia);
+        } catch (e) {
+          return sendJson(res, e.statusCode || 502, {
+            error: e.statusCode === 413 ? 'media_too_large' : 'media_unreadable',
+            ...(e.detail || {}),
+          });
+        }
+        const _sParts = [..._sInline];
+        if (message) _sParts.push({ text: message });
+        contents.push({ role: 'user', parts: _sParts });
 
         // Open SSE response stream to the client BEFORE we hit Gemini —
         // a slow connection from us to Gemini shouldn't delay the
@@ -2927,10 +4408,12 @@ const server = http.createServer((req, res) => {
         // Gemini streaming endpoint. alt=sse makes the response a true
         // SSE byte stream we can pipe through; without it Gemini returns
         // a JSON array we'd have to buffer.
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${geminiKey}`;
-        const geminiRes = await fetch(geminiUrl, {
+        // Key travels in the x-goog-api-key header, not ?key= (AQ keys are
+        // rejected on the query param). Keep ?alt=sse; drop &key= entirely.
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:streamGenerateContent?alt=sse`;
+        const _streamInit = {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemPrompt }] },
             contents,
@@ -2940,14 +4423,29 @@ const server = http.createServer((req, res) => {
               // system prompt still anchors replies to chat-shaped.
               maxOutputTokens: 2048,
               temperature: 0.8,
-              thinkingConfig: { thinkingBudget: 0 },
+              // No thinkingConfig: gemini-flash-latest rejects thinkingBudget:0
+              // (INVALID_ARGUMENT). Default thinking is fine here.
             },
           }),
-        });
+        };
+
+        // RETRY BEFORE ANY DATA FRAME. `: stream-open` has been written, but no
+        // token frame has — so a retried upstream is invisible to the client.
+        // Once a token is emitted this would no longer be safe.
+        const _sr = await fetchGeminiWithTransientRetry(geminiUrl, _streamInit,
+          { route: '/api/chat/stream', model: CHAT_MODEL,
+            userId: streamUser && streamUser.id });
+        const geminiRes = _sr.res;
 
         if (!geminiRes.ok || !geminiRes.body) {
-          const errText = await geminiRes.text().catch(() => '');
+          const errText = _sr.firstBody || '';
           console.error('[ChatStream] Gemini error:', geminiRes.status, errText);
+          // Same persistence as /api/chat — BOTH surfaces 429 at 100%, so
+          // instrumenting only one would leave half the evidence in a log.
+          await recordQuotaFailure(supabaseAdmin, {
+            route: '/api/chat/stream', httpStatus: geminiRes.status, bodyText: errText,
+            userId: streamUser && streamUser.id, model: CHAT_MODEL,
+          }).catch(() => {});
           res.write(`data: ${JSON.stringify({ error: 'AI service error' })}\n\n`);
           res.write('data: [DONE]\n\n');
           return res.end();
@@ -2959,12 +4457,21 @@ const server = http.createServer((req, res) => {
         // need to know Gemini's response shape.
         const decoder = new TextDecoder();
         let buffer = '';
+        // Generated image parts, accumulated across frames and persisted once
+        // the stream drains (see the attachments frame below [DONE]).
+        const _streamInlineAtts = [];
         const reader = geminiRes.body.getReader();
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          // Normalize CRLF → LF. gemini-flash-latest (now gemini-3.6-flash)
+          // streams SSE frames separated by \r\n\r\n; the \n\n split below never
+          // matches inside \r\n\r\n, so the handler found NO frame boundaries and
+          // emitted ZERO tokens — silently falling back to the one-shot
+          // (all-at-once, the text-message feel). This one normalization is the
+          // whole streaming fix.
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
           // SSE frames are separated by \n\n.
           let idx;
           while ((idx = buffer.indexOf('\n\n')) !== -1) {
@@ -2975,9 +4482,25 @@ const server = http.createServer((req, res) => {
             const json = dataLine.slice(6);
             try {
               const parsed = JSON.parse(json);
-              const token = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              // Concatenate text across ALL non-thought parts: a thinking model
+              // can emit a thought part alongside the visible-answer text part in
+              // the same frame, and reading only parts[0] would drop the answer.
+              const parts = parsed?.candidates?.[0]?.content?.parts || [];
+              const token = parts
+                .filter(p => p && typeof p.text === 'string' && !p.thought)
+                .map(p => p.text)
+                .join('');
               if (token) {
                 res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              }
+              // §1: collect generated image parts as they stream. They are NOT
+              // emitted inline — a base64 blob in an SSE frame would be
+              // megabytes on the wire and unusable in a stored transcript. They
+              // are persisted after the stream drains and announced as keys.
+              for (const p of parts) {
+                if (!p || p.thought) continue;
+                const inline = p.inlineData || p.inline_data;
+                if (inline && inline.data) _streamInlineAtts.push(inline);
               }
             } catch {
               // Non-JSON frame (keep-alive comment, etc) — ignore.
@@ -3000,6 +4523,25 @@ const server = http.createServer((req, res) => {
           // counter remains accurate. Better than letting an outage
           // disable the cap.
           res.write(`data: ${JSON.stringify({ error: 'usage_log_failed' })}\n\n`);
+        }
+        // §1: the attachments frame — LAST data frame, immediately before
+        // [DONE]. Persisting to S3 takes a round trip per image, so doing it
+        // inline during the stream would stall token delivery; doing it here
+        // costs the user nothing they can perceive because the text has already
+        // rendered. Shape matches /api/chat exactly: {kind, mime, key}.
+        // Emitted only when non-empty, so a client that ignores the frame is
+        // byte-unaffected.
+        try {
+          const streamAtts = await _cmS.persistGeneratedAttachments(
+            require('./services/s3'), streamUser.id, _streamInlineAtts,
+            (e) => console.error('[ChatStream] attachment persist failed:', e?.message)
+          );
+          if (streamAtts.length) {
+            res.write(`data: ${JSON.stringify({ attachments: streamAtts })}\n\n`);
+          }
+        } catch (attErr) {
+          // Never fatal: the text reply already streamed and is the answer.
+          console.error('[ChatStream] attachment stage failed:', attErr?.message);
         }
         res.write('data: [DONE]\n\n');
         res.end();
@@ -3291,9 +4833,32 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/revenuecat/webhook' && req.method === 'POST') {
     (async () => {
       try {
+        // RECEIVED counter (lane/delivery 2026-08-10): one durable row for EVERY
+        // webhook hit, INCLUDING auth failures and misconfig — before this, a
+        // 401ing webhook was invisible outside Render logs and "has RC ever
+        // called us?" was unanswerable from the DB. Fire-and-forget.
+        const rcReceived = (props) => {
+          if (!supabaseAdmin) return;
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'rc_webhook_received', platform: 'server', app_version: 'rc-webhook',
+            props,
+          }).then(() => {}).catch(() => {});
+        };
+        // WHY the reason codes are recorded (2026-08-28): asked to split
+        // auto-renew-off subscribers into user-cancelled vs billing-failure vs
+        // refund, we could not. We stored rc_type only, and rc_type is exactly
+        // the field that does NOT separate them: RevenueCat reports a failed
+        // payment and a deliberate unsubscribe BOTH as CANCELLATION, with
+        // cancel_reason ('UNSUBSCRIBE' | 'BILLING_ERROR' | 'CUSTOMER_SUPPORT' |
+        // 'DEVELOPER_INITIATED' | 'PRICE_INCREASE' | 'UNKNOWN') carrying the
+        // distinction. Recording the discriminating field, not another
+        // consistent one. grace_period_expiration_at_ms is kept because
+        // recoverable churn is only recoverable while that window is open.
+        const rcReasons = require('./lib/rc-webhook-reasons').rcReasons;
         const expected = process.env.REVENUECAT_WEBHOOK_AUTH || '';
         if (!expected) {
           console.warn('[RevenueCat] webhook called but REVENUECAT_WEBHOOK_AUTH not set');
+          rcReceived({ outcome: 'not_configured' });
           return sendJson(res, 503, { error: 'webhook_not_configured' });
         }
         // Accept the secret whether RevenueCat's dashboard sends it bare or as
@@ -3302,6 +4867,7 @@ const server = http.createServer((req, res) => {
         // secret VALUE still has to match, so this grants nothing extra.
         if (!revenuecatWebhookAuthMatches(req.headers.authorization, expected)) {
           console.warn('[RevenueCat] webhook auth mismatch');
+          rcReceived({ outcome: 'auth_mismatch' });
           return sendJson(res, 401, { error: 'unauthorized' });
         }
         if (!supabaseAdmin) {
@@ -3309,7 +4875,13 @@ const server = http.createServer((req, res) => {
         }
         const body = await readJsonBody(req);
         const event = body?.event;
-        if (!event) return sendJson(res, 400, { error: 'event_missing' });
+        if (!event) { rcReceived({ outcome: 'event_missing' }); return sendJson(res, 400, { error: 'event_missing' }); }
+        rcReceived({
+          outcome: 'received',
+          rc_type: String(event.type || '').toUpperCase().slice(0, 40) || null,
+          app_user_id: String(event.app_user_id || '').slice(0, 64) || null,
+          ...rcReasons(event),
+        });
 
         const type = String(event.type || '').toUpperCase();
         // app_user_id is whatever we set in Purchases.shared.logIn(...) on
@@ -3321,6 +4893,13 @@ const server = http.createServer((req, res) => {
         }
         const productId = event.product_id ? String(event.product_id) : null;
         const periodType = event.period_type ? String(event.period_type).toLowerCase() : null;
+        // RevenueCat tags every subscriber event with its store environment
+        // ('SANDBOX' | 'PRODUCTION'). We grant Pro IDENTICALLY either way — a
+        // sandbox/TestFlight tester MUST get Pro to test — this is used ONLY to
+        // keep sandbox out of revenue reporting, never to deny access. Written
+        // as DERIVED profile state (below): every applied event rewrites it, so
+        // a later PRODUCTION event supersedes an earlier SANDBOX one.
+        const environment = event.environment ? String(event.environment).toUpperCase() : null;
         // When this event actually occurred (RevenueCat clock). Used as an
         // ordering/idempotency guard so a late or duplicate stale event can't
         // overwrite a fresher one — see applyTo below.
@@ -3425,8 +5004,33 @@ const server = http.createServer((req, res) => {
               console.error('[RevenueCat] TRANSFER reconcile failed', { tid, error: e.message });
             }
           }
-          console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length });
-          return sendJson(res, 200, { ok: true, transferred: granted });
+          // SOURCE RECONCILE (Zac 2026-08-04): the sub moved AWAY from these ids.
+          // reconcile is grant-only, so lingering Pro on the source would persist
+          // until pro_until lapsed — a small leak (mostly anon sources, but real→
+          // real transfers exist). Re-check each source against RC; if RC confirms
+          // it no longer holds the entitlement, revoke ONLY the profile still keyed
+          // to that exact id (never touch one that re-subscribed under a new id).
+          const fromIds = Array.isArray(event.transferred_from) ? event.transferred_from : [];
+          let revoked = 0;
+          for (const rawId of fromIds) {
+            const fid = String(rawId || '').trim();
+            if (!fid || fid.startsWith('$RCAnonymousID')) continue;
+            try {
+              const r = await reconcileEntitlementFromRevenueCat(fid); // authoritative; grants if still Pro
+              if (!r.isPro) {
+                const { data: rev } = await supabaseAdmin.from('profiles')
+                  .update({ tier: 'free', pro_until: null })
+                  .eq('id', fid).eq('rc_app_user_id', fid)
+                  .select('id');
+                if (Array.isArray(rev) && rev.length) revoked++;
+              }
+            } catch (e) {
+              if (e.statusCode === 503) break; // no RC secret — ack; /sync reconciles
+              console.error('[RevenueCat] TRANSFER from-reconcile failed', { fid, error: e.message });
+            }
+          }
+          console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length, revoked });
+          return sendJson(res, 200, { ok: true, transferred: granted, revoked });
         } else {
           // TEST, SUBSCRIBER_ALIAS, etc — log and ack so RevenueCat doesn't retry.
           console.log('[RevenueCat] unhandled event type, acking', { type, appUserId });
@@ -3452,13 +5056,27 @@ const server = http.createServer((req, res) => {
         // Returns 'applied' | 'stale' | 'nomatch'.
         const applyTo = async (id) => {
           const useOrdering = eventMs > 0;
-          const payload = useOrdering ? { ...update, rc_last_event_ms: eventMs } : update;
+          // Two OPTIONAL columns ride alongside the core `update`:
+          //   rc_last_event_ms — the ordering/idempotency stamp (20260701)
+          //   rc_environment   — the sandbox tag, DERIVED state written on EVERY
+          //     applied event (grant OR revoke) so a later PRODUCTION event
+          //     supersedes an earlier SANDBOX one, and a tester's own account
+          //     counts again after they test. Only written when present, so a
+          //     malformed event never nulls a known value.
+          // migration-guarded[rc_environment]: kept out of the core `update` so
+          // the missing-column fallback below drops back to a write that only
+          // touches guaranteed-existing columns.
+          const extras = {};
+          if (environment) extras.rc_environment = environment;
+          if (useOrdering) extras.rc_last_event_ms = eventMs;
+          const payload = { ...update, ...extras };
           let q = supabaseAdmin.from('profiles').update(payload).eq('id', id);
           if (useOrdering) q = q.or(`rc_last_event_ms.is.null,rc_last_event_ms.lt.${eventMs}`);
           let { data, error } = await q.select('id');
-          // Tolerate the ordering column not existing yet (migration 20260701 not
-          // applied): fall back to a plain, unguarded update so the webhook never
-          // 500s on a missing column. Ordering activates once the column exists.
+          // Tolerate an optional column not existing yet (rc_last_event_ms from
+          // 20260701, or rc_environment): fall back to a plain core update so the
+          // webhook never 500s on a missing column. Each activates automatically
+          // once its migration is applied.
           if (error && rcOrderingColumnMissing(error)) {
             ({ data, error } = await supabaseAdmin.from('profiles').update(update).eq('id', id).select('id'));
             if (error) throw error;
@@ -3571,6 +5189,11 @@ const server = http.createServer((req, res) => {
               rc_type: type,
               product_id: productId,
               period_type: periodType,
+              // Per-event, IMMUTABLE sandbox tag — the durable record ('SANDBOX'
+              // | 'PRODUCTION' | null). Event-based reporting (funnel PAYWALL
+              // LEG, bleed-meter commerce, PostHog) drops props.environment ===
+              // 'SANDBOX' so a sandbox purchase never counts as a real conversion.
+              environment,
               ...(mirrorName === 'purchase_result' ? { outcome: 'success_paid' } : {}),
             };
             supabaseAdmin.from('analytics_events').insert({
@@ -3613,6 +5236,48 @@ const server = http.createServer((req, res) => {
       try {
         const u = await requireSupabaseUser(req);
         const result = await reconcileEntitlementFromRevenueCat(u.id);
+        // SCOPED REVOKE (lane/delivery 2026-08-10) — the grant-only asymmetry
+        // meant a lapsed subscriber's tier column stayed 'pro' forever unless
+        // the EXPIRATION webhook landed. Revoke here ONLY under the narrowest
+        // definitive predicate, all four required:
+        //   • RC found the CUSTOMER but no active pro (RC_NOT_ACTIVE — never
+        //     NO_RC_CUSTOMER, which the current project-id misconfig produces
+        //     for everyone, and never a transient/config error, which throws)
+        //   • the profile's Pro is RC-SOURCED (rc_app_user_id set), never comped
+        //   • pro_until is null or already past — the entitlement window the
+        //     user PAID for is over, so this can never strip a paid period, and
+        //     RC's eventually-consistent read lagging a renewal keeps pro_until
+        //     in the future → skipped.
+        // isUserPro() already denies on a past pro_until, so this is state
+        // hygiene (tier column + analytics truth), not an access change.
+        if (result && result.isPro === false && result.reason === 'RC_NOT_ACTIVE' && supabaseAdmin) {
+          try {
+            const { data: revoked } = await supabaseAdmin.from('profiles')
+              .update({ tier: 'free' })
+              .eq('id', u.id)
+              .eq('tier', 'pro')
+              .not('rc_app_user_id', 'is', null)
+              .not('comp_pro', 'is', true)
+              .or(`pro_until.is.null,pro_until.lt.${new Date().toISOString().replace(/\+.*$/, 'Z')}`)
+              .select('id');
+            if (Array.isArray(revoked) && revoked.length) {
+              console.log('[RevenueCat] /sync revoked lapsed pro tier', { userId: u.id });
+            }
+          } catch (e) {
+            console.warn('[RevenueCat] /sync revoke check failed (non-fatal)', { userId: u.id, error: e?.message });
+          }
+        }
+        // Log the reconcile OUTCOME so RC-side failures (esp. a bad/expired/wrong
+        // REVENUECAT_SECRET_KEY → 403 on the v2 REST API) are COUNTABLE in
+        // analytics, not just buried in Render logs. This is how we prove the
+        // entitlement self-heal is (or isn't) working after a key change.
+        if (supabaseAdmin) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'reconcile_result', anon_user_id: u.id, user_id: u.id,
+            platform: 'server', app_version: 'rc-sync',
+            props: { ok: true, is_pro: !!result.isPro, reason: result.reason || null },
+          }).then(({ error }) => { if (error) console.warn('[RevenueCat] reconcile log failed:', error.message); });
+        }
         return sendJson(res, 200, {
           is_pro: !!result.isPro,
           pro_until: result.proUntil || null,
@@ -3620,12 +5285,21 @@ const server = http.createServer((req, res) => {
         });
       } catch (error) {
         const status = error?.statusCode || 500;
+        // Pull the RC HTTP status out of the thrown `revenuecat_http_403` shape.
+        const rcMatch = /revenuecat_http_(\d+)/.exec(error?.message || '');
+        const rcStatus = rcMatch ? Number(rcMatch[1]) : null;
+        if (supabaseAdmin && status !== 503) {
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'reconcile_result', platform: 'server', app_version: 'rc-sync',
+            props: { ok: false, status, rc_status: rcStatus, error: String(error?.message || '').slice(0, 120) },
+          }).then(({ error: e }) => { if (e) console.warn('[RevenueCat] reconcile log failed:', e.message); });
+        }
         if (status === 503) {
           // Secret key not configured — client silently falls back to
           // webhook-only activation. Not an error worth alerting on.
           console.warn('[RevenueCat] /sync called but REVENUECAT_SECRET_KEY not set');
         } else {
-          console.error('[RevenueCat] /sync failed', { status, error: error?.message });
+          console.error('[RevenueCat] /sync failed', { status, rc_status: rcStatus, error: error?.message });
         }
         return sendJson(res, status, { error: error?.message || 'sync_failed' });
       }
@@ -3638,6 +5312,19 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         const prewarmUser = await requireSupabaseUser(req);
+        // 🚨 SPEND FREEZE (2026-08-01) — GPU prewarm DISABLED by default. Each
+        // prewarm downloads + transcribes on a paid Modal container, and the iOS
+        // client fires warmupRenderContainer() at editor-open, composer-focus AND
+        // dispatch — including on the ~63% who never render — so it burns paid GPU
+        // OUTSIDE any user job (a runtime×rate model can't see it). Frozen until the
+        // Modal-view spend gap is explained. Re-enable with PREWARM_ENABLED=1. This
+        // is a NO-OP to the client: prewarm is a best-effort latency hedge it never
+        // depends on (real renders just start cold). Counts frozen attempts so the
+        // warmup-fire rate is finally measurable.
+        if (process.env.PREWARM_ENABLED !== '1') {
+          serverFunnel(prewarmUser.id, 'prewarm_frozen', {}); // measure the warmup-attempt rate (the waste)
+          return sendJson(res, 202, { status: 'skipped', reason: 'prewarm_frozen' });
+        }
         // Cap GPU prewarm dispatches per user — each one downloads + transcribes
         // on a paid Modal container. Generous for real use (one per intended
         // render) but stops a loop from spraying GPU spend.
@@ -3674,7 +5361,7 @@ const server = http.createServer((req, res) => {
         const prewarmPromise = fetch(modalPrewarmUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ video_url: videoUrl }),
+          body: JSON.stringify({ video_url: videoUrl, ...workerAuthField() }),
         }).then(async (r) => {
           const text = await r.text().catch(() => '');
           let parsed = {};
@@ -3822,6 +5509,32 @@ const server = http.createServer((req, res) => {
         const authUser = await requireSupabaseUser(req);
         console.log('  ✅ Auth user:', authUser.id);
 
+        // MAINTENANCE GATE (known outage). While the render service is knowingly
+        // down (Modal spend cap → KNOWN_OUTAGE_UNTIL set), refuse HONESTLY here —
+        // BEFORE the rate-limit tick, any daily-quota claim, any job row, and any
+        // Modal dispatch. Result: no failed render (which would cost a permanent
+        // App Store review at the worst possible moment — 1.3.3 is live + the
+        // surge is on), no quota consumed, and no queued job (a 4-day backlog
+        // firing at once on Aug 1 would just re-cap the workspace). 503 + the
+        // structured error_code/user_message shape is exactly what the client
+        // renders as a friendly inline bubble (402 would wrongly trigger the
+        // paywall; a bare error would read as "your video failed"). Auto-clears
+        // unconditionally at KNOWN_OUTAGE_UNTIL.
+        // OWNER CANARY EXEMPTION: the owner is NOT gated, so they can run a real
+        // render to confirm renders are actually back (a completed owner render =
+        // the true "renders are back" signal) BEFORE opening the gate for everyone.
+        // Solves the chicken-egg — while the gate blocks all traffic, nothing can
+        // complete, so we'd otherwise be opening blind at KNOWN_OUTAGE_UNTIL (which
+        // is OUR expiry, NOT Modal's billing turn — the two may not coincide).
+        if (isKnownOutageActive() && String(authUser.id) !== SUBMISSION_OWNER_USER_ID) {
+          console.log('  ⏸️  video-jobs refused — KNOWN_OUTAGE active (no quota, no dispatch, no job)');
+          return sendJson(res, 503, {
+            error_code: 'render_paused',
+            user_message: maintenanceUserMessage(),
+            retryable: false,
+          });
+        }
+
         // Rate limit: 10 video jobs per 15 minutes per user. Generous for
         // legitimate use (re-edits, multiple variants) but catches a
         // runaway client before it floods Modal.
@@ -3950,6 +5663,44 @@ const server = http.createServer((req, res) => {
             }
           }
           if (supabaseAdmin && !isDemo) {
+            // SPEND GUARD (Zac 2026-08-03): per-account daily render cap (50) +
+            // two-tier global breaker (alert 1500 / halt 3000, raised 2026-08-04 for
+            // the surge; env-overridable), DB-counted, fail-open.
+            // Inside the lock + AFTER the idempotency replay above, so retries never
+            // count. Blocks with 429 + a user-facing message; pages the owner.
+            const _guard = await checkSpendGuards({
+              supabaseAdmin,
+              userId: authUser.id,
+              alert: (msg) => sendOwnerAlert({
+                ownerUserId: SUBMISSION_OWNER_USER_ID,
+                title: '🚨 [Promptly] spend guard',
+                body: String(msg).slice(0, 180),
+                threadId: 'spend-guard',
+                supabaseAdmin,
+              }).catch(() => {}),
+            });
+            if (!_guard.allow) {
+              console.warn('  [spend-guard] blocked render userId=%s code=%s', authUser.id, _guard.code);
+              return { status: 429, body: { error: _guard.code, message: _guard.message } };
+            }
+            // REFUND-FARMING CONTROL: bound designed-rejection attempts BY DESIGN
+            // (not the coincidental 50/day spend cap). User-fault codes only, so an
+            // infra-failure streak never blocks a legitimate user. Fail-open.
+            const _rej = await checkRejectionAttemptCap({
+              supabaseAdmin,
+              userId: authUser.id,
+              alert: (msg) => sendOwnerAlert({
+                ownerUserId: SUBMISSION_OWNER_USER_ID,
+                title: '🚨 [Promptly] refund guard',
+                body: String(msg).slice(0, 180),
+                threadId: 'refund-guard',
+                supabaseAdmin,
+              }).catch(() => {}),
+            });
+            if (!_rej.allow) {
+              console.warn('  [refund-guard] blocked userId=%s code=%s', authUser.id, _rej.code);
+              return { status: 429, body: { error: _rej.code, message: _rej.message } };
+            }
             let pendingCount;
             try {
               // Same account-global in-flight definition the upload doors use.
@@ -3973,6 +5724,29 @@ const server = http.createServer((req, res) => {
                 message: proConcurrency
                   ? `You can have up to ${concurrencyCap} renders in flight at once.`
                   : 'Free accounts can render 1 video at a time. Upgrade to Pro for 10 in parallel.',
+              } };
+            }
+          }
+
+          // ── DEAD SOURCE KEY: reject at CREATION, ABOVE the charge ───────
+          // A key that has ALREADY failed HEAD can never succeed — retrying it
+          // buys another 600s wait and another refund. Our first paying
+          // subscriber created three jobs against one such key over 6.5 hours
+          // and was refunded three times. Rejected here, above the charge
+          // block, so no credit is claimed and none has to be unwound. The copy
+          // names the only action that works: a fresh pick mints a fresh key.
+          {
+            const _dead = await findDeadSourceJob(supabaseAdmin, authUser.id, videoUrl);
+            if (_dead) {
+              console.log('  [source] REJECT at creation userId=%s — this exact source URL '
+                + 'already failed to upload (job %s); a retry would poll a key that does not exist',
+                authUser.id, String(_dead.id).slice(0, 8));
+              return { status: 409, body: {
+                error: 'source_missing',
+                kind: 'upload',
+                route: 'repick',
+                error_code: 'UPLOAD_NEVER_STARTED',
+                message: sourceMissingMessage(),
               } };
             }
           }
@@ -4022,12 +5796,79 @@ const server = http.createServer((req, res) => {
             }
           }
 
+          // ── CREDITS DEBIT (ruling 1: server-side, never the client) ────────
+          // BEFORE the insert and therefore before spawn. Spawn-then-debit
+          // spends GPU on a render the user cannot pay for.
+          //
+          // NO PRE-READ: RevenueCat validates the balance and deducts ATOMICALLY,
+          // returning 422 with nothing deducted when short. Reading first would
+          // only open a race between the read and the spend — two concurrent
+          // renders could each see 10 and each spend it.
+          //
+          // A demo is quota-exempt and must stay credit-exempt too, or the
+          // first-run sample clip would charge a user 10 credits.
+          let _creditsDebited = null;
+          // ARMED DELIBERATELY, NOT BY MERGE. REVENUECAT_SECRET_KEY /
+          // REVENUECAT_PROJECT_ID are ALREADY set for entitlement sync and the
+          // live webhook, so isConfigured() is true in production the moment
+          // this deploys. Both failure paths here are fail-closed BY DESIGN:
+          // an unprovisioned CRD currency returns RC_ERROR -> 503 (no spawn),
+          // and a user with no granted balance returns 422 -> 402. Correct
+          // behaviour, and a total render outage if balances are not in place
+          // first. So the debit needs its own switch, flipped after a real
+          // balance read -- never as a side effect of shipping the code.
+          // Set CREDITS_DEBIT_ENABLED=1 to arm. The BALANCE endpoint is NOT
+          // gated: it is read-only and cannot block a render.
+          if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
+              && _credits.shouldDebit({ mode: 'full' })) {
+            try {
+              await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
+              _creditsDebited = _credits.COST_PER_RENDER;
+            } catch (e) {
+              if (e && e.code === 'INSUFFICIENT') {
+                // 402 carries `needed` ONLY. With no pre-read the server never
+                // learns the balance on this path and RC's 422 does not report
+                // it; promising a balance here would be a contract we cannot
+                // keep. The client calls /api/credits/balance if it wants it.
+                console.log('  [credits] 402 insufficient userId=%s', authUser.id);
+                return { status: 402, body: {
+                  // TYPED, so the client can switch on `type` instead of
+                  // string-matching `error`. Same discriminator convention as
+                  // the SSE frames.
+                  type: 'insufficient_credits',
+                  error: 'insufficient_credits', kind: 'credits',
+                  // NO `route`. The in-thread treatment is RULED, so a routing
+                  // hint here is a second authority telling the client
+                  // something the ruling already decided — and when they
+                  // disagree, the payload silently wins. The server reports the
+                  // fact (insufficient, needed 10); the client owns the
+                  // treatment.
+                  needed: _credits.COST_PER_RENDER,
+                  // NOT a balance: with no pre-read the server never learns it
+                  // on this path, and RC's 422 does not report one.
+                  balanceKnown: false,
+                } };
+              }
+              // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
+              // A refusal and an outage are different failures and must not be
+              // collapsed — one is the user's problem, the other is ours.
+              console.error('  [credits] grant path unavailable:', e && e.code, e && e.message);
+              return { status: 503, body: {
+                error: 'credits_unavailable', kind: 'credits', retryable: true,
+              } };
+            }
+          }
+
           const created = await createQueuedVideoJob({
             userId: authUser.id,
             videoUrl,
             vibeInput,
             clientJobId,
             demo: isDemo,
+            appVersion: clientAppVersion(req),
+            sourceType: body?.source_type,
+            sourceDuration: body?.source_duration,
+            creditsDebited: _creditsDebited,
           });
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
@@ -4036,6 +5877,19 @@ const server = http.createServer((req, res) => {
             // logged milliseconds ago — and treat as a replay. A DEMO logs no
             // render charge, so it has nothing to unwind — skipping the delete is
             // load-bearing: otherwise it would wrongly erase a REAL render event.
+            // Same unwind for CREDITS as for the render charge — one job, one
+            // debit. A replay that kept the debit would silently charge 10 for
+            // a job that never runs.
+            if (_creditsDebited) {
+              try {
+                await _credits.credit(authUser.id, _creditsDebited);
+                console.log('  [credits] replay unwind refunded %d to %s',
+                  _creditsDebited, authUser.id);
+              } catch (e) {
+                console.warn('  [credits] replay unwind FAILED (user is down %d):',
+                  _creditsDebited, e && e.message);
+              }
+            }
             if (!isDemo) {
               try {
                 const { data: ev } = await supabaseAdmin
@@ -4074,9 +5928,40 @@ const server = http.createServer((req, res) => {
         // the server is the real lock: a free/unverified user can NEVER route
         // premium here no matter what the client (or a hand-rolled curl) sends.
         // The worker double-gates again (route_premium = is_premium AND flag).
-        const premiumPipeline = entitlement.isPro === true && body?.premium_pipeline_enabled === true;
-        console.log('  [model] premium_pipeline=%s (isPro=%s clientAsked=%s) job=%s',
-          premiumPipeline, entitlement.isPro, body?.premium_pipeline_enabled === true, job.id);
+        // LUMEN_READY master gate (Zac 2026-07-26): Pro defaults to STANDARD.
+        // Even isPro + client-asked-premium routes standard UNLESS the backend
+        // PREMIUM_PIPELINE_ENABLED env is set — flipped only once Lumen clears
+        // Zac's eye. Designed scenes have never emitted (0/473 in 30d), so this
+        // costs Pro nothing today (premium output ≡ standard) and removes the
+        // risk of shipping an unreviewed Lumen scene to a paying user.
+        // [§2.1] LUMEN ACCESS — entitlement-driven, NEVER client-picker-dependent.
+        // The old chain required `body.premium_pipeline_enabled === true`, so a
+        // Pro user who never opened the model picker silently got standard. That
+        // client dependency is one of the three gates that produced 0/2,074 and
+        // §2.1's ruling removes it: absence of the field is NOT a decline, only
+        // an explicit `false` is. Quota + budget are what make always-on-for-Pro
+        // affordable at ~$1/render.
+        const lumenAccess = require('./lib/lumen-access');
+        // Reads the row ITSELF rather than via getFeatureUsageCount, which
+        // returns 0 for "table missing" — indistinguishable from a genuine
+        // zero, and here that conflation hands out unlimited ~$1 renders.
+        const lumenUsedThisMonth = await lumenAccess.readMonthlyUsage(
+          supabaseAdmin, authUser.id);
+        const lumenVerdict = lumenAccess.decide({
+          isPro: entitlement.isPro === true,
+          clientDeclined: body?.premium_pipeline_enabled === false,
+          usedThisMonth: lumenUsedThisMonth,
+          spentTodayUsd: null,                  // wired with the cost meter
+        });
+        const premiumPipeline = lumenVerdict.premium;
+        console.log('  [model] premium_pipeline=%s reason=%s quota=%s used=%s (isPro=%s masterFlag=%s) job=%s',
+          premiumPipeline, lumenVerdict.reason, lumenVerdict.quota,
+          lumenUsedThisMonth === null ? 'UNKNOWN' : lumenUsedThisMonth,
+          entitlement.isPro, premiumPipelineEnabled(), job.id);
+        if (premiumPipeline) {
+          incrementFeatureUsage(supabaseAdmin, authUser.id, lumenAccess.monthKey())
+            .catch((e) => console.error('  [model] lumen usage increment failed:', e?.message));
+        }
 
         // NO_SPEECH pre-dispatch gate — reject a 0-word (speechless) clip here,
         // BEFORE 20-40s of GPU, using the prewarm's cached word_count. Fail-open:
@@ -4142,6 +6027,37 @@ const server = http.createServer((req, res) => {
         console.error('  Stack:', error.stack);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsCreate] error:', error);
+        // TERMINALIZE A ROW WE ALREADY FLIPPED (2026-08-04). dispatchJobToModal
+        // sets status='processing' / current_step='queued' / step_message=
+        // 'Getting started...' BEFORE it spawns (dispatch-to-modal.js ~874),
+        // 156 lines ahead of the Modal fetch. A throw anywhere in that window
+        // lands HERE, which returned an HTTP error to the client and left the
+        // row in `processing` with NO terminal and NO modal_call_id — the
+        // reaper then killed it as a stall up to 50 minutes later.
+        //
+        // THAT IS WHY THESE WENT UNCAUGHT WHILE DISPATCH_UNREACHABLE DID NOT:
+        // that class is written by dispatch's OWN guarded region, so a throw
+        // before control reaches it bypasses the terminal entirely. Measured:
+        // 14 of 14 stalls in 24h had current_step='queued', progress=0,
+        // modal_call_id NULL and empty stage_timings — the worker never ran and
+        // nothing said so. This is the "43-minute Getting started…" case.
+        //
+        // Fail LOUDLY into the class that already exists rather than inventing
+        // one. Best-effort and last: the client response must not depend on it,
+        // and markJobFailed is itself guarded against overwriting a terminal.
+        try {
+          if (job && job.id) {
+            await markJobFailed(job.id, {
+              errorCode: 'DISPATCH_UNREACHABLE',
+              userMessage: 'We couldn’t start your render — please try again.',
+              userId: authUser && authUser.id,
+              pushProgressToSSE,
+            });
+            console.error(`[dispatch] ORPHANED ROW TERMINALIZED job=${job.id} — threw after the processing flip, before the spawn`);
+          }
+        } catch (e2) {
+          console.error('  ❌ could not terminalize orphaned job:', e2?.message || e2);
+        }
         return sendJson(res, status, { error: clientSafeMessage(error) });
       }
     })();
@@ -4165,6 +6081,17 @@ const server = http.createServer((req, res) => {
       try {
         if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
         const authUser = await requireSupabaseUser(req);
+        // MAINTENANCE GATE (known outage) — a re-edit / ask-back resume also
+        // dispatches to Modal, so refuse it honestly too, before any quota or
+        // dispatch. Owner is exempt (canary — see the create path).
+        if (isKnownOutageActive() && String(authUser.id) !== SUBMISSION_OWNER_USER_ID) {
+          console.log('  ⏸️  re-edit refused — KNOWN_OUTAGE active');
+          return sendJson(res, 503, {
+            error_code: 'render_paused',
+            user_message: maintenanceUserMessage(),
+            retryable: false,
+          });
+        }
         // Same budget as create — re-edits are equally expensive.
         if (!checkRateLimit(res, 'video-job-reedit', authUser.id, 10, 900)) return;
         const body = await readJsonBody(req);
@@ -4359,6 +6286,7 @@ const server = http.createServer((req, res) => {
           userId: authUser.id,
           videoUrl: orig.video_url,
           vibeInput: orig.vibe_input || 'Re-edit',
+          appVersion: clientAppVersion(req),
         });
         console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
 
@@ -4376,6 +6304,11 @@ const server = http.createServer((req, res) => {
           resolvedBroll: Array.isArray(orig.resolved_broll) ? orig.resolved_broll : null,
           trendSnapshot: orig.trend_snapshot || null,
           changeRequest,
+          // The assistant replies in the USER's language. Same shared helper
+          // /api/chat and /api/chat/actions use — one mechanism, so a user is
+          // not answered in two different languages depending on the surface.
+          // Validated against the twelve; anything else is 'en'.
+          replyLanguage: require('./lib/reply-language').parseReplyLanguage(body),
           oldVibe: orig.vibe_input || '',
           parentJobId: originalJobId,
         });
@@ -4411,6 +6344,24 @@ const server = http.createServer((req, res) => {
         console.log('  User ID:', authUser.id);
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
+        // Runaway-poll guard. A client (on ANY shipped build) that polls a job it
+        // will never own — job_never_existed or identity_mismatch — otherwise hits
+        // the DB ~1.3x/sec forever (38,070 such 404s in one 24h window). Once a
+        // (user,job) has 404'd enough to be confirmed dead, short-circuit every
+        // later poll WITHOUT a query. The client ignores 429, so this bites with no
+        // release; the 429 + Retry-After is a correct signal for any future build.
+        const guardKey = `${authUser.id}:${jobId}`;
+        const guardNow = Date.now();
+        const guarded = _jobStatusGuard.check(guardKey, guardNow);
+        if (guarded.shortCircuit) {
+          res.setHeader('Retry-After', '30');
+          return sendJson(res, 429, {
+            error: 'Job not found',
+            cause: guarded.cause,
+            retry_after_seconds: 30,
+          });
+        }
+
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
           .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
@@ -4424,9 +6375,45 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
-          console.error('  ❌ Job not found');
-          return sendJson(res, 404, { error: 'Job not found' });
+          // Split the cause ONCE: does the id exist under ANY user_id? A row under a
+          // different user is an identity_mismatch (a real, different bug); no row at
+          // all is job_never_existed (upload/create never landed). Bounded — the DB
+          // 404 path runs at most `shortCircuitAfter` times per id before short-circuit.
+          let cause = 'job_never_existed';
+          try {
+            const probe = await supabaseAdmin
+              .from('video_jobs')
+              .select('user_id')
+              .eq('id', jobId)
+              .limit(1)
+              .maybeSingle();
+            if (probe.data && probe.data.user_id && String(probe.data.user_id) !== String(authUser.id)) {
+              cause = 'identity_mismatch';
+            }
+          } catch (_) { /* probe is best-effort; default cause stands */ }
+
+          const rec = _jobStatusGuard.record404(guardKey, cause, guardNow);
+          console.warn(`  ❌ Job not found [cause=${cause} count=${rec.count}]`);
+
+          // Persist the cause EXACTLY once per (user,job) so the 404 volume is
+          // attributable by cause. Server-side insert bypasses the /api/events
+          // client allowlist — the same path the api_outcome ledger uses.
+          // Fire-and-forget; never blocks or fails the response.
+          if (rec.emitFirst && supabaseAdmin) {
+            supabaseAdmin
+              .from('analytics_events')
+              .insert({ event: 'jobstatus_404', props: { cause, job_id: jobId, user_id: authUser.id, route: '/api/video-jobs/:id' } })
+              .then(() => {}, () => {});
+          }
+
+          res.setHeader('Retry-After', '30');
+          return sendJson(res, rec.shortCircuit ? 429 : 404, {
+            error: 'Job not found',
+            cause,
+            retry_after_seconds: 30,
+          });
         }
+        _jobStatusGuard.clear(guardKey);
         console.log('  ✅ Job found, status:', data.status);
 
         // Prevent any caching of job status
@@ -4612,9 +6599,337 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Export gate — server-enforced monetization wall (shipped DARK ahead of 225) ──
+  // The conversion data says the 3/day render cap engages only 0.5% of users, so
+  // EXPORT becomes the real revenue wall. It is enforced SERVER-SIDE from the same
+  // authoritative DB/RC path renders use (assertProEntitled) — NEVER a client flag
+  // — and delivers only a SHORT-TTL SIGNED url, never a public one. Shipped dark:
+  //   • gate_probe:true → the entitlement DECISION only (no mint/meter). Always
+  //     answers, independent of the flag, so deploy-sanity can prove both
+  //     directions (free→402, pro→200) on every roll.
+  //   • real call → inert 501 until EXPORT_GATE_ENABLED=1 AND 225 wires the client
+  //     + a private clean-asset. Nothing changes for anyone until then.
+  // ALIAS (lane/delivery 2026-08-11): /api/jobs/:id/export → the SAME gate.
+  // The client-shape route lands on the identical entitlement + quota + private-
+  // asset logic; only the job_id source differs (path vs body). NOTE for the
+  // client half (reports/EXPORT_CLIENT_HALF.md): the SHIPPED app falls back to
+  // the public save on ANY export failure, so this server gate alone cannot
+  // fully wall exports — the fallback removal rides the owner's final iOS build.
+  const _exportAliasMatch = req.method === 'POST'
+    ? parsed.pathname.match(/^\/api\/jobs\/([0-9a-f-]{8,64})\/export$/i)
+    : null;
+  if ((parsed.pathname === '/api/export' && req.method === 'POST') || _exportAliasMatch) {
+    (async () => {
+      const jobIdFromPath = _exportAliasMatch ? _exportAliasMatch[1] : null;
+      let authUser;
+      try { authUser = await requireSupabaseUser(req); }
+      catch { return sendJson(res, 401, { error: 'unauthorized' }); }
+      if (!checkRateLimit(res, 'export', authUser.id, 60, 60)) return;
+      const body = await readJsonBody(req).catch(() => ({}));
+
+      // SERVER-SIDE entitlement — the same authoritative decision the render gate
+      // uses. A client 'isPro'/'tier' field NEVER influences this.
+      let decision;
+      try { decision = await assertProEntitled(authUser.id); }
+      catch (e) { console.error('[export] entitlement check failed:', e?.message); decision = { isPro: false, reason: 'entitlement_error' }; }
+      const allowed = decision.isPro === true; // 225 may widen with a metered free-export allowance
+
+      // Dry-run (deploy-sanity + client preview): decision only, no side effects.
+      if (body && body.gate_probe === true) {
+        return sendJson(res, allowed ? 200 : 402, { allowed, tier: allowed ? 'paid' : 'free', reason: decision.reason });
+      }
+
+      // DARK: real exports inert until the flag flips + the private asset exists.
+      if (String(process.env.EXPORT_GATE_ENABLED || '') !== '1') {
+        return sendJson(res, 501, { error: 'export_not_enabled' });
+      }
+
+      // Load the job + the ERRORS-owned private key. KEY CONTRACT: clean master at
+      // exports/{job_id}/clean.mp4, recorded on result.clean_export_key (nullable).
+      const jobId = String(jobIdFromPath || (body && body.job_id) || '').trim();
+      if (!jobId) return sendJson(res, 400, { error: 'job_id required' });
+      const { data: job, error } = await supabaseAdmin.from('video_jobs')
+        .select('id, user_id, result').eq('id', jobId).maybeSingle();
+      if (error) return sendJson(res, 500, { error: 'load_failed' });
+      if (!job || job.user_id !== authUser.id) return sendJson(res, 404, { error: 'not_found' });
+
+      const cleanKey = job.result && job.result.clean_export_key;
+      // NULL key → 404 FIRST, BEFORE the paywall: an old job has no private asset,
+      // so the client falls back to the public save. A 402 must NEVER be returned
+      // for a missing key (that would show "upgrade" instead of the fallback).
+      if (!cleanKey) return sendJson(res, 404, { error: 'no_private_asset' });
+
+      // WALL (Zac 2026-08-04): Pro = unlimited; a free user gets ONE free export,
+      // then 402. Under the ERRORS model there is NO degraded public asset, so the
+      // public≠clean check is trivially satisfied and cannot be the wall — THE
+      // COUNTER IS THE WALL. Fail-CLOSED on a count error (never give the product
+      // away on a DB blip). NOTE: getFeatureUsageCount→increment is not atomic;
+      // arming MUST switch to an atomic claim (claim_usage_slot-style) to close the
+      // parallel-double-free-export race — tracked in the export spec.
+      const FREE_EXPORT_LIMIT = parseInt(process.env.FREE_EXPORT_LIMIT || '1', 10);
+      if (!allowed) {
+        let used;
+        try { used = await getFeatureUsageCount(supabaseAdmin, authUser.id, 'export'); }
+        catch (e) { console.error('[export] usage-count failed — fail CLOSED (revenue wall):', e?.message); used = FREE_EXPORT_LIMIT; }
+        if (used >= FREE_EXPORT_LIMIT) {
+          return sendJson(res, 402, {
+            type: 'free_export_spent',
+            error: 'upgrade_required',
+            free_exports_used: used, free_export_limit: FREE_EXPORT_LIMIT,
+            // THE SERVER KNOB Frontend asked for. The client was inferring
+            // "spent" by comparing two numbers it had to be given separately;
+            // the server already knows and can just say so. Inference from a
+            // pair of counters silently breaks the moment FREE_EXPORT_LIMIT
+            // moves, which it is env-configurable to do.
+            freeExportSpent: true,
+          });
+        }
+      }
+
+      // Allowed (Pro unlimited, or free within quota): mint + record the export.
+      // WATERMARK-AT-EXPORT v1 (dark behind EXPORT_WATERMARK_ENABLED=1): the
+      // FREE-quota export ships watermarked; Pro ships the clean master. A
+      // watermark failure falls back to the clean asset LOUDLY — a paying-
+      // funnel free export must never 500 on an overlay pass. Policy variants
+      // (watermark-instead-of-402 beyond quota) are documented in
+      // reports/EXPORT_CLIENT_HALF.md and deliberately NOT built into v1.
+      let mintKey = cleanKey;
+      let watermarked = false;
+      if (!allowed && String(process.env.EXPORT_WATERMARK_ENABLED || '') === '1') {
+        try {
+          const { ensureWatermarkedExport } = require('./lib/export-watermark');
+          mintKey = await ensureWatermarkedExport({ s3, jobId, cleanKey });
+          watermarked = true;
+        } catch (e) {
+          console.error(`[export] WATERMARK FAILED job=${jobId} — serving clean fallback (defect, count me):`, e?.message);
+          supabaseAdmin.from('analytics_events').insert({
+            event: 'export_watermark_failed', platform: 'server',
+            props: { job_id: jobId, error: String(e?.message || '').slice(0, 160) },
+          }).then(() => {}).catch(() => {});
+          mintKey = cleanKey;
+        }
+      }
+      const url = await s3.createPresignedGetUrl(mintKey, 300);
+      try { await incrementFeatureUsage(supabaseAdmin, authUser.id, 'export'); }
+      catch (e) { console.error('[export] usage-increment failed (non-fatal):', e?.message); }
+      return sendJson(res, 200, { url, expires_in: 300, watermarked });
+    })();
+    return;
+  }
+
   // Register an APNs device token for the current user. Idempotent —
   // upserts on the unique token column. Bumps last_seen_at on every call so
   // we can prune long-dead tokens with a cron job later if needed.
+  // ── POST /api/reverse-trial/grant ────────────────────────────────────────
+  // The client CANNOT grant this. grant_referral_reward/qualify_referral were
+  // revoked from `authenticated` after three throwaway accounts took a week of
+  // unmetered Pro; a client-side 72-hour self-grant reopens that hole under a
+  // friendlier name.
+  if (parsed.pathname === '/api/reverse-trial/grant' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'reverse-trial', authUser.id, 10, 3600)) return;
+
+        // GATED ON THE KEYCHAIN BUILD. 241 shipped identifierForVendor cached in
+        // UserDefaults, which does NOT survive reinstall — a grant keyed on it
+        // would re-grant on every delete/reinstall. Ships DARK: with
+        // REVERSE_TRIAL_MIN_BUILD unset the endpoint refuses, so it cannot go
+        // live against 241 by accident.
+        const _minBuild = parseInt(process.env.REVERSE_TRIAL_MIN_BUILD || '', 10);
+        if (!Number.isInteger(_minBuild)) {
+          return sendJson(res, 503, { error: 'reverse_trial_unavailable',
+                                      reason: 'min_build_unset' });
+        }
+        const _bm = String(clientAppVersion(req) || '').match(/\((\d+)\)/);
+        const _build = _bm ? parseInt(_bm[1], 10) : null;
+        if (!Number.isInteger(_build) || _build < _minBuild) {
+          // Refuse rather than grant on a weak key. A trial that leaks on older
+          // builds is worse than one that arrives a cycle late.
+          return sendJson(res, 409, { error: 'build_too_old',
+                                      min_build: _minBuild, build: _build });
+        }
+
+        const body = await readJsonBody(req);
+        const deviceId = String((body && body.device_id) || '').trim();
+        if (!deviceId || deviceId.length < 8 || deviceId.length > 128) {
+          return sendJson(res, 400, { error: 'device_id_required' });
+        }
+
+        // IDEMPOTENT: the PK on device_id is the enforcement. A prior grant
+        // returns the ORIGINAL pro_until — a double-tap on Decline cannot
+        // produce 144 hours.
+        // FAIL CLOSED ON A READ ERROR. Ignoring `error` here and testing only
+        // `data` is the silent-zero trap: a failed read returns null, which is
+        // INDISTINGUISHABLE from "no grant exists", and the endpoint would go
+        // on to grant again. RLS is enabled on reverse_trial_grants with NO
+        // policies, so any client other than service_role gets zero rows rather
+        // than an error — the same wrong answer by a different route. We use
+        // supabaseAdmin (service_role) everywhere here, and now a read failure
+        // refuses instead of re-granting.
+        const { data: prior, error: priorErr } = await supabaseAdmin
+          .from('reverse_trial_grants')
+          .select('device_id, user_id, granted_at, pro_until')
+          .eq('device_id', deviceId).maybeSingle();
+        if (priorErr) {
+          console.error('[reverse-trial] prior-grant read FAILED — refusing rather '
+            + 'than re-granting:', priorErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'prior_read_failed' });
+        }
+        if (prior) {
+          if (prior.user_id !== authUser.id) {
+            return sendJson(res, 409, { error: 'already_used',
+                                        device_id_seen_at: prior.granted_at });
+          }
+          return sendJson(res, 200, {
+            granted: true, already: true, pro_until: prior.pro_until,
+            expires_in_seconds: Math.max(0, Math.round(
+              (new Date(prior.pro_until).getTime() - Date.now()) / 1000)),
+          });
+        }
+
+        // 72 HOURS FROM NOW — never calendar days. A decline at 23:50 must get
+        // 72 hours, not eight.
+        // untilIso is computed AFTER the profile read below — it depends on the
+        // existing pro_until and cannot be hoisted above it.
+
+        // SAME ROLLING-30-DAY CAP the referral grants SUM against. Without this
+        // the two paths together are an uncapped Pro faucet: referrals capped,
+        // trials unbounded, both writing pro_until.
+        const { CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
+        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+        const { data: grants, error: grantsErr } = await supabaseAdmin
+          .from('referral_rewards').select('days_granted')
+          .eq('user_id', authUser.id).gte('granted_at', since);
+        if (grantsErr) {
+          // Same trap: a failed cap read looks like "nothing granted in 30
+          // days" and would let the grant through, uncapped.
+          console.error('[reverse-trial] cap read FAILED — refusing:', grantsErr.message);
+          return sendJson(res, 503, { error: 'grant_unavailable',
+                                      reason: 'cap_read_failed' });
+        }
+        const used = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+        if (used + 3 > CAP_DAYS_PER_30D) {
+          // REFUSE, never truncate. A one-hour "72-hour trial" reads as broken
+          // rather than generous.
+          return sendJson(res, 409, { error: 'cap_exhausted',
+                                      cap: CAP_DAYS_PER_30D, used });
+        }
+
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('pro_until, tier').eq('id', authUser.id).maybeSingle();
+        const beforeIso = (prof && prof.pro_until) || null;
+        // 72 hours FROM THE LATER OF now and any existing pro_until. This was an
+        // absolute `Date.now() + 72h`, which OVERWROTE a six-month Max
+        // subscription with three days the moment the user tapped Decline. The
+        // referral path always guarded this; this one never did.
+        const untilIso = new Date(grantFromMs(beforeIso) + 72 * 3600 * 1000).toISOString();
+
+        // LEDGER FIRST, provider_ok:false — the referral grant's exact sequence,
+        // so a failed grant leaves a visible row instead of nothing.
+        // days_granted:3 is CAP ARITHMETIC; pro_until carries the exact 72h.
+        const { data: ledger } = await supabaseAdmin
+          .from('referral_rewards').insert({
+            user_id: authUser.id, days_granted: 3,
+            pro_until_before: beforeIso, pro_until_after: untilIso,
+            referral_ids: [], provider: 'db', provider_ok: false,
+          }).select('id').maybeSingle();
+
+        // CLAIM THE DEVICE BEFORE GRANTING. The PK insert is the one-shot gate;
+        // if two requests race, the loser gets a duplicate-key error and reads
+        // the winner's row rather than granting twice.
+        const { error: claimErr } = await supabaseAdmin
+          .from('reverse_trial_grants').insert({
+            device_id: deviceId, user_id: authUser.id,
+            pro_until: untilIso, app_build: _build,
+            reward_id: (ledger && ledger.id) || null,
+          });
+        if (claimErr) {
+          const { data: won } = await supabaseAdmin
+            .from('reverse_trial_grants').select('pro_until')
+            .eq('device_id', deviceId).maybeSingle();
+          if (won) {
+            return sendJson(res, 200, {
+              granted: true, already: true, pro_until: won.pro_until,
+              expires_in_seconds: Math.max(0, Math.round(
+                (new Date(won.pro_until).getTime() - Date.now()) / 1000)),
+            });
+          }
+          return sendJson(res, 503, { error: 'grant_unavailable' });
+        }
+
+        const { error: upErr } = await supabaseAdmin
+          .from('profiles').update({ tier: tierAfterGrant(prof && prof.tier, 'pro'),
+                                    pro_until: untilIso })
+          .eq('id', authUser.id);
+        if (!upErr && ledger && ledger.id) {
+          await supabaseAdmin.from('referral_rewards')
+            .update({ provider_ok: true }).eq('id', ledger.id);
+        }
+        // NOTE: no usage_events write and no export marking — the trial must not
+        // consume the free export.
+        console.log('  [reverse-trial] granted userId=%s build=%s until=%s',
+          authUser.id, _build, untilIso);
+        return sendJson(res, 201, {
+          granted: true, already: false, pro_until: untilIso,
+          expires_in_seconds: 72 * 3600,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[reverse-trial] grant failed:', e && e.message);
+        return sendJson(res, 503, { error: 'grant_unavailable' });
+      }
+    })();
+    return;
+  }
+
+  // ── GET /api/credits/balance — READ-THROUGH, never cached ────────────────
+  // Balance is authoritative at RevenueCat (ruling 4). This does NOT write a DB
+  // copy and does NOT fall back to a stored number on failure: a stale balance
+  // that looks authoritative is worse than no balance, because the client would
+  // render it as fact and let a user start a render they cannot pay for.
+  if (parsed.pathname === '/api/credits/balance' && req.method === 'GET') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'credits-balance', authUser.id, 60, 60)) return;
+        if (!_credits.isConfigured()) {
+          // Explicit, not a zero. "Credits are off" and "you have none" are
+          // different states and must not render the same.
+          return sendJson(res, 503, { error: 'credits_unavailable',
+                                      reason: 'not_configured' });
+        }
+        const b = await _credits.getBalance(authUser.id);
+        // resolveEntitlementDecision(fetchSubscriptionEntitlement(...)) is the
+        // real pair; an earlier draft called a `resolveEntitlement` that does
+        // not exist. It sat inside this try/catch, so the endpoint would have
+        // returned 503 forever while looking implemented.
+        let tier = 'free';
+        try {
+          const _ent = await fetchSubscriptionEntitlement(authUser.id);
+          const _dec = resolveEntitlementDecision(_ent);
+          if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
+        } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
+        return sendJson(res, 200, {
+          balance: b.balance,
+          currency_code: b.currency_code,
+          // found:false with balance:0 distinguishes "no row for our currency"
+          // from "this user has zero" — a bare 0 hides which one you are seeing.
+          found: b.found,
+          tier,
+          allowance: _credits.TIER_ALLOWANCE[tier] ?? null,
+          cost_per_render: _credits.COST_PER_RENDER,
+        });
+      } catch (e) {
+        if (e && e.statusCode) return sendJson(res, e.statusCode, { error: e.message });
+        console.error('[credits] balance read failed:', e && (e.code || e.message));
+        return sendJson(res, 503, { error: 'balance_unavailable' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/devices/register' && req.method === 'POST') {
     (async () => {
       try {
@@ -4782,10 +7097,81 @@ const server = http.createServer((req, res) => {
         return serveFile(landingScript, res);
       }
     }
+    // The in-app-browser escape module (vanilla, no deps).
+    if (parsed.pathname === '/js/inapp-browser-escape.js') {
+      const f = path.join(__dirname, 'js', 'inapp-browser-escape.js');
+      if (fs.existsSync(f)) return serveFile(f, res);
+    }
+    // Acquisition landing — the destination for Instagram/TikTok bio links.
+    // Meta/TikTok in-app browsers swallow taps on apps.apple.com, and NO script
+    // can run on a direct store link, so the bio link must point HERE, where the
+    // escape module breaks out to Safari (or shows instructions) and the UA-split
+    // + breakout funnel get measured. Repoint bio links → https://usepromptly.app/get
+    if (parsed.pathname === '/get' || parsed.pathname === '/download' || parsed.pathname === '/app') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(renderGetLanding());
+    }
     // Editor and calendar removed — mobile-only app. Redirect to landing.
     if (parsed.pathname === '/editor' || parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html' || parsed.pathname === '/library.html') {
       res.writeHead(302, { 'Location': '/' });
       return res.end();
+    }
+
+    // Public result page — the completion-email deep link lands HERE, on the
+    // SPECIFIC job's rendered video (never a generic app open). The
+    // rendered_video_url is already a public, unsigned CloudFront URL that the
+    // app ShareLinks openly, and the jobId is already in that CDN path, so this
+    // page exposes nothing the video URL doesn't — no PII, no job metadata, no
+    // status/error, no auth. Only a COMPLETED job renders the player; anything
+    // else (missing / processing / failed) gets one neutral page, so the route
+    // never confirms a job's existence or state.
+    const resultPageMatch = parsed.pathname && parsed.pathname.match(/^\/v\/([a-zA-Z0-9-]{8,})$/);
+    if (resultPageMatch) {
+      const jobId = resultPageMatch[1];
+      (async () => {
+        let ready = null;
+        try {
+          if (supabaseAdmin) {
+            const { data } = await supabaseAdmin.from('video_jobs')
+              .select('status, rendered_video_url')
+              .eq('id', jobId).maybeSingle();
+            if (data && data.status === 'completed' && data.rendered_video_url) {
+              // Poster deliberately omitted: thumbnail_url is a presigned S3 URL
+              // that expires within days, so on an email opened later it would rot
+              // to a broken image. The rendered video's first frame
+              // (preload=metadata) serves as the preview instead.
+              //
+              // MINT PER LOAD (2026-08-23, posture step 4). This page is
+              // SERVER-RENDERED on every request and sent with
+              // Cache-Control: no-store, so it can hand out a short-lived grant
+              // and still work forever — the durable thing we share is the
+              // opaque /v/{jobId} link, not the asset URL. That is what makes
+              // restricting renders/ possible without touching the viral path:
+              // the share link keeps working, the permanent hotlink stops.
+              //
+              // 6 hours, not 7 days: long enough that a page left open in a tab
+              // still downloads, short enough that a scraped <video src> is not
+              // a durable public link. Re-minted free on the next load.
+              let shareUrl = data.rendered_video_url;
+              try {
+                const _s3 = require('./services/s3');
+                const _k = require('./lib/source-presence').sourceKeyFromUrl(data.rendered_video_url);
+                if (_k) shareUrl = await _s3.createPresignedGetUrl(_k, 6 * 3600);
+              } catch (e) {
+                // Fail OPEN to the stored url. While renders/ is public that
+                // still plays; once it is restricted this line is the failure
+                // that matters, so it is logged rather than swallowed.
+                console.error(`[result-page] share presign FAILED for ${jobId}: ${e && e.message}`
+                  + ' — falling back to the stored url (works only while renders/ is public)');
+              }
+              ready = { videoUrl: shareUrl };
+            }
+          }
+        } catch (e) { console.warn('[result-page] lookup failed:', e && e.message); }
+        res.writeHead(ready ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(renderResultPage(ready));
+      })();
+      return;
     }
   }
 
@@ -5052,6 +7438,18 @@ if (require.main === module) {
   // throwing on every startup and the catch was swallowing the error,
   // producing harmless but noisy log output.)
 
+  // FAIL-CLOSED BOOT GATE (worker-auth): a guard that disables itself when
+  // misconfigured is the silent-inert pattern. Both worker-auth secrets must be
+  // present to start. Missing → crash loudly at boot (a loud outage), never run
+  // open. This is ALSO the runtime drift-guard: a "preserve current values"
+  // sweep that drops either secret fails the next boot instead of reopening the
+  // door. Deploy note: set both secrets in Render env BEFORE deploying this.
+  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET']) {
+    if (!process.env[k]) {
+      console.error(`[boot] FATAL: ${k} not set — refusing to start (fail-closed worker auth).`);
+      process.exit(1);
+    }
+  }
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
@@ -5117,6 +7515,94 @@ if (require.main === module) {
     setTimeout(runReaper, 30 * 1000); // boot pass
     setInterval(runReaper, 120 * 1000);
 
+    // Orphan re-dispatch (Zac 2026-08-04): RECOVER never-dispatched jobs — rows with
+    // modal_call_id NULL past ~11min (a server restart mid-dispatch, or the per-job
+    // spawn-2xx-yet-null cause). Only the ~24% whose upload actually completed (source
+    // present on S3) are re-dispatched (idempotent on job_id) so the user gets their
+    // video; the 76% whose upload never landed get one honest UPLOAD terminal instead
+    // of a 600s re-wait for bytes that will never arrive. dispatchJobToModal is
+    // injected (imported at top). This is the primary handler for the never-dispatch
+    // class; the reaper's queued_stall is now only a >30-min backstop for when this
+    // cron is down.
+    const { sweepOrphanRedispatch } = require('./lib/orphan-redispatch');
+    let redispatchBusy = false;
+    const runOrphanRedispatch = async () => {
+      if (redispatchBusy) return;
+      redispatchBusy = true;
+      try {
+        await sweepOrphanRedispatch(supabaseAdmin, { pushProgressToSSE, dispatchJobToModal });
+      } catch (err) {
+        console.error('[redispatch] sweep crashed:', err?.message || err);
+      } finally {
+        redispatchBusy = false;
+      }
+    };
+    setTimeout(runOrphanRedispatch, 90 * 1000); // boot pass, offset from the reaper
+    setInterval(runOrphanRedispatch, 180 * 1000); // every 3 min
+
+    // Completion reconciler (2026-08-02): a rendered video MUST reach its owner.
+    // The result -> delivery-column projection runs in dispatchJobToModal's
+    // completion tail, which is only reached when an in-process await resolves —
+    // and that await lives in a plain Map (modal-webhook.js:1). A deploy or
+    // restart drops every in-flight entry while the WORKER's durable write has
+    // already marked the job completed, leaving status='completed' with every
+    // delivery column NULL. 10 users since 07-26 had a finished video they never
+    // received; 9 of them had no double-loss event at all, so the fallback never
+    // even fired for them.
+    //
+    // No tail logic can fix that — the recovery has to be external and stateless.
+    // Same 2-min cadence as the reaper; loud on every occurrence, because a
+    // silent self-heal is exactly how this stayed invisible for six days.
+    const { reconcileCompletions } = require('./lib/completion-reconcile');
+    let reconcileBusy = false;
+    const runCompletionReconcile = async () => {
+      if (reconcileBusy) return;
+      reconcileBusy = true;
+      try {
+        await reconcileCompletions(supabaseAdmin);
+      } catch (err) {
+        console.error('[completion-reconcile] sweep crashed:', err?.message || err);
+      } finally {
+        reconcileBusy = false;
+      }
+    };
+    setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
+    setInterval(runCompletionReconcile, 120 * 1000);
+
+    // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
+    // across 441 users are in NO chat — 140 in the last 7 days — because the
+    // message that references a render is a client-owned debounced PATCH that a
+    // backgrounded session drops. The inline attach in the completion tail is
+    // the immediate path; this is the guarantee, for exactly the reason
+    // completion-reconcile exists one block up: the tail lives behind an
+    // in-process await that no deploy survives, and this service auto-deploys
+    // main. Deliberately cheap — a 3h lookback and a 60-row cap, because once
+    // the inline path is landing, the expected repairs per pass are ZERO.
+    // Loud when it isn't zero; a silent self-heal is how the undelivered-
+    // completion class hid for six days.
+    const { sweepChatAttach } = require('./lib/chat-attach');
+    let chatAttachBusy = false;
+    const runChatAttachSweep = async () => {
+      if (chatAttachBusy) return;
+      chatAttachBusy = true;
+      try {
+        await sweepChatAttach(supabaseAdmin);
+      } catch (err) {
+        console.error('[chat-attach] sweep crashed:', err?.message || err);
+      } finally {
+        chatAttachBusy = false;
+      }
+    };
+    setTimeout(runChatAttachSweep, 75 * 1000); // boot pass, offset from the others
+    setInterval(runChatAttachSweep, 10 * 60 * 1000);
+
+    // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
+    // analytics_events once a minute. Before this, the 34 non-job routes had no
+    // retained record of any kind — no APM, no log sink, stdout only — so there
+    // was no 30-day non-2xx rate to read for ANY of them. See
+    // lib/api-outcome-ledger.js.
+    apiLedger.start(supabaseAdmin);
+
     // Bleed meter (daily [REPORT] cost digest): once/day at a fixed UTC hour,
     // push the founder a 5-line summary of what the pipeline produced in the
     // last 24h and roughly what it cost — a silent cost runaway becomes visible
@@ -5137,6 +7623,71 @@ if (require.main === module) {
     };
     setTimeout(runBleedMeter, 90 * 1000); // boot pass (fires if past report hour)
     setInterval(runBleedMeter, 60 * 60 * 1000); // hourly
+
+    // Completion-rate watchdog (2026-07-31 incident follow-up). The dispatch
+    // alert catches "the request failed"; it does NOT catch "dispatch succeeded
+    // and nothing ever completes" — worker accepts + dies, silent stall, jobs
+    // stuck forever (same silent-outage class, different seam). Of the jobs old
+    // enough to have finished (dispatched 8–30 min ago), if ≥N reached the worker
+    // (processing/completed) and ZERO completed, page. Excludes dispatch-failed
+    // (→ the dispatch alert) and worker-rejected (→ status=failed), so it fires
+    // ONLY on the accept-but-never-finish signature. Debounced; implicitly clears
+    // when any completion appears in the window.
+    let watchdogBusy = false, watchdogAlertedAt = 0;
+    const runCompletionWatchdog = async () => {
+      if (watchdogBusy) return;
+      watchdogBusy = true;
+      try {
+        const now = Date.now();
+        const winStart = new Date(now - 30 * 60 * 1000).toISOString();
+        const matureBefore = new Date(now - 8 * 60 * 1000).toISOString();
+        const { data } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, user_id, status')
+          .gte('created_at', winStart)
+          .lte('created_at', matureBefore)
+          .in('status', ['processing', 'completed'])
+          .limit(500);
+        const rows = Array.isArray(data) ? data : [];
+        const dispatchedOk = rows.length;
+        const completed = rows.filter((r) => r.status === 'completed').length;
+        if (dispatchedOk >= 4 && completed === 0 && now - watchdogAlertedAt > 30 * 60 * 1000) {
+          watchdogAlertedAt = now;
+          const body = `${dispatchedOk} jobs dispatched OK 8–30min ago, ZERO completed — pipeline accepts but nothing finishes (worker stall / silent downstream failure)`;
+          console.error(`[ALERT] COMPLETION-RATE WATCHDOG — ${body}`);
+          await sendOwnerAlert({
+            ownerUserId: SUBMISSION_OWNER_USER_ID,
+            title: '🚨 [Promptly] RENDERS NOT COMPLETING — pipeline stalled',
+            body, threadId: 'completion-watchdog', supabaseAdmin,
+          });
+          // Last known-good completion (only queried when we're already firing).
+          const { data: lastDone } = await supabaseAdmin
+            .from('video_jobs')
+            .select('updated_at')
+            .eq('status', 'completed')
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          // ALSO wake an investigating agent (gated + hard-capped; dormant until
+          // AGENT_ALERT_WEBHOOK_URL is set). The stuck jobs' ids/users let the
+          // agent inspect the exact stall without a query round-trip.
+          await postAgentAlert({
+            error_class: 'COMPLETION_STALL',
+            count: dispatchedOk,
+            window_min: 30,
+            job_ids: rows.filter((r) => r.status === 'processing').map((r) => r.id).slice(0, 10),
+            user_ids: [...new Set(rows.map((r) => r.user_id).filter(Boolean))].slice(0, 10),
+            last_good_ts: (Array.isArray(lastDone) && lastDone[0] && lastDone[0].updated_at) || null,
+            hint: 'Jobs reach the worker (status=processing) but none complete — worker accepted + stalled, or a silent downstream failure. Check the worker logs / Modal function health for these job_ids.',
+          });
+        }
+      } catch (err) {
+        console.error('[watchdog] completion check crashed:', err?.message || err);
+      } finally {
+        watchdogBusy = false;
+      }
+    };
+    setTimeout(runCompletionWatchdog, 120 * 1000); // boot pass
+    setInterval(runCompletionWatchdog, 5 * 60 * 1000); // every 5 min
   }
 
   // Flush any pending PostHog server events before the process exits (Render

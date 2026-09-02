@@ -627,6 +627,10 @@
       })();
     </script>
     <script src="/js/landing.js"></script>
+    <!-- Referral landing (?ref=CODE): renders the invite overlay + deep-link
+         attempt; a no-op without a valid code, so the generic page is
+         untouched for every normal visitor. -->
+    <script src="/js/referral-landing.js" defer></script>
     <script type="module" src="./footer.js"></script>
   </body>
 </html>

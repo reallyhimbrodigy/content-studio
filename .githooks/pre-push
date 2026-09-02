@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# PRE-PUSH QUIET-WINDOW GATE — main only.
+#
+# WHY THIS EXISTS (2026-08-12): content-studio autoDeploys `main`, so a push to
+# main IS a deploy. Every deliberate deploy in this project runs
+# preflight_quiet_window.py first — and then a docs-only commit went straight to
+# main without it. It happened to land on a quiet window. That was LUCK, and the
+# whole doctrine here is that directives become machinery, not memory. This is
+# that doctrine applied to the one place it had not been.
+#
+# Mirrors preflight_quiet_window.py's own exit semantics EXACTLY:
+#     0 QUIET   -> push
+#     1 BUSY    -> BLOCK (in-flight user jobs; a deploy orphans live work)
+#     2 UNKNOWN -> BLOCK (cannot measure => cannot promise; an unknown is not a
+#                  quiet window, which is the confident-zero class this codebase
+#                  keeps paying for)
+#   absent      -> BLOCK (same reason)
+#
+# Emergency override, loud and never default:
+#     PROMPTLY_ALLOW_BUSY_PUSH=1 git push origin main
+# If you use it, attribute any orphaned jobs in DEPLOY_LOG.md — same rule the
+# deploy wrapper's PROMPTLY_ALLOW_BUSY_DEPLOY carries.
+
+set -uo pipefail
+
+GATED_BRANCH="refs/heads/main"
+gated=0
+while read -r _local_ref _local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "$GATED_BRANCH" ] || continue
+  # Branch deletion (all-zero local sha) deploys nothing.
+  case "$_local_sha" in *[!0]*) gated=1 ;; esac
+done
+[ "$gated" -eq 1 ] || exit 0
+
+if [ "${PROMPTLY_ALLOW_BUSY_PUSH:-}" = "1" ]; then
+  echo "pre-push: ⚠️  PROMPTLY_ALLOW_BUSY_PUSH=1 — quiet-window gate SKIPPED for this push to main."
+  echo "pre-push:    This deploys over whatever is in flight. Attribute any orphans in DEPLOY_LOG.md."
+  exit 0
+fi
+
+PREFLIGHT=""
+for c in \
+  "/Users/zaclibman/promptly-gpu-worker/promptly-gpu-worker/preflight_quiet_window.py" \
+  "$(git rev-parse --show-toplevel 2>/dev/null)/../promptly-gpu-worker/promptly-gpu-worker/preflight_quiet_window.py" \
+  "${PROMPTLY_PREFLIGHT:-}"
+do
+  [ -n "$c" ] && [ -f "$c" ] && { PREFLIGHT="$c"; break; }
+done
+
+if [ -z "$PREFLIGHT" ]; then
+  echo "pre-push: ❌ BLOCKED — preflight_quiet_window.py not found, so the quiet window cannot be measured."
+  echo "pre-push:    Pushing main is a DEPLOY. An unmeasurable window is not a quiet one."
+  echo "pre-push:    Point PROMPTLY_PREFLIGHT at it, or override: PROMPTLY_ALLOW_BUSY_PUSH=1 git push …"
+  exit 1
+fi
+
+echo "pre-push: main → autoDeploy. Checking the quiet window…"
+python3 "$PREFLIGHT"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  exit 0
+fi
+echo ""
+echo "pre-push: ❌ PUSH BLOCKED (preflight exit $rc). Pushing main autoDeploys content-studio,"
+echo "pre-push:    and a restart mid-flight orphans live user work."
+echo "pre-push:    Wait for the window and push again, or override deliberately:"
+echo "pre-push:      PROMPTLY_ALLOW_BUSY_PUSH=1 git push origin main"
+exit 1
