@@ -182,8 +182,13 @@ enum PaywallMapping {
     }
 
     @MainActor
-    static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool) -> [PaywallTierOption] {
-        let allowances = tierAllowances(products)
+    static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool,
+                            maxEnabled: Bool = true) -> [PaywallTierOption] {
+        // MAX IS DROPPED AT THE SOURCE when it is not approved, so it cannot
+        // appear in the toggle, the CTA, or a percentage computed across tiers.
+        // Filtering in the view would leave it in every derived value.
+        var allowances = tierAllowances(products)
+        if !maxEnabled, allowances.count > 1 { allowances = [allowances[0]] }
         let proAllowance = allowances.first
         let maxAllowance = allowances.count > 1 ? allowances.last : nil
         return allowances.map { allowance in
@@ -314,8 +319,13 @@ struct PaywallLayout: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 10)
 
-            tierToggle
-                .padding(.horizontal, 20)
+            // A one-tier toggle is a control with nothing to choose. While Max
+            // is unapproved this is a Pro-only paywall, so the segmented row
+            // does not draw at all.
+            if tiers.count > 1 {
+                tierToggle
+                    .padding(.horizontal, 20)
+            }
 
             if let tier = activeTier {
                 tierBody(tier)
@@ -530,6 +540,14 @@ struct PaywallLayout: View {
                             .foregroundColor(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    // The store's own intro terms, stated rather than applied
+                    // silently.
+                    if let intro = option.introLine {
+                        Text(intro)
+                            .cType(10, .semibold)
+                            .foregroundColor(Color(hex: "F4E4BC").opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 6)
                 VStack(alignment: .trailing, spacing: 2) {
@@ -656,10 +674,21 @@ struct TwoStepPaywall: View {
                 case .other: return .other
                 }
             }()
-            // offer_surfacing: gated on the flag and the export-gate reason,
-            // resolved here because the phrasing needs the StoreKit offer.
+            // SURFACED ON EVERY ENTRY POINT, not just the export gate.
+            //
+            // Both Pro SKUs carry a PAY_AS_YOU_GO introductory offer in App
+            // Store Connect — $14.99 for a first month against $29.99, $145.99
+            // for a first year against $289.99, configured across 175
+            // territories. StoreKit applies it to eligible users whatever the
+            // paywall says, so gating the LINE to one reason meant the discount
+            // was being given away silently on every other surface: up to $144
+            // on a yearly, with none of the conversion lift of having said so.
+            //
+            // It is not a free trial and there is no trial claim here — the line
+            // states the store's own paid terms, which is what
+            // `introOfferLine` renders (it returns nil for `.freeTrial`
+            // offers, so the no-trial ruling still holds by construction).
             let intro: String? = (onboarding.offerSurfacingEnabled
-                                  && reason == .exportGate
                                   && (unit == .year || unit == .month))
                 ? PaywallView.introOfferLine(for: pkg) : nil
             return PaywallProduct(
@@ -680,7 +709,8 @@ struct TwoStepPaywall: View {
                 for: reason,
                 personalisationEnabled: onboarding.exportGatePersonalizationEnabled,
                 personalisedNoun: PaywallView.exportContentNoun(from: onboarding)),
-            tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled),
+            tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled,
+                                              maxEnabled: onboarding.maxTierEnabled),
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             onClose: { isPresented = false },
             onPurchase: { id in

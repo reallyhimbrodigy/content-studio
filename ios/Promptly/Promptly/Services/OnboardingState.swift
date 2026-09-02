@@ -131,6 +131,20 @@ final class OnboardingState: ObservableObject {
     /// needs the server to start emitting `deferred_auth: "off"` — a backend
     /// change, not a client one.
     @Published private(set) var deferredAuthEnabled = true
+
+    /// Whether the Max tier may be OFFERED.
+    ///
+    /// OFF until Max is approved. As of 2026-09-02 both Max products read
+    /// MISSING_METADATA in App Store Connect — neither approved nor submitted —
+    /// so a paywall showing them is selling something nobody can buy.
+    ///
+    /// A FLAG RATHER THAN AN AVAILABILITY TEST, deliberately, because StoreKit
+    /// exposes no approval state to the client. The reason Max renders with
+    /// prices in a simulator is that the sandbox returns unapproved products;
+    /// "filter on what the store returned" therefore cannot tell an approved
+    /// product from an unapproved one. This flag can be armed the moment Max
+    /// clears review, and nothing else has to change.
+    @Published private(set) var maxTierEnabled = false
     @Published private(set) var pushPrimerEnabled = false
     /// Amendment 2026-08-27: the export gate as TWO pages (benefits written
     /// against the stated content type, then plans + price). Its own flag so
@@ -221,6 +235,9 @@ final class OnboardingState: ObservableObject {
             if let v = obj?["deferred_auth"] as? String {
                 deferredAuthEnabled = v == "on"
             }
+            if let v = obj?["max_tier"] as? String {
+                maxTierEnabled = v == "on"
+            }
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
             creditsEnabled = (obj?["credits"] as? String) == "on"
@@ -244,6 +261,7 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(offerSurfacingEnabled, forKey: "offer_surfacing_enabled")
             UserDefaults.standard.set(twoStepPaywallEnabled, forKey: "two_step_paywall_enabled")
             UserDefaults.standard.set(deferredAuthEnabled, forKey: "deferred_auth_enabled")
+            UserDefaults.standard.set(maxTierEnabled, forKey: "max_tier_enabled")
             UserDefaults.standard.set(pushPrimerEnabled, forKey: "push_primer_enabled")
             UserDefaults.standard.set(exportGateTwoPageEnabled, forKey: "exportgate_two_page_enabled")
             // The seven experiment flags persist too. They were added without a
@@ -285,6 +303,7 @@ final class OnboardingState: ObservableObject {
             if UserDefaults.standard.object(forKey: "deferred_auth_enabled") != nil {
                 deferredAuthEnabled = UserDefaults.standard.bool(forKey: "deferred_auth_enabled")
             }
+            maxTierEnabled = UserDefaults.standard.bool(forKey: "max_tier_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
             creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")
@@ -328,6 +347,7 @@ final class OnboardingState: ObservableObject {
         case "offer_surfacing": if !offerSurfacingEnabled { offerSurfacingEnabled = true }
         case "two_step_paywall": if !twoStepPaywallEnabled { twoStepPaywallEnabled = true }
         case "deferred_auth": if !deferredAuthEnabled { deferredAuthEnabled = true }
+        case "max_tier": if !maxTierEnabled { maxTierEnabled = true }
         // A flag with no case here cannot be turned on anywhere but a live
         // server flip, so it cannot be screenshotted or reviewed before it
         // ships — the gap this switch's own comment describes.
