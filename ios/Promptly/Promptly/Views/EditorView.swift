@@ -1307,37 +1307,58 @@ struct EditorView: View {
 
             .accessibilityLabel("Show chats")
 
-            Spacer(minLength: 8)
-
+            // NO LEADING SPACER. Centred, the pill sat in the slot a title
+            // occupies, and Upgrade is not a title — it read as the name of the
+            // screen. Next to the sidebar button it reads as one more control.
             if !subscriptionService.effectiveIsPro {
-                // QUIET. The old pill carried a rotating conic-gradient border
-                // and a glow — the loudest object on a screen whose job is to
-                // get a video uploaded, competing with the content for the whole
-                // session rather than at the moment of the ask. Plain text, same
-                // destination.
+                // A PILL, QUIETLY. Bare text read as a label rather than
+                // something you could press. What went was the rotating
+                // conic-gradient border and the glow — the loudest object on a
+                // screen whose job is to get a video uploaded. What stays is the
+                // shape: a dark rounded background, a small sparkle, and a
+                // coloured label, so it is legible as a button without
+                // competing with the content for the whole session.
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     appState.presentPaywall(.manual)
                 } label: {
-                    Text("Upgrade")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .contentShape(Rectangle())
+                    HStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Upgrade")
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    // GOLD, TRANSLUCENT, RESTRAINED. The brand cream-gold at low
+                    // opacity with a hairline border of the same colour: enough
+                    // warmth to read as tappable, not enough to win the screen.
+                    // The test is whether the eye reaches the composer first —
+                    // it is a control on a page about uploading a video, and the
+                    // old rotating gradient failed that test for a whole session
+                    // at a time. No gradient, no glow, nothing animated.
+                    .foregroundColor(Color(hex: "F4E4BC"))
+                    .padding(.horizontal, 13)
+                    .frame(height: 32)
+                    .background(Capsule().fill(Color(hex: "F4E4BC").opacity(0.10)))
+                    .overlay(Capsule().strokeBorder(Color(hex: "F4E4BC").opacity(0.28), lineWidth: 1))
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
 
-            // The balance, to the RIGHT of the upgrade action and small. It
-            // self-hides when the flag is off or the balance is unknown, so this
-            // call site carries no condition — the same contract
-            // UsageMeterStrip uses.
-            CreditBadge()
+            // The count, small, immediately left of the avatar. It self-hides
+            // when the meter is off or the balance is unknown, so this call site
+            // carries no condition — the same contract UsageMeterStrip uses, and
+            // the reason a dark-flag build shows nothing here rather than a
+            // guessed number.
+            Spacer(minLength: 8)
 
-            AccountAvatar()
+            // TOP RIGHT, immediately left of the new-chat button — the slot the
+            // account avatar vacated. A balance belongs with the account
+            // controls, not wedged against the upgrade action, and the two
+            // colours read as separate objects rather than one two-tone widget.
+            CreditBadge()
 
             // The old free-tier "N today" capsule is gone with the loud pill.
             // It counted RENDERS while the meter counts CREDITS, so with credits

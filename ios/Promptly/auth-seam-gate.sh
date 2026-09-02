@@ -12,14 +12,27 @@ set -uo pipefail
 cd "$(dirname "$0")/Promptly" || exit 1
 FAIL=0
 
-check() { # file, function-regex, description
-  local f="$1" fn="$2" desc="$3"
+# A FIXED WINDOW, NOT A BRACE-MATCHED RANGE.
+#
+# The first version used `awk /sig/,/^    }$/`, which ends at the first
+# four-space closing brace after the signature. That is not the function's brace
+# — any nested construct that happens to close at that indent truncates the
+# range early, and the gate then reports the guard missing while it sits ten
+# lines further down. It did exactly that after an unrelated header edit shifted
+# the file: a red gate on correct code, which is the failure mode that teaches
+# you to ignore gates.
+#
+# The seam must be near the TOP of the function anyway — that is the whole
+# point, stopping before the message is accepted — so a window is both more
+# robust and a better statement of the requirement.
+check() { # file, function-regex, description, window
+  local f="$1" fn="$2" desc="$3" win="${4:-40}"
   [ -f "$f" ] || { echo "  MISSING FILE $f"; FAIL=1; return; }
-  local body
-  body=$(awk "/$fn/,/^    }$/" "$f")
-  if [ -z "$body" ]; then echo "  $desc: function not found ($fn)"; FAIL=1; return; fi
-  if ! echo "$body" | grep -q "AuthGate.shared.require"; then
-    echo "  $desc does not raise the auth gate"
+  local line
+  line=$(grep -nE "$fn" "$f" | head -1 | cut -d: -f1)
+  if [ -z "$line" ]; then echo "  $desc: function not found ($fn)"; FAIL=1; return; fi
+  if ! sed -n "${line},$((line + win))p" "$f" | grep -q "AuthGate.shared.require"; then
+    echo "  $desc does not raise the auth gate within $win lines of its entry"
     FAIL=1
   fi
 }

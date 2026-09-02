@@ -34,6 +34,19 @@ final class CreditsService: ObservableObject {
     @Published private(set) var balance: Int?
     @Published private(set) var lastReadFailed = false
 
+    #if DEBUG
+    /// Harness only: pose a balance so a capture can show the counter. The real
+    /// balance needs an account and a network read, so a signed-out simulator
+    /// has none — and `CreditBadge` correctly draws NOTHING for an unknown
+    /// balance rather than a guessed zero. Idempotent, because `@Published`
+    /// fires on equal assignments and SwiftUI re-runs view inits freely.
+    private(set) var debugPosed = false
+    func debugSetBalance(_ v: Int?) {
+        debugPosed = v != nil
+        if balance != v { balance = v }
+    }
+    #endif
+
     private init() {}
 
     /// Read the balance fresh. Called before showing the composer so the number
@@ -44,6 +57,13 @@ final class CreditsService: ObservableObject {
     /// a stale balance shown before an action is worse than no balance, because
     /// the user makes a decision on it.
     func refresh() async {
+        #if DEBUG
+        // A posed balance is for a capture; the real read would immediately
+        // overwrite it with nil (signed out there is nothing to read) and the
+        // counter would vanish between launch and screenshot. Same clobber the
+        // forced flags hit.
+        if debugPosed { return }
+        #endif
         do {
             Purchases.shared.invalidateVirtualCurrenciesCache()
             let vc = try await Purchases.shared.virtualCurrencies()

@@ -629,14 +629,14 @@ struct PaywallView: View {
     }
 
     private var featureList: some View {
-        VStack(spacing: 0) {
-            PaywallFeatureChecklist()
-            // The allowance table, dark with the meter. Under the claims
-            // because it is the detail behind the headline row, not a
-            // competing pitch — and it draws nothing while credits are off.
-            CreditTierComparison()
-                .padding(.top, 16)
-        }
+        // THE ALLOWANCE TABLE IS GONE. It was a third expression of the same
+        // information, stacked under a six-item checklist and above the plan
+        // rows — and it stated the allowance in VIDEOS ("3 / 20 / 100"), the
+        // unit ruled out in favour of credits-only. A partial migration left
+        // in: the comparison it was written for is now the two-step paywall's
+        // two cards, where the tiers sit side by side instead of in a list
+        // under a pitch that already made the same point twice.
+        PaywallFeatureChecklist()
     }
 
     private var currentPackages: [Package]? {

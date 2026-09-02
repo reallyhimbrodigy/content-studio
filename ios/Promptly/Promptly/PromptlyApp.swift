@@ -165,6 +165,26 @@ struct PromptlyApp: App {
     @UIApplicationDelegateAdaptor(PromptlyAppDelegate.self) private var appDelegate
 
     init() {
+        #if DEBUG
+        // Harness state is applied in the APP's init, before any view exists.
+        // Applied in the root `.task` it raced the child tasks that read it —
+        // CreditBadge's own `.task` had already run and cached a nil balance, so
+        // the posed count surfaced in the composer strip but never in the
+        // header. Same shape as the flag clobber: the value was right and the
+        // timing was wrong.
+        MainActor.assumeIsolated {
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-forceFlags"), i + 1 < args.count {
+                for f in args[i + 1].split(separator: ",").map(String.init) {
+                    OnboardingState.shared.debugForceFlag(f)
+                }
+            }
+            if let i = args.firstIndex(of: "-poseCredits"), i + 1 < args.count,
+               let n = Int(args[i + 1]) {
+                CreditsService.shared.debugSetBalance(n)
+            }
+        }
+        #endif
         // Crash + error reporting. DSN comes from Info.plist (SENTRY_DSN).
         // If absent, init is skipped — no-op in dev or if the user hasn't
         // wired up a Sentry project yet.
@@ -646,6 +666,14 @@ struct PromptlyApp: App {
                 // reinstall must not replay it. UserDefaults would; the Keychain
                 // should not. Printed so it can be read across an uninstall.
                 print("FIRSTRUN seen=\(FirstRun.seen)")
+                // `-poseCredits N`: show the counter in a capture without an
+                // account. Posed, and labelled as such in the report — a
+                // screenshot of an invented balance presented as real would be
+                // the worst kind of review artifact.
+                if let i = args.firstIndex(of: "-poseCredits"), i + 1 < args.count,
+                   let n = Int(args[i + 1]) {
+                    CreditsService.shared.debugSetBalance(n)
+                }
                 // Measure, do not guess. Two rounds of safe-area fixes changed
                 // nothing visible, which means the assumption about WHAT the app
                 // is being given is wrong. Print the actual insets.

@@ -1,22 +1,32 @@
 import SwiftUI
 
-/// The credit balance as an OBJECT in the chat header — a bolt in a circle,
-/// always present, readable without opening anything.
+/// The credit balance as a CURRENCY you hold, not a counter running down.
 ///
-/// WHY AN OBJECT RATHER THAN A NUMBER IN A STRIP. A number that appears only
-/// when you go looking is something you check; a thing that lives in the header
-/// is something you HAVE. That difference is the whole point of a meter: the
-/// balance has to be on screen at the moment of the decision, not one tap away
-/// behind a menu, and it has to be the same object each time so a change to it
-/// reads as a change to something you recognise.
+/// THE DIFFERENCE IS THE WHOLE DESIGN. A counter invites you to watch it fall:
+/// red states, "running low" warnings, a depleting bar. Every one of those tells
+/// a paying user they are nearly out of something, on every screen, all session
+/// — which makes the product feel like a meter rather than a tool. So there are
+/// no thresholds here and no colour changes with value. The number is the same
+/// object at 4 as at 400.
+///
+/// THE BOLT IS AN OBJECT, NOT AN ICON. It carries a cool gradient and a faint
+/// luminance of its own, so it reads as a minted thing you have some of. The
+/// glow is on the GLYPH only — a glowing pill would be a second Upgrade button,
+/// and the gold pill next to it is already the loud one. Cool against that gold
+/// on purpose: the two sit beside each other without competing, and the eye
+/// still reaches the composer first.
 ///
 /// SILENT WHEN UNKNOWN, and this rule does not bend. `balance == nil` means we
-/// have not read one — the currency code did not resolve, or the call failed. It
-/// does NOT mean zero. The badge simply does not draw, because rendering "0"
-/// from an unread balance would tell a paying user they have nothing left, and
-/// this project has already paid once for treating an unreadable metric as a
+/// have not read one — the call failed, or there is no account yet. It does NOT
+/// mean zero. The badge simply does not draw, because rendering "0" from an
+/// unread balance would tell a paying user they have nothing left, and this
+/// project has already paid once for treating an unreadable metric as a
 /// confident zero.
 struct CreditBadge: View {
+    /// Tapping a balance is the natural moment to want more of it, so it goes
+    /// to the same place Upgrade does.
+    var onTap: () -> Void = { AppState.shared.presentPaywall(.manual) }
+
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -26,55 +36,92 @@ struct CreditBadge: View {
     /// snapping to whatever arrived — an animation needs a before and an after,
     /// and `@Published` only ever gives you the after.
     @State private var shown: Int?
-    @State private var pulse: Bool = false
-    @State private var refunding: Bool = false
+    @State private var pulse = false
+    @State private var refunding = false
+
+    /// Cool, against the gold pill beside it.
+    private static let boltTop = Color(hex: "9FE8FF")
+    private static let boltBottom = Color(hex: "4C8DFF")
 
     var body: some View {
         Group {
             if onboarding.creditsEnabled, let value = shown {
-                HStack(spacing: 5) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        // The refund flashes the glyph green — the one moment
-                        // the badge is allowed to be loud.
-                        .foregroundColor(refunding ? .green : .white.opacity(0.9))
-                        .scaleEffect(refunding ? 1.35 : 1.0)
-
-                    Text(value, format: .number)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
-                        .monospacedDigit()   // the width must not jitter as digits change
-                        .contentTransition(.numericText(countsDown: !refunding))
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onTap()
+                } label: {
+                    HStack(spacing: 5) {
+                        bolt
+                        Text(value, format: .number)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.92))
+                            .monospacedDigit()   // width must not jitter as digits change
+                            .contentTransition(.numericText(countsDown: !refunding))
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    // The PILL stays neutral and flat. No glow, no gradient —
+                    // the glyph carries the identity.
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+                    .contentShape(Capsule())
+                    .scaleEffect(pulse ? 1.06 : 1.0)
                 }
-                .padding(.horizontal, 9)
-                .frame(height: 28)
-                .background(
-                    Capsule().fill(Color.white.opacity(refunding ? 0.16 : 0.08))
-                )
-                .overlay(
-                    Capsule().strokeBorder(
-                        refunding ? Color.green.opacity(0.55) : Color.white.opacity(0.10),
-                        lineWidth: 1)
-                )
-                .scaleEffect(pulse ? 1.06 : 1.0)
-                .accessibilityElement(children: .combine)
+                .buttonStyle(.plain)
                 .accessibilityLabel(Text("\(value) credits"))
+                .accessibilityHint(Text("Get more"))
+            } else {
+                // A ZERO-SIZE NODE, NOT EmptyView. The condition above depends
+                // on `shown`, and `shown` is only ever set by the `.task` below
+                // — but a Group that resolves to EmptyView gets no node in the
+                // view tree, so the task never runs, so `shown` stays nil
+                // forever. The badge was invisible for that reason alone: a
+                // self-deadlock, the same shape that once stopped
+                // CreditBalanceStrip from ever drawing, and it does not announce
+                // itself because an invisible view looks exactly like a view
+                // that decided not to draw.
+                Color.clear.frame(width: 0, height: 0)
             }
         }
-        .task {
-            guard onboarding.creditsEnabled else { return }
-            await credits.refresh()
-            // Seed WITHOUT animating: the first read is not a change, and
-            // animating it would show a decrement from nothing on every launch.
-            shown = credits.balance
+        .task { await seed() }
+        // THE FLAG CAN ARRIVE AFTER THE FIRST RENDER. `seed()` guards on
+        // `creditsEnabled`, and a bare `.task` runs once — so if the server's
+        // flag payload lands a moment after this view appears, the guard returns
+        // and the badge stays blank until something unrelated redraws it. That
+        // is indistinguishable from the badge being broken, and it is exactly
+        // what happened in the simulator: the balance was set and the composer
+        // strip rendered it while the header stayed empty.
+        .onChange(of: onboarding.creditsEnabled) { _, on in
+            if on { Task { await seed() } }
         }
-        .onChange(of: credits.balance) { old, new in
-            apply(old: old, new: new)
-        }
+        .onChange(of: credits.balance) { old, new in apply(old: old, new: new) }
     }
 
-    /// Animate from the old value to the new one, in the direction that
-    /// actually happened.
+    /// Read the balance and show it without animating — the first read is not a
+    /// change, and animating it would show a decrement from nothing on launch.
+    private func seed() async {
+        guard onboarding.creditsEnabled else { return }
+        await credits.refresh()
+        shown = credits.balance
+    }
+
+    /// A minted object: cool gradient, faint bloom, crisp at 12pt.
+    private var bolt: some View {
+        Image(systemName: "bolt.fill")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(
+                LinearGradient(colors: refunding ? [.white, Self.boltTop]
+                                                 : [Self.boltTop, Self.boltBottom],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            // Luminance on the glyph ALONE.
+            .shadow(color: Self.boltTop.opacity(refunding ? 0.9 : 0.45),
+                    radius: refunding ? 6 : 3)
+            .scaleEffect(refunding ? 1.3 : 1.0)
+    }
+
+    /// Animate from the old value to the new one, in the direction that actually
+    /// happened.
     ///
     /// THE TWO DIRECTIONS ARE DELIBERATELY NOT SYMMETRIC. A decrement is the
     /// product taking something the user agreed to spend — it should be quiet,
@@ -97,9 +144,8 @@ struct CreditBadge: View {
                 pulse = false
             }
         } else {
-            // Refund: green flash, a bigger pulse, and it holds long enough to
-            // be noticed by someone who was looking at the failure message
-            // rather than at the header.
+            // Refund: the bolt flares and holds long enough to be noticed by
+            // someone who was looking at the failure message, not the header.
             withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.6)) {
                 shown = new
                 refunding = true

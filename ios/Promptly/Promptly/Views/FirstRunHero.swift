@@ -30,45 +30,38 @@ struct FirstRunHero: View {
     var greetName: String? = nil
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        // THE EMPTY SPACE BELONGS ABOVE. One Spacer, at the top: the rows sit
+        // directly on the composer at normal spacing, the way the reference
+        // does it. Centred between two Spacers they floated mid-screen with a
+        // gap under them, which reads as an unfinished layout on a tall device
+        // and wastes the reachable area on a phone held one-handed.
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 0) {
-                if let name = greetName {
-                    Text("Hey \(name),")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 6)
-                }
-
-                Text("What are we making?")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 18)
-
-                // THREE ROWS, EQUAL WEIGHT. The upload is still first because it
-                // is still the thing most people came to do — but it is a row,
-                // not a billboard, so the other two are discoverable instead of
-                // being drowned by it.
-                actionRow(icon: "video.badge.plus",
-                          title: String(localized: "Upload a video"),
-                          action: onUpload)
-                actionRow(icon: "scissors",
-                          title: String(localized: "Cut a long video into clips")) {
-                    onPrompt(String(localized: "Cut this into short clips for social"))
-                }
-                actionRow(icon: "captions.bubble",
-                          title: String(localized: "Add captions and graphics")) {
-                    onPrompt(String(localized: "Add captions and graphics"))
-                }
+            if let name = greetName {
+                Text("Hey \(name),")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 10)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
 
-            Spacer()
+            // NO HEADING. The reference has none, and the rows already say what
+            // the screen is for — a title above them only restated it louder.
+            actionRow(icon: "video.badge.plus",
+                      title: String(localized: "Upload a video"),
+                      action: onUpload)
+            actionRow(icon: "scissors",
+                      title: String(localized: "Cut a long video into clips")) {
+                onPrompt(String(localized: "Cut this into short clips for social"))
+            }
+            actionRow(icon: "captions.bubble",
+                      title: String(localized: "Add captions and graphics")) {
+                onPrompt(String(localized: "Add captions and graphics"))
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
         .contentShape(Rectangle())
     }
 
