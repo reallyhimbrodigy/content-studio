@@ -3564,6 +3564,36 @@ const server = http.createServer((req, res) => {
       // written against the stated content type, then plans + price). Its own
       // flag so its contribution is readable separately.
       exportgate_two_page: String(process.env.EXPORTGATE_TWO_PAGE || '1') === '1' ? 'on' : 'off',
+      // TWO-STEP PAYWALL — the ROLLBACK half of a client-armed flag (2026-09-02).
+      // The client armed `twoStepPaywallEnabled = true` by DEFAULT precisely
+      // because this key was absent: its parse is `if let v = obj["..."]`, so an
+      // absent key leaves the client default standing. That made the flag
+      // un-turn-off-able from the server — rolling it back needed a client
+      // release. Emitting the key restores the kill switch without a build.
+      // DELIBERATELY MORE TOLERANT than the flags above, and this is the one
+      // place it is worth the inconsistency: this is a ROLLBACK switch, reached
+      // for under pressure, and BOTH single-convention forms have a silent
+      // footgun. Strict '1'/'0' (the neighbours' form) serves "off" for
+      // TWO_STEP_PAYWALL=on. Raw passthrough (`|| 'on'`) serves "1" for
+      // TWO_STEP_PAYWALL=1 — the on-value all 24 neighbours use — which the
+      // client reads as OFF, since it compares the SERVED string to "on".
+      // Either way someone types a reasonable value and gets the opposite of
+      // what they meant, silently. So: only an explicit off-value turns it off.
+      // Kill with any of 0 / off / false / no. Unset, 1, or on all keep it ON.
+      two_step_paywall:
+        /^(0|off|false|no)$/i.test(String(process.env.TWO_STEP_PAYWALL ?? '').trim())
+          ? 'off' : 'on',
+      // DEFERRED AUTH — identical gap, armed the same day (2026-09-02) by the
+      // same absent-key mechanism, and its own client comment names the same
+      // rollback cost: "the server does not emit this key, so turning it OFF
+      // needs the server to start emitting deferred_auth: 'off' — a backend
+      // change, not a client one." Same tolerant off-values as above.
+      // NOTE the purchase guard is NOT gated on this flag — no purchase can
+      // complete without an account whether this is on or off — so flipping it
+      // changes funnel ORDER only, never that invariant.
+      deferred_auth:
+        /^(0|off|false|no)$/i.test(String(process.env.DEFERRED_AUTH ?? '').trim())
+          ? 'off' : 'on',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
