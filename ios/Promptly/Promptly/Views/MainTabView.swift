@@ -16,51 +16,78 @@ struct MainTabView: View {
     @StateObject private var readyStore = ReadyStateStore.shared
     @ObservedObject private var versionAware = VersionAwareness.shared
 
+    /// Whether the banner slot has anything to show.
+    ///
+    /// THE INSET IS ONLY APPLIED WHEN IT HAS CONTENT, and that is the fix for
+    /// the top bar sitting on the status bar. `.safeAreaInset(edge: .top)` does
+    /// not mean "add this above"; it means "this content OCCUPIES the top safe
+    /// area, give the child what is left". Applied unconditionally with an empty
+    /// Group inside, it still consumed the status-bar inset — so EditorView's
+    /// own top inset received zero, and it placed the custom top bar at absolute
+    /// y=0, over the clock and the carrier name.
+    ///
+    /// Two claimants on one edge, the outer one silently redefining what the
+    /// inner one means. Exactly the shape of the keyboard bug directly above:
+    /// there the outer modifier disabled the inner behaviour, here it consumes
+    /// the inner one's space. Same lesson — an edge has one owner at a time.
+    private var hasBanner: Bool {
+        readyStore.featured != nil || versionAware.showBanner
+    }
+
     var body: some View {
+        // The conditional lives here, not inside the inset's content. Putting an
+        // `if` inside the content leaves the modifier applied and the safe area
+        // consumed regardless of what it draws.
+        if hasBanner {
+            editor.safeAreaInset(edge: .top, spacing: 0) { bannerSlot }
+        } else {
+            editor
+        }
+    }
+
+    private var editor: some View {
         EditorView()
             // NO `.ignoresSafeArea(.keyboard)` HERE. It disabled the composer's
             // rise, so the keyboard sat on top of the one control this screen
             // exists for — on an SE that makes the screen unusable. There were
             // TWO of these, here and on AppShell, which is why removing one had
-            // no effect: the outer modifier kept the behaviour alive and the
-            // fix looked like it had failed.
+            // no effect: the outer modifier kept the behaviour alive and the fix
+            // looked like it had failed.
             .background(Color(.systemBackground))
-            // The ready-state card sits ABOVE the editor's own custom top bar (which
-            // is itself a top safe-area inset). It reserves space only while a
-            // featured video exists, so navigation is untouched the rest of the time.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Group {
-                    // SOFT update banner (version awareness): dismissible,
-                    // per-version (a new latest re-shows once), server-driven
-                    // copy. The ready-banner wins the slot when both exist —
-                    // a finished video beats an update nudge.
-                    if readyStore.featured == nil, versionAware.showBanner {
-                        UpdateBanner(
-                            notes: versionAware.notes,
-                            onUpdate: { versionAware.openAppStore() },
-                            onDismiss: { versionAware.dismissBanner() }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    if let job = readyStore.featured {
-                        ReadyVideoBanner(
-                            job: job,
-                            extraCount: readyStore.extraCount,
-                            onOpen: { readyStore.markSeen(job.id) },
-                            onDismiss: { readyStore.dismissFeatured() }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
-                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: readyStore.featured?.id)
-            }
-            // Compute the featured unviewed video on first mount…
             .task { await readyStore.refresh() }
-            // …and again on every foreground resume, so a render that finished while
-            // the app was backgrounded surfaces the moment the user returns.
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 Task { await readyStore.refresh() }
             }
+    }
+
+    /// The ready-state card sits ABOVE the editor's own custom top bar (which is
+    /// itself a top safe-area inset).
+    @ViewBuilder
+    private var bannerSlot: some View {
+        Group {
+            // SOFT update banner (version awareness): dismissible, per-version
+            // (a new latest re-shows once), server-driven copy. The ready-banner
+            // wins the slot when both exist — a finished video beats an update
+            // nudge.
+            if readyStore.featured == nil, versionAware.showBanner {
+                UpdateBanner(
+                    notes: versionAware.notes,
+                    onUpdate: { versionAware.openAppStore() },
+                    onDismiss: { versionAware.dismissBanner() }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let job = readyStore.featured {
+                ReadyVideoBanner(
+                    job: job,
+                    extraCount: readyStore.extraCount,
+                    onOpen: { readyStore.markSeen(job.id) },
+                    onDismiss: { readyStore.dismissFeatured() }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: readyStore.featured?.id)
     }
 }
 

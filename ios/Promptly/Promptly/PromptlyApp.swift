@@ -642,6 +642,20 @@ struct PromptlyApp: App {
                 let args = ProcessInfo.processInfo.arguments
                 if args.contains("-firstRunReset") { FirstRun.reset() }
                 if args.contains("-firstRunSeen") { FirstRun.markSeen() }
+                // Measure, do not guess. Two rounds of safe-area fixes changed
+                // nothing visible, which means the assumption about WHAT the app
+                // is being given is wrong. Print the actual insets.
+                if args.contains("-probeInsets") {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(4))
+                        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                        for sc in scenes {
+                            for w in sc.windows {
+                                print("INSETPROBE window=\(type(of: w)) frame=\(w.frame) safeArea=\(w.safeAreaInsets) key=\(w.isKeyWindow)")
+                            }
+                        }
+                    }
+                }
                 #endif
                 // Minimum LaunchView display time so the entrance
                 // animation always completes. Runs in parallel with

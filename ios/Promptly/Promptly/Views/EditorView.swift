@@ -181,7 +181,6 @@ struct EditorView: View {
             // toolbar bought nothing once the title was gone. Plain HStack on the
             // unified black: hamburger · pill · new-chat.
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
             .alert(String(localized: "Couldn't open that video"), isPresented: $showPickerError) {
                 Button(String(localized: "Try again")) { showVideoPicker = true }
                 Button(String(localized: "Not now"), role: .cancel) {}
@@ -251,7 +250,7 @@ struct EditorView: View {
                     } else {
                         inputText = trimmedExisting + " " + transcript
                     }
-                    isInputFocused = true
+                    focusInput()
                 }
             }
             .onAppear {
@@ -265,7 +264,7 @@ struct EditorView: View {
                     appState.pendingReedit = nil
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    isInputFocused = true
+                    focusInput()
                 }
             }
             .task {
@@ -293,7 +292,7 @@ struct EditorView: View {
                 if let s = newSession {
                     reeditSession = s
                     appState.pendingReedit = nil
-                    isInputFocused = true
+                    focusInput()
                 }
             }
             // Post-auth landing (build 217): landOnChat() bumps this token on
@@ -302,7 +301,7 @@ struct EditorView: View {
             // rises).
             .onChange(of: appState.composerFocusToken) { _, _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    isInputFocused = true
+                    focusInput()
                 }
             }
             .onChange(of: chatStore.activeChatId) { oldId, newId in
@@ -385,11 +384,31 @@ struct EditorView: View {
                 }
             }
         }
+        // OUTSIDE the NavigationStack, deliberately.
+        //
+        // Applied inside, this landed in the NavigationStack's CONTENT area —
+        // and with the navigation bar hidden that area starts at y=0, so the
+        // custom top bar drew over the clock and the carrier name. The window
+        // itself reports a 20pt top inset on an SE; it was being consumed
+        // before this modifier ever saw it. Out here the inset is the real one.
+        .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
     }
 
     @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - Keyboard
+
+    /// Raise the keyboard, unless a capture run asked us not to.
+    ///
+    /// `-noAutoFocus` was honoured at ONE of five focus sites, so the keyboard
+    /// came up anyway and the flag looked broken. Routing every site through one
+    /// function is the only way a switch like this stays true.
+    private func focusInput() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-noAutoFocus") { return }
+        #endif
+        isInputFocused = true
+    }
 
     /// Force-resign whatever responder currently owns the keyboard.
     /// `@FocusState` mutations inside `withAnimation` are unreliable
@@ -558,7 +577,7 @@ struct EditorView: View {
         loadedChatId = chat.id
         chatStore.activeChatId = chat.id
         injectWelcomeIfEmpty()
-        isInputFocused = true
+        focusInput()
     }
 
     /// Single point of truth for the onboarding welcome message. Called
@@ -1203,7 +1222,7 @@ struct EditorView: View {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             inputText = vibe
-                            isInputFocused = true
+                            focusInput()
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "sparkles")
@@ -2488,7 +2507,7 @@ struct EditorView: View {
             return nil
         }
         persistMessages()
-        isInputFocused = true
+        focusInput()
     }
 
     /// Common streaming-into-an-existing-message helper used by
@@ -2940,7 +2959,7 @@ struct EditorView: View {
             let nudge = ChatMessage(role: .assistant, content: "")
             let nudgeId = nudge.id
             messages.append(nudge)
-            isInputFocused = true
+            focusInput()
             Task { @MainActor in
                 await typewriteReveal(nudgeText, intoMessageId: nudgeId)
             }
@@ -3348,7 +3367,7 @@ struct EditorView: View {
                                     await MainActor.run {
                                         pendingVibeEditMessageId = mid
                                         inputText = vibe
-                                        isInputFocused = true
+                                        focusInput()
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     }
                                 }
@@ -3573,7 +3592,7 @@ struct EditorView: View {
                     } else if let original = messages.first(where: { $0.id == msgId })?.originalVibe {
                         inputText = original
                     }
-                    isInputFocused = true
+                    focusInput()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
