@@ -115,11 +115,9 @@ struct FirstLaunchPaywallView: View {
                                  set: { shown in if !shown { finish() } }),
             reason: .firstLaunch
         )
-        .onAppear {
-            Analytics.track("upgrade_wall_viewed",
-                            props: (["context": "first_launch"] as [String: Any])
-                                .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
-        }
+        // NO EMITTER HERE. This view renders TwoStepPaywall, which emits
+        // `upgrade_wall_viewed` with this entry's own `reasonKey` — a second
+        // emitter would double-count every view on this surface.
     }
 
     private func finish() {

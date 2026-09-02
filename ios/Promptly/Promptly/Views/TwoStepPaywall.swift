@@ -679,6 +679,18 @@ struct TwoStepPaywall: View {
     @Binding var isPresented: Bool
     let reason: PaywallReason
 
+    /// `-preselectTier <allowance>` — DEBUG only, nil in Release, so the
+    /// shipping paywall always opens on its own recommended tier.
+    static var debugPreselectedTier: Int? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-preselectTier"), i + 1 < args.count else { return nil }
+        return Int(args[i + 1])
+        #else
+        return nil
+        #endif
+    }
+
     @ObservedObject private var subscription = SubscriptionService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
 
@@ -748,10 +760,46 @@ struct TwoStepPaywall: View {
                     $0.storeProduct.productIdentifier == id
                 }) else { return }
                 Task {
-                    let ok = await subscription.purchase(pkg, context: "two_step_paywall")
+                    // CONTEXT IS THE ENTRY, not the view. "two_step_paywall"
+                    // named the screen, so every purchase from every entry
+                    // collapsed into one bucket and could not be compared with
+                    // the view events, which split by entry. A funnel needs both
+                    // ends keyed the same way or the ratio is meaningless.
+                    // Kept on ONE line: purchase-context-gate scans the call
+                    // line for `context:`, so wrapping the argument hid it and
+                    // read as an unstamped purchase. The gate is right — an
+                    // unstamped purchase is invisible in the by-surface cut —
+                    // so the formatting moves, not the rule.
+                    let ok = await subscription.purchase(pkg, context: PaywallView.reasonKey(for: reason))
                     if ok { isPresented = false }
                 }
-            })
+            },
+            // APP REVIEW ARTIFACT ONLY (DEBUG), nil in Release. Apple wants the
+            // purchase in context — Max's tier with its real plan options — and
+            // simctl has no tap primitive to select the Max segment, so this
+            // preselects a tier by allowance and makes the capture deterministic.
+            //
+            // It drives the REAL paywall on REAL StoreKit prices, which is the
+            // point: the posed harness states run on HarnessPaywallMock's
+            // hardcoded prices, and a review screenshot showing prices Apple
+            // cannot match against the product is worse than none.
+            initialTierAllowance: Self.debugPreselectedTier)
+        // THE SHARED PAYWALL WAS SILENT. It emitted no view event at all, while
+        // the legacy PaywallView it replaces emits `upgrade_wall_viewed` — so
+        // the moment this ships, every paywall view metric would drop to the
+        // surfaces that still had their own emitters and read as a collapse.
+        //
+        // Emitted HERE rather than in each host, because the three wrappers
+        // (first launch, trial wall, second paywall) each had their own
+        // emitter and would otherwise double-count every view now that they
+        // render this view. One screen, one event, keyed by the same
+        // `reasonKey` the legacy paywall uses — so the two are directly
+        // comparable across the cutover instead of restarting the series.
+        .onAppear {
+            Analytics.track("upgrade_wall_viewed",
+                            props: (["context": PaywallView.reasonKey(for: reason)] as [String: Any])
+                                .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
+        }
         .task { if packages.isEmpty { await subscription.refreshOfferings() } }
     }
 }

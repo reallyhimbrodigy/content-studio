@@ -68,11 +68,9 @@ struct SecondPaywallView: View {
             isPresented: Binding(get: { true }, set: { shown in if !shown { onDone() } }),
             reason: .secondPaywall
         )
-        .onAppear {
-            Analytics.track("upgrade_wall_viewed",
-                            props: (["context": "post_onboarding"] as [String: Any])
-                                .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
-        }
+        // NO EMITTER HERE. This view renders TwoStepPaywall, which emits
+        // `upgrade_wall_viewed` with this entry's own `reasonKey` — a second
+        // emitter would double-count every view on this surface.
     }
 
 }
