@@ -28,6 +28,8 @@ struct PaywallTierOption: Identifiable, Equatable {
     /// number for a meter that is not running is a claim about something the
     /// user cannot spend.
     let creditsLine: String?
+    /// The same allowance in videos, small, beneath the credits headline.
+    let videosLine: String?
     /// This column's own bullets. TWO INDEPENDENT COLUMNS: nothing is shared,
     /// each side is a complete pitch read top to bottom, so a reader can take in
     /// one column and ignore the other. A shared list above the cards made
@@ -201,6 +203,8 @@ enum PaywallMapping {
                 title: title,
                 creditsLine: ProBenefits.creditsLine(allowance: allowance,
                                                      creditsEnabled: creditsEnabled),
+                videosLine: ProBenefits.videosLine(allowance: allowance,
+                                                   creditsEnabled: creditsEnabled),
                 features: features,
                 monthlyPrice: cardPrice(productsInTier(products, allowance)))
         }
@@ -513,9 +517,15 @@ struct PaywallLayout: View {
             if let credits = tier.creditsLine {
                 Text(credits)
                     .cType(14, .semibold)
-                    .foregroundColor(.white.opacity(0.65))
+                    .foregroundColor(.white.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 2)
+            }
+            if let videos = tier.videosLine {
+                Text(videos)
+                    .cType(11)
+                    .foregroundColor(.white.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -537,13 +547,38 @@ struct PaywallLayout: View {
             }
             .padding(.top, 10)
 
-            Spacer(minLength: 8)
+            // SPACERS BOTH SIDES. With one spacer the durations were pinned to
+            // the bottom, so the shorter card — Max, with three bullets against
+            // Pro's five — showed a long gap that read as unfinished. Two
+            // spacers split the slack, centring the block in whatever room the
+            // taller card leaves. On the full card they collapse to nothing.
+            Spacer(minLength: 6)
 
             VStack(spacing: 4) {
                 ForEach(rows) { row in
                     durationRow(row)
                 }
             }
+
+            // 3. THE BENEFIT, not the legal line. "Auto-renews until cancelled"
+            // is a disclosure; this is a reason to say yes, so it sits with the
+            // plan rather than in the fine print.
+            Text("Cancel anytime · no commitment")
+                .cType(9)
+                .foregroundColor(.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+
+            // 1. SOCIAL PROOF, on Max only.
+            if tier.isMax {
+                Text("★ 4.8 · 25,000+ creators")
+                    .cType(9, .semibold)
+                    .foregroundColor(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 3)
+            }
+
+            Spacer(minLength: 0)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -606,7 +641,13 @@ struct PaywallLayout: View {
                 // price over twelve, rounded rather than truncated: rounding up
                 // never understates what someone will pay.
                 if option.percentOff != nil || option.perMonthLine != nil {
-                    HStack(spacing: 5) {
+                    // STACKED, NOT INLINE. Side by side in a column this
+                    // narrow, Max's line rendered "$66.67/mo, billed yea…" —
+                    // cut mid-word on the sentence whose whole job is making
+                    // the yearly plan legible as the cheaper one. A clipped
+                    // price reads as an app that cannot state its own terms,
+                    // and it is the second time this exact line has truncated.
+                    VStack(alignment: .leading, spacing: 2) {
                         if let pct = option.percentOff {
                             Text("\(pct)% OFF")
                                 .cType(9, .heavy)
@@ -619,11 +660,10 @@ struct PaywallLayout: View {
                             Text(perMonth)
                                 .cType(9)
                                 .foregroundColor(.white.opacity(0.6))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 2)
                 }
             }

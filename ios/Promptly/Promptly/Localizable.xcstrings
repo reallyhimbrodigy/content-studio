@@ -5314,6 +5314,83 @@
         }
       }
     },
+    "Cancel anytime · no commitment": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ألغِ في أي وقت · بلا التزام"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "যেকোনো সময় বাতিল · কোনো বাধ্যবাধকতা নেই"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jederzeit kündbar · keine Bindung"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel anytime · no commitment"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancela cuando quieras · sin compromiso"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulez quand vous voulez · sans engagement"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कभी भी रद्द करें · कोई बंधन नहीं"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batalkan kapan saja · tanpa ikatan"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いつでも解約可 · 縛りなし"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जुनसुकै बेला रद्द · कुनै बाध्यता छैन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancele quando quiser · sem compromisso"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کسی بھی وقت منسوخ کریں · کوئی پابندی نہیں"
+          }
+        }
+      }
+    },
     "Cancel render": {
       "localizations": {
         "ar": {
@@ -34033,7 +34110,287 @@
       }
     },
     "·": {},
-    "“%@”": {}
+    "“%@”": {},
+    "≈ %lld videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld فيديو"
+                }
+              }
+            }
+          }
+        },
+        "bn": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld ভিডিও"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld ভিডিও"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld Video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld Videos"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld videos"
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld videos"
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld vidéo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld vidéos"
+                }
+              }
+            }
+          }
+        },
+        "hi": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld वीडियो"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld वीडियो"
+                }
+              }
+            }
+          }
+        },
+        "id": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld video"
+                }
+              }
+            }
+          }
+        },
+        "ja": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld本の動画"
+                }
+              }
+            }
+          }
+        },
+        "ne": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld भिडियो"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld भिडियो"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld vídeos"
+                }
+              }
+            }
+          }
+        },
+        "ur": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld ویڈیو"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "≈ %lld ویڈیوز"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "★ 4.8 · 25,000+ creators": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ ٤٫٨ · أكثر من ٢٥٬٠٠٠ صانع محتوى"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ ৪.৮ · ২৫,০০০+ ক্রিয়েটর"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4,8 · über 25.000 Creator"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4.8 · 25,000+ creators"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4,8 · más de 25.000 creadores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4,8 · plus de 25 000 créateurs"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4.8 · 25,000+ क्रिएटर"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4,8 · 25.000+ kreator"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4.8 · クリエイター25,000人以上"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ ४.८ · २५,०००+ सर्जक"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4,8 · mais de 25.000 criadores"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "★ 4.8 · 25,000+ تخلیق کار"
+          }
+        }
+      }
+    }
   },
   "version": "1.0"
 }

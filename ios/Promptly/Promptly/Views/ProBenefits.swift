@@ -201,6 +201,18 @@ enum ProBenefits {
         return String(localized: "\(allowance) credits/month")
     }
 
+    /// The same allowance in videos, small, under the credits headline.
+    ///
+    /// CREDITS STAY THE HEADLINE — the bigger number carries the value — and
+    /// this makes it evaluable, because "200 credits" alone is not a quantity
+    /// anyone can price. Derived from `creditsPerVideo`, so changing either the
+    /// allowance or the cost of a render moves this line with it; the two can
+    /// never disagree the way a written-out "≈ 20 videos" eventually would.
+    static func videosLine(allowance: Int, creditsEnabled: Bool) -> String? {
+        guard creditsEnabled, allowance > 0 else { return nil }
+        return String(localized: "≈ \(monthlyVideos(credits: allowance)) videos")
+    }
+
     /// `core` is now COMPUTED, not a constant, and that is the whole fix.
     ///
     /// `headlineVideoClaim` existed with the right logic and ZERO CALLERS — the
