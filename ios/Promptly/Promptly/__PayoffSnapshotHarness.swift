@@ -207,6 +207,13 @@ struct PayoffSnapshotHarnessView: View {
                     OnboardingState.shared.debugForceFlag("exportgate_personalization")
                     OnboardingState.shared.v2VideoType = "podcast"
                 }
+            case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
+                // NOT TwoStepPaywall directly. This renders the switch every
+                // entry point goes through, with no flag forced, so what appears
+                // is what a user tapping Upgrade gets. Rendering the two-step
+                // view here would prove only that the view exists.
+                UpgradePaywall(isPresented: .constant(true), reason: .manual)
+            }
             case 22: bleed("step one — credits dark") {
                 TwoStepPaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),

@@ -147,7 +147,10 @@ struct EditorView: View {
                     // experiment is on, because credits are the model being
                     // tested; the daily quota returns the moment it is off.
                     if onboardingState.creditsEnabled {
-                        CreditBalanceStrip()
+                        // REMOVED: "3 videos left". The header badge is the
+                        // single counter, and this said the same allowance in a
+                        // different unit directly above the composer — the same
+                        // duplication as the "N today" capsule.
                     } else {
                         UsageMeterStrip { appState.presentPaywall(.manual) }
                     }
@@ -1354,34 +1357,38 @@ struct EditorView: View {
             // guessed number.
             Spacer(minLength: 8)
 
-            // TOP RIGHT, immediately left of the new-chat button — the slot the
-            // account avatar vacated. A balance belongs with the account
-            // controls, not wedged against the upgrade action, and the two
-            // colours read as separate objects rather than one two-tone widget.
-            CreditBadge()
-
-            // The old free-tier "N today" capsule is gone with the loud pill.
-            // It counted RENDERS while the meter counts CREDITS, so with credits
-            // armed the header would have carried two different units for the
-            // same allowance — the drift the benefits gate exists to catch, in
-            // the one place both numbers are visible at once. CreditBadge above
-            // is the single counter.
-
+            // TIGHT against the new-chat button, so the right side reads as ONE
+            // group. With the shell's own spacing between them the badge floated
+            // in the middle of the bar and looked like a third, unrelated
+            // element rather than part of the trailing controls.
             Spacer(minLength: 8)
 
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                Self.dismissKeyboard()
-                Task { await startNewChat() }
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .contentShape(Rectangle())
+            // ONE TRAILING GROUP. The badge sits tight against the new-chat
+            // button so the right side reads as a single cluster; with the
+            // stack's own spacing between them it floated mid-bar and looked
+            // like a third, unrelated element.
+            //
+            // The old free-tier "N today" capsule is gone from here with the
+            // loud pill: it counted RENDERS while the meter counts CREDITS, so
+            // the header would have carried two units for one allowance in the
+            // one place both are visible at once.
+            HStack(spacing: 2) {
+                CreditBadge()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Self.dismissKeyboard()
+                    Task { await startNewChat() }
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New chat")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("New chat")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 2)

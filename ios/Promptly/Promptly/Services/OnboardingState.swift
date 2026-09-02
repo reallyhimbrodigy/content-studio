@@ -108,7 +108,18 @@ final class OnboardingState: ObservableObject {
     /// The paywall as two decisions (tier, then duration) instead of one
     /// four-product list. Dark until flipped; off = today's PaywallView,
     /// byte-identical.
-    @Published private(set) var twoStepPaywallEnabled = false
+    /// ARMED (2026-09-02). Every upgrade entry point — the pill, the usage
+    /// meter, re-edit, the export gate, daily renders, daily chats, concurrency,
+    /// Account — routes through `UpgradePaywall`, which reads this. On means all
+    /// of them show the two-step paywall.
+    ///
+    /// Defaulting true is the arming mechanism because THE SERVER DOES NOT EMIT
+    /// THIS KEY. `/api/health` has no `two_step_paywall`, so the parse below
+    /// leaves it alone and the default stands. Turning it back OFF therefore
+    /// needs the server to start emitting `two_step_paywall: "off"` — a backend
+    /// change, not a client one. That is the honest cost of arming this way and
+    /// it should be known before it is needed, not discovered during a rollback.
+    @Published private(set) var twoStepPaywallEnabled = true
     /// Deferred auth: the funnel runs BEFORE sign-in (paywall, questions,
     /// reveal, chat), and an account is asked for at the first action that needs
     /// one. Dark until flipped; off = today's auth-first order, unchanged.
@@ -192,7 +203,14 @@ final class OnboardingState: ObservableObject {
             badRenderSuppressorEnabled = (obj?["bad_render_suppressor"] as? String) == "on"
             annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
             offerSurfacingEnabled = (obj?["offer_surfacing"] as? String) == "on"
-            twoStepPaywallEnabled = (obj?["two_step_paywall"] as? String) == "on"
+            // ONLY WHEN THE SERVER ACTUALLY SAYS SOMETHING. `== "on"` on an
+            // absent key is false, so the old line turned this OFF on the first
+            // refresh — a client default could never have survived. Every other
+            // flag here is server-emitted, so none of them hit this; this is the
+            // first one armed from the client.
+            if let v = obj?["two_step_paywall"] as? String {
+                twoStepPaywallEnabled = v == "on"
+            }
             deferredAuthEnabled = (obj?["deferred_auth"] as? String) == "on"
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
@@ -252,7 +270,9 @@ final class OnboardingState: ObservableObject {
             badRenderSuppressorEnabled = UserDefaults.standard.bool(forKey: "bad_render_suppressor_enabled")
             annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
             offerSurfacingEnabled = UserDefaults.standard.bool(forKey: "offer_surfacing_enabled")
-            twoStepPaywallEnabled = UserDefaults.standard.bool(forKey: "two_step_paywall_enabled")
+            if UserDefaults.standard.object(forKey: "two_step_paywall_enabled") != nil {
+                twoStepPaywallEnabled = UserDefaults.standard.bool(forKey: "two_step_paywall_enabled")
+            }
             deferredAuthEnabled = UserDefaults.standard.bool(forKey: "deferred_auth_enabled")
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
