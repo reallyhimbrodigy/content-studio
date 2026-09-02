@@ -170,14 +170,16 @@ enum ProBenefits {
     /// relationship alone rather than inventing a factor.
     static func maxCardList(proAllowance: Int?, maxAllowance: Int?,
                             creditsEnabled: Bool) -> [String] {
-        let lead: String = {
-            if let m = usageMultiple(proAllowance: proAllowance, maxAllowance: maxAllowance,
-                                     creditsEnabled: creditsEnabled) {
-                return String(localized: "Everything in Pro, plus \(m)x the usage")
-            }
-            return String(localized: "Everything in Pro")
-        }()
-        return [lead, String(localized: "Early access to our latest features")]
+        var out = [String(localized: "Everything in Pro"),
+                   String(localized: "Early access to our newest features")]
+        // The multiple is DERIVED and disappears with the meter: without credits
+        // there is nothing for Max to be a multiple OF, so the line is dropped
+        // rather than a factor invented.
+        if let m = usageMultiple(proAllowance: proAllowance, maxAllowance: maxAllowance,
+                                 creditsEnabled: creditsEnabled) {
+            out.append(String(localized: "\(m)x usage credits"))
+        }
+        return out
     }
 
     /// The usage multiple, DERIVED from the two allowances rather than typed, so

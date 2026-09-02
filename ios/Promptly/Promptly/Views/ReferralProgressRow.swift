@@ -33,6 +33,10 @@ struct ReferralProgressRow: View {
     /// surface meeting someone who has not shared yet: "0 of 3 friends joined"
     /// as an opening line states a failure before it states a reason to act.
     var style: Style = .progress
+    /// Drop the container. On a surface where nothing else has a box — the
+    /// paywall, where the only rounded element is the Continue button — a
+    /// rounded card around this row is the one thing that looks pasted on.
+    var chromeless: Bool = false
 
     enum Style { case progress, invite }
 
@@ -95,13 +99,17 @@ struct ReferralProgressRow: View {
                     .cType(17, .semibold)
                     .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, chromeless ? 0 : 14)
+            .padding(.vertical, chromeless ? 4 : 12)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                Group {
+                    if !chromeless {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    }
+                }
             )
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)

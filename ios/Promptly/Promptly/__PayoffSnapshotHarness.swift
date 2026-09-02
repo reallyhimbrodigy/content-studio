@@ -234,90 +234,97 @@ struct PayoffSnapshotHarnessView: View {
                 UpgradePaywall(isPresented: .constant(true), reason: .manual)
             }
             case 22: bleed("step one — credits dark") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
                     referralSource: "harness")
             }
             case 23: bleed("Max selected") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
-                    referralSource: "harness",
-                    initialTier: 1000)
+                    referralSource: "harness")
             }
             case 24: bleed("Pro selected") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
-                    referralSource: "harness",
-                    initialTier: 200)
+                    referralSource: "harness")
             }
             case 25: bleed("PRO selected, viewer holds MAX — no referral") {
                 // showsReferral stays TRUE. The row must disappear on its own,
                 // through ReferralService.shouldOffer, or the suppression is
                 // not actually working — passing false here would prove
                 // nothing except that false hides a row.
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
-                    referralSource: "harness",
-                    initialTier: 200)
+                    referralSource: "harness")
             }
             case 28: bleed("step one CREDITS ARMED") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
                     referralSource: "harness")
             }
             case 29: bleed("Max selected CREDITS ARMED") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true,
                     referralSource: "harness",
-                    initialTier: 1000)
+                    initialSelectionId: "promptly_pro_yearly")
             }
             case 30: FitProbe(label: "FIT step one CREDITS ARMED") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true, referralSource: "harness")
             }
             case 26: FitProbe(label: "FIT step one") {
-                TwoStepPaywallLayout(
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
+                    maxFeatures: HarnessPaywallMock.maxLines,
                     showsReferral: true, referralSource: "harness")
             }
-            case 27: FitProbe(label: "FIT Max selected") {
-                TwoStepPaywallLayout(
+            case 27: FitProbe(label: "FIT with a duration selected") {
+                PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
                     durations: { HarnessPaywallMock.durations($0) },
                     sharedFeatures: HarnessPaywallMock.shared,
-                    showsReferral: true, referralSource: "harness", initialTier: 1000)
+                    maxFeatures: HarnessPaywallMock.maxLines,
+                    showsReferral: true, referralSource: "harness",
+                    initialSelectionId: "promptly_pro_yearly")
             }
             case 16: OnboardingQuestionView(question: .audienceV2,
                                             progress: (1, 3), onSkip: {}) { _ in }
@@ -847,6 +854,12 @@ private enum HarnessPaywallMock {
     ]
 
     /// The shared list, from the same mapping the app uses.
+    @MainActor
+    static var maxLines: [String] {
+        PaywallMapping.maxFeatures(products,
+                                   creditsEnabled: OnboardingState.shared.creditsEnabled)
+    }
+
     @MainActor
     static var shared: [String] {
         PaywallMapping.sharedFeatures(products,

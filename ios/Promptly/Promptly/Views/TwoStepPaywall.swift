@@ -28,11 +28,12 @@ struct PaywallTierOption: Identifiable, Equatable {
     /// number for a meter that is not running is a claim about something the
     /// user cannot spend.
     let creditsLine: String?
-    // NO PER-CARD FEATURE LIST. The benefits are shared and sit ABOVE the
-    // cards now, so each card carries only what actually differs between the
-    // tiers: the allowance and the price. That is also what fixes the asymmetry
-    // — Pro's list boxed inside its card while Max sat beside it in plain text
-    // made the upsell read as the lesser product.
+    /// This column's own bullets. TWO INDEPENDENT COLUMNS: nothing is shared,
+    /// each side is a complete pitch read top to bottom, so a reader can take in
+    /// one column and ignore the other. A shared list above the cards made
+    /// "Everything in Pro" appear inside a list of Pro's own features, which
+    /// only parsed once it was captioned — the columns say it themselves now.
+    let features: [String]
     /// The MONTHLY price, storefront-formatted.
     ///
     /// Both cards quote the same billing period on purpose. A weekly price
@@ -168,6 +169,16 @@ enum PaywallMapping {
                                  monthlyCredits: tierAllowances(products).first)
     }
 
+    /// What Max adds, shown immediately above the cards.
+    @MainActor
+    static func maxFeatures(_ products: [PaywallProduct], creditsEnabled: Bool) -> [String] {
+        let allowances = tierAllowances(products)
+        guard allowances.count > 1 else { return [] }
+        return ProBenefits.maxCardList(proAllowance: allowances.first,
+                                       maxAllowance: allowances.last,
+                                       creditsEnabled: creditsEnabled)
+    }
+
     @MainActor
     static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool) -> [PaywallTierOption] {
         let allowances = tierAllowances(products)
@@ -176,8 +187,13 @@ enum PaywallMapping {
         return allowances.map { allowance in
             let isMax = allowances.count > 1 && allowance == maxAllowance
             // Claims come from ProBenefits in both cases — the one file allowed
-            // No per-card list: the benefits are shared above the cards, so a
-            // card is a name, an allowance and a price.
+            // Claims from ProBenefits, the one file allowed to write a promise.
+            let features: [String] = isMax
+                ? ProBenefits.maxCardList(proAllowance: proAllowance,
+                                          maxAllowance: maxAllowance,
+                                          creditsEnabled: creditsEnabled)
+                : ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
+                                           monthlyCredits: allowance)
             let title = isMax ? String(localized: "Max") : String(localized: "Pro")
             return PaywallTierOption(
                 allowance: allowance,
@@ -185,6 +201,7 @@ enum PaywallMapping {
                 title: title,
                 creditsLine: ProBenefits.creditsLine(allowance: allowance,
                                                      creditsEnabled: creditsEnabled),
+                features: features,
                 monthlyPrice: cardPrice(productsInTier(products, allowance)))
         }
     }
@@ -241,121 +258,161 @@ enum PaywallMapping {
 /// per-territory percentages floored from live prices, intro-eligibility gating
 /// that fails closed, the referral row, twelve languages, and claims that flip
 /// with the credits flag. None of that survives a template.
-struct TwoStepPaywallLayout: View {
+struct PaywallLayout: View {
     let title: String
     let tiers: [PaywallTierOption]
-    /// Durations for the chosen tier. Called only when a tier is chosen.
+    /// Durations for a tier, shown INSIDE that tier's card.
     let durations: (Int) -> [PaywallDurationOption]
-    /// Whether to show the referral row. Off when the loop is unavailable.
-    /// The benefits BOTH tiers include, shown once above the cards.
+    /// The benefits both tiers include.
     let sharedFeatures: [String]
+    /// What Max adds, immediately above the cards.
+    let maxFeatures: [String]
     let showsReferral: Bool
     let referralSource: String
     var onClose: () -> Void = {}
     var onPurchase: (String) -> Void = { _ in }
 
-    /// Starts the layout with a tier already chosen. Exists so the fit probe can
-    /// measure the EXPANDED state at all — the layout opens unexpanded, so a
-    /// probe that supplies durations and never selects anything measures the
-    /// collapsed screen and reports a comfortable PASS for a state it never
-    /// rendered. That is not hypothetical; it is what the first step-two
-    /// measurement did.
-    var initialTier: Int? = nil
+    /// Capture aid: start with a duration already chosen, so the CTA state can
+    /// be photographed. A real user reaches it by tapping.
+    var initialSelectionId: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var chosenTier: Int?
+    /// ONE selection across BOTH cards — the tier and the duration are the same
+    /// decision now, not two. Nil means nothing chosen and no CTA.
     @State private var selectedId: String?
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
-            // FILLS THE SCREEN, and the flexible room is placed on purpose.
-            // Two equal spacers made the page a band floating in the middle
-            // with gutters above and below; a spacer at the TOP then claimed an
-            // equal share of the slack and left a dead zone over the mark. So
-            // the column starts high on a fixed lead, and the growing space
-            // sits BETWEEN the groups — title to list, list to cards — where it
-            // reads as breathing room instead of a hole.
-            if chosenTier == nil {
-                Spacer(minLength: 0).frame(height: 12)
+            Image("PromptlyLogo")
+                .renderingMode(.original)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 34, height: 34)
+                .padding(.bottom, 8)
 
-                Image("PromptlyLogo")
-                    .renderingMode(.original)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 38, height: 38)
-                    .padding(.bottom, 10)
+            Text(title)
+                .cType(22, .bold)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
 
-                Text(title)
-                    .cType(24, .bold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-
-                Spacer(minLength: 16)
-
-                sharedBenefits
-                    .padding(.horizontal, 22)
-
-                Spacer(minLength: 16)
-            }
-
+            // The columns start under the title and TAKE the height. They used
+            // to be content-sized with spacers either side, so the pitch sat in
+            // the bottom 40% under an empty band and every element had been
+            // shrunk to fit a space that was never the constraint.
             tierCards
+                .padding(.top, 10)
 
-            if let tier = chosenTier {
-                durationList(for: tier)
-                    .padding(.top, 10)
-                    .transition(reduceMotion ? .opacity
-                                : .move(edge: .top).combined(with: .opacity))
-            }
-
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
             if showsReferralNow {
-                // PRO ONLY, AND ONLY ONCE CHOSEN. The reward is a week of Pro,
-                // so offering it beside Max is offering a downgrade as a prize,
-                // and offering it before a tier is picked competes with the
-                // decision the screen is asking for.
-                ReferralProgressRow(source: referralSource, compact: true, style: .invite)
+                ReferralProgressRow(source: referralSource, compact: true,
+                                    style: .invite, chromeless: true)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 6)
             }
 
-            footer
+            // NO CTA UNTIL A CHOICE IS MADE. A button that sits there greyed is
+            // a control answering a question the cards are still asking; one
+            // that ARRIVES is a response to something the user did. It names the
+            // purchase, so the last thing before a charge says what is being
+            // charged for.
+            if let pick = selectedPick {
+                VStack(spacing: 5) {
+                    Button {
+                        onPurchase(pick.option.id)
+                    } label: {
+                        Text("Continue to Purchase · \(pick.tier.title) \(pick.option.label)")
+                            .cType(16, .bold)
+                            .foregroundColor(.black)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Capsule().fill(Color.white))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text(TrialCopy.fineprint)
+                        .cType(9)
+                        .foregroundColor(.white.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .transition(reduceMotion ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
-                   value: chosenTier)
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85),
+                   value: selectedId)
         .background(Color.black.ignoresSafeArea())
-        .onAppear {
-            if let t = initialTier, chosenTier == nil { select(t) }
-        }
+        .onAppear { if selectedId == nil { selectedId = initialSelectionId } }
     }
 
-    /// ONE LIST, ABOVE THE CARDS, in the checkmark treatment the rest of the
-    /// product uses for a promise.
-    ///
-    /// Boxed inside Pro's card these read as Pro's features and Max's absence of
-    /// them read as less product — the opposite of what an upsell should do.
-    /// Shared, they are what BOTH tiers include, and the cards are left carrying
-    /// only the difference: 200 credits against 1,000, at two prices. That
-    /// comparison is then the thing the eye lands on, which is the whole point
-    /// of putting two tiers side by side.
-    private var sharedBenefits: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ForEach(sharedFeatures, id: \.self) { line in
-                HStack(alignment: .top, spacing: 10) {
+    /// The chosen row and the card it belongs to.
+    private var selectedPick: (tier: PaywallTierOption, option: PaywallDurationOption)? {
+        guard let id = selectedId else { return nil }
+        for tier in tiers {
+            if let opt = durations(tier.allowance).first(where: { $0.id == id }) {
+                return (tier, opt)
+            }
+        }
+        return nil
+    }
+
+    private var showsReferralNow: Bool {
+        guard showsReferral, let pick = selectedPick else { return false }
+        return !pick.tier.isMax
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onClose()
+            } label: {
+                ZStack {
+                    Circle().fill(Color.white).frame(width: 30, height: 30)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.black)
+                }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+    }
+
+    // MARK: Bullets
+
+    /// The checkmark treatment the rest of the product uses for a promise. The
+    /// bullets ARE the sell, so when this screen runs out of room the spacing
+    /// gives before they do.
+    private func bullets(_ lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(lines, id: \.self) { line in
+                HStack(alignment: .top, spacing: 9) {
                     ZStack {
-                        Circle().fill(Color.white).frame(width: 18, height: 18)
+                        Circle().fill(Color.white).frame(width: 16, height: 16)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .heavy))
+                            .font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.black)
                     }
                     Text(line)
-                        .cType(14, .medium)
+                        .cType(13, .medium)
                         .foregroundColor(.white)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -365,259 +422,102 @@ struct TwoStepPaywallLayout: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Choosing a tier pre-selects its ANNUAL plan.
-    ///
-    /// Pre-selecting the yearly plan is a recommendation, not a trap: it is the
-    /// cheapest per month, it is labelled as billed yearly on the row itself,
-    /// and both other durations are one tap away and equally visible. A default
-    /// that the user can see and change is guidance; one they cannot is a
-    /// dark pattern, and the difference is entirely whether the row states its
-    /// own terms.
-    private func select(_ allowance: Int) {
-        chosenTier = allowance
-        let list = durations(allowance)
-        selectedId = (list.first { $0.isAnnual } ?? list.first)?.id
-    }
-
-    // MARK: Header
-
-    /// Top LEFT, where a back control belongs on iOS — the system puts it
-    /// there, so every user's hand already knows the corner. A white disc
-    /// rather than a bare grey glyph: on a black screen a thin 14pt chevron at
-    /// 60% opacity is close to invisible, and the one control that undoes a
-    /// decision should never be the hardest thing on screen to find.
-    private var header: some View {
-        HStack {
-            Button {
-                // With a tier chosen, this collapses back to the comparison
-                // rather than closing. A close button that dismisses from the
-                // expanded state throws away a decision just made.
-                if chosenTier != nil {
-                    chosenTier = nil
-                    selectedId = nil
-                } else {
-                    onClose()
-                }
-            } label: {
-                ZStack {
-                    Circle().fill(Color.white).frame(width: 32, height: 32)
-                    Image(systemName: chosenTier != nil ? "chevron.left" : "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.black)
-                }
-                .frame(width: 44, height: 44)      // full 44pt touch target
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(chosenTier != nil ? "Back" : "Close"))
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-    }
-
-    // MARK: Tier cards
+    // MARK: Cards, each holding its own durations
 
     private var tierCards: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 20) {
             ForEach(tiers) { tier in
                 tierCard(tier)
             }
         }
-        // Cards size to their CONTENT. Without this they split the screen's
-        // leftover height with the layout's spacer and grow to ~1000pt, leaving
-        // a long empty gap between the last feature and the price — the card
-        // looked padded out to fill a hole. Fixing the height here also equalises
-        // the two: the HStack proposes one height to both, so Pro's six rows and
-        // Max's seven still line their prices up.
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxHeight: .infinity)
         .padding(.horizontal, 16)
     }
 
+    /// A column, bare on black. NO CONTAINER — no fill, no border, no rounded
+    /// corners.
+    ///
+    /// The boxes were doing nothing except taking room: they forced padding on
+    /// four sides, and everything inside had been shrunk to fit a frame that was
+    /// never the constraint. Off black, the same content reads at a comfortable
+    /// size in less space. The only rounded thing left on the screen is the
+    /// Continue button, which is rounded because it is a button.
     private func tierCard(_ tier: PaywallTierOption) -> some View {
-        let isSelected = chosenTier == tier.allowance
-        return Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            select(tier.allowance)
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(tier.title)
-                    .cType(17, .bold)
-                    .foregroundColor(.white)
+        let rows = durations(tier.allowance)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(tier.title)
+                .cType(21, .bold)
+                .foregroundColor(.white)
 
-                // The allowance — the ONE thing that differs besides price, and
-                // now the thing the eye lands on.
-                if let credits = tier.creditsLine {
-                    Text(credits)
-                        .cType(12, .semibold)
-                        .foregroundColor(.white.opacity(0.6))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if let credits = tier.creditsLine {
+                Text(credits)
+                    .cType(14, .semibold)
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
 
-                Spacer(minLength: 10)
-
-                if let price = tier.monthlyPrice {
-                    Text(price)
-                        .cType(19, .bold)
-                        .foregroundColor(.white)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(tier.features, id: \.self) { line in
+                    HStack(alignment: .top, spacing: 8) {
+                        ZStack {
+                            Circle().fill(Color.white).frame(width: 18, height: 18)
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundColor(.black)
+                        }
+                        Text(line)
+                            .cType(14, .medium)
+                            .foregroundColor(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.13 : 0.055))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(isSelected ? 0.9 : 0.13),
-                                  lineWidth: isSelected ? 1.5 : 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
+            .padding(.top, 14)
 
-    // MARK: Durations, in place
+            Spacer(minLength: 12)
 
-    private func durationList(for allowance: Int) -> some View {
-        VStack(spacing: 6) {
-            ForEach(durations(allowance)) { option in
-                durationRow(option)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { row in
+                    durationRow(row)
+                }
             }
         }
-        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    /// A bare row. The only mark of selection is a thin rule under it and full
+    /// white on the text — no capsule, no fill.
     private func durationRow(_ option: PaywallDurationOption) -> some View {
         let isSelected = selectedId == option.id
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle().strokeBorder(Color.white.opacity(isSelected ? 0.9 : 0.3), lineWidth: 1.5)
-                            .frame(width: 20, height: 20)
-                        if isSelected { Circle().fill(Color.white).frame(width: 11, height: 11) }
-                    }
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
                     Text(option.label)
                         .cType(15, .semibold)
-                        .foregroundColor(.white)
-                    Spacer(minLength: 4)
-                    if let pct = option.percentOff {
-                        Text("\(pct)% OFF")
-                            .cType(10, .heavy)
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.white))
-                    }
+                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.72))
+                    Spacer(minLength: 2)
                     Text(option.price)
-                        .cType(15, .semibold)
-                        .foregroundColor(.white)
+                        .cType(14, .medium)
+                        .foregroundColor(.white.opacity(isSelected ? 1 : 0.55))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.65)
                 }
+                .frame(height: 34)
 
-                // THE SECONDARY LINES GET THE WHOLE ROW WIDTH, and that is the
-                // fix for a measured defect, not a preference. Nested in the
-                // left column beside the badge and the price, the per-month
-                // line rendered as "CHF 24.16/Mt., jährlich…" — truncated
-                // mid-word, in German, on the one sentence whose entire job is
-                // to make the annual plan legible as the cheaper option. A
-                // clipped price line is worse than no price line: it looks like
-                // the app cannot state its own terms. Full width, wrapping
-                // allowed, never a lineLimit.
-                if option.perMonthLine != nil || option.introLine != nil {
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let perMonth = option.perMonthLine {
-                            Text(perMonth)
-                                .cType(11)
-                                .foregroundColor(.white.opacity(0.62))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let intro = option.introLine {
-                            Text(intro)
-                                .cType(10)
-                                .foregroundColor(.white.opacity(0.55))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 30)   // aligned under the label, past the radio
-                }
+                Rectangle()
+                    .fill(Color.white.opacity(isSelected ? 0.9 : 0.12))
+                    .frame(height: isSelected ? 1.5 : 0.5)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(minHeight: 48)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(isSelected ? 0.10 : 0.045)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.white.opacity(isSelected ? 0.85 : 0.10),
-                              lineWidth: isSelected ? 1.5 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: Footer
-
-    private var footer: some View {
-        VStack(spacing: 6) {
-            // NO DEAD BUTTON. A greyed "Choose a plan" sitting under two cards
-            // is a control that answers a question the cards are already
-            // asking, and after a card is tapped it was still greyed for an
-            // instant beside a decision the user had just made. Until a tier is
-            // chosen the CARDS are the call to action; once one is, this is a
-            // live CTA and nothing else.
-            if canContinue {
-                Button {
-                    if let id = selectedId { onPurchase(id) }
-                } label: {
-                    Text(continueTitle)
-                        .cType(17, .bold)
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Capsule().fill(Color.white))
-                }
-                .buttonStyle(.plain)
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
-            }
-
-            // The auto-renewal disclosure. Legally fixed wording, and it stays
-            // whole — this is the one line on the screen that may not be
-            // shortened to save height.
-            Text(TrialCopy.fineprint)
-                .cType(10)
-                .foregroundColor(.white.opacity(0.4))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-    }
-
-    private var canContinue: Bool { chosenTier != nil && selectedId != nil }
-
-    /// Names the tier being bought, so the last control before a charge says
-    /// what it is charging for.
-    private var continueTitle: String {
-        guard let t = chosenTier, let opt = tiers.first(where: { $0.allowance == t })
-        else { return String(localized: "Continue") }
-        return opt.isMax ? String(localized: "Continue with Max")
-                         : String(localized: "Continue with Pro")
-    }
-
-    /// The referral offer belongs to Pro and only after Pro is chosen.
-    private var showsReferralNow: Bool {
-        guard showsReferral, let t = chosenTier,
-              let opt = tiers.first(where: { $0.allowance == t }) else { return false }
-        return !opt.isMax
+        .accessibilityLabel(Text("\(option.label), \(option.price)"))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
@@ -681,7 +581,7 @@ struct TwoStepPaywall: View {
 
     var body: some View {
         let prods = products
-        return TwoStepPaywallLayout(
+        return PaywallLayout(
             title: PaywallView.title(
                 for: reason,
                 personalisationEnabled: onboarding.exportGatePersonalizationEnabled,
@@ -689,6 +589,7 @@ struct TwoStepPaywall: View {
             tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled),
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             sharedFeatures: PaywallMapping.sharedFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
+            maxFeatures: PaywallMapping.maxFeatures(prods, creditsEnabled: onboarding.creditsEnabled),
             showsReferral: onboarding.referralProgressEnabled,
             referralSource: "paywall_two_step",
             onClose: { isPresented = false },
