@@ -58,6 +58,7 @@ struct FirstRunHero: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 36)
                 .padding(.bottom, 8)
                 .entrance(delay: 0.10)
@@ -66,6 +67,11 @@ struct FirstRunHero: View {
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                // WRAP, NEVER CLIP. At 375pt this rendered as "…and matche…" —
+                // a sentence cut mid-word on the screen that explains the
+                // product. `fixedSize(vertical:)` makes the text take the height
+                // it needs instead of accepting a single squeezed line.
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 40)
                 .padding(.bottom, 28)
                 .entrance(delay: 0.15)
@@ -84,6 +90,7 @@ struct FirstRunHero: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 44)
                 .padding(.top, 16)
         }

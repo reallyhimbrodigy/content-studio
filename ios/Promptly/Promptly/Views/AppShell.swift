@@ -55,6 +55,15 @@ struct AppShell: View {
                 ChatListView(store: chatStore) { closeSidebar() }
                     .frame(width: drawerWidth)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
+                    // The DRAWER ignores the keyboard — it is a full-height list
+                    // behind the content and must not resize when a keyboard it
+                    // does not own appears. This used to be applied to the whole
+                    // shell, which also disabled it for the CONTENT: the
+                    // composer stopped rising and the keyboard covered the one
+                    // control the screen exists for. EditorView's own comment
+                    // says "the system handles keyboard avoidance
+                    // automatically"; an ancestor was quietly turning that off.
+                    .ignoresSafeArea(.keyboard)
                     .simultaneousGesture(closeSwipeGesture)
 
                 // Main content. Slides fully off-screen to the right.
@@ -104,7 +113,6 @@ struct AppShell: View {
             }
             .background(Color(.systemBackground))
         }
-        .ignoresSafeArea(.keyboard)
         // Paywall presentation. Any view can request it by setting
         // AppState.shared.paywallReason; the sheet rises and clears the
         // reason on dismiss.

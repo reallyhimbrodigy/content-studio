@@ -18,7 +18,12 @@ struct MainTabView: View {
 
     var body: some View {
         EditorView()
-            .ignoresSafeArea(.keyboard)
+            // NO `.ignoresSafeArea(.keyboard)` HERE. It disabled the composer's
+            // rise, so the keyboard sat on top of the one control this screen
+            // exists for — on an SE that makes the screen unusable. There were
+            // TWO of these, here and on AppShell, which is why removing one had
+            // no effect: the outer modifier kept the behaviour alive and the
+            // fix looked like it had failed.
             .background(Color(.systemBackground))
             // The ready-state card sits ABOVE the editor's own custom top bar (which
             // is itself a top safe-area inset). It reserves space only while a
