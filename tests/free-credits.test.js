@@ -5,6 +5,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   FREE_MONTHLY_ALLOWANCE, periodKey, topUpDelta, decideDeviceClaim, decidePeriodGrant,
+  parseBuild, debitApplies,
 } = require('../lib/free-credits');
 
 // ── periodKey ──────────────────────────────────────────────────────────────
@@ -119,4 +120,46 @@ test('DESIGN: a spent-down user rolls to exactly the allowance next period', () 
   assert.strictEqual(topUpDelta(5), 25);
   const oct = decidePeriodGrant({ periodRow: null, period: '2026-10', currentPeriod: '2026-10' });
   assert.strictEqual(oct.action, 'grant');
+});
+
+// ── THE DEBIT BUILD FLOOR ──────────────────────────────────────────────────
+test('parseBuild: pulls the build out of a real version string', () => {
+  assert.strictEqual(parseBuild('1.3.25 (243)'), 243);
+  assert.strictEqual(parseBuild('1.3.16 (234)'), 234);
+  assert.strictEqual(parseBuild('2.0.0 (1000)'), 1000);
+});
+test('parseBuild: null on anything it cannot read', () => {
+  for (const v of [null, undefined, '', '1.3.25', 'Promptly', '()', '(abc)'])
+    assert.strictEqual(parseBuild(v), null, `expected null for ${JSON.stringify(v)}`);
+});
+test('debitApplies: charges at and above the floor', () => {
+  assert.strictEqual(debitApplies({ build: 244, minBuild: 244 }), true);
+  assert.strictEqual(debitApplies({ build: 250, minBuild: 244 }), true);
+});
+test('debitApplies: does NOT charge below the floor', () => {
+  for (const b of [243, 240, 224])
+    assert.strictEqual(debitApplies({ build: b, minBuild: 244 }), false, `build ${b}`);
+});
+// FAIL OPEN, both directions. Leaking a free render is recoverable; 402'ing a
+// paying user because a header went missing is not, and it would fail silently
+// across whatever client stopped sending it.
+test('debitApplies: FAILS OPEN when the floor is unset (ships dark)', () => {
+  assert.strictEqual(debitApplies({ build: 999, minBuild: NaN }), false);
+  assert.strictEqual(debitApplies({ build: 999, minBuild: undefined }), false);
+});
+test('debitApplies: FAILS OPEN when the build is unreadable', () => {
+  assert.strictEqual(debitApplies({ build: null, minBuild: 244 }), false);
+  assert.strictEqual(debitApplies({ build: undefined, minBuild: 244 }), false);
+  assert.strictEqual(debitApplies({ build: NaN, minBuild: 244 }), false);
+});
+// The two sides share ONE env var so a build can never be chargeable while
+// being ungrantable — the window that would 402 a user who cannot be granted.
+test('DESIGN: chargeable implies grantable — same floor governs both', () => {
+  const FLOOR = 244;
+  for (const b of [224, 240, 243, 244, 245]) {
+    const chargeable = debitApplies({ build: b, minBuild: FLOOR });
+    const grantable = b >= FLOOR;   // the free-grant endpoint's own check
+    assert.strictEqual(chargeable, chargeable && grantable,
+      `build ${b}: chargeable must never exceed grantable`);
+  }
 });

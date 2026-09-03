@@ -6246,7 +6246,23 @@ const server = http.createServer((req, res) => {
           // balance read -- never as a side effect of shipping the code.
           // Set CREDITS_DEBIT_ENABLED=1 to arm. The BALANCE endpoint is NOT
           // gated: it is read-only and cannot block a render.
-          if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
+          // THE DEBIT BUILD FLOOR. Credits can only be GRANTED to a build that
+          // can claim a device (the free-grant endpoint refuses below
+          // FREE_CREDITS_MIN_BUILD), so charging a build that cannot be granted
+          // is charging against a balance that can never exist. Recent renders
+          // span builds 224-243 and a cut moves the installed base slowly —
+          // without this, CREDITS_DEBIT_ENABLED=1 would 402 nearly every free
+          // user until they happened to upgrade. With it, the flag can arm on
+          // day one: 244+ is metered, everything older renders exactly as today.
+          //
+          // Same env var as the grant side on purpose, so "can be granted" and
+          // "can be charged" cannot drift apart. Fails OPEN on an unset floor or
+          // an unreadable version — see debitApplies().
+          const _debitBuild = _freeCredits.parseBuild(clientAppVersion(req));
+          const _debitFloor = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+          const _debitApplies = _freeCredits.debitApplies(
+            { build: _debitBuild, minBuild: _debitFloor });
+          if (!isDemo && CREDITS_DEBIT_ENABLED && _debitApplies && _credits.isConfigured()
               && _credits.shouldDebit({ mode: 'full' })) {
             // LAZY ROLL (write side) — BEFORE the debit, or a user whose month
             // just turned over gets a 402 holding an allowance they are owed.
