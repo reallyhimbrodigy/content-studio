@@ -141,3 +141,26 @@ enum ExitOffer {
         Analytics.track("exit_offer_shown", props: ["trigger": trigger, "shown_count": n])
     }
 }
+
+
+/// THE LADDER, as a view, so both surfaces walk the same rungs.
+///
+/// The paywall exit builds these stages inline in `UpgradePaywall`; the credit
+/// wall needs the identical sequence from a `fullScreenCover` with no paywall
+/// above it. Extracted rather than copied — a second inline copy is how the
+/// credit wall lost the invite rung in the first place.
+struct ExitOfferLadder: View {
+    let onFinish: () -> Void
+    @State private var showInvite = false
+
+    var body: some View {
+        Group {
+            if showInvite {
+                ReferralCatchBeat(onSkip: onFinish)
+            } else {
+                OfferRevealView(onDecline: { showInvite = true },
+                                onPurchased: onFinish)
+            }
+        }
+    }
+}

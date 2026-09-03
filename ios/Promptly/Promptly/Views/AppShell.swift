@@ -118,11 +118,35 @@ struct AppShell: View {
         // reason on dismiss.
         // Credits top-up. Anchored here with the other app-level sheets so the
         // header badge does not have to own a presentation.
+        #if DEBUG
+        // `-showLadder` — present the exit ladder on arrival at chat, so the
+        // SEQUENCE can be reviewed without first producing a finished render.
+        //
+        // Reaching it for real needs a video in the library, a completed
+        // dispatch, the credit wall, and the top-up dismissed. Every one of
+        // those is a legitimate gate, and together they make the ladder
+        // effectively invisible in a simulator — which is how it went three
+        // rounds of review with a missing rung nobody could see.
+        //
+        // It presents the REAL ladder through the REAL flag, so what is
+        // reviewed is what ships; only the trigger is short-circuited.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-showLadder") else { return }
+            try? await Task.sleep(for: .milliseconds(900))
+            guard !SubscriptionService.shared.effectiveIsPro else { return }
+            ExitOffer.record("debug_show_ladder")
+            appState.showExitOffer = true
+        }
+        #endif
         .fullScreenCover(isPresented: $appState.showExitOffer) {
-            // Same two rungs as the paywall exit: decline steps to the invite
-            // catch rather than ending on a refusal.
-            OfferRevealView(onDecline: { appState.showExitOffer = false },
-                            onPurchased: { appState.showExitOffer = false })
+            // THE COMMENT HERE USED TO CLAIM TWO RUNGS AND THE CODE HAD ONE:
+            // decline dismissed the cover outright, so the credit wall's ladder
+            // ended on a refusal and the invite rung — the whole point of a
+            // final catch — was unreachable from the surface most likely to
+            // need it. A comment describing behaviour the code does not have is
+            // worse than no comment: it survives review by being read instead of
+            // the code.
+            ExitOfferLadder(onFinish: { appState.showExitOffer = false })
         }
         .sheet(isPresented: $appState.showAttribution) {
             // Full-screen-ish sheet rather than a root branch: the user is in
