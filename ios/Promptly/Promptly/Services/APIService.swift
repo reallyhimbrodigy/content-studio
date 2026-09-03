@@ -178,6 +178,33 @@ class APIService {
     // MARK: - Video Jobs
 
     func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
+        #if DEBUG
+        // `-simulateCreditsExhausted` — DEBUG only, nil in Release.
+        //
+        // The credit wall CANNOT fire against production today: `credits=off`
+        // and `revenuecat.creditsDebitArmed=false`, and the 402 is produced at
+        // the debit site behind CREDITS_DEBIT_ENABLED. Forcing `credits` on the
+        // client turns on the DISPLAY (badge, credits copy) and nothing else —
+        // the refusal is the server's decision, not the client's.
+        //
+        // So a walkthrough of the back half of the funnel is impossible without
+        // either arming the server or simulating the refusal. This throws the
+        // SAME error the 402 parse throws a few lines below, so everything
+        // downstream is the real path: APIError.insufficientCredits ->
+        // HardFailure(isCreditsExhausted:) -> the in-thread bubble -> the
+        // top-up screen.
+        //
+        // WHAT IT DOES NOT PROVE, and this matters: it exercises the CLIENT
+        // chain only. It says nothing about whether the server returns the
+        // right shape, whether `balance_known` is populated, or whether the
+        // debit actually deducts. Those need CREDITS_DEBIT_ENABLED and a real
+        // balance — step 6 of the arming order, on device, before the debit is
+        // armed for anyone else.
+        if ProcessInfo.processInfo.arguments.contains("-simulateCreditsExhausted") {
+            throw APIError.insufficientCredits(needed: CreditsService.perVideo,
+                                               balanceKnown: true)
+        }
+        #endif
         var request = await authorizedRequest("/api/video-jobs", method: "POST")
         // Typed body so we can send the boolean `premium_pipeline_enabled`
         // routing flag (Lumen). Synthesized Encodable uses encodeIfPresent for
