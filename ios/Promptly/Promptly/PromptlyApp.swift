@@ -1028,7 +1028,7 @@ enum FirstRunProofHarness {
             // paywall used to be beat one, from a root branch above the flow.
             // 2026-09-02: attribution moved to the TAIL (after the ask), and
             // the decline catch became a rung of its own.
-            for beat: OnboardingState.V2Step in [.audience, .videoType, .paywall, .reveal, .monthlyDownsell, .referralCatch, .attribution] {
+            for beat: OnboardingState.V2Step in [.audience, .videoType, .paywall, .reveal, .referralCatch, .attribution] {
                 s.v2Step = beat
                 print("[FirstRunProof] beat=\(beat.rawValue)")
                 try? await Task.sleep(for: dwell)
