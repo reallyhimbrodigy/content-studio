@@ -763,7 +763,22 @@ struct TwoStepPaywall: View {
     /// shows is derived past this line, which is what makes the derivation
     /// runnable — and therefore reviewable — without a live store.
     private var products: [PaywallProduct] {
-        packages.map { pkg in
+        #if DEBUG
+        // `-dumpOffering` — KEPT, not scaffolding. "Why is a plan missing?" has
+        // three candidate answers (absent package / detached product / client
+        // filter) and only the offering itself separates them. Answering it
+        // twice by hand cost a code round-trip each time.
+        if ProcessInfo.processInfo.arguments.contains("-dumpOffering") {
+            let raw = subscription.offerings?.current?.availablePackages ?? []
+            print("[OFFER] current=\(subscription.offerings?.current?.identifier ?? "nil") raw=\(raw.count) afterGate=\(packages.count)")
+            for p in raw {
+                let sp = p.storeProduct
+                let per = sp.subscriptionPeriod
+                print("[OFFER]  pkg=\(p.identifier) type=\(p.packageType) product=\(sp.productIdentifier) period=\(per.map { "\($0.value)\($0.unit)" } ?? "nil") planPeriod=\(p.planPeriod) allowance=\(String(describing: CreditAllowance.monthly(forProductId: sp.productIdentifier)))")
+            }
+        }
+        #endif
+        return packages.map { pkg in
             let sp = pkg.storeProduct
             // One resolver, shared with every other paywall surface.
             let unit: PaywallPeriodUnit = {

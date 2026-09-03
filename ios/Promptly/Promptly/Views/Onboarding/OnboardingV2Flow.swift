@@ -111,8 +111,27 @@ struct OnboardingV2Flow: View {
         .onAppear {
             Analytics.track("onboarding_v2_step", props: ["step": "start", "context": "onboarding_v2"])
             state.markFlowStarted()
+            let before = state.v2Step
             state.restoreV2()
             if state.hasCompletedOnboarding { state.v2Step = .done }
+            // Q1's ARRIVAL WAS NEVER COUNTED. `v2Step` emits `phase:"arrive"`
+            // from its `didSet`, and a `didSet` does not fire for the property's
+            // INITIAL value — and `.audience` is that initial value. So every
+            // user who started at Q1 emitted an arrive for Q2, Q3 and the
+            // reveal but never for Q1: measured over the last 7 days,
+            // video_type arrive = 472 users against audience arrive = 10.
+            //
+            // The first question is exactly where a funnel needs its
+            // denominator, so the one step with no arrival was the one whose
+            // drop-off could not be computed at all. Emitted here only when
+            // restore did NOT move the step — if it did, the didSet already
+            // fired and a second event would double-count the beat.
+            if state.v2Step == before {
+                Analytics.track("onboarding_v2_step",
+                                props: ["step": state.v2Step.analyticsName,
+                                        "phase": "arrive",
+                                        "context": "onboarding_v2"])
+            }
             if packages.isEmpty { Task { await subscription.refreshOfferings() } }
         }
     }
