@@ -7392,8 +7392,13 @@ const server = http.createServer((req, res) => {
         let tier = 'free';
         try {
           const _ent = await fetchSubscriptionEntitlement(authUser.id);
-          const _dec = resolveEntitlementDecision(_ent);
-          if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
+          // ONE definition of the credit tier, shared with
+          // scripts/grant-credits.js. A manual grant must never deposit against
+          // a different tier from the allowance this endpoint reports back.
+          // Equivalent to the previous inline derivation: creditTierFor calls
+          // the same isUserPro that resolveEntitlementDecision does, and
+          // normalizePlanLabel reduces to a lower/trim for the 'max' compare.
+          tier = _credits.creditTierFor(_ent && _ent.row);
         } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
 
         // LAZY ROLL (read side). Never throws; a skip reason is not an error.
