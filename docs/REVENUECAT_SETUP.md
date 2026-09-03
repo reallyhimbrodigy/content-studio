@@ -1,6 +1,154 @@
-> ⚠️ **SUPERSEDED 2026-07-21 — FREEMIUM pivot.** The trial model and the $19.99/$199.99 prices below are OBSOLETE. Promptly is now permanent FREE (2 videos/day) + PRO with NO trials: **weekly $12.99, monthly $39.99, yearly $399.99**. Prices in the app are read live from StoreKit. This doc is kept for history only.
-
 # RevenueCat + App Store Connect setup
+
+> ⚠️ **Sections 1–5 are the ORIGINAL 2026-05 walkthrough and are SUPERSEDED
+> (2026-07-21, FREEMIUM pivot).** The trial model and the $19.99/$199.99 prices
+> there are obsolete. They are kept for history. **The dashboard inventory below
+> is the current truth** — read it first.
+
+## 0. CURRENT INVENTORY — every dashboard object, and what breaks without it
+
+**Why this section exists.** This doc used to describe Pro monthly + yearly and
+nothing else. It did not mention `promptly_pro_weekly` (which 12 of 25 paying
+subscribers are on) and it did not mention Max at all — so when `max_yearly`
+stopped appearing on the paywall there was no written record of what the correct
+set even was, and two days went into diagnosing it from the client.
+
+**The failure mode of every object below is a silent absence, not an error.**
+The paywall enumerates `offering.availablePackages` with **no product-id
+filter**: a package that is missing — or whose store product will not resolve —
+simply does not render, and no code anywhere fails. That is why this inventory
+exists, and why 0d checks the server rather than trusting the app.
+
+### 0a. Products (RevenueCat → Products)
+
+| Product ID | Tier | Duration | Package on `default` | Status |
+|---|---|---|---|---|
+| `promptly_pro_weekly` | pro | 1 week | `$rc_weekly` | live |
+| `promptly_pro_monthly` | pro | 1 month | `$rc_monthly` | live |
+| `promptly_pro_yearly` | pro | 1 year | `$rc_annual` | live |
+| `promptly_max_monthly` | max | 1 month | `max_monthly` (custom) | live |
+| `promptly_max_yearly` | max | 1 year | `max_yearly` (custom) | attached; **not resolving on device** |
+
+Prices are deliberately NOT recorded here. They are read live from StoreKit, and
+a stale price table in this file is exactly what made the rest of the doc
+untrustworthy. **Apple is the source of truth for price; this file is the source
+of truth for identifiers and wiring.**
+
+`max_monthly` / `max_yearly` are **custom** package identifiers, not
+`$rc_monthly` / `$rc_annual` — an offering holds one package per built-in type,
+and Pro already occupies all three. This matters in the client: RevenueCat
+returns custom packages with
+`packageType == .custom`, so any code testing `packageType == .annual` will not
+see them (see `Services/PlanPeriod.swift`, which reads `subscriptionPeriod`
+first for exactly this reason).
+
+### 0b. Entitlements (RevenueCat → Entitlements)
+
+| lookup_key | Attach | Verify |
+|---|---|---|
+| `pro` | the three `promptly_pro_*` products | `/api/health` → `.revenuecat.entitlementTiers` |
+| `max` | both `promptly_max_*` products | same — must contain **both** `max` and `pro` |
+
+The server maps entitlement → tier by lookup_key in
+`lib/entitlement.js` (`ENTITLEMENT_TIER_BY_LOOKUP_KEY`), resolving the highest
+`tierRank` when a customer holds both. There is **no product-id → tier map on
+the server**, so a new product of an existing tier needs no server change — but
+a product attached to the WRONG entitlement grants the wrong tier silently.
+
+### 0c. Virtual currency (RevenueCat → Virtual Currencies)
+
+| Code | Allowance/period | Set by |
+|---|---|---|
+| `CRD` | free 30 · pro 200 · max 1000 | `TIER_ALLOWANCE` in `lib/credits.js` |
+
+Per-product recurring grants are attached **in the dashboard** and fire on
+purchase and renewal. A weekly product grants its own smaller amount (a weekly
+is not 200) — attaching the monthly amount to the weekly product is an
+arbitrage: buy weekly, get a month of credits.
+
+Free-tier credits have no product to hang on and are granted by this server
+(`ensureFreePeriodGrant`, lazily). Currency creation and product-amount
+attachment are **dashboard-only** — there is no API for either.
+
+### 0d. Completeness check
+
+A doc cannot fail, so treat this as a pre-submission checklist, not a guarantee:
+
+```bash
+curl -s https://usepromptly.app/api/health | jq .revenuecat
+# expect: probe "ok"  AND  entitlementTiers containing BOTH "max" and "pro"
+```
+
+`entitlementTiers` proves the entitlements exist. **It does NOT prove the
+offering is complete** — the offering is a separate object and a missing package
+is invisible to it. Check that server-side, against the v2 API:
+
+```bash
+OFR=$(curl -s -H "Authorization: Bearer $REVENUECAT_SECRET_KEY" \
+  "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID/offerings" \
+  | jq -r '.items[] | select(.is_current) | .id')
+curl -s -H "Authorization: Bearer $REVENUECAT_SECRET_KEY" \
+  "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID/offerings/$OFR/packages" \
+  | jq -r '.items[] | .lookup_key'
+# expect all five from 0a
+```
+
+⚠️ **Use the `ofrng…` id, never the lookup_key.** `/offerings/default/packages`
+returns HTTP 200 with **zero items** rather than a 404 — the obvious spelling
+reports an empty offering and reads as a total outage.
+
+**This is the diagnostic split.** API five + SDK four = the package is fine and
+the store product is not resolving (an Apple problem). API four = the package is
+genuinely unattached (a dashboard problem). Running it first is the difference
+between fixing it and re-checking a dashboard that was never wrong — see 0f.
+
+### 0e. ⚠️ App Review screenshots
+
+`max-yearly-iap-review-17pro.png` — in `docs/screenshots/app-review/` (branch
+`app-conversion-surface`) and in `~/Desktop/Promptly Reports/` — shows a **Year
+$799.99** row the build cannot currently offer, because the package does not
+resolve on device (0f). **Do not submit it.** Apple would be reviewing a plan
+the app cannot show. Re-capture once the Max tab renders two duration rows, then
+submit. `max-monthly-iap-review-17pro.png` is accurate and safe to upload.
+
+### 0f. Max Yearly — attached server-side, not resolving on device
+
+**Do not go looking for an unsaved package. There isn't one.** Read directly
+from the v2 API on 2026-09-03:
+
+```
+GET /v2/projects/{p}/offerings            -> ofrng7cf44d279e  lookup_key=default  is_current=true
+GET /v2/projects/{p}/offerings/ofrng7cf44d279e/packages   -> 5 packages
+   max_monthly pos0 -> promptly_max_monthly [all]
+   max_yearly  pos1 -> promptly_max_yearly  [all]      <-- present, product attached
+   $rc_weekly  pos2 / $rc_monthly pos3 / $rc_annual pos4
+```
+
+The SDK returned **four** across eight independent reads (two erased devices,
+six fresh launches) over ~15 minutes, with `promptly_max_yearly` absent every
+time. API five + SDK four = **the package is fine and the store product is not
+resolving.** Both dashboard theories — package on a non-current offering, and a
+silently failed save — are refuted by the dump above.
+
+⚠️ **API PATH TRAP.** `GET /offerings/default/packages` — the lookup_key instead
+of the `ofrng…` id — returns **HTTP 200 with zero items**, not a 404. Written
+the obvious way, a probe reports an empty offering and reads as a total outage.
+Resolve the id from `/offerings` first.
+
+**Open lead.** Both Max products report `subscription.duration: null`, while
+every Pro product carries a real duration (`promptly_pro_yearly` → `P1Y`,
+`trial_duration` `P3D`). RevenueCat has never pulled store metadata for either
+Max product. `max_monthly` still resolves on device, so this does not by itself
+explain the difference — but RC's store sync is not populating Max, and that is
+the thread to pull. ASC reports the product APPROVED with a 175-territory price
+config, so the remaining suspects are Apple-side: propagation, subscription
+group, or localization.
+
+No code change is involved either way: `CreditsService` maps the allowance by
+substring (`"max"` → 1000) and every paywall surface enumerates whatever the
+offering returns.
+
+---
 
 Everything in the code is wired. To actually take payments, you need to
 do the manual steps below. Total time: ~30 min.
