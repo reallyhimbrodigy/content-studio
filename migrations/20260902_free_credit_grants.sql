@@ -53,7 +53,34 @@ CREATE TABLE IF NOT EXISTS free_credit_periods (
 CREATE INDEX IF NOT EXISTS idx_free_credit_periods_unlanded
   ON free_credit_periods (granted_at) WHERE provider_ok = false;
 
+-- ── 3. RLS: ENABLED, WITH NO POLICIES ───────────────────────────────────────
+-- Matching reverse_trial_grants exactly (verified live: rls_enabled=true,
+-- policy_count=0). RLS enabled with zero policies is DENY-ALL for the anon and
+-- authenticated roles, while service_role bypasses RLS entirely — which is what
+-- the server uses via supabaseAdmin.
+--
+-- THIS IS NOT OPTIONAL AND IT IS NOT COSMETIC. Supabase exposes every table in
+-- the public schema through PostgREST. Without RLS a signed-in client could
+-- DELETE its own free_credit_periods row and get re-granted 30 credits on the
+-- next render — repeatable, unlimited, and completely invisible to the server,
+-- whose own logic would be behaving exactly as designed. It could equally
+-- INSERT free_credit_grants rows to claim devices it has never seen.
+--
+-- The deny-all posture also has a second effect the code already accounts for:
+-- any non-service-role read returns ZERO ROWS RATHER THAN AN ERROR, which is
+-- indistinguishable from "no grant exists" and would re-grant. That is why
+-- every grant-gating read in server.js uses supabaseAdmin and fails closed on
+-- error rather than treating an empty result as authoritative.
+ALTER TABLE free_credit_grants  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE free_credit_periods ENABLE ROW LEVEL SECURITY;
+
 -- Verify:
+--   -- RLS on, zero policies, on BOTH tables (must match reverse_trial_grants):
+--   SELECT c.relname, c.relrowsecurity,
+--          (SELECT count(*) FROM pg_policies p WHERE p.tablename = c.relname) policies
+--     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+--    WHERE n.nspname = 'public'
+--      AND c.relname IN ('free_credit_grants','free_credit_periods');
 --   SELECT count(*) FROM free_credit_grants;
 --   SELECT period, count(*), count(*) FILTER (WHERE provider_ok) landed
 --     FROM free_credit_periods GROUP BY period ORDER BY period DESC;

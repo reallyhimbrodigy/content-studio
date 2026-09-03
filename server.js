@@ -641,7 +641,6 @@ function sendUploadDenial(res, dec, label, userId) {
   }
   return sendJson(res, dec.status, {
     error: dec.error || 'upload_limit_reached',
-    route: 'paywall',
     kind: dec.kind,
     limit: dec.limit,
     max: dec.max,
@@ -4226,6 +4225,12 @@ const server = http.createServer((req, res) => {
           // the drift the gate was moved to pre-push to catch, found on a
           // developer machine instead of a release later.
           'credits_topup_open',
+          // Fourth drift the pre-push parity gate has caught since it moved off
+          // Render's build. Frontend is adding paywall events faster than any
+          // release cycle, which is precisely the cadence that produced the
+          // original 25 — each one silently dropped by the SQL mirror until
+          // someone noticed the funnel was short.
+          'exit_offer_shown',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
@@ -4473,7 +4478,6 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 402, {
             error: 'daily_limit_reached',
             kind: 'chat',
-            route: 'paywall',
             limit: chatCaps.chatLimit,
             message: `You've used your ${chatCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
           });
@@ -4698,7 +4702,6 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 402, {
             error: 'daily_limit_reached',
             kind: 'chat',
-            route: 'paywall',
             limit: streamCaps.chatLimit,
             message: `You've used your ${streamCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
           });
@@ -6039,6 +6042,36 @@ const server = http.createServer((req, res) => {
         // tierFromEntitlement (NOT entitlementTier on the bare row): the decision
         // may carry no row (RC self-heal), and isPro must win over a stale row —
         // otherwise a paying user reads as 'none' and knob-off caps them at 3/day.
+        // ── IS THIS REQUEST CREDIT-LIMITED? ────────────────────────────────
+        // Computed HERE, above the daily-cap branch, because it governs BOTH:
+        // whether the daily cap applies at all, and whether the debit runs. It
+        // used to be computed at the debit site 60 lines below, which is after
+        // the daily gate has already decided — so the cap could 402 a user the
+        // credits path was about to meter.
+        //
+        // THE BUILD FLOOR. Credits can only be GRANTED to a build that can claim
+        // a device (the free-grant endpoint refuses below FREE_CREDITS_MIN_BUILD),
+        // so charging a build that cannot be granted charges against a balance
+        // that can never exist. Recent renders span builds 224-243 and a cut
+        // moves the installed base slowly — without this, CREDITS_DEBIT_ENABLED=1
+        // would 402 nearly every free user until they happened to upgrade. Same
+        // env var as the grant side, so "can be granted" and "can be charged"
+        // cannot drift apart. Fails OPEN on an unset floor or an unreadable
+        // version — see debitApplies().
+        const _debitBuild = _freeCredits.parseBuild(clientAppVersion(req));
+        const _debitFloor = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+        const _debitApplies = _freeCredits.debitApplies(
+          { build: _debitBuild, minBuild: _debitFloor });
+        // EXACTLY ONE LIMITER PER REQUEST. When this is true credits are the
+        // limiter and the daily cap is retired for this request; when false the
+        // daily cap is the limiter and nothing is debited. Both-on would 402 a
+        // credit-holding user with `daily_limit_reached` — the wrong refusal,
+        // pointing at an upgrade they may not need. Neither-on would leave the
+        // render uncapped, which is why this is one predicate rather than two
+        // independent flags.
+        const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
+          && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' });
+
         const wallTier = tierFromEntitlement(entitlement);
         const wallEnforce = resolveEnforce({
           headers: req.headers,
@@ -6220,9 +6253,25 @@ const server = http.createServer((req, res) => {
                 message: 'Come back tomorrow to watch the demo again.',
               } };
             }
-          } else if (wallCaps.renderLimit === Infinity) {
+          } else if (wallCaps.renderLimit === Infinity || creditsAreTheLimiter) {
             // Unlimited (paid — and, pre-flip, any active-trial that was isPro):
             // no daily cap, but still record the render for tracking.
+            //
+            // WALL_ENFORCEMENT'S DAILY CAP IS RETIRED FOR CREDIT-LIMITED
+            // REQUESTS. The two gates answer the same question with different
+            // units and the wrong one would win: 30 credits is 3 renders a
+            // MONTH, while the daily cap is 3/day knob-off or 1/day knob-on. A
+            // credit-holding user hitting `daily_limit_reached` gets a refusal
+            // that names the wrong limit and points at an upgrade they may not
+            // need — and knob-on would additionally force their 3 monthly
+            // renders to be spread across 3 separate days, which is a different
+            // product from the one credits describe.
+            //
+            // GATED ON creditsAreTheLimiter, not on WALL_ENFORCEMENT, so this is
+            // safe to ship BEFORE the debit arms: with CREDITS_DEBIT_ENABLED off
+            // the predicate is false and every request takes the cap exactly as
+            // it does today. It also cannot produce the uncapped case — the same
+            // predicate that removes the cap is the one that turns on the debit.
             await logUsageEvent(authUser.id, 'render');
           } else {
             // Capped tier (trial, or the free tier pre-flip). Atomic check-and-
@@ -6234,7 +6283,6 @@ const server = http.createServer((req, res) => {
               return { status: 402, body: {
                 error: 'daily_limit_reached',
                 kind: 'render',
-                route: 'paywall',
                 limit: wallCaps.renderLimit,
                 message: `You've used your ${wallCaps.renderLimit} free renders today. Upgrade to Pro for unlimited.`,
               } };
@@ -6264,8 +6312,7 @@ const server = http.createServer((req, res) => {
           // balance read -- never as a side effect of shipping the code.
           // Set CREDITS_DEBIT_ENABLED=1 to arm. The BALANCE endpoint is NOT
           // gated: it is read-only and cannot block a render.
-          if (!isDemo && CREDITS_DEBIT_ENABLED && _credits.isConfigured()
-              && _credits.shouldDebit({ mode: 'full' })) {
+          if (creditsAreTheLimiter) {
             // LAZY ROLL (write side) — BEFORE the debit, or a user whose month
             // just turned over gets a 402 holding an allowance they are owed.
             // This is the O(active) half of the no-cron design: the check runs
@@ -6720,7 +6767,6 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 402, {
             error: 'pro_required',
             kind: 'reedit',
-            route: 'paywall',
             message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
           });
         }
@@ -7364,8 +7410,13 @@ const server = http.createServer((req, res) => {
         let tier = 'free';
         try {
           const _ent = await fetchSubscriptionEntitlement(authUser.id);
-          const _dec = resolveEntitlementDecision(_ent);
-          if (_dec && _dec.isPro) tier = _dec.plan === 'max' ? 'max' : 'pro';
+          // ONE definition of the credit tier, shared with
+          // scripts/grant-credits.js. A manual grant must never deposit against
+          // a different tier from the allowance this endpoint reports back.
+          // Equivalent to the previous inline derivation: creditTierFor calls
+          // the same isUserPro that resolveEntitlementDecision does, and
+          // normalizePlanLabel reduces to a lower/trim for the 'max' compare.
+          tier = _credits.creditTierFor(_ent && _ent.row);
         } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
 
         // LAZY ROLL (read side). Never throws; a skip reason is not an error.
