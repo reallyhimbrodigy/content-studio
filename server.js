@@ -8,6 +8,7 @@ const { supabaseAdmin } = require('./services/supabase-admin');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   isUserPro: isProfilePro,
+  isCompAccount,
   entitlementTier,
   tierFromEntitlement,
   tierAfterGrant,
@@ -6051,8 +6052,21 @@ const server = http.createServer((req, res) => {
         // pointing at an upgrade they may not need. Neither-on would leave the
         // render uncapped, which is why this is one predicate rather than two
         // independent flags.
+        //
+        // AT MOST ONE LIMITER — not exactly one. A COMPED account is exempt from
+        // both: `isCompAccount` makes this false, so nothing is debited, and the
+        // daily cap does not come back because the branch below is
+        // `renderLimit === Infinity || creditsAreTheLimiter` and a comp resolves
+        // through entitlementTier 'paid' -> effectiveTier 'paid' -> renderLimit
+        // Infinity under BOTH enforce settings. Verified across every comp shape,
+        // not reasoned about. Why exempt: a comp has no subscription, so RC's
+        // recurring grant has nothing to hang on and the free monthly roll skips
+        // it as a paid tier — metered, it would render down its balance and then
+        // be refused forever. Scoped to comp_pro ONLY; see isCompAccount for why
+        // "paid with no rc_app_user_id" is the unsafe way to say this.
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
-          && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' });
+          && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })
+          && !isCompAccount(entitlement.row);
 
         const wallTier = tierFromEntitlement(entitlement);
         const wallEnforce = resolveEnforce({

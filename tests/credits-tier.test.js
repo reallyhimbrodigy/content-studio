@@ -52,6 +52,42 @@ test('every tier creditTierFor can return has an allowance', () => {
   }
 });
 
+// ── THE COMP EXEMPTION (leg a only) ────────────────────────────────────────
+const { isCompAccount } = require('../lib/entitlement');
+
+test('isCompAccount: an admin comp is exempt', () => {
+  assert.strictEqual(isCompAccount({ tier: 'free', comp_pro: true }), true);
+  assert.strictEqual(isCompAccount({ tier: 'pro', comp_pro: true, pro_until: FUTURE }), true);
+});
+test('isCompAccount: strict === true — a truthy value does not exempt', () => {
+  for (const v of [1, 'yes', 'true', {}])
+    assert.strictEqual(isCompAccount({ comp_pro: v }), false, `comp_pro=${JSON.stringify(v)}`);
+});
+test('isCompAccount: null / missing row is not exempt', () => {
+  assert.strictEqual(isCompAccount(null), false);
+  assert.strictEqual(isCompAccount(undefined), false);
+  assert.strictEqual(isCompAccount({}), false);
+});
+
+// THE ONE THAT MATTERS. `pro_until` and `rc_app_user_id` are client-writable:
+// UPDATE is granted to `authenticated` at TABLE level and the RLS policy is
+// `auth.uid() = id` with no column restriction, while only `comp_pro` carries a
+// guard trigger. So a user who sets their own pro_until must STILL be debited —
+// otherwise the bypass is self-serve unlimited free renders.
+test('SECURITY: a self-set pro_until does NOT exempt — it is client-writable', () => {
+  const selfPromoted = {
+    tier: 'pro', comp_pro: false, pro_until: '2099-12-31T00:00:00Z', rc_app_user_id: null,
+  };
+  assert.strictEqual(isUserPro(selfPromoted), true, 'precondition: this row reads as paid');
+  assert.strictEqual(isCompAccount(selfPromoted), false,
+    'a row a user can write for themselves must never skip the debit');
+});
+test('SECURITY: an ordinary paying subscriber is not exempt either', () => {
+  assert.strictEqual(
+    isCompAccount({ tier: 'pro', comp_pro: false, pro_until: FUTURE, rc_app_user_id: 'rc_1' }),
+    false);
+});
+
 // ── THE ENUMERATION SUPERSET ───────────────────────────────────────────────
 // scripts/grant-credits.js pre-filters in SQL, then decides with isUserPro. The
 // filter is only safe if it can never EXCLUDE a row isUserPro would accept —
