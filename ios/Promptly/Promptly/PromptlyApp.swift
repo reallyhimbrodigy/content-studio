@@ -375,6 +375,24 @@ struct PromptlyApp: App {
         #if DEBUG
         if motionProof { return !onboarding.hasSeenFirstLaunchPaywall }
         #endif
+        // V2 OWNS FIRST LAUNCH, AND ITS FUNNEL HAS NO PAYWALL (2026-09-02).
+        //
+        // The stand-down was deleted with the `.paywall` beat, which put this
+        // branch back in the running — and it sits ABOVE `showOnboardingV2` in
+        // the chain while its own RevenueCat guard flips it TRUE about a second
+        // after launch. So a new user began answering Q1 and was then yanked
+        // onto the first-launch paywall the moment the receipt resolved: the
+        // exact screen item 1 removes, arriving mid-question.
+        //
+        // The walk did not catch it because the beats advance faster than
+        // RevenueCat answers; it only appears when a real person pauses on the
+        // question, which is everyone.
+        //
+        // Not a re-litigation of item 1 — the funnel still sells nothing. This
+        // says the ROOT may not present a paywall while v2 is the flow, which
+        // is what "questions -> chat" means once the branch order is accounted
+        // for. The legacy path (v2 off) is unchanged.
+        guard !onboarding.onboardingV2Enabled else { return false }
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
               // DEFERRED AUTH (flag): the funnel runs before sign-in again, and
