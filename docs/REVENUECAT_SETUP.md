@@ -1,6 +1,117 @@
-> ⚠️ **SUPERSEDED 2026-07-21 — FREEMIUM pivot.** The trial model and the $19.99/$199.99 prices below are OBSOLETE. Promptly is now permanent FREE (2 videos/day) + PRO with NO trials: **weekly $12.99, monthly $39.99, yearly $399.99**. Prices in the app are read live from StoreKit. This doc is kept for history only.
-
 # RevenueCat + App Store Connect setup
+
+> ⚠️ **Sections 1–5 are the ORIGINAL 2026-05 walkthrough and are SUPERSEDED
+> (2026-07-21, FREEMIUM pivot).** The trial model and the $19.99/$199.99 prices
+> there are obsolete. They are kept for history. **The dashboard inventory below
+> is the current truth** — read it first.
+
+## 0. CURRENT INVENTORY — every dashboard object, and what breaks without it
+
+**Why this section exists.** This doc used to describe Pro monthly + yearly and
+nothing else. It did not mention `promptly_pro_weekly` (which 12 of 24 paying
+subscribers are on) and it did not mention Max at all. That omission is how
+`promptly_max_yearly` came to be missing from the `default` offering with nobody
+noticing: the paywall enumerates `offering.availablePackages` with **no
+product-id filter**, so a package that is not attached simply does not render,
+and no code anywhere fails. **The failure mode of every object below is a silent
+absence, not an error.**
+
+### 0a. Products (RevenueCat → Products)
+
+| Product ID | Tier | Duration | Package on `default` | Status |
+|---|---|---|---|---|
+| `promptly_pro_weekly` | pro | 1 week | `$rc_weekly` | live |
+| `promptly_pro_monthly` | pro | 1 month | `$rc_monthly` | live |
+| `promptly_pro_yearly` | pro | 1 year | `$rc_annual` | live |
+| `promptly_max_monthly` | max | 1 month | `max_monthly` (custom) | live |
+| `promptly_max_yearly` | max | 1 year | `max_yearly` (custom) | ❌ **MISSING** |
+
+Prices are deliberately NOT recorded here. They are read live from StoreKit, and
+a stale price table in this file is exactly what made the rest of the doc
+untrustworthy. **Apple is the source of truth for price; this file is the source
+of truth for identifiers and wiring.**
+
+`max_monthly` / `max_yearly` are **custom** package identifiers, not
+`$rc_monthly` / `$rc_annual` — an offering holds one package per built-in type,
+and Pro already occupies all three. This matters in the client: RevenueCat
+returns custom packages with
+`packageType == .custom`, so any code testing `packageType == .annual` will not
+see them (see `Services/PlanPeriod.swift`, which reads `subscriptionPeriod`
+first for exactly this reason).
+
+### 0b. Entitlements (RevenueCat → Entitlements)
+
+| lookup_key | Attach | Verify |
+|---|---|---|
+| `pro` | the three `promptly_pro_*` products | `/api/health` → `.revenuecat.entitlementTiers` |
+| `max` | both `promptly_max_*` products | same — must contain **both** `max` and `pro` |
+
+The server maps entitlement → tier by lookup_key in
+`lib/entitlement.js` (`ENTITLEMENT_TIER_BY_LOOKUP_KEY`), resolving the highest
+`tierRank` when a customer holds both. There is **no product-id → tier map on
+the server**, so a new product of an existing tier needs no server change — but
+a product attached to the WRONG entitlement grants the wrong tier silently.
+
+### 0c. Virtual currency (RevenueCat → Virtual Currencies)
+
+| Code | Allowance/period | Set by |
+|---|---|---|
+| `CRD` | free 30 · pro 200 · max 1000 | `TIER_ALLOWANCE` in `lib/credits.js` |
+
+Per-product recurring grants are attached **in the dashboard** and fire on
+purchase and renewal. A weekly product grants its own smaller amount (a weekly
+is not 200) — attaching the monthly amount to the weekly product is an
+arbitrage: buy weekly, get a month of credits.
+
+Free-tier credits have no product to hang on and are granted by this server
+(`ensureFreePeriodGrant`, lazily). Currency creation and product-amount
+attachment are **dashboard-only** — there is no API for either.
+
+### 0d. Completeness check
+
+A doc cannot fail, so treat this as a pre-submission checklist, not a guarantee:
+
+```bash
+curl -s https://usepromptly.app/api/health | jq .revenuecat
+# expect: probe "ok"  AND  entitlementTiers containing BOTH "max" and "pro"
+```
+
+`entitlementTiers` proves the entitlements exist. **It does NOT prove the
+offering is complete** — the offering is a separate object, and a missing
+package is invisible to it. The only current way to see the packages is to dump
+`offering.availablePackages` from the client. If the Max tab renders fewer
+duration rows than the table in 0a, a package is unattached.
+
+### 0e. ⚠️ App Review screenshots
+
+`docs/screenshots/app-review/max-yearly-iap-review-17pro.png` (on branch
+`app-conversion-surface`) shows a **Year $799.99** row that the app can no
+longer offer, because `max_yearly` is not on the offering. **Do not submit it.**
+Apple would be reviewing a plan that does not exist. Re-capture it after the
+package is attached, then submit. `max-monthly-iap-review-17pro.png` is
+unaffected.
+
+### 0f. Adding Max Yearly (the outstanding gap)
+
+1. **App Store Connect** — in the Max subscription group, create a subscription:
+   Product ID `promptly_max_yearly`, Duration 1 Year. Clear `MISSING_METADATA`
+   (localizations + review screenshot) or it will not appear in RevenueCat.
+2. **RevenueCat → Products** — `+ New`, identifier `promptly_max_yearly`,
+   type Auto-Renewable Subscription.
+3. **RevenueCat → Entitlements → `max`** — attach `promptly_max_yearly`.
+   *Skipping this ships a purchase that grants nothing.*
+4. **RevenueCat → Offerings → `default`** — `+ Add Package`, custom identifier
+   `max_yearly`, attach the product. **This is the step that was missed.**
+5. **RevenueCat → Virtual Currencies** — attach the `CRD` recurring grant
+   (1000) to the product.
+6. Re-capture the App Review screenshot (0e) and verify the Max tab shows two
+   duration rows.
+
+No code change is required for any of the above: `CreditsService` maps the
+allowance by substring (`"max"` → 1000), and the paywall enumerates whatever the
+offering contains.
+
+---
 
 Everything in the code is wired. To actually take payments, you need to
 do the manual steps below. Total time: ~30 min.
