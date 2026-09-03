@@ -8,13 +8,16 @@
 ## 0. CURRENT INVENTORY — every dashboard object, and what breaks without it
 
 **Why this section exists.** This doc used to describe Pro monthly + yearly and
-nothing else. It did not mention `promptly_pro_weekly` (which 12 of 24 paying
-subscribers are on) and it did not mention Max at all. That omission is how
-`promptly_max_yearly` came to be missing from the `default` offering with nobody
-noticing: the paywall enumerates `offering.availablePackages` with **no
-product-id filter**, so a package that is not attached simply does not render,
-and no code anywhere fails. **The failure mode of every object below is a silent
-absence, not an error.**
+nothing else. It did not mention `promptly_pro_weekly` (which 12 of 25 paying
+subscribers are on) and it did not mention Max at all — so when `max_yearly`
+stopped appearing on the paywall there was no written record of what the correct
+set even was, and two days went into diagnosing it from the client.
+
+**The failure mode of every object below is a silent absence, not an error.**
+The paywall enumerates `offering.availablePackages` with **no product-id
+filter**: a package that is missing — or whose store product will not resolve —
+simply does not render, and no code anywhere fails. That is why this inventory
+exists, and why 0d checks the server rather than trusting the app.
 
 ### 0a. Products (RevenueCat → Products)
 
@@ -24,7 +27,7 @@ absence, not an error.**
 | `promptly_pro_monthly` | pro | 1 month | `$rc_monthly` | live |
 | `promptly_pro_yearly` | pro | 1 year | `$rc_annual` | live |
 | `promptly_max_monthly` | max | 1 month | `max_monthly` (custom) | live |
-| `promptly_max_yearly` | max | 1 year | `max_yearly` (custom) | ❌ **MISSING** |
+| `promptly_max_yearly` | max | 1 year | `max_yearly` (custom) | attached; **not resolving on device** |
 
 Prices are deliberately NOT recorded here. They are read live from StoreKit, and
 a stale price table in this file is exactly what made the rest of the doc
@@ -77,39 +80,73 @@ curl -s https://usepromptly.app/api/health | jq .revenuecat
 ```
 
 `entitlementTiers` proves the entitlements exist. **It does NOT prove the
-offering is complete** — the offering is a separate object, and a missing
-package is invisible to it. The only current way to see the packages is to dump
-`offering.availablePackages` from the client. If the Max tab renders fewer
-duration rows than the table in 0a, a package is unattached.
+offering is complete** — the offering is a separate object and a missing package
+is invisible to it. Check that server-side, against the v2 API:
+
+```bash
+OFR=$(curl -s -H "Authorization: Bearer $REVENUECAT_SECRET_KEY" \
+  "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID/offerings" \
+  | jq -r '.items[] | select(.is_current) | .id')
+curl -s -H "Authorization: Bearer $REVENUECAT_SECRET_KEY" \
+  "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID/offerings/$OFR/packages" \
+  | jq -r '.items[] | .lookup_key'
+# expect all five from 0a
+```
+
+⚠️ **Use the `ofrng…` id, never the lookup_key.** `/offerings/default/packages`
+returns HTTP 200 with **zero items** rather than a 404 — the obvious spelling
+reports an empty offering and reads as a total outage.
+
+**This is the diagnostic split.** API five + SDK four = the package is fine and
+the store product is not resolving (an Apple problem). API four = the package is
+genuinely unattached (a dashboard problem). Running it first is the difference
+between fixing it and re-checking a dashboard that was never wrong — see 0f.
 
 ### 0e. ⚠️ App Review screenshots
 
-`docs/screenshots/app-review/max-yearly-iap-review-17pro.png` (on branch
-`app-conversion-surface`) shows a **Year $799.99** row that the app can no
-longer offer, because `max_yearly` is not on the offering. **Do not submit it.**
-Apple would be reviewing a plan that does not exist. Re-capture it after the
-package is attached, then submit. `max-monthly-iap-review-17pro.png` is
-unaffected.
+`max-yearly-iap-review-17pro.png` — in `docs/screenshots/app-review/` (branch
+`app-conversion-surface`) and in `~/Desktop/Promptly Reports/` — shows a **Year
+$799.99** row the build cannot currently offer, because the package does not
+resolve on device (0f). **Do not submit it.** Apple would be reviewing a plan
+the app cannot show. Re-capture once the Max tab renders two duration rows, then
+submit. `max-monthly-iap-review-17pro.png` is accurate and safe to upload.
 
-### 0f. Adding Max Yearly (the outstanding gap)
+### 0f. Max Yearly — attached server-side, not resolving on device
 
-1. **App Store Connect** — in the Max subscription group, create a subscription:
-   Product ID `promptly_max_yearly`, Duration 1 Year. Clear `MISSING_METADATA`
-   (localizations + review screenshot) or it will not appear in RevenueCat.
-2. **RevenueCat → Products** — `+ New`, identifier `promptly_max_yearly`,
-   type Auto-Renewable Subscription.
-3. **RevenueCat → Entitlements → `max`** — attach `promptly_max_yearly`.
-   *Skipping this ships a purchase that grants nothing.*
-4. **RevenueCat → Offerings → `default`** — `+ Add Package`, custom identifier
-   `max_yearly`, attach the product. **This is the step that was missed.**
-5. **RevenueCat → Virtual Currencies** — attach the `CRD` recurring grant
-   (1000) to the product.
-6. Re-capture the App Review screenshot (0e) and verify the Max tab shows two
-   duration rows.
+**Do not go looking for an unsaved package. There isn't one.** Read directly
+from the v2 API on 2026-09-03:
 
-No code change is required for any of the above: `CreditsService` maps the
-allowance by substring (`"max"` → 1000), and the paywall enumerates whatever the
-offering contains.
+```
+GET /v2/projects/{p}/offerings            -> ofrng7cf44d279e  lookup_key=default  is_current=true
+GET /v2/projects/{p}/offerings/ofrng7cf44d279e/packages   -> 5 packages
+   max_monthly pos0 -> promptly_max_monthly [all]
+   max_yearly  pos1 -> promptly_max_yearly  [all]      <-- present, product attached
+   $rc_weekly  pos2 / $rc_monthly pos3 / $rc_annual pos4
+```
+
+The SDK returned **four** across eight independent reads (two erased devices,
+six fresh launches) over ~15 minutes, with `promptly_max_yearly` absent every
+time. API five + SDK four = **the package is fine and the store product is not
+resolving.** Both dashboard theories — package on a non-current offering, and a
+silently failed save — are refuted by the dump above.
+
+⚠️ **API PATH TRAP.** `GET /offerings/default/packages` — the lookup_key instead
+of the `ofrng…` id — returns **HTTP 200 with zero items**, not a 404. Written
+the obvious way, a probe reports an empty offering and reads as a total outage.
+Resolve the id from `/offerings` first.
+
+**Open lead.** Both Max products report `subscription.duration: null`, while
+every Pro product carries a real duration (`promptly_pro_yearly` → `P1Y`,
+`trial_duration` `P3D`). RevenueCat has never pulled store metadata for either
+Max product. `max_monthly` still resolves on device, so this does not by itself
+explain the difference — but RC's store sync is not populating Max, and that is
+the thread to pull. ASC reports the product APPROVED with a 175-territory price
+config, so the remaining suspects are Apple-side: propagation, subscription
+group, or localization.
+
+No code change is involved either way: `CreditsService` maps the allowance by
+substring (`"max"` → 1000) and every paywall surface enumerates whatever the
+offering returns.
 
 ---
 

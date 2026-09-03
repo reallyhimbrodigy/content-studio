@@ -1,6 +1,22 @@
 -- Entitlement hardening: admin comp flag + lock entitlement columns to the
 -- server (service role) so authenticated clients can't self-grant Pro.
 --
+-- APPLIED TO PRODUCTION 2026-09-03 (protect_entitlement_columns_trg).
+-- It was written 2026-06-23 and sat UNAPPLIED for ~10 weeks: only the later
+-- 20260701 comp_pro guard reached the database, so `comp_pro` was protected
+-- while `tier` / `pro_until` / `rc_app_user_id` — the columns this file was
+-- written to protect — stayed client-writable the entire time. Rediscovered
+-- independently while scoping the comp debit bypass, which would have keyed on
+-- exactly those columns.
+--
+-- THE LESSON, since a written-but-unapplied migration leaves no trace: a
+-- migration file in the repo is not a change to the database. Verified after
+-- applying by attempting the self-promote as role `authenticated` with a JWT
+-- claim set (so RLS admits the row) — the write raised insufficient_privilege
+-- and pro_until stayed null. Controls: service_role can still write entitlement
+-- columns (webhook / referral / reconcile intact) and an authenticated client
+-- can still write profile_settings (the guard is not over-broad).
+--
 -- Background: profiles_update_own (20260125_fix_profiles_rls.sql) lets an
 -- authenticated user UPDATE their own row with NO column restriction. Because
 -- the app ships the Supabase URL + anon key, a user could take their own JWT
