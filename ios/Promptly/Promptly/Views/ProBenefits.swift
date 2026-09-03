@@ -168,10 +168,24 @@ enum ProBenefits {
     /// The multiple is DERIVED and disappears with the meter: without credits
     /// there is nothing for Max to be a multiple OF, so the line degrades to the
     /// relationship alone rather than inventing a factor.
+    @MainActor
     static func maxCardList(proAllowance: Int?, maxAllowance: Int?,
                             creditsEnabled: Bool) -> [String] {
-        var out = [String(localized: "Everything in Pro"),
-                   String(localized: "Early access to our newest features")]
+        // "EVERYTHING IN PRO" IS A POINTER, NOT A BENEFIT. It asks the reader to
+        // go and look at the other tab, hold five lines in their head, and come
+        // back — on the card that has to justify the higher price. It also left
+        // Max with two bullets against Pro's five, which is the void that kept
+        // being reported as a layout bug: the card was short because it said
+        // almost nothing, and no amount of spacing fixes a card with nothing in
+        // it.
+        //
+        // Max now NAMES what it includes. The lines are taken as a PREFIX of
+        // Pro's own card features rather than retyped, so they cannot drift
+        // from what Pro claims — the same discipline `top(_:)` uses, and the
+        // reason a claim still exists in exactly one place.
+        var out = Array(cardFeatures(creditsEnabled: creditsEnabled,
+                                     monthlyCredits: maxAllowance).prefix(3))
+        out.append(String(localized: "Early access to our newest features"))
         // The multiple is DERIVED and disappears with the meter: without credits
         // there is nothing for Max to be a multiple OF, so the line is dropped
         // rather than a factor invented.

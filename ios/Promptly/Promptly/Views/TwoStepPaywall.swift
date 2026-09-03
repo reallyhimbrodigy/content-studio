@@ -657,11 +657,17 @@ struct PaywallLayout: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
+            // SELECTED READS AT ARM'S LENGTH. The border already carried the
+            // state, but a 2pt white stroke against a 0.16 fill is a difference
+            // you have to look for — on the one control that decides what the
+            // CTA charges. Fill does the work at a glance and the border
+            // confirms it up close; both move together so the state is legible
+            // at either distance.
             .background(RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.04)))
+                .fill(isSelected ? Color.white.opacity(0.30) : Color.white.opacity(0.04)))
             .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(isSelected ? Color.white : Color.white.opacity(0.10),
-                              lineWidth: isSelected ? 2 : 1))
+                              lineWidth: isSelected ? 2.5 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
