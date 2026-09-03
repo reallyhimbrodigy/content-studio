@@ -4406,7 +4406,7 @@ private struct UpdateFixStrip: View {
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            VersionAwareness.shared.openAppStore()
+            VersionAwareness.shared.openAppStore(source: "upload_fix_strip")
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.down.circle.fill")

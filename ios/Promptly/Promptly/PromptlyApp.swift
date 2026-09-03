@@ -911,7 +911,7 @@ struct UpdateRequiredView: View {
                     .padding(.horizontal, 40)
                     .padding(.top, 10)
                 Button {
-                    VersionAwareness.shared.openAppStore()
+                    VersionAwareness.shared.openAppStore(source: "forced_cover")
                 } label: {
                     Text("Update Promptly")
                         .font(.system(size: 17, weight: .bold))

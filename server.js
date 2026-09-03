@@ -4036,6 +4036,11 @@ const server = http.createServer((req, res) => {
           'auth_gate_abandoned', 'auth_gate_resume_missing_product', 'auth_gate_resumed',
           'auth_gate_shown', 'credits_exhausted', 'credits_exhausted_shown',
           'credits_refund_shown', 'credits_topup_open', 'exit_offer_shown',
+          // Update prompts — three surfaces, one funnel. `update_prompt_tapped`
+          // carries `source` so the dismissible banner, the post-failure strip
+          // and the forced cover stay separable; without it every tap lands in
+          // one bucket and the only readable fact is 'someone updated'.
+          'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
           'device_id_keychain_write_failed', 'downsell_shown',
           'downsell_skipped', 'first_run_keychain_write_failed', 'free_export_spent_shown',
           'instant_question_answered', 'instant_question_shown', 'language_changed',

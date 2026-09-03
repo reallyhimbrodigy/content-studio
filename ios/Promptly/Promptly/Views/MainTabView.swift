@@ -72,10 +72,11 @@ struct MainTabView: View {
             if readyStore.featured == nil, versionAware.showBanner {
                 UpdateBanner(
                     notes: versionAware.notes,
-                    onUpdate: { versionAware.openAppStore() },
+                    onUpdate: { versionAware.openAppStore(source: "soft_banner") },
                     onDismiss: { versionAware.dismissBanner() }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
+                .onAppear { versionAware.trackBannerShown() }
             }
             if let job = readyStore.featured {
                 ReadyVideoBanner(

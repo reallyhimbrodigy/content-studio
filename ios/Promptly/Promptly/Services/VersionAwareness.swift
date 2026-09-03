@@ -65,13 +65,44 @@ final class VersionAwareness: ObservableObject {
     /// update exists. (The upload class is the first caller.)
     var showContextualUploadPrompt: Bool { updateAvailable }
 
+    /// The banner reached the screen. Emitted by the view rather than by
+    /// `showBanner`, because that property is read on every layout pass and
+    /// would count impressions in the dozens.
+    ///
+    /// `current` and `latest` ride along so the cohort is readable without a
+    /// join: the interesting question is not "how many saw it" but "how far
+    /// behind were the people who saw it", and 1.3.6 users are 59% of the
+    /// active base.
+    func trackBannerShown() {
+        Analytics.track("update_banner_shown", props: [
+            "current": Self.bundleVersion(),
+            "latest": latestVersion ?? "",
+            "has_notes": notes?.isEmpty == false,
+        ])
+    }
+
     func dismissBanner() {
         guard let latest = latestVersion else { return }
+        Analytics.track("update_banner_dismissed", props: [
+            "current": Self.bundleVersion(),
+            "latest": latest,
+        ])
         UserDefaults.standard.set(latest, forKey: Self.dismissedKey)
         dismissedForLatest = true
     }
 
-    func openAppStore() {
+    /// SOURCE IS REQUIRED, because three different surfaces call this — the
+    /// dismissible banner, the contextual post-failure strip, and the forced
+    /// cover — and they answer different questions. Without it every tap lands
+    /// in one bucket and the only thing measurable is "someone updated", which
+    /// is exactly the blindness this closes. No default: a new caller has to
+    /// name itself.
+    func openAppStore(source: String) {
+        Analytics.track("update_prompt_tapped", props: [
+            "source": source,
+            "current": Self.bundleVersion(),
+            "latest": latestVersion ?? "",
+        ])
         UIApplication.shared.open(Self.appStoreURL)
     }
 
