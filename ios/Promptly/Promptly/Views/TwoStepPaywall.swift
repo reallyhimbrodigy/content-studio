@@ -372,10 +372,15 @@ struct PaywallLayout: View {
                 tierBody(tier)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
+                    .frame(maxHeight: .infinity)
                     .transition(reduceMotion ? .opacity : .opacity)
             }
 
-            Spacer(minLength: 8)
+            // Was `Spacer(minLength: 8)` — the single pool the whole band came
+            // from. The tier body now takes the slack, so this is only the
+            // fixed breathing room above the social-proof line.
+            Spacer(minLength: 0)
+                .frame(height: 8)
 
             Text("★ 4.8 · 25,000+ creators")
                 .cType(11, .semibold)
@@ -505,6 +510,23 @@ struct PaywallLayout: View {
 
     // MARK: The selected tier
 
+    /// THE TAB FILLS ITS COLUMN. Reported three times as "an empty band below
+    /// the plans", worst on Max.
+    ///
+    /// The cause was a single `Spacer(minLength: 8)` in the outer stack, between
+    /// this body and the social proof. One spacer means ALL the slack pools in
+    /// ONE gap, so whatever the tier did not use appeared as a dead band in that
+    /// exact spot — and Max, with three bullets against Pro's five and two
+    /// duration rows against three, had the most left over. Nothing was wrong
+    /// with either tier's content; the layout simply had one place to put the
+    /// remainder.
+    ///
+    /// The gaps BETWEEN groups are flexible now, with their old fixed values as
+    /// minimums, so the remainder is shared across the three seams instead of
+    /// collected at the bottom. A tab with less content spreads; a tab with more
+    /// keeps today's spacing. On a short screen every spacer collapses to its
+    /// minimum and the layout is byte-identical to before — which is what keeps
+    /// the SE fit intact rather than trading one device's problem for another's.
     private func tierBody(_ tier: PaywallTierOption) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let credits = tier.creditsLine {
@@ -520,7 +542,8 @@ struct PaywallLayout: View {
             }
 
             VStack(alignment: .leading, spacing: 7) {
-                ForEach(tier.features, id: \.self) { line in
+                ForEach(Array(tier.features.enumerated()), id: \.element) { idx, line in
+                    if idx > 0 { Spacer(minLength: 0).frame(maxHeight: 22) }
                     HStack(alignment: .top, spacing: 9) {
                         ZStack {
                             Circle().fill(Color.white).frame(width: 18, height: 18)
@@ -538,12 +561,23 @@ struct PaywallLayout: View {
             }
             .padding(.top, 10)
 
+            // Capped seams. Uncapped, the remainder collected in whichever gap
+            // came first and the screen read as two voids instead of one — the
+            // same defect moved, not fixed. Caps let each seam take a share and
+            // stop, so a short tier reads as generously spaced rather than
+            // broken apart, and any true remainder lands once, above the CTA,
+            // where a margin is expected.
+            Spacer(minLength: 0).frame(maxHeight: 46)
+
             VStack(spacing: 6) {
-                ForEach(durations(tier.allowance)) { row in
+                ForEach(Array(durations(tier.allowance).enumerated()), id: \.element.id) { idx, row in
+                    if idx > 0 { Spacer(minLength: 0).frame(maxHeight: 14) }
                     durationRow(row)
                 }
             }
             .padding(.top, 10)
+
+            Spacer(minLength: 0).frame(maxHeight: 46)
 
             Text("Cancel anytime · no commitment")
                 .cType(10)
@@ -551,7 +585,11 @@ struct PaywallLayout: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // .topLeading, not .leading. With only a horizontal alignment the
+        // expanded frame centred the column vertically, which opened a gap
+        // under the toggle — "content starting near the title" is the half of
+        // the brief that alignment decides, and the seams below take the rest.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     /// UNMISTAKABLE WHEN SELECTED: a filled row with a full-strength border, not
