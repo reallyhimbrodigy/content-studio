@@ -4208,6 +4208,12 @@ const server = http.createServer((req, res) => {
           // the drift the gate was moved to pre-push to catch, found on a
           // developer machine instead of a release later.
           'credits_topup_open',
+          // Fourth drift the pre-push parity gate has caught since it moved off
+          // Render's build. Frontend is adding paywall events faster than any
+          // release cycle, which is precisely the cadence that produced the
+          // original 25 — each one silently dropped by the SQL mirror until
+          // someone noticed the funnel was short.
+          'exit_offer_shown',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
