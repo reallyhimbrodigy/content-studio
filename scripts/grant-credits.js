@@ -154,7 +154,21 @@ if (APPLY && DEBIT_ARMED && !FORCE) {
       linked: Boolean(r.rc_app_user_id),
       proUntil: r.pro_until,
     }));
-  if (only.size) cohort = cohort.filter((u) => only.has(u.id));
+  if (only.size) {
+    // A requested id that is not in the paid cohort must be SAID, not dropped.
+    // Silently filtering it away means asking for a grant, seeing a successful
+    // run, and never learning the user was never considered.
+    const found = new Set(cohort.map((u) => u.id));
+    const missing = [...only].filter((id) => !found.has(id));
+    if (missing.length) {
+      console.error(`\n  ⚠️  ${missing.length} requested id(s) are NOT in the paid `
+        + 'cohort and will be ignored:');
+      for (const id of missing) console.error(`     ${id}`);
+      console.error('     Either the id is wrong, or isUserPro() does not consider '
+        + 'them paid — check\n     before assuming this run covered them.\n');
+    }
+    cohort = cohort.filter((u) => only.has(u.id));
+  }
 
   // A CLEAN ZERO IS GUILTY UNTIL PROVEN INNOCENT. An empty cohort here reads as
   // "everyone is already covered" when it is far more likely to be a broken
