@@ -1699,6 +1699,34 @@ struct EditorView: View {
     /// `shouldOfferSoftPrompt`, so it's safe to call from every completion sink.
     /// Re-timing lifts the ask out of the "before they've seen it work" window
     /// (the old dispatch-time ask saw ~44% decline before any value was shown).
+    /// ATTRIBUTION AFTER FIRST VALUE (2026-09-02).
+    ///
+    /// It used to be a funnel beat — asked before the user had made anything,
+    /// which is the worst moment for it twice over: it is friction in front of
+    /// the product, and the answer is least considered from someone who has not
+    /// yet decided whether they care about the app. Asked after the first video
+    /// lands, it is a question from a product that has already worked.
+    ///
+    /// PAYOFF-ORDERED. It fires from the same completion hook as the push
+    /// prompt but always yields to it: two asks stacked on one moment is how
+    /// both get dismissed. `hasSeenAttributionGate` is the once-ever guard, so
+    /// deferring costs nothing — the next completed video asks instead.
+    @MainActor
+    private func maybeAskAttributionAfterFirstValue() {
+        let o = OnboardingState.shared
+        guard o.attributionGateEnabled, !o.hasSeenAttributionGate else { return }
+        let app = AppState.shared
+        guard !app.showCredits, !app.showAccount, app.paywallReason == nil else { return }
+        Task { @MainActor in
+            // Let the payoff land and the push prompt claim the moment first.
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !AppState.shared.showAttribution,
+                  AppState.shared.paywallReason == nil,
+                  !OnboardingState.shared.hasSeenAttributionGate else { return }
+            AppState.shared.showAttribution = true
+        }
+    }
+
     private func maybeOfferSoftPromptOnCompletion() {
         if PushService.shared.shouldOfferSoftPrompt {
             showPushExplainer = true
@@ -3785,6 +3813,7 @@ struct EditorView: View {
                         messages[idx].stageTimeline?.finish()
                         persistMessages()
                         maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
+                        maybeAskAttributionAfterFirstValue()
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)
@@ -3832,6 +3861,7 @@ struct EditorView: View {
                         messages[revealIdx].stageTimeline?.finish()
                         persistMessages()
                         maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
+                        maybeAskAttributionAfterFirstValue()
                         if isFinalEvent {
                             client.disconnect()
                             sseClients.removeValue(forKey: jobId)

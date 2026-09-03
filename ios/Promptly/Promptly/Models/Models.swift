@@ -547,6 +547,10 @@ final class AppState: ObservableObject {
     @Published var showAccount: Bool = false
     /// The credits top-up sheet. Raised by the header badge.
     @Published var showCredits: Bool = false
+    /// Attribution, asked AFTER first value rather than inside the funnel.
+    /// Set once, by the first completed render; `hasSeenAttributionGate` makes
+    /// it once-ever regardless of how many videos follow.
+    @Published var showAttribution: Bool = false
     /// Bumped by `landOnChat()` on every authenticated landing. EditorView
     /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
     /// keyboard up, ready to type a vibe (build 217).

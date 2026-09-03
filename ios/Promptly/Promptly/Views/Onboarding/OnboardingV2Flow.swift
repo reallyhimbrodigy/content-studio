@@ -82,46 +82,25 @@ struct OnboardingV2Flow: View {
                     // becomes the composer prefill → vibe_input on the render.
                     state.preselectedVibe = OnboardingQuestion.vibeV2(forVideoType: picked.first)
                     goingForward = true
-                    // Straight to the ask. Attribution used to sit here — a
-                    // marketing question standing between the user and the
-                    // paywall, which is friction charged against conversion for
-                    // data that does not have to be collected first.
-                    state.v2Step = .paywall
+                    // STRAIGHT TO CHAT. Nothing is sold here any more: the
+                    // funnel is two questions and then the product. The ask
+                    // moves to the moment credits run out, which is the first
+                    // time the user has a reason to care what a plan costs.
+                    complete()
                 }, autoDrive: motionProof ? ("podcast", "fast") : nil)
 
-            case .attribution:
-                // AFTER the ask, not before it. It is attribution, not
-                // commitment: it changes no pixel of the product and gates
-                // nothing, so asking it ahead of the paywall spent the user's
-                // patience on our analytics. No progress chrome — it is no
-                // longer step N of a set.
-                AttributionAskView(context: "onboarding_v2", progress: nil) {
-                    state.persistAnswersToProfile()
-                    complete()
-                }
-                #if DEBUG
-                .task {
-                    guard motionProof else { return }
-                    try? await Task.sleep(nanoseconds: 1_600_000_000)
-                    complete()
-                }
-                #endif
-
-            case .paywall:
-                // The SAME view the root used to present above this flow —
-                // rendered here instead, so it arrives with Q1/Q2 answered and
-                // its personalised lead can actually resolve. `onFinished`
-                // replaces the old mechanism (set hasSeenFirstLaunchPaywall,
-                // let the root fall through): inside the flow there is nothing
-                // to fall through to, so the beat has to advance itself.
-                FirstLaunchPaywallView(onFinished: { advanceFromPaywall() })
-
-            case .reveal:
-                OfferRevealView(onDecline: { declineToReferral() }, onPurchased: { afterAsk() })
-
-
-            case .referralCatch:
-                ReferralCatchBeat(onSkip: { afterAsk() })
+            // ── RETIRED BEATS ────────────────────────────────────────────
+            // The paywall, the reveal, the invite rung and attribution are no
+            // longer steps in this flow. They are kept as enum cases ONLY so a
+            // persisted `onboarding_v2_step` written by an older build still
+            // parses — dropping the cases would make `V2Step(rawValue:)` return
+            // nil and strand a mid-flow user on a screen that no longer exists.
+            // Anyone restored into one is simply finished: they answered the
+            // questions on the old build, and the money moments now live at the
+            // credit wall.
+            case .attribution, .paywall, .reveal, .referralCatch:
+                Color.black.ignoresSafeArea()
+                    .task { complete() }
 
             case .done:
                 Color.black.ignoresSafeArea()
@@ -147,47 +126,8 @@ struct OnboardingV2Flow: View {
             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
-    /// After Q3: the reveal only runs when there is a REAL offer to reveal and
-    /// the user has not already subscribed on screen one.
-    /// Decline is not a dead end: it steps to the referral rung.
-    ///
-    /// There is no separate monthly rung between them, and there should not be:
-    /// the reveal ALREADY carries `secondaryMonthlyLine` — "Or start monthly
-    /// for $14.99 (50% off)" — a real purchasable alternative on the same
-    /// screen. A standalone downsell asked the identical question one screen
-    /// later, so declining the reveal meant declining monthly twice.
-    private func declineToReferral() {
-        Analytics.track("offer_reveal_declined", props: ["context": "onboarding_v2"])
-        goingForward = true
-        state.v2Step = .referralCatch
-    }
 
-    /// The one exit from the ASK sequence — paywall, reveal, referral all land
-    /// here. Attribution is the tail, so it is asked once no matter which rung
-    /// the user stopped on, and it cannot be reached before the ask.
-    private func afterAsk() {
-        goingForward = true
-        state.v2Step = .attribution
-    }
 
-    /// Paywall → reveal, or straight past it when there is nothing to reveal.
-    private func advanceFromPaywall() {
-        // The reveal honours the plan the user is already leaning on: yearly
-        // offers now exist in all 175 territories, so an annual-leaning user
-        // sees the ANNUAL offer rather than being switched to a monthly one.
-        let preferred = OfferReveal.preferredPackage(in: packages)
-        if subscription.isPro || !OfferReveal.isAvailable(in: packages, preferring: preferred) {
-            Analytics.track("offer_reveal_skipped",
-                            props: ["context": "onboarding_v2",
-                                    "reason": subscription.isPro ? "already_pro" : "no_offer_on_products"])
-            // Nothing to reveal and nothing to catch: a user who already paid
-            // must not be offered a free week for inviting friends.
-            afterAsk()
-        } else {
-            goingForward = true
-            state.v2Step = .reveal
-        }
-    }
 
     /// One answer seam: emit, store, and treat Skip honestly (a skipped
     /// question stores nothing — never a placeholder value).

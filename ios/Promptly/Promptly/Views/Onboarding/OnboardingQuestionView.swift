@@ -199,6 +199,8 @@ struct OnboardingQuestionView: View {
                 .padding(.horizontal, 20)
 
                 VStack(alignment: .leading, spacing: 8) {
+                    OnboardingMark()
+                        .padding(.bottom, 6)
                     Text(question.title)
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(.white)
@@ -302,5 +304,42 @@ struct OnboardingQuestionView: View {
             )
         }
         .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
+    }
+}
+
+/// THE ONBOARDING MARK — brand presence on the question beats. 2026-09-02.
+///
+/// The funnel is now two questions and then the product, and neither question
+/// carried the mark at all: a progress bar, a Skip link and a headline, on
+/// black. Correct and characterless — the two screens that set the tone for the
+/// whole app were the only ones with nothing of the brand in them.
+///
+/// ANIMATED ON APPEAR, not made larger and not redrawn. A bigger mark is scale,
+/// not personality, and a different mark is a brand decision that belongs to
+/// Zac rather than to a build. Motion gives it presence while leaving the
+/// identity untouched.
+///
+/// The entrance MATCHES LaunchView deliberately — scale settling inward, blur
+/// clearing, opacity rising — so the mark reads as the same object continuing
+/// its arrival rather than a second logo appearing in a new style. Under
+/// Reduce Motion it simply is there, with no travel.
+struct OnboardingMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var arrived = false
+
+    var body: some View {
+        Image("PromptlyLogo")
+            .renderingMode(.original)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 30, height: 30)
+            .scaleEffect(arrived ? 1.0 : 1.12)
+            .blur(radius: arrived ? 0 : 6)
+            .opacity(arrived ? 1 : 0)
+            .onAppear {
+                guard !reduceMotion else { arrived = true; return }
+                withAnimation(.easeOut(duration: 0.52)) { arrived = true }
+            }
+            .accessibilityHidden(true)   // decorative; the headline carries the meaning
     }
 }

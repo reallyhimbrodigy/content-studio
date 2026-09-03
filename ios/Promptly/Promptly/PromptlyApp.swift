@@ -375,18 +375,6 @@ struct PromptlyApp: App {
         #if DEBUG
         if motionProof { return !onboarding.hasSeenFirstLaunchPaywall }
         #endif
-        // THE FLOW OWNS THIS SCREEN WHEN v2 IS ARMED (2026-09-02). It used to
-        // sit ABOVE OnboardingV2Flow in this chain, so a new install met the
-        // paywall before answering a single question — and the paywall's
-        // personalised lead reads Q1/Q2, which were therefore always nil. The
-        // order is now questions → paywall → reveal → chat, with the paywall as
-        // a beat inside the flow.
-        //
-        // Standing down HERE rather than reordering the branches, for the same
-        // reason `showAttributionGate` does: two branches that can both be true
-        // resolve by position, and position is invisible at the call site. An
-        // explicit predicate says which flow owns the screen.
-        guard !(onboarding.onboardingV2Enabled && !onboarding.hasCompletedOnboarding) else { return false }
         guard onboarding.firstLaunchPaywallEnabled == true,
               !onboarding.hasSeenFirstLaunchPaywall,
               // DEFERRED AUTH (flag): the funnel runs before sign-in again, and
@@ -1028,7 +1016,7 @@ enum FirstRunProofHarness {
             // paywall used to be beat one, from a root branch above the flow.
             // 2026-09-02: attribution moved to the TAIL (after the ask), and
             // the decline catch became a rung of its own.
-            for beat: OnboardingState.V2Step in [.audience, .videoType, .paywall, .reveal, .referralCatch, .attribution] {
+            for beat: OnboardingState.V2Step in [.audience, .videoType] {
                 s.v2Step = beat
                 print("[FirstRunProof] beat=\(beat.rawValue)")
                 try? await Task.sleep(for: dwell)

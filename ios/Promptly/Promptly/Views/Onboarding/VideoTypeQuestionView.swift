@@ -118,6 +118,8 @@ struct VideoTypeQuestionView: View {
                 .padding(.horizontal, 20)
 
                 VStack(alignment: .leading, spacing: 8) {
+                    OnboardingMark()
+                        .padding(.bottom, 6)
                     Text(String(localized: "What kind of videos do you make?"))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(.white)
