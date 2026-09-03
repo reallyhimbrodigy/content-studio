@@ -82,11 +82,11 @@ struct OnboardingV2Flow: View {
                     // becomes the composer prefill → vibe_input on the render.
                     state.preselectedVibe = OnboardingQuestion.vibeV2(forVideoType: picked.first)
                     goingForward = true
-                    // STRAIGHT TO CHAT. Nothing is sold here any more: the
-                    // funnel is two questions and then the product. The ask
-                    // moves to the moment credits run out, which is the first
-                    // time the user has a reason to care what a plan costs.
-                    complete()
+                    // THE SOFT PAYWALL. Restored after Q2 — dismissible, and
+                    // dismissing ADVANCES rather than blocking. It sells before
+                    // first value again, which is the trade being made
+                    // knowingly; what it does not do is trap anyone.
+                    state.v2Step = .paywall
                 }, autoDrive: motionProof ? ("podcast", "fast") : nil)
 
             // ── RETIRED BEATS ────────────────────────────────────────────
@@ -98,9 +98,24 @@ struct OnboardingV2Flow: View {
             // Anyone restored into one is simply finished: they answered the
             // questions on the old build, and the money moments now live at the
             // credit wall.
-            case .attribution, .paywall, .reveal, .referralCatch:
+            case .attribution, .reveal, .referralCatch:
                 Color.black.ignoresSafeArea()
                     .task { complete() }
+
+            case .paywall:
+                // THE SOFT ASK. `onFinished` fires from FirstLaunchPaywallView's
+                // single exit — the X, a completed purchase, the proof driver —
+                // so every way out advances the flow and none of them strands
+                // the user on a screen with no forward.
+                //
+                // NO EXIT-INTENT DISCOUNT HERE, and it needs no code to prevent:
+                // the catch lives in `UpgradePaywall`, and this view renders
+                // `TwoStepPaywall` DIRECTLY. The discount stays reserved for a
+                // post-value dismissal, where the user has something to weigh it
+                // against. Routing this through UpgradePaywall would hand it to
+                // someone who has not made a video yet — the automatic reveal
+                // that item 3 removed.
+                FirstLaunchPaywallView(onFinished: { complete() })
 
             case .done:
                 Color.black.ignoresSafeArea()
