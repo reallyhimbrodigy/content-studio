@@ -1,5 +1,6 @@
 import SwiftUI
 import RevenueCat
+import StoreKit
 
 // MARK: - Presentation models
 
@@ -775,6 +776,28 @@ struct TwoStepPaywall: View {
                 let sp = p.storeProduct
                 let per = sp.subscriptionPeriod
                 print("[OFFER]  pkg=\(p.identifier) type=\(p.packageType) product=\(sp.productIdentifier) period=\(per.map { "\($0.value)\($0.unit)" } ?? "nil") planPeriod=\(p.planPeriod) allowance=\(String(describing: CreditAllowance.monthly(forProductId: sp.productIdentifier)))")
+            }
+            // ASK STOREKIT DIRECTLY. `availablePackages` is already
+            // POST-filter: RevenueCat drops any package whose underlying
+            // StoreKit product did not resolve, so an attached package and a
+            // count of 4 are not a contradiction — they are the signature of a
+            // product StoreKit will not return. Reading the offering alone
+            // cannot tell "not attached" from "attached but unresolvable", and
+            // this session spent eight reads unable to separate them.
+            //
+            // This asks the store itself, so the poll reports WHICH of the two
+            // it is and goes green the moment resolution starts working.
+            Task {
+                let ids = ["promptly_max_yearly", "promptly_max_monthly"]
+                do {
+                    let found = try await Product.products(for: ids)
+                    let got = Set(found.map(\.id))
+                    for id in ids {
+                        print("[STOREKIT] \(id) = \(got.contains(id) ? "RESOLVES" : "NOT RETURNED BY STOREKIT")")
+                    }
+                } catch {
+                    print("[STOREKIT] query failed: \(error.localizedDescription)")
+                }
             }
         }
         #endif
