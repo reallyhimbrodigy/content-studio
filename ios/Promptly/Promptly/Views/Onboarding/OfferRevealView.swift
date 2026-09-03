@@ -98,8 +98,16 @@ struct OfferRevealView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
+                        // FIVE, not six. Six checkmarks is past the point where
+                        // a list is read rather than scanned, and "Save and
+                        // share every video" was the weakest of them — the one
+                        // claim a reader would assume anyway. Taken as a PREFIX
+                        // rather than by dropping a named line, so the order
+                        // stays the pitch order and no surface can quietly
+                        // promote a minor claim into the cut.
                         ForEach(OfferReveal.benefitLines(audience: onboarding.v2Audience,
-                                                         videoType: onboarding.v2VideoType), id: \.self) { line in
+                                                         videoType: onboarding.v2VideoType)
+                                    .prefix(5), id: \.self) { line in
                             HStack(spacing: 14) {
                                 ZStack {
                                     Circle().fill(Color.white).frame(width: 24, height: 24)
@@ -128,19 +136,44 @@ struct OfferRevealView: View {
                         }
                     } label: {
                         Group {
-                            if isPurchasing { ProgressView().tint(.black) }
+                            if isPurchasing { ProgressView().tint(.white) }
                             else { Text(offerPackage.map { OfferReveal.ctaLabel(for: $0) }
                                         ?? String(localized: "Continue"))
                                         .cType(17, .bold) }
                         }
-                        .foregroundColor(.black)
+                        // PURPLE, like every other primary in the funnel. White
+                        // is iOS's neutral — it reads as "dismiss" or "cancel"
+                        // as readily as "buy", and this screen's whole job is
+                        // one decision. The paywall CTA, the invite CTA and the
+                        // downsell CTA are all this accent; the one asking for
+                        // the largest commitment was the only one opting out of
+                        // the pattern.
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity).frame(height: 56)
-                        .background(Color.white, in: Capsule())
+                        .background(Color(hex: "6C5CE7"), in: Capsule())
                     }
                     .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
                     .disabled(offerPackage == nil || isPurchasing)
                     .padding(.horizontal, 24)
                     .padding(.top, 32)
+
+                    // 2. WHAT IS ACTUALLY BEING AGREED TO, at the point of
+                    // commitment. The renewal terms are already stated under
+                    // the price at the top, but that is a screen-height away
+                    // from the button by the time someone has read six bullets —
+                    // and hesitation happens at the tap, not at the headline.
+                    //
+                    // Read from StoreKit's own formatter via the same helper the
+                    // price block uses, so it cannot disagree with the number
+                    // above it.
+                    if let renew = offerPackage.map({ OfferReveal.renewalLine(for: $0) }) ?? nil {
+                        Text(renew)
+                            .cType(12)
+                            .foregroundColor(.white.opacity(0.55))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
+                    }
 
                     // SECONDARY PLAN LINE. The yearly stays the hero; this
                     // offers the monthly intro to someone who will not commit
@@ -322,9 +355,28 @@ struct OfferRevealView: View {
 
     /// The monthly package, only when it carries a genuinely cheaper paid
     /// intro AND is not already the plan being sold above.
+    /// SAME TIER AS THE OFFER, not merely the first monthly in the list.
+    ///
+    /// `sortedByDuration` ranks by `-allowance`, so Max (1000) sorts BEFORE Pro
+    /// (200). Once `max_tier` armed, `first(where: isMonthlyPlan)` started
+    /// returning promptly_max_monthly — which carries no introductory offer, so
+    /// `isRealOffer` failed and the monthly line silently disappeared from a
+    /// reveal that was selling the PRO year.
+    ///
+    /// It worked right up until Max existed, which is why it was not caught:
+    /// with one tier there was only one monthly and "the first monthly" and
+    /// "this tier's monthly" were the same package. That also makes it the
+    /// reason the collapse of the standalone downsell rung looked wrong — the
+    /// line it was collapsed INTO had stopped rendering.
     private var monthlyAlternative: Package? {
         guard offerPackage?.isMonthlyPlan != true else { return nil }
-        guard let m = packages.first(where: { $0.isMonthlyPlan }) else { return nil }
+        let tier = offerPackage.flatMap {
+            CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier)
+        }
+        guard let m = packages.first(where: {
+            $0.isMonthlyPlan
+                && CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier) == tier
+        }) else { return nil }
         return OfferReveal.isRealOffer(m) ? m : nil
     }
 
@@ -477,6 +529,21 @@ enum OfferReveal {
     /// is told 50% and receives more, which is the only direction this error is
     /// allowed to run.
     static let maxClaimedPercent = 50
+
+    /// "then $289.99/year" — the standard price and period, from StoreKit's own
+    /// formatter. Never composed from parts: a currency string assembled in code
+    /// is wrong in every locale that puts the symbol somewhere else.
+    ///
+    /// Nil when the product carries no intro offer, because there is then no
+    /// "then" — the price beside the button is already the price forever, and a
+    /// reassurance line restating it would imply a change that is not coming.
+    @MainActor
+    static func renewalLine(for pkg: Package) -> String? {
+        guard isRealOffer(pkg) else { return nil }
+        let sp = pkg.storeProduct
+        let noun = PaywallView.offerNoun(sp.subscriptionPeriod ?? .init(value: 1, unit: .year))
+        return String(localized: "then \(sp.localizedPriceString)/\(noun)")
+    }
 
     /// Whole-percent discount of the intro price against the standard price,
     /// FLOORED and then CAPPED at `maxClaimedPercent`. Never rounds up: a money
