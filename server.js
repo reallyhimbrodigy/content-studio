@@ -5398,6 +5398,38 @@ const server = http.createServer((req, res) => {
           console.log('[RevenueCat] TRANSFER reconciled', { granted, of: toIds.length, revoked });
           return sendJson(res, 200, { ok: true, transferred: granted, revoked });
         } else {
+          // VIRTUAL_CURRENCY_TRANSACTION carries the grant AMOUNT and the
+          // product that caused it. That pair is the only server-side way to
+          // tell a Pro-monthly 200 from a Pro-weekly 50 — the arbitrage check:
+          // if the grant were configured per-CURRENCY rather than per-PRODUCT,
+          // the cheapest weekly sub would grant a month of credits every week.
+          //
+          // THE FIELD NAMES ARE NOT GUESSED. RC documents this one event type
+          // and a `source` discriminator, but not the amount's key, and a
+          // guessed key would log `undefined` forever while looking like it
+          // worked — a check that cannot fail. So this prints every shape the
+          // amount could plausibly arrive under PLUS the event's own top-level
+          // keys, and the first sandbox purchase tells us the real schema.
+          // Once that is known this collapses to the two fields that matter.
+          //
+          // Behaviour is unchanged: still logged, still acked 200, still no
+          // handler. RC retries anything it does not get a 2xx for.
+          if (type === 'VIRTUAL_CURRENCY_TRANSACTION') {
+            console.log('[RevenueCat] VC TRANSACTION', JSON.stringify({
+              appUserId,
+              product_id: event.product_id ?? null,
+              store: event.store ?? null,
+              source: event.source ?? null,
+              period_type: event.period_type ?? null,
+              // Candidate carriers for the amount — whichever RC populates:
+              adjustments: event.adjustments ?? null,
+              virtual_currencies: event.virtual_currencies ?? null,
+              virtual_currency_code: event.virtual_currency_code ?? null,
+              amount: event.amount ?? null,
+              // The schema itself, so one real event replaces all the guessing.
+              event_keys: Object.keys(event || {}),
+            }).slice(0, 1200));
+          }
           // TEST, SUBSCRIBER_ALIAS, etc — log and ack so RevenueCat doesn't retry.
           console.log('[RevenueCat] unhandled event type, acking', { type, appUserId });
           return sendJson(res, 200, { ok: true, ignored: type });
