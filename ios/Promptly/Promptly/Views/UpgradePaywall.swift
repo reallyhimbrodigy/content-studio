@@ -20,11 +20,11 @@ import RevenueCat
 /// pay. That is the only moment the discount is answering a question the user
 /// has actually asked.
 ///
-/// ONCE, EVER — not on every dismiss. `hasSeenExitOffer` is persisted, so the
-/// second and every later dismissal closes immediately. A discount that
-/// reappears each time the user closes a screen stops being an offer and
-/// becomes a toll gate, and it teaches the user that dismissing is cheaper than
-/// deciding.
+/// THREE TIMES, THEN STOP — see `ExitOffer` below. It was once-ever, which is
+/// too few for the only thing standing between a declining user and nothing;
+/// unlimited would be a toll gate that teaches dismissing is cheaper than
+/// deciding. The budget is shared with the credit wall, which spends from the
+/// same three.
 ///
 /// AND ONLY WHEN IT IS REAL. `OfferReveal.isAvailable` runs the same
 /// eligibility check the reveal itself does, which fails closed for a user
@@ -41,8 +41,6 @@ struct UpgradePaywall: View {
     /// Which catch, if any, is on screen. `.none` is the paywall itself.
     private enum Stage { case paywall, reveal, referral }
     @State private var stage: Stage = .paywall
-
-    private static let seenKey = "exit_offer_seen"
 
     var body: some View {
         Group {
@@ -80,19 +78,66 @@ struct UpgradePaywall: View {
             isPresented = false
             return
         }
-        UserDefaults.standard.set(true, forKey: Self.seenKey)
-        Analytics.track("exit_offer_shown", props: [
-            "context": PaywallView.reasonKey(for: reason),
-        ])
+        ExitOffer.record("paywall_dismiss_" + PaywallView.reasonKey(for: reason))
         stage = .reveal
     }
 
     private var shouldCatch: Bool {
-        guard !UserDefaults.standard.bool(forKey: Self.seenKey) else { return false }
-        guard !subscription.effectiveIsPro else { return false }
+        guard ExitOffer.shouldOffer() else { return false }
         let packages = SubscriptionService.sortedByDuration(
             subscription.offerings?.current?.availablePackages ?? [])
         let preferred = OfferReveal.preferredPackage(in: packages)
         return OfferReveal.isAvailable(in: packages, preferring: preferred)
+    }
+}
+
+
+/// THE EXIT OFFER'S BUDGET, in one place because two surfaces spend it.
+///
+/// It was a boolean — shown once, ever. Once is too few for a discount that is
+/// the only thing standing between a declining user and nothing, and unlimited
+/// is a toll gate that teaches dismissing is cheaper than deciding. Three, then
+/// stop.
+///
+/// THE SEQUENCE IS DELIBERATE, not just a cap: the first two firings may share a
+/// session (dismiss the paywall, then hit the credit wall an hour later), but
+/// the THIRD requires a new launch. Without that, a user who dismissed twice in
+/// one sitting would be shown it a third time in the same sitting, which is the
+/// nagging the cap exists to prevent.
+///
+/// Shared rather than duplicated: the paywall exit and the credit wall are
+/// different code paths, and two copies of "have we spent it" drift the moment
+/// one of them is edited.
+enum ExitOffer {
+    private static let countKey = "exit_offer_count"
+    private static let lastLaunchKey = "exit_offer_last_launch"
+    static let limit = 3
+
+    /// Stable for the lifetime of the process; changes on relaunch. Cheap, and
+    /// it does not need to survive termination — "a later session" only has to
+    /// mean "not this one".
+    private static let launchId = UUID().uuidString
+
+    static var spent: Int { UserDefaults.standard.integer(forKey: countKey) }
+
+    /// Never for a subscriber, never past the cap, and the third only in a new
+    /// session. Callers add their own reason to offer.
+    @MainActor
+    static func shouldOffer() -> Bool {
+        guard !SubscriptionService.shared.effectiveIsPro else { return false }
+        let n = spent
+        guard n < limit else { return false }
+        if n >= limit - 1 {
+            let last = UserDefaults.standard.string(forKey: lastLaunchKey)
+            guard last != launchId else { return false }
+        }
+        return true
+    }
+
+    static func record(_ trigger: String) {
+        let n = spent + 1
+        UserDefaults.standard.set(n, forKey: countKey)
+        UserDefaults.standard.set(launchId, forKey: lastLaunchKey)
+        Analytics.track("exit_offer_shown", props: ["trigger": trigger, "shown_count": n])
     }
 }

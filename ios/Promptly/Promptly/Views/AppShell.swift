@@ -118,6 +118,12 @@ struct AppShell: View {
         // reason on dismiss.
         // Credits top-up. Anchored here with the other app-level sheets so the
         // header badge does not have to own a presentation.
+        .fullScreenCover(isPresented: $appState.showExitOffer) {
+            // Same two rungs as the paywall exit: decline steps to the invite
+            // catch rather than ending on a refusal.
+            OfferRevealView(onDecline: { appState.showExitOffer = false },
+                            onPurchased: { appState.showExitOffer = false })
+        }
         .sheet(isPresented: $appState.showAttribution) {
             // Full-screen-ish sheet rather than a root branch: the user is in
             // the middle of a chat with a finished video in it, and replacing
@@ -128,7 +134,22 @@ struct AppShell: View {
             }
         }
         .sheet(isPresented: $appState.showCredits) {
-            CreditsTopUpView { appState.showCredits = false }
+            CreditsTopUpView {
+                appState.showCredits = false
+                // THE CREDIT WALL'S OWN EXIT. Closing the top-up without buying
+                // is the same decision as dismissing the paywall — "not now" —
+                // and it is the second of the three the offer is budgeted for.
+                // Deferred so the sheet is gone before the reveal presents;
+                // two modals in flight leaves the second one unpresented.
+                if ExitOffer.shouldOffer(), !SubscriptionService.shared.effectiveIsPro {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(450))
+                        guard ExitOffer.shouldOffer() else { return }
+                        ExitOffer.record("credit_wall")
+                        appState.showExitOffer = true
+                    }
+                }
+            }
         }
         // DEFERRED AUTH — the account ask, at the action that needs one.
         //

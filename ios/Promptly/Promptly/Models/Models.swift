@@ -547,6 +547,11 @@ final class AppState: ObservableObject {
     @Published var showAccount: Bool = false
     /// The credits top-up sheet. Raised by the header badge.
     @Published var showCredits: Bool = false
+    /// The exit offer, presented from the CREDIT WALL rather than the paywall.
+    /// The credit wall never constructs `UpgradePaywall` — it goes in-thread
+    /// bubble -> `showCredits` -> CreditsTopUpView — so the catch that lives in
+    /// UpgradePaywall cannot reach it. This is the independent trigger.
+    @Published var showExitOffer: Bool = false
     /// Attribution, asked AFTER first value rather than inside the funnel.
     /// Set once, by the first completed render; `hasSeenAttributionGate` makes
     /// it once-ever regardless of how many videos follow.
