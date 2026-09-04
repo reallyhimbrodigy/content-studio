@@ -66,7 +66,20 @@ for pair in "$@"; do
   python3 - "$raw" "$OUTDIR/$name.png" <<'PYEOF' || continue
 import sys
 from PIL import Image
-# Apple's accepted iPhone sizes, portrait (6.9" / 6.5" / 6.3").
+# Apple's accepted iPhone sizes, portrait (6.9" / 6.5" / 6.3"), from the
+# published screenshot specification.
+#
+# THREE OF THESE ARE PROVEN ON THIS ACCOUNT, not just documented — each is the
+# stored size of an IAP_REVIEW_SCREENSHOT sitting COMPLETE on an approved or
+# ready-to-submit product, read back through the App Store Connect API:
+#
+#   1320x2868  promptly_pro_monthly, promptly_pro_yearly, and all three top-ups
+#   1242x2688  promptly_pro_weekly
+#   1206x2622  promptly_max_monthly, promptly_max_yearly
+#
+# That list matters because "the uploader rejects this size" was asserted twice
+# about sizes the uploader demonstrably stores. When a size is in doubt, read
+# what ASC is already holding before re-shooting.
 ACCEPTED = {(1320,2868),(1290,2796),(1260,2736),
             (1284,2778),(1242,2688),
             (1206,2622),(1179,2556)}
