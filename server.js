@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
+const _i18n = require('./lib/i18n');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   isUserPro: isProfilePro,
@@ -763,6 +764,26 @@ function sendJson(res, statusCode, payload) {
 // through; a 5xx or any unexpected error (ReferenceError, DB message, stack)
 // collapses to a generic line so internals never reach the user. The real error
 // is always logged at the call site — this only governs what the CLIENT sees.
+/**
+ * The caller's negotiated locale, and the ONE place the header is read.
+ *
+ * Every server-authored refusal is rendered by the client VERBATIM
+ * (APIService.swift:94/110/238/473) — it has no code-to-copy table for our
+ * strings — so if this returns 'en' for an Arabic device, that user reads
+ * English inside a fully Arabic app. 545 distinct users in 30 days are on the
+ * eight non-English locales we already translate.
+ *
+ * Never throws and never returns null: every caller is on an error path.
+ */
+function reqLocale(req) {
+  try {
+    const h = (req && req.headers && req.headers['accept-language']) || '';
+    const loc = _i18n.negotiateLocale(h);
+    _i18n.observeLocale(h, loc);
+    return loc;
+  } catch (_) { return _i18n.DEFAULT_LOCALE; }
+}
+
 function clientSafeMessage(error, fallback = 'Something went wrong. Please try again.') {
   const status = error && error.statusCode;
   if (typeof status === 'number' && status >= 400 && status < 500 && error.message) {
@@ -1849,6 +1870,11 @@ const server = http.createServer((req, res) => {
   // instrument itself named (Zac 2026-08-03). res.on('finish') fires once per
   // response regardless of writeHead/sendJson, so one attach here covers all.
   apiLedger.attach(req, res);
+  // Observe the caller's locale ONCE per request, at the same top-of-entry spot
+  // and for the same reason as the ledger attach above: anywhere lower and the
+  // early returns and 404s go uncounted, and the header_rate on /api/health
+  // would understate what clients actually send. Never throws.
+  req._locale = reqLocale(req);
 
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
@@ -3844,6 +3870,11 @@ const server = http.createServer((req, res) => {
       //   update_notes           — one line of user-facing copy for the banner
       //                            (optional; client has a default).
       // All empty/off by default → the whole feature stays dark.
+      // LOCALE NEGOTIATION — reported so "does the client send Accept-Language"
+      // is a curl, not an assumption. header_rate near 0 on real traffic means
+      // the negotiation is DARK and the client must send the header before any
+      // of this reaches a user. supported is the app's own 12 locales.
+      i18n: { supported: _i18n.SUPPORTED.length, ..._i18n.localeStats() },
       latest_version: String(process.env.LATEST_APP_VERSION || ''),
       min_supported_version: String(process.env.MIN_SUPPORTED_APP_VERSION || ''),
       force_update: String(process.env.FORCE_UPDATE || '') === '1' ? 'on' : 'off',
@@ -4214,6 +4245,13 @@ const server = http.createServer((req, res) => {
           // original 25 — each one silently dropped by the SQL mirror until
           // someone noticed the funnel was short.
           'exit_offer_shown',
+          // 5th allowlist drift the pre-push parity gate has caught (2026-09-04).
+          // update_banner_shown/dismissed/prompt_tapped close the exposure blind
+          // spot flagged on 2026-09-03: the update banner rendered with NO
+          // analytics at all, so "how many users saw it" was unanswerable and
+          // any zero would have been a reader artifact, not a suppression bug.
+          'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
+          'credits_topup_upgrade_tap',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
