@@ -27,15 +27,41 @@ struct CreditPack: Identifiable, Equatable {
 /// An unrecognised id returns nil and the pack is skipped: showing an invented
 /// video count is a claim about what someone gets for money.
 enum CreditPackCatalog {
+    /// THE REAL IDS. This matched `credits_20` / `credits_10` / `credits_5`,
+    /// and the products Zac created are `promptly_topup_20` / `_10` / `_5`.
+    /// Neither string contains the other, so every lookup returned nil, every
+    /// pack was skipped, and the screen would have rendered its empty state
+    /// with all three products present and resolving — a silent zero rather
+    /// than a visible failure, which is the shape that survives review.
+    ///
+    /// 5 -> 50 credits, 10 -> 100, 20 -> 200, at 10 credits a video.
     private static let known: [(match: String, videos: Int)] = [
-        ("credits_20", 20),
-        ("credits_10", 10),
-        ("credits_5", 5),
+        ("topup_20", 20),
+        ("topup_10", 10),
+        ("topup_5", 5),
     ]
+
+    /// The largest pack the catalogue KNOWS about, not the largest that
+    /// happens to have resolved. The Max upsell hangs off this: with only the
+    /// 5 and 10 packs live during a staggered rollout, "the largest available"
+    /// is the 10-pack, and the upsell would fire on a pack that is not the one
+    /// it argues against.
+    static var largestKnownVideos: Int { known.map(\.videos).max() ?? 0 }
 
     static func videos(forProductId id: String) -> Int? {
         let lower = id.lowercased()
-        for entry in known where lower.contains(entry.match) { return entry.videos }
+        // SUFFIX, NOT SUBSTRING — and longest-match-first does not fix this,
+        // which is why it is worth stating. `contains` maps `promptly_topup_50`
+        // to FIVE videos, because "topup_5" is a prefix of "topup_50" and no
+        // ordering of the table changes that: the longer key is not in the
+        // table at all. Ordering only disambiguates keys that both match.
+        //
+        // The id ends with its size, so anchoring at the end is the property
+        // that actually holds: "promptly_topup_50".hasSuffix("topup_5") is
+        // false. A 50-pack added later reads as unrecognised and is SKIPPED —
+        // which is the correct failure, because skipping a pack costs a sale
+        // and mislabelling one is a false claim about what money buys.
+        for entry in known where lower.hasSuffix(entry.match) { return entry.videos }
         return nil
     }
 
@@ -156,6 +182,9 @@ struct CreditsTopUpView: View {
 
     private var showsMaxUpsell: Bool {
         guard let p = selectedPack, let largest = packs.last else { return false }
+        // The 20-pack specifically — see `largestKnownVideos`. During a
+        // staggered rollout the largest RESOLVED pack may be the 10.
+        guard p.videos == CreditPackCatalog.largestKnownVideos else { return false }
         guard p.id == largest.id else { return false }
         return posedPacks != nil || (maxAllowance != nil && maxMonthlyPrice != nil)
     }
