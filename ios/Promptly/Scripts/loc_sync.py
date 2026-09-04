@@ -64,6 +64,16 @@ LANGS = ["ar", "bn", "de", "en", "es", "fr", "hi", "id", "ja", "ne", "pt-BR", "u
 ENTRY_POINTS = [
     "FirstLaunchPaywallView", "PaywallView", "SecondPaywallView", "OfferRevealView",
     "TrialWallView", "OnboardingV2Flow", "OnboardingFlow",
+    # The top-up screen sells three consumables and hosts the upgrade hero — it
+    # asks for money as directly as any paywall. It was outside this set because
+    # the downward walk starts at the PAYWALL flows and nothing in them
+    # references it: it is opened from the credit badge and the credit wall, so
+    # the closure never reached it. Four of its strings — the balance header,
+    # the pack sub-line, the Max upsell and the allowance footer — were
+    # therefore uncatalogued and rendered ENGLISH in all eleven languages, on a
+    # screen whose entire job is taking payment. Depth-1 from here also pulls in
+    # the credit surfaces it renders.
+    "CreditsTopUpView",
 ]
 
 _DECL = re.compile(r"\b(?:struct|class|enum|actor)\s+([A-Z][A-Za-z0-9_]*)")

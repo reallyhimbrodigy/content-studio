@@ -467,7 +467,7 @@ struct AccountView: View {
                     .font(.system(size: 16))
                     .foregroundColor(.white)
                 if let sub = creditsSubtitle {
-                    Text(sub)
+                    sub
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
@@ -495,11 +495,19 @@ struct AccountView: View {
 
     /// "200 credits/month - about 20 videos". Derived from the same constants
     /// the paywall uses, so the two cannot disagree about what money buys.
-    private var creditsSubtitle: String? {
+    ///
+    /// A `Text`, NOT a `String`. Inflection is resolved when a
+    /// LocalizedStringKey is rendered; `String(localized:)` returns the markup
+    /// verbatim, so this line read "200 credits a month - about ^[20
+    /// video](inflect: true)" to every subscriber who opened the account
+    /// screen. Two catalogue gates passed it — the key is present, translated,
+    /// and correctly inflected — because both check the CATALOGUE and neither
+    /// checked the CALL. `inflection-render-gate.sh` now checks the call.
+    private var creditsSubtitle: Text? {
         guard let monthly = onboarding.creditsMonthlyAllowance ?? ProBenefits.storeKitAllowance(),
               monthly > 0 else { return nil }
         let videos = ProBenefits.monthlyVideos(credits: monthly)
-        return String(localized: "\(monthly) credits a month - about ^[\(videos) video](inflect: true)")
+        return Text("\(monthly) credits a month - about ^[\(videos) video](inflect: true)")
     }
 
     // MARK: - Profile row

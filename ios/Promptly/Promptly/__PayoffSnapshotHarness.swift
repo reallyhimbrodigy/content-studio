@@ -108,9 +108,18 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
-        case 32, 33, 34:
+        case 32, 33, 34, 36, 37:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
+            // POSE THE BALANCE ON THE TOP-UP STATES. The screen reads it from
+            // the server, a simulator never gets one, and `nil` is deliberately
+            // NOT zero — so every top-up capture rendered "Checking your
+            // balance" and the headline took its neutral form. That is correct
+            // behaviour and a useless screenshot: neither the design under
+            // review nor App Review's "show the product being purchased" is
+            // visible in a screen that is still loading. Zero, because the
+            // credit wall is the path that opens this.
+            if [32, 33, 36, 37].contains(n) { CreditsService.shared.debugSetBalance(0) }
         case 28, 29, 30:
             // Credits armed: the claims must switch to the real allowances —
             // Pro "20 videos a month", Max "5x the usage". Both derived from
@@ -223,16 +232,16 @@ struct PayoffSnapshotHarnessView: View {
                 // Prices posed. The real screen reads them from StoreKit and
                 // shows an honest empty state until the SKUs exist.
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99",  amount: 9.99),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99", amount: 19.99),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99", amount: 39.99),
                 ])
             }
             case 33: bleed("CREDITS TOP-UP — 20-pack selected, Max upsell") {
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99",  amount: 9.99),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99", amount: 19.99),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99", amount: 39.99),
                 ], preselectLargest: true)
             }
             // ONE STATE PER PRODUCT — App Review wants a screenshot showing
@@ -242,16 +251,16 @@ struct PayoffSnapshotHarnessView: View {
             // would show the honest empty state and nothing of the design.
             case 36: bleed("CREDITS TOP-UP — 5-pack selected (posed prices)") {
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99",  amount: 9.99),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99", amount: 19.99),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99", amount: 39.99),
                 ], preselectPackVideos: 5)
             }
             case 37: bleed("CREDITS TOP-UP — 10-pack selected (posed prices)") {
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99",  amount: 9.99),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99", amount: 19.99),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99", amount: 39.99),
                 ], preselectPackVideos: 10)
             }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {

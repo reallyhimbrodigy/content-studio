@@ -4237,6 +4237,14 @@ const server = http.createServer((req, res) => {
           // original 25 — each one silently dropped by the SQL mirror until
           // someone noticed the funnel was short.
           'exit_offer_shown',
+          // Fifth. The top-up screen's UPGRADE HERO — the purple card that
+          // argues a subscription against a one-time pack at the highest-intent
+          // moment in the app. It carries `source` so the credit wall and the
+          // credit badge stay separable: the same card is a rescue on one path
+          // and an idle tap on the other, and one bucket cannot tell them
+          // apart. Without this row the entire wall→upgrade arm of the funnel
+          // reads as zero, which is indistinguishable from nobody tapping it.
+          'credits_topup_upgrade_tap',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);

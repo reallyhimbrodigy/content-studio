@@ -4169,6 +4169,83 @@
         }
       }
     },
+    "Add more credits": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أضف المزيد من الرصيد"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আরও ক্রেডিট যোগ করুন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr Credits hinzufügen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add more credits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade más créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter des crédits"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "और क्रेडिट जोड़ें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambah kredit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットを追加"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "थप क्रेडिट थप्नुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar mais créditos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مزید کریڈٹس شامل کریں"
+          }
+        }
+      }
+    },
     "Add video": {
       "localizations": {
         "ar": {
@@ -5482,6 +5559,83 @@
         }
       }
     },
+    "Buy ^[%lld video](inflect: true)": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اشترِ ^[%lld فيديو](inflect: true)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld ভিডিও](inflect: true) কিনুন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld Video](inflect: true) kaufen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buy ^[%lld video](inflect: true)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprar ^[%lld vídeo](inflect: true)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acheter ^[%lld vidéo](inflect: true)"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld वीडियो](inflect: true) खरीदें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beli ^[%lld video](inflect: true)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld 本の動画](inflect: true)を購入"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld भिडियो](inflect: true) किन्नुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprar ^[%lld vídeo](inflect: true)"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld ویڈیو](inflect: true) خریدیں"
+          }
+        }
+      }
+    },
     "Can't load chats": {
       "localizations": {
         "ar": {
@@ -6336,6 +6490,83 @@
         }
       }
     },
+    "Checking your balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ التحقق من رصيدك"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ব্যালেন্স দেখা হচ্ছে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guthaben wird geprüft"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking your balance"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprobando tu saldo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérification de votre solde"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका बैलेंस देखा जा रहा है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memeriksa saldo Anda"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残高を確認しています"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको ब्यालेन्स जाँच गर्दै"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificando seu saldo"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا بیلنس چیک کیا جا رہا ہے"
+          }
+        }
+      }
+    },
     "Choose Another": {
       "localizations": {
         "ar": {
@@ -6402,6 +6633,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "دوسرا منتخب کریں"
+          }
+        }
+      }
+    },
+    "Choose a pack": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختر باقة"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "একটি প্যাক বেছে নিন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paket wählen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a pack"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige un paquete"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez un pack"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एक पैक चुनें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pilih paket"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パックを選択"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एउटा प्याक छान्नुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um pacote"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایک پیک منتخب کریں"
           }
         }
       }
@@ -8354,6 +8662,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "تصویر اپ لوڈ نہیں ہو سکی — انٹرنیٹ کنکشن چیک کر کے دوبارہ کوشش کریں۔"
+          }
+        }
+      }
+    },
+    "Credits never expire": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الرصيد لا ينتهي أبدًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ক্রেডিট কখনো শেষ হয় না"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits verfallen nie"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits never expire"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los créditos nunca caducan"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les crédits n'expirent jamais"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "क्रेडिट कभी समाप्त नहीं होते"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kredit tidak pernah kedaluwarsa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットは無期限"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "क्रेडिट कहिल्यै समाप्त हुँदैन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os créditos nunca expiram"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کریڈٹس کبھی ختم نہیں ہوتے"
           }
         }
       }
@@ -16448,6 +16833,83 @@
         }
       }
     },
+    "Max is ^[%lld credit](inflect: true) a month for %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max هو ^[%1$lld رصيد](inflect: true) شهريًا مقابل %2$@."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max হলো মাসে ^[%1$lld ক্রেডিট](inflect: true), %2$@-এ।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max sind ^[%1$lld Credit](inflect: true) im Monat für %2$@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max is ^[%1$lld credit](inflect: true) a month for %2$@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max son ^[%1$lld crédito](inflect: true) al mes por %2$@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max, c'est ^[%1$lld crédit](inflect: true) par mois pour %2$@."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max हर महीने ^[%1$lld क्रेडिट](inflect: true) देता है %2$@ में।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max adalah ^[%1$lld kredit](inflect: true) sebulan seharga %2$@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max は月 ^[%1$lld クレジット](inflect: true) で %2$@ です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max भनेको महिनामा ^[%1$lld क्रेडिट](inflect: true) हो, %2$@ मा।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max são ^[%1$lld crédito](inflect: true) por mês por %2$@."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ماہانہ ^[%1$lld کریڈٹ](inflect: true) ہے %2$@ میں۔"
+          }
+        }
+      }
+    },
     "Microphone access needed": {
       "localizations": {
         "ar": {
@@ -18598,6 +19060,83 @@
         }
       }
     },
+    "One-time purchase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عملية شراء لمرة واحدة."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এককালীন ক্রয়।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einmaliger Kauf."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-time purchase."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compra única."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Achat unique."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एक बार की खरीद।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pembelian sekali."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "買い切りです。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एक पटकको खरिद।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compra única."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایک بار کی خریداری۔"
+          }
+        }
+      }
+    },
     "Open Settings": {
       "localizations": {
         "ar": {
@@ -18952,6 +19491,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "یا %@ میں ماہانہ شروع کریں (%lld%% رعایت)"
+          }
+        }
+      }
+    },
+    "Or top up once": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أو اشحن مرة واحدة"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অথবা একবার টপ আপ করুন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oder einmalig aufladen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or top up once"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O recarga una vez"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou rechargez une fois"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "या एक बार टॉप अप करें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atau isi ulang sekali"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "または一度だけチャージ"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वा एक पटक टप अप गर्नुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou recarregue uma vez"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یا ایک بار ٹاپ اپ کریں"
           }
         }
       }
@@ -19870,6 +20486,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pro فیچر، انلاک کرنے کے لیے ٹیپ کریں"
+          }
+        }
+      }
+    },
+    "Pro gives you ^[%lld credit](inflect: true) a month for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Pro ^[%1$lld رصيد](inflect: true) شهريًا مقابل %2$@"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro আপনাকে মাসে ^[%1$lld ক্রেডিট](inflect: true) দেয় %2$@-এ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro gibt dir ^[%1$lld Credit](inflect: true) im Monat für %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro gives you ^[%1$lld credit](inflect: true) a month for %2$@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro te da ^[%1$lld crédito](inflect: true) al mes por %2$@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro vous donne ^[%1$lld crédit](inflect: true) par mois pour %2$@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro आपको हर महीने ^[%1$lld क्रेडिट](inflect: true) देता है %2$@ में"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro memberi Anda ^[%1$lld kredit](inflect: true) sebulan seharga %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro なら月 ^[%1$lld クレジット](inflect: true) が %2$@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro ले तपाईंलाई महिनामा ^[%1$lld क्रेडिट](inflect: true) दिन्छ %2$@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Pro dá ^[%1$lld crédito](inflect: true) por mês por %2$@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro آپ کو ماہانہ ^[%1$lld کریڈٹ](inflect: true) دیتا ہے %2$@ میں"
           }
         }
       }
@@ -25307,6 +26000,83 @@
         }
       }
     },
+    "That's %@ a video, against %@ buying credits.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أي %1$@ لكل فيديو، مقابل %2$@ عند شراء الرصيد."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অর্থাৎ ভিডিও প্রতি %1$@, ক্রেডিট কিনলে %2$@।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind %1$@ pro Video, gegenüber %2$@ beim Kauf von Credits."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's %1$@ a video, against %2$@ buying credits."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son %1$@ por vídeo, frente a %2$@ comprando créditos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soit %1$@ par vidéo, contre %2$@ en achetant des crédits."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यानी %1$@ प्रति वीडियो, बनाम क्रेडिट खरीदने पर %2$@।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Itu %1$@ per video, dibanding %2$@ jika membeli kredit."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1本あたり %1$@、クレジット購入なら %2$@ です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अर्थात् प्रति भिडियो %1$@, क्रेडिट किन्दा %2$@।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso dá %1$@ por vídeo, contra %2$@ comprando créditos."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یعنی فی ویڈیو %1$@، کریڈٹس خریدنے پر %2$@۔"
+          }
+        }
+      }
+    },
     "The editor for short-form talking-head videos.": {
       "localizations": {
         "ar": {
@@ -25801,6 +26571,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "TikTok"
+          }
+        }
+      }
+    },
+    "Top-up packs aren't available yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "باقات الشحن غير متاحة بعد."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "টপ-আপ প্যাক এখনো পাওয়া যাচ্ছে না।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufladepakete sind noch nicht verfügbar."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top-up packs aren't available yet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los paquetes de recarga aún no están disponibles."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les packs de recharge ne sont pas encore disponibles."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टॉप-अप पैक अभी उपलब्ध नहीं हैं।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paket isi ulang belum tersedia."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャージパックはまだご利用いただけません。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टप-अप प्याक अझै उपलब्ध छैन।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os pacotes de recarga ainda não estão disponíveis."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹاپ اپ پیکس ابھی دستیاب نہیں ہیں۔"
           }
         }
       }
@@ -30673,6 +31520,83 @@
         }
       }
     },
+    "You're out of credits": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لقد نفد رصيدك"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ক্রেডিট শেষ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Credits sind aufgebraucht"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of credits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te has quedado sin créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous n'avez plus de crédits"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपके क्रेडिट खत्म हो गए"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kredit Anda habis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットがなくなりました"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको क्रेडिट सकियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus créditos acabaram"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کے کریڈٹس ختم ہو گئے"
+          }
+        }
+      }
+    },
     "You're out of credits for now": {
       "extractionState": "manual",
       "localizations": {
@@ -31803,6 +32727,83 @@
         }
       }
     },
+    "Your plan adds ^[%lld credit](inflect: true) every month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تضيف خطتك ^[%lld رصيد](inflect: true) كل شهر."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার প্ল্যান প্রতি মাসে ^[%lld ক্রেডিট](inflect: true) যোগ করে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Tarif fügt jeden Monat ^[%lld Credit](inflect: true) hinzu."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your plan adds ^[%lld credit](inflect: true) every month."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu plan añade ^[%lld crédito](inflect: true) cada mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre forfait ajoute ^[%lld crédit](inflect: true) chaque mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका प्लान हर महीने ^[%lld क्रेडिट](inflect: true) जोड़ता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paket Anda menambahkan ^[%lld kredit](inflect: true) setiap bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご利用のプランは毎月 ^[%lld クレジット](inflect: true) を追加します。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको योजनाले हरेक महिना ^[%lld क्रेडिट](inflect: true) थप्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano adiciona ^[%lld crédito](inflect: true) todo mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا پلان ہر ماہ ^[%lld کریڈٹ](inflect: true) شامل کرتا ہے۔"
+          }
+        }
+      }
+    },
     "Your plan is active. Create as much as your monthly credits allow.": {
       "extractionState": "manual",
       "localizations": {
@@ -32299,6 +33300,160 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی ویڈیوز منتظر ہیں"
+          }
+        }
+      }
+    },
+    "^[%lld credit](inflect: true)": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld رصيد](inflect: true)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld ক্রেডিট](inflect: true)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld Credit](inflect: true)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld credit](inflect: true)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld crédito](inflect: true)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld crédit](inflect: true)"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld क्रेडिट](inflect: true)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld kredit](inflect: true)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld クレジット](inflect: true)"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld क्रेडिट](inflect: true)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld crédito](inflect: true)"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld کریڈٹ](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld credit](inflect: true) left": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بقي ^[%lld رصيد](inflect: true)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld ক্রেডিট](inflect: true) বাকি"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld Credit](inflect: true) übrig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld credit](inflect: true) left"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quedan ^[%lld crédito](inflect: true)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld crédit](inflect: true) restant"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld क्रेडिट](inflect: true) बचे"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld kredit](inflect: true) tersisa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残り ^[%lld クレジット](inflect: true)"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld क्रेडिट](inflect: true) बाँकी"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld crédito](inflect: true) restante"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld کریڈٹ](inflect: true) باقی"
           }
         }
       }

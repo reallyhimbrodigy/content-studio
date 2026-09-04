@@ -13,6 +13,17 @@ struct CreditPack: Identifiable, Equatable {
     let id: String            // product id
     let videos: Int
     let price: String         // storefront-formatted, never a literal
+
+    /// The same price as a NUMBER, for the per-video comparison.
+    ///
+    /// The comparison used to re-find the pack's `StoreProduct` by id at the
+    /// moment it needed the amount. That lookup can fail while the pack itself
+    /// renders perfectly — the pack was built FROM a product, so a nil here
+    /// means the two views of the same offering disagreed — and when it failed
+    /// the hero silently dropped its second line. A pack that knows its own
+    /// price cannot disagree with itself.
+    var amount: Decimal? = nil
+
     var credits: Int { videos * CreditsService.perVideo }
 }
 
@@ -69,7 +80,7 @@ enum CreditPackCatalog {
     static func packs(from products: [PaywallProduct]) -> [CreditPack] {
         products.compactMap { p in
             guard let v = videos(forProductId: p.id) else { return nil }
-            return CreditPack(id: p.id, videos: v, price: p.localizedPrice)
+            return CreditPack(id: p.id, videos: v, price: p.localizedPrice, amount: p.price)
         }
         .sorted { $0.videos < $1.videos }
     }
@@ -100,6 +111,10 @@ struct CreditsTopUpView: View {
     /// one screenshot per product showing that product, and the three packs
     /// differ only by which row is selected.
     var preselectPackVideos: Int? = nil
+
+    /// The funnel's primary accent — the same purple as the paywall CTA,
+    /// the reveal and the invite rung.
+    private static let accent = Color(hex: "6C5CE7")
 
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
@@ -144,9 +159,43 @@ struct CreditsTopUpView: View {
             header
 
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: 18) {
                     balanceBlock
-                    if !packs.isEmpty { packList } else { packsUnavailable }
+
+                    Text(headline)
+                        .cType(24, .bold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // UPGRADE FIRST. The recurring allowance is the better
+                    // answer for anyone who hit this wall once and will hit it
+                    // again; the one-time pack is the fallback, and it now
+                    // reads as one.
+                    upgradeHero
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Or top up once")
+                            .cType(13, .semibold)
+                            .foregroundColor(.white.opacity(0.55))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if !packs.isEmpty { packList } else { packsUnavailable }
+                        // 4. THE TRUST LINE, on the purchase it applies to.
+                        // It was footer text under the button, which is where
+                        // disclaimers live — and this is the opposite of a
+                        // disclaimer: it is the reason a one-time buy is safe.
+                        if !packs.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "infinity")
+                                    .cType(11, .bold)
+                                    .foregroundColor(.white.opacity(0.6))
+                                Text("Credits never expire")
+                                    .cType(12, .medium)
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                    }
+
                     if showsMaxUpsell { maxUpsell }
                     allowanceFooter
                 }
@@ -174,6 +223,24 @@ struct CreditsTopUpView: View {
         .onChange(of: packs) { _, _ in
             if selectedId == nil { selectedId = defaultPackId }
         }
+    }
+
+    /// THE HEADLINE MUST NOT ASSERT A ZERO IT HAS NOT READ.
+    ///
+    /// It was the flat sentence "You're out of credits", which is true for the
+    /// credit wall — the path that sends most people here — and false for the
+    /// other two. `CreditBadge` opens this screen on tap at ANY balance,
+    /// deliberately ("checking what you hold is asking to add to it"), so a user
+    /// with 140 credits tapped their balance and was told they had none. And an
+    /// UNREAD balance rendered the same sentence, which is the confident-zero
+    /// mistake the badge and the balance block above both refuse to make, made
+    /// two inches higher in 24pt bold.
+    ///
+    /// Only nil-safe states say it. Unknown gets the neutral form, because
+    /// "add more" is true whatever the number turns out to be.
+    private var headline: String {
+        if credits.balance == 0 { return String(localized: "You're out of credits") }
+        return String(localized: "Add more credits")
     }
 
     private var defaultPackId: String? {
@@ -220,40 +287,122 @@ struct CreditsTopUpView: View {
 
     // MARK: Balance
 
+    /// THE BALANCE, as a component rather than a number floating over a label.
+    ///
+    /// It was a 44pt figure above the word "credits", and with an unread
+    /// balance that renders as a grey dash over grey text — a placeholder bar,
+    /// which is what it looked like. One line, the brand glyph, and the state
+    /// said in words.
+    ///
+    /// STILL SILENT WHEN UNKNOWN. `balance == nil` is unread, not zero — the
+    /// same rule the header badge follows — so it says "Checking your balance"
+    /// rather than asserting a confident 0 the server never returned.
     private var balanceBlock: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(colors: [Color(hex: "9FE8FF"), Color(hex: "4C8DFF")],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
-                    .shadow(color: Color(hex: "9FE8FF").opacity(0.45), radius: 6)
-                // SILENT WHEN UNKNOWN. `balance == nil` is an unread balance,
-                // not zero — the same rule the header badge follows, and the
-                // reason this shows a dash rather than a confident 0.
-                if let b = credits.balance {
-                    Text(b, format: .number)
-                        .font(.system(size: 44, weight: .bold))
-                        .foregroundColor(.white)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                } else {
-                    Text("—")
-                        .font(.system(size: 44, weight: .bold))
-                        .foregroundColor(.white.opacity(0.35))
-                }
+        HStack(spacing: 10) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(colors: [Color(hex: "9FE8FF"), Color(hex: "4C8DFF")],
+                                   startPoint: .top, endPoint: .bottom)
+                )
+                .shadow(color: Color(hex: "9FE8FF").opacity(0.45), radius: 5)
+            if let b = credits.balance {
+                Text("^[\(b) credit](inflect: true) left")
+                    .cType(17, .semibold)
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            } else {
+                Text("Checking your balance")
+                    .cType(17, .medium)
+                    .foregroundColor(.white.opacity(0.45))
             }
-            Text("credits")
-                .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Color.white.opacity(0.06)))
     }
 
-    // MARK: Packs
+    /// THE HERO. This screen is reached by someone who just hit the wall — the
+    /// highest-intent upgrade moment in the app — and it led with the cheapest
+    /// thing on it. A subscriber gets the allowance every month; a top-up buys
+    /// it once. Selling the top-up first answers "how do I unblock this render"
+    /// and never asks the better question.
+    ///
+    /// EVERY FIGURE IS DERIVED. The allowance, the price and both per-video
+    /// numbers come from the live products; nothing here is typed, so it stays
+    /// true per territory the same way the percentage claims do.
+    @ViewBuilder private var upgradeHero: some View {
+        if let allowance = proAllowance, let price = proMonthlyPrice {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Analytics.track("credits_topup_upgrade_tap", props: ["source": "credit_wall"])
+                onClose()
+                AppState.shared.presentPaywall(.manual)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Pro gives you ^[\(allowance) credit](inflect: true) a month for \(price)")
+                        .cType(16, .semibold)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let cmp = perVideoComparison {
+                        Text(cmp)
+                            .cType(13)
+                            .foregroundColor(.white.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Self.accent))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// "That is $1.50 a video, against $2.00 buying credits." Both sides
+    /// computed from live prices — the subscription's per-video cost and the
+    /// SMALLEST pack's, which is the one a hesitant buyer reaches for.
+    ///
+    /// Nil unless both sides are known: half a comparison is worse than none,
+    /// because the reader supplies the missing half themselves.
+    private var perVideoComparison: String? {
+        guard let allowance = proAllowance,
+              let sub = proMonthlyProduct,
+              let pack = packs.first,
+              let packAmount = pack.amount else { return nil }
+        let videosPerMonth = allowance / CreditsService.perVideo
+        guard videosPerMonth > 0, pack.videos > 0 else { return nil }
+        let subPer = (sub.price as NSDecimalNumber).doubleValue / Double(videosPerMonth)
+        let packPer = (packAmount as NSDecimalNumber).doubleValue / Double(pack.videos)
+        guard packPer > subPer else { return nil }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.roundingMode = .halfUp
+        if let loc = sub.priceFormatter?.locale { f.locale = loc }
+        guard let a = f.string(from: subPer as NSNumber),
+              let b = f.string(from: packPer as NSNumber) else { return nil }
+        return String(localized: "That's \(a) a video, against \(b) buying credits.")
+    }
+
+    private var proAllowance: Int? {
+        let ids = (subscription.offerings?.current?.availablePackages ?? [])
+            .map(\.storeProduct.productIdentifier)
+        return ids.compactMap { CreditAllowance.monthly(forProductId: $0) }.min()
+    }
+
+    private var proMonthlyProduct: StoreProduct? {
+        guard let a = proAllowance else { return nil }
+        return (subscription.offerings?.current?.availablePackages ?? [])
+            .first { CreditAllowance.monthly(forProductId: $0.storeProduct.productIdentifier) == a
+                     && $0.isMonthlyPlan }?
+            .storeProduct
+    }
+
+    private var proMonthlyPrice: String? { proMonthlyProduct?.localizedPriceString }
 
     private var packList: some View {
         VStack(spacing: 10) {
@@ -271,16 +420,16 @@ struct CreditsTopUpView: View {
         } label: {
             HStack(spacing: 12) {
                 ZStack {
-                    Circle().strokeBorder(Color.white.opacity(isSelected ? 0.9 : 0.3), lineWidth: 1.5)
+                    Circle().strokeBorder(isSelected ? Self.accent : Color.white.opacity(0.3), lineWidth: 1.5)
                         .frame(width: 22, height: 22)
-                    if isSelected { Circle().fill(Color.white).frame(width: 12, height: 12) }
+                    if isSelected { Circle().fill(Self.accent).frame(width: 12, height: 12) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
                     Text("\(pack.videos) videos")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("\(pack.credits) credits")
+                    Text("^[\(pack.credits) credit](inflect: true)")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.45))
                         .monospacedDigit()
@@ -295,10 +444,14 @@ struct CreditsTopUpView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(isSelected ? 0.10 : 0.05)))
+                // PURPLE, not a lighter grey. Greyscale selection is what made
+                // this read as a debug view rather than a purchase screen, and
+                // the accent is the same one every other primary in the funnel
+                // uses.
+                .fill(isSelected ? Self.accent.opacity(0.22) : Color.white.opacity(0.05)))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(isSelected ? 0.85 : 0.10),
-                              lineWidth: isSelected ? 1.5 : 1))
+                .strokeBorder(isSelected ? Self.accent : Color.white.opacity(0.10),
+                              lineWidth: isSelected ? 2 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -334,7 +487,7 @@ struct CreditsTopUpView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(hex: "F4E4BC"))
-                Text(upsellLine)
+                upsellLine
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
@@ -351,10 +504,12 @@ struct CreditsTopUpView: View {
         .buttonStyle(.plain)
     }
 
-    private var upsellLine: String {
+    /// A `Text`, not a `String` — see the buy CTA. Inflected markup handed
+    /// through `String(localized:)` renders as literal markup.
+    private var upsellLine: Text {
         let allowance = maxAllowance ?? 1000
         let price = maxMonthlyPrice ?? "$89.99"
-        return String(localized: "Max is \(allowance) credits a month for \(price).")
+        return Text("Max is ^[\(allowance) credit](inflect: true) a month for \(price).")
     }
 
     // MARK: Allowance
@@ -362,7 +517,7 @@ struct CreditsTopUpView: View {
     private var allowanceFooter: some View {
         Group {
             if let monthly = onboarding.creditsMonthlyAllowance, monthly > 0 {
-                Text("Your plan adds \(monthly) credits every month.")
+                Text("Your plan adds ^[\(monthly) credit](inflect: true) every month.")
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
@@ -391,18 +546,28 @@ struct CreditsTopUpView: View {
                     isPurchasing = false
                 }
             } label: {
-                Text(selectedPack.map { String(localized: "Buy \($0.videos) videos") }
-                     ?? String(localized: "Choose a pack"))
+                // INFLECTION IS RESOLVED AT RENDER, NOT AT LOOKUP.
+                // `String(localized:)` returns the markup VERBATIM — the button
+                // read "Buy ^[10 video](inflect: true)" on a live capture — so
+                // any inflected key must reach a `Text` as a
+                // LocalizedStringKey, never through a String round-trip.
+                Group {
+                    if let p = selectedPack {
+                        Text("Buy ^[\(p.videos) video](inflect: true)")
+                    } else {
+                        Text("Choose a pack")
+                    }
+                }
                     .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Capsule().fill(Color.white))
+                    .background(Capsule().fill(Self.accent))
             }
             .buttonStyle(.plain)
             .disabled(isPurchasing)
 
-            Text("One-time purchase. Credits never expire.")
+            Text("One-time purchase.")
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.4))
         }
