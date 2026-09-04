@@ -148,15 +148,6 @@ struct AppShell: View {
             // the code.
             ExitOfferLadder(onFinish: { appState.showExitOffer = false })
         }
-        .sheet(isPresented: $appState.showAttribution) {
-            // Full-screen-ish sheet rather than a root branch: the user is in
-            // the middle of a chat with a finished video in it, and replacing
-            // the root would take that away to ask a marketing question.
-            AttributionAskView(context: "post_first_value", progress: nil) {
-                OnboardingState.shared.persistAnswersToProfile()
-                appState.showAttribution = false
-            }
-        }
         .sheet(isPresented: $appState.showCredits) {
             CreditsTopUpView {
                 appState.showCredits = false

@@ -794,7 +794,8 @@ struct TwoStepPaywall: View {
             // This asks the store itself, so the poll reports WHICH of the two
             // it is and goes green the moment resolution starts working.
             Task {
-                let ids = ["promptly_max_yearly", "promptly_max_monthly"]
+                let ids = ["promptly_max_yearly", "promptly_max_monthly",
+                           "promptly_topup_5", "promptly_topup_10", "promptly_topup_20"]
                 do {
                     let found = try await Product.products(for: ids)
                     let got = Set(found.map(\.id))

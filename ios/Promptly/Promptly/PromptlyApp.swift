@@ -443,15 +443,19 @@ struct PromptlyApp: App {
     /// down whenever v2 is armed — which is now always — so this is currently
     /// unreachable; inverting it anyway means the one path that could re-admit
     /// an anonymous funnel event cannot do so if v2 is ever turned off.
-    private var showAttributionGate: Bool {
-        guard onboarding.attributionGateEnabled,
-              !onboarding.onboardingV2Enabled,
-              onboarding.wallOnboardingEnabled != true,
-              !onboarding.hasSeenAttributionGate,
-              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated)
-        else { return false }
-        return true
-    }
+    /// RETIRED 2026-09-03 — the attribution question is gone from the product.
+    ///
+    /// It changed no pixel of the output, gated nothing, and was WRITE-ONLY:
+    /// `persistAnswersToProfile` posted `attribution` into profile_settings and
+    /// nothing on either side ever read it back. Verified rather than assumed —
+    /// the server's only occurrence is the analytics allowlist, not a consumer.
+    /// Two questions of friction for a field with no reader.
+    ///
+    /// The property stays (returning false) rather than the branch being cut
+    /// from `body`: `attribution_gate` is still a live server flag and other
+    /// code reads it, so retiring the SURFACE here keeps the knob honest
+    /// instead of leaving a flag that appears armed and does nothing.
+    private var showAttributionGate: Bool { false }
 
     /// Conversion build (post-235) — ONBOARDING V2: language → making →
     /// attribution → sign-in; ends at the picker, NO paywall in the flow.
