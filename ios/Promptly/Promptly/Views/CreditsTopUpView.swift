@@ -96,6 +96,10 @@ struct CreditsTopUpView: View {
     /// Capture aid: start on the largest pack, the state that fires the Max
     /// upsell. Selecting it is the user's action; this only reaches it.
     var preselectLargest: Bool = false
+    /// Capture aid: start on a SPECIFIC pack, by video count. App Review wants
+    /// one screenshot per product showing that product, and the three packs
+    /// differ only by which row is selected.
+    var preselectPackVideos: Int? = nil
 
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
@@ -174,6 +178,8 @@ struct CreditsTopUpView: View {
 
     private var defaultPackId: String? {
         guard !packs.isEmpty else { return nil }
+        if let want = preselectPackVideos,
+           let hit = packs.first(where: { $0.videos == want }) { return hit.id }
         if preselectLargest { return packs.last?.id }
         return packs[packs.count / 2].id
     }

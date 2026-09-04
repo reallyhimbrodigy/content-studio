@@ -223,17 +223,36 @@ struct PayoffSnapshotHarnessView: View {
                 // Prices posed. The real screen reads them from StoreKit and
                 // shows an honest empty state until the SKUs exist.
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_credits_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_credits_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_credits_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
                 ])
             }
             case 33: bleed("CREDITS TOP-UP — 20-pack selected, Max upsell") {
                 CreditsTopUpView(posedPacks: [
-                    CreditPack(id: "promptly_credits_5",  videos: 5,  price: "$9.99"),
-                    CreditPack(id: "promptly_credits_10", videos: 10, price: "$19.99"),
-                    CreditPack(id: "promptly_credits_20", videos: 20, price: "$39.99"),
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
                 ], preselectLargest: true)
+            }
+            // ONE STATE PER PRODUCT — App Review wants a screenshot showing
+            // the product being purchased, and the three packs differ only by
+            // which row is selected. Prices POSED: the consumables are
+            // MISSING_METADATA and StoreKit returns nothing, so a live capture
+            // would show the honest empty state and nothing of the design.
+            case 36: bleed("CREDITS TOP-UP — 5-pack selected (posed prices)") {
+                CreditsTopUpView(posedPacks: [
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                ], preselectPackVideos: 5)
+            }
+            case 37: bleed("CREDITS TOP-UP — 10-pack selected (posed prices)") {
+                CreditsTopUpView(posedPacks: [
+                    CreditPack(id: "promptly_topup_5",  videos: 5,  price: "$9.99"),
+                    CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99"),
+                    CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99"),
+                ], preselectPackVideos: 10)
             }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
                 // NOT TwoStepPaywall directly. This renders the switch every
