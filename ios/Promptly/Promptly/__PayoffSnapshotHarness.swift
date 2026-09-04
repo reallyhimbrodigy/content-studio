@@ -108,7 +108,7 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
-        case 40, 42:
+        case 40, 42, 43, 44:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
             CreditsService.shared.debugSetBalance(40)
@@ -273,6 +273,17 @@ struct PayoffSnapshotHarnessView: View {
             // any screen size. The account page in particular had never been
             // photographed once, on any device, which is the definition of a
             // surface reviewed by its users.
+            // THE REAL TOP-UP SCREEN — no posed packs. 32/33/36/37 all pass
+            // `posedPacks`, so every top-up capture on file proves the LAYOUT
+            // and none of them proves the screen can build itself from the
+            // offering. With the consumables now packages on `default`, that is
+            // the thing worth proving.
+            case 43: bleed("CREDITS TOP-UP — LIVE packages from the offering") {
+                CreditsTopUpView()
+            }
+            case 44: bleed("CREDITS TOP-UP — LIVE, 20-pack: Max upsell must fire") {
+                CreditsTopUpView(preselectLargest: true)
+            }
             case 40: bleed("ACCOUNT — the page, never previously capturable") {
                 AccountView()
             }
