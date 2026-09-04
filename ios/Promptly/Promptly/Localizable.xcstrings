@@ -71,16 +71,6 @@
         }
       }
     },
-    "%@ %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "%1$@ %2$@"
-          }
-        }
-      }
-    },
     "%@ for your first month, then %@/mo.": {
       "extractionState": "manual",
       "localizations": {
@@ -248,13 +238,25 @@
     "%@/mo": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/شهر"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/মাস"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/mo"
           }
         },
-        "de": {
+        "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/mo"
@@ -272,7 +274,25 @@
             "value": "%@/mo"
           }
         },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/माह"
+          }
+        },
         "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/mo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/月"
+          }
+        },
+        "ne": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/mo"
@@ -282,36 +302,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@/mo"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/mo"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/شهر"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/মাস"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/माह"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/月"
           }
         },
         "ur": {
@@ -402,13 +392,25 @@
     "%@/wk": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/أسبوع"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/সপ্তাহ"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/wk"
           }
         },
-        "de": {
+        "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/wk"
@@ -426,7 +428,25 @@
             "value": "%@/wk"
           }
         },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/सप्ताह"
+          }
+        },
         "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/wk"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/週"
+          }
+        },
+        "ne": {
           "stringUnit": {
             "state": "translated",
             "value": "%@/wk"
@@ -436,36 +456,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@/wk"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/wk"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/أسبوع"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/সপ্তাহ"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/सप्ताह"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@/週"
           }
         },
         "ur": {
@@ -662,6 +652,24 @@
             }
           }
         },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credit back. That video didn't count."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credits back. That video didn't count."
+                }
+              }
+            }
+          }
+        },
         "es": {
           "variations": {
             "plural": {
@@ -745,24 +753,6 @@
             "state": "translated",
             "value": "%lld کریڈٹ واپس۔ وہ ویڈیو شمار نہیں ہوئی۔"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld credit back. That video didn't count."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld credits back. That video didn't count."
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -785,6 +775,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld Credits erstattet — dieses Video hat nicht gezählt"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credit refunded — that render didn't count"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld credits refunded — that render didn't count"
+                }
+              }
+            }
           }
         },
         "es": {
@@ -833,24 +841,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld کریڈٹس واپس — وہ رینڈر شمار نہیں ہوا"
-          }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld credit refunded — that render didn't count"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld credits refunded — that render didn't count"
-                }
-              }
-            }
           }
         }
       }
@@ -1090,6 +1080,24 @@
             }
           }
         },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days"
+                }
+              }
+            }
+          }
+        },
         "es": {
           "variations": {
             "plural": {
@@ -1173,28 +1181,11 @@
             "state": "translated",
             "value": "%lld دن"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld day"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld days"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld free videos left today": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -1221,6 +1212,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "Noch %lld Gratis-Videos heute"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld free video left today"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld free videos left today"
                 }
               }
             }
@@ -1321,24 +1330,6 @@
               }
             }
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld free video left today"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld free videos left today"
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -1369,6 +1360,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Monate"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld month"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld months"
                 }
               }
             }
@@ -1457,48 +1466,12 @@
             "state": "translated",
             "value": "%lld مہینے"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld month"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld months"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld of %lld friends have made a video": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld of %2$lld friend has made a video"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld of %2$lld friends have made a video"
-                }
-              }
-            }
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1524,6 +1497,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%1$lld von %2$lld Freunden haben ein Video gemacht"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friend has made a video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friends have made a video"
                 }
               }
             }
@@ -1618,22 +1609,16 @@
     "%lld of %lld friends joined": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld of %2$lld friend joined"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld of %2$lld friends joined"
-                }
-              }
-            }
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انضم %1$lld من أصل %2$lld أصدقاء"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld জনের মধ্যে %1$lld জন বন্ধু যোগ দিয়েছে"
           }
         },
         "de": {
@@ -1649,6 +1634,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%1$lld von %2$lld Freunden sind dabei"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friend joined"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld of %2$lld friends joined"
                 }
               }
             }
@@ -1690,36 +1693,6 @@
             }
           }
         },
-        "pt-BR": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld de %2$lld amigo entrou"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld de %2$lld amigos entraram"
-                }
-              }
-            }
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "انضم %1$lld من أصل %2$lld أصدقاء"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%2$lld জনের মধ্যে %1$lld জন বন্ধু যোগ দিয়েছে"
-          }
-        },
         "hi": {
           "stringUnit": {
             "state": "translated",
@@ -1744,6 +1717,24 @@
             "value": "%2$lld मध्ये %1$lld जना साथी जोडिनुभयो"
           }
         },
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigo entrou"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$lld de %2$lld amigos entraram"
+                }
+              }
+            }
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
@@ -1753,6 +1744,7 @@
       }
     },
     "%lld people you invited have made a video": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -1779,6 +1771,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Personen, die du eingeladen hast, haben ein Video gemacht"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld person you invited has made a video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld people you invited have made a video"
                 }
               }
             }
@@ -1867,28 +1877,11 @@
             "state": "translated",
             "value": "آپ کے مدعو کردہ %lld افراد نے ویڈیو بنائی ہے"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld person you invited has made a video"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld people you invited have made a video"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld today": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -1915,6 +1908,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld heute"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld today"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld today"
                 }
               }
             }
@@ -2003,46 +2014,22 @@
             "state": "translated",
             "value": "آج %lld"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld today"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld today"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld videos": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld video"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld videos"
-                }
-              }
-            }
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld فيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld টি ভিডিও"
           }
         },
         "de": {
@@ -2058,6 +2045,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Videos"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos"
                 }
               }
             }
@@ -2099,6 +2104,30 @@
             }
           }
         },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld本"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld भिडियो"
+          }
+        },
         "pt-BR": {
           "variations": {
             "plural": {
@@ -2134,42 +2163,6 @@
               }
             }
           }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld فيديو"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld টি ভিডিও"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld वीडियो"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld video"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld本"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld भिडियो"
-          }
         }
       }
     },
@@ -2201,6 +2194,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Videos im Monat"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video a month"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos a month"
                 }
               }
             }
@@ -2289,48 +2300,12 @@
             "state": "translated",
             "value": "ہر ماہ %lld ویڈیوز"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld video a month"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld videos a month"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld videos a month, and every feature unlocked.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld video a month, and every feature unlocked."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld videos a month, and every feature unlocked."
-                }
-              }
-            }
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2356,6 +2331,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Videos im Monat, und alles freigeschaltet."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video a month, and every feature unlocked."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos a month, and every feature unlocked."
                 }
               }
             }
@@ -2450,24 +2443,6 @@
     "%lld videos a month, plus early access to new features": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld video a month, plus early access to new features"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld videos a month, plus early access to new features"
-                }
-              }
-            }
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2493,6 +2468,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Videos im Monat, plus früher Zugang zu neuen Funktionen"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video a month, plus early access to new features"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos a month, plus early access to new features"
                 }
               }
             }
@@ -2617,6 +2610,24 @@
             }
           }
         },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video left"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos left"
+                }
+              }
+            }
+          }
+        },
         "es": {
           "variations": {
             "plural": {
@@ -2712,24 +2723,6 @@
               }
             }
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld video left"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld videos left"
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -2760,6 +2753,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Wochen"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld week"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld weeks"
                 }
               }
             }
@@ -2848,24 +2859,6 @@
             "state": "translated",
             "value": "%lld ہفتے"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld week"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld weeks"
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -2896,6 +2889,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld Jahre"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld year"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld years"
                 }
               }
             }
@@ -2983,24 +2994,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld سال"
-          }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld year"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld years"
-                }
-              }
-            }
           }
         }
       }
@@ -3302,12 +3295,6 @@
     "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -3324,6 +3311,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "1 Freund bringt dir 2 Tage, 2 bringen 4, 3 bringen eine Woche"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week"
           }
         },
         "es": {
@@ -3377,6 +3370,7 @@
       }
     },
     "1 person you invited has made a video": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -3813,6 +3807,7 @@
       }
     },
     "A day of Pro each time someone you invite makes their first video": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -4337,6 +4332,12 @@
             "value": "Wir fügen Geräusche hinzu"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding sounds"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -4384,12 +4385,6 @@
             "state": "translated",
             "value": "آوازیں شامل کی جا رہی ہیں"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Adding sounds"
-          }
         }
       }
     },
@@ -4412,6 +4407,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir fügen deine Untertitel ein"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding your captions"
           }
         },
         "es": {
@@ -4461,12 +4462,6 @@
             "state": "translated",
             "value": "آپ کے کیپشن شامل کیے جا رہے ہیں"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Adding your captions"
-          }
         }
       }
     },
@@ -4489,6 +4484,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alle 3 Freunde sind dabei — deine Gratis-Woche kommt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All 3 friends are in — your free week is on the way"
           }
         },
         "es": {
@@ -4538,12 +4539,6 @@
             "state": "translated",
             "value": "تینوں دوست شامل ہو گئے — آپ کا مفت ہفتہ آ رہا ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All 3 friends are in — your free week is on the way"
-          }
         }
       }
     },
@@ -4566,6 +4561,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fast fertig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Almost done"
           }
         },
         "es": {
@@ -4614,12 +4615,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "بس تھوڑا سا باقی"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Almost done"
           }
         }
       }
@@ -4696,6 +4691,7 @@
       }
     },
     "Any video works — up to 5 minutes. We'll notify you the moment it's ready.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -5343,6 +5339,7 @@
       }
     },
     "BEST VALUE": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -6301,6 +6298,12 @@
             "value": "Ändere ein fertiges Video, ohne es nochmal zu schicken. Mit Pro geht das — und so viele Videos und Chats du willst."
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want."
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -6347,12 +6350,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "مکمل ویڈیو دوبارہ بھیجے بغیر بدلیں۔ Pro میں یہ ممکن ہے، اور جتنی چاہیں ویڈیوز اور چیٹس۔"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want."
           }
         }
       }
@@ -6946,6 +6943,7 @@
       }
     },
     "Choose the editing model": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -7113,6 +7111,12 @@
             "value": "Wir wählen dein Titelbild"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choosing your cover picture"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -7159,12 +7163,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی کور تصویر چنی جا رہی ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choosing your cover picture"
           }
         }
       }
@@ -9208,6 +9206,12 @@
             "value": "Wir entscheiden, was wir ändern"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deciding what to change"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -9254,12 +9258,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "کیا بدلنا ہے طے کیا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deciding what to change"
           }
         }
       }
@@ -11123,12 +11121,6 @@
     "Every friend who makes a video earns you free Pro": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every friend who makes a video earns you free Pro"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11145,6 +11137,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jeder Freund, der ein Video macht, bringt dir gratis Pro"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every friend who makes a video earns you free Pro"
           }
         },
         "es": {
@@ -11641,12 +11639,6 @@
     "Everything in Pro, plus early access to new features": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Everything in Pro, plus early access to new features"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11663,6 +11655,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alles aus Pro, plus früher Zugang zu neuen Funktionen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything in Pro, plus early access to new features"
           }
         },
         "es": {
@@ -11716,6 +11714,7 @@
       }
     },
     "Everything you made is still here. Go Pro to keep creating without limits.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -12093,6 +12092,12 @@
             "value": "Wir suchen extra Clips"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding extra clips to add"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -12140,12 +12145,6 @@
             "state": "translated",
             "value": "مزید کلپس تلاش کیے جا رہے ہیں"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finding extra clips to add"
-          }
         }
       }
     },
@@ -12168,6 +12167,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir suchen noch mehr Bilder"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding more video to add"
           }
         },
         "es": {
@@ -12217,12 +12222,6 @@
             "state": "translated",
             "value": "مزید ویڈیو تلاش کی جا رہی ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finding more video to add"
-          }
         }
       }
     },
@@ -12245,6 +12244,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir suchen die Szenenwechsel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding where the scenes change"
           }
         },
         "es": {
@@ -12294,12 +12299,6 @@
             "state": "translated",
             "value": "مناظر کہاں بدلتے ہیں تلاش کیا جا رہا ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finding where the scenes change"
-          }
         }
       }
     },
@@ -12322,6 +12321,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir machen fertig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finishing up"
           }
         },
         "es": {
@@ -12370,12 +12375,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "مکمل کیا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finishing up"
           }
         }
       }
@@ -12720,6 +12719,24 @@
             }
           }
         },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free gives you %lld video a day. Pro gives you as many as you want."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
+                }
+              }
+            }
+          }
+        },
         "es": {
           "variations": {
             "plural": {
@@ -12839,24 +12856,6 @@
               }
             }
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free gives you %lld video a day. Pro gives you as many as you want."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -12887,6 +12886,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "Gratis enthält %lld KI-Chatnachrichten pro Tag. Mit Pro unbegrenzt."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld AI chat message per day. Upgrade for unlimited."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld AI chat messages per day. Upgrade for unlimited."
                 }
               }
             }
@@ -12975,28 +12992,11 @@
             "state": "translated",
             "value": "مفت پلان میں روزانہ %lld AI چیٹ پیغامات شامل ہیں۔ لامحدود کے لیے اپ گریڈ کریں۔"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld AI chat message per day. Upgrade for unlimited."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld AI chat messages per day. Upgrade for unlimited."
-                }
-              }
-            }
-          }
         }
       }
     },
     "Free includes %lld video renders per day. Upgrade to Pro for unlimited.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -13014,6 +13014,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "Der Gratis-Tarif enthält %lld Videos pro Tag. Mit Pro unbegrenzt."
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld video per day. Upgrade to Pro for unlimited."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Free includes %lld videos per day. Upgrade to Pro for unlimited."
+                }
+              }
+            }
           }
         },
         "es": {
@@ -13063,28 +13081,11 @@
             "state": "translated",
             "value": "مفت پلان میں روزانہ %lld ویڈیو رینڈرز شامل ہیں۔ لامحدود کے لیے Pro لیں۔"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld video per day. Upgrade to Pro for unlimited."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld videos per day. Upgrade to Pro for unlimited."
-                }
-              }
-            }
-          }
         }
       }
     },
     "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -13175,6 +13176,12 @@
             "value": "Gratis kannst du nur ein paar Videos speichern. Pro speichert und teilt jedes — und du machst so viele du willst."
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want."
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -13221,12 +13228,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "مفت میں صرف چند ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ایک محفوظ اور شیئر کرتا ہے، جتنی چاہیں بنائیں۔"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want."
           }
         }
       }
@@ -13526,6 +13527,7 @@
       }
     },
     "Get Started": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -13616,6 +13618,12 @@
             "value": "Wenn alle 3 ein Video gemacht haben, bekommst du eine Woche Pro gratis"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get a free week of Pro when all 3 have made a video"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -13662,12 +13670,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "تینوں ویڈیو بنا لیں تو ایک ہفتہ Pro مفت"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Get a free week of Pro when all 3 have made a video"
           }
         }
       }
@@ -13987,6 +13989,12 @@
             "value": "Dein Video wird vorbereitet"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting your video ready"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -14033,12 +14041,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی ویڈیو تیار کی جا رہی ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Getting your video ready"
           }
         }
       }
@@ -14613,8 +14615,7 @@
       }
     },
     "Hold to see the original": {
-      "extractionState": "manual",
-      "localizations": {}
+      "extractionState": "manual"
     },
     "How did you hear about us?": {
       "extractionState": "manual",
@@ -15201,12 +15202,6 @@
     "Invite 3 friends who make a video — get a week of Pro": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invite 3 friends who make a video — get a week of Pro"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -15223,6 +15218,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lade 3 Freunde ein, die ein Video erstellen — erhalte eine Woche Pro"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite 3 friends who make a video — get a week of Pro"
           }
         },
         "es": {
@@ -15791,6 +15792,12 @@
             "value": "Weitermachen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep going"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -15837,12 +15844,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "جاری رکھیں"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep going"
           }
         }
       }
@@ -16339,6 +16340,7 @@
       }
     },
     "Loading": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -16499,6 +16501,12 @@
             "value": "Wir schauen, was gut ankommt"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking at what works well"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -16545,12 +16553,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "کیا اچھا چلتا ہے دیکھا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Looking at what works well"
           }
         }
       }
@@ -16843,6 +16845,7 @@
       }
     },
     "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -16933,6 +16936,12 @@
             "value": "Wir machen einen Plan für dein Video"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Making a plan for your video"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -16980,12 +16989,6 @@
             "state": "translated",
             "value": "آپ کی ویڈیو کا منصوبہ بنایا جا رہا ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Making a plan for your video"
-          }
         }
       }
     },
@@ -17008,6 +17011,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir machen es flüssiger"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Making it flow better"
           }
         },
         "es": {
@@ -17056,12 +17065,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "اسے مزید رواں بنایا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Making it flow better"
           }
         }
       }
@@ -17227,6 +17230,12 @@
             "value": "Wir schneiden im Takt der Musik"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matching the cuts to the music"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -17274,12 +17283,6 @@
             "state": "translated",
             "value": "کٹس کو موسیقی سے ملایا جا رہا ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Matching the cuts to the music"
-          }
         }
       }
     },
@@ -17302,6 +17305,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir passen dein Video an die Musik an"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matching your video to the music"
           }
         },
         "es": {
@@ -17351,24 +17360,12 @@
             "state": "translated",
             "value": "آپ کی ویڈیو موسیقی سے ملائی جا رہی ہے"
           }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Matching your video to the music"
-          }
         }
       }
     },
     "Max": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Max"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -17382,6 +17379,12 @@
           }
         },
         "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max"
+          }
+        },
+        "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Max"
@@ -17585,6 +17588,7 @@
       }
     },
     "Model": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -17655,6 +17659,7 @@
       }
     },
     "Model: %@": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -18727,6 +18732,7 @@
       }
     },
     "No free videos left · resets at %@%@": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -19525,6 +19531,7 @@
       }
     },
     "One moment…": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -21459,6 +21466,7 @@
       }
     },
     "Promptly cuts it, captions it, and matches your vibe.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -21759,6 +21767,12 @@
             "value": "Wir setzen dein Video zusammen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Putting your video together"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -21805,12 +21819,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی ویڈیو جوڑی جا رہی ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Putting your video together"
           }
         }
       }
@@ -22812,6 +22820,7 @@
       }
     },
     "Renders take a few minutes — want us to tell you the second yours is ready?": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -23950,12 +23959,6 @@
     "Saving your video": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saving your video"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -23972,6 +23975,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wir speichern dein Video"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving your video"
           }
         },
         "es": {
@@ -24465,6 +24474,12 @@
             "value": "Dein Video wird gesendet"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending your video"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -24511,12 +24526,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کی ویڈیو بھیجی جا رہی ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sending your video"
           }
         }
       }
@@ -25102,6 +25111,12 @@
             "value": "Wir machen die Übergänge weich"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smoothing out the cuts"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -25148,12 +25163,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "کٹس کو ہموار کیا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Smoothing out the cuts"
           }
         }
       }
@@ -25703,6 +25712,12 @@
             "value": "Stoppen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop making it"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -25749,12 +25764,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "روک دیں"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop making it"
           }
         }
       }
@@ -25857,6 +25866,12 @@
             "value": "Video stoppen?"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop making this video?"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -25903,12 +25918,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "یہ ویڈیو بنانا روکیں؟"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop making this video?"
           }
         }
       }
@@ -26197,6 +26206,7 @@
       }
     },
     "Talk to Promptly like an editor. Captions, cuts, graphics — done for you.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -26410,12 +26420,6 @@
     "Talking-head videos": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Talking-head videos"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -26432,6 +26436,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Talking-Head-Videos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talking-head videos"
           }
         },
         "es": {
@@ -27053,6 +27063,7 @@
       }
     },
     "This stops the edit before it starts — your daily render won't be used.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -27143,6 +27154,12 @@
             "value": "Das stoppt dein Video, bevor es losgeht. Dein Gratis-Video für heute bleibt dir."
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This stops your video before it starts. It won't count against today's free one."
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -27189,12 +27206,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "یہ آپ کی ویڈیو شروع ہونے سے پہلے روک دے گا۔ آج کی مفت ویڈیو باقی رہے گی۔"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This stops your video before it starts. It won't count against today's free one."
           }
         }
       }
@@ -27980,12 +27991,6 @@
     "Unlimited renders": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlimited renders"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -28002,6 +28007,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unbegrenzt viele neue Videos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlimited renders"
           }
         },
         "es": {
@@ -28916,6 +28927,7 @@
       }
     },
     "Upload Video": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -29056,6 +29068,7 @@
       }
     },
     "Upload a talking head video": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -29503,6 +29516,12 @@
             "value": "Videos dauern ein paar Minuten. Sollen wir dir sagen, wenn deins fertig ist?"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos take a few minutes. Want us to tell you when yours is ready?"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -29549,12 +29568,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "ویڈیو میں چند منٹ لگتے ہیں۔ تیار ہونے پر بتا دیں؟"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Videos take a few minutes. Want us to tell you when yours is ready?"
           }
         }
       }
@@ -30002,6 +30015,12 @@
             "value": "Wir schauen, wo sich Gesichter bewegen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching where faces move"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -30048,12 +30067,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "چہرے کہاں ہلتے ہیں دیکھا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Watching where faces move"
           }
         }
       }
@@ -30559,12 +30572,6 @@
     "What are you making?": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "What are you making?"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -30581,6 +30588,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Was erstellst du?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What are you making?"
           }
         },
         "es": {
@@ -30777,12 +30790,6 @@
     "What kind of videos?": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "What kind of videos?"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -30799,6 +30806,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Was für Videos?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What kind of videos?"
           }
         },
         "es": {
@@ -31152,6 +31165,12 @@
             "value": "Wir schreiben auf, was du gesagt hast"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing down what you said"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -31198,12 +31217,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ نے جو کہا وہ لکھا جا رہا ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Writing down what you said"
           }
         }
       }
@@ -31598,6 +31611,24 @@
             }
           }
         },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "You earned %lld day of Pro"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "You earned %lld days of Pro"
+                }
+              }
+            }
+          }
+        },
         "es": {
           "variations": {
             "plural": {
@@ -31681,24 +31712,6 @@
             "state": "translated",
             "value": "آپ نے %lld دن کا Pro حاصل کیا"
           }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "You earned %lld day of Pro"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "You earned %lld days of Pro"
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -31773,6 +31786,7 @@
       }
     },
     "You weren't charged — this didn't use your daily render.": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -31863,6 +31877,12 @@
             "value": "Dir wurde nichts abgezogen. Dein Gratis-Video für heute ist noch da."
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You weren't charged. This didn't use today's free video."
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -31909,12 +31929,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ سے کچھ نہیں لیا گیا۔ آج کی مفت ویڈیو استعمال نہیں ہوئی۔"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You weren't charged. This didn't use today's free video."
           }
         }
       }
@@ -32651,6 +32665,7 @@
       }
     },
     "You're out of free renders for today": {
+      "extractionState": "stale",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -32811,6 +32826,12 @@
             "value": "Du hast dein Gratis-Video für heute genutzt"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used today's free video"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -32857,12 +32878,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "آج کی مفت ویڈیو استعمال ہو چکی ہے"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You've used today's free video"
           }
         }
       }
