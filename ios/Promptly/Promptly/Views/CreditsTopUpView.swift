@@ -302,7 +302,7 @@ struct CreditsTopUpView: View {
             // THE SHARED MARK — see `CreditMark`. Not a local image and not a
             // system bolt: the same object the chat header and the composer
             // strip draw, so a balance reads as one currency across the app.
-            CreditMark(size: 20, isSpent: credits.balance == 0)
+            CreditMark(size: 30, isSpent: credits.balance == 0)
             if let b = credits.balance {
                 Text("^[\(b) credit](inflect: true) left")
                     .cType(17, .semibold)
@@ -434,32 +434,21 @@ struct CreditsTopUpView: View {
         }
     }
 
-    /// A FACT, NOT A CLAIM — and each word of it was argued for.
+    /// WHY THERE IS NO BADGE ON THE LARGEST PACK, so it is not re-added.
     ///
     /// The obvious way to make the 20-pack attractive is a volume discount, and
-    /// it has now been proposed twice. It breaks the 2x rule: if credits get
+    /// it has been proposed twice. It breaks the 2x rule: if credits get
     /// cheaper in bulk, someone stacks top-ups to buy Max's allowance for less
-    /// than Max costs, and the tier the hero above is arguing for becomes the
-    /// worst deal on the screen. Per-video price stays flat at every size.
+    /// than Max costs, and the tier the hero argues for becomes the worst deal
+    /// on the screen. Per-video price stays flat at every size.
     ///
-    /// It then said "Most popular", which is the reflex substitute for a saving
-    /// — and it is hollow twice over. Nothing has been sold yet, so it is not
-    /// evidenced; and with flat pricing there is no value claim available to
-    /// make, so a badge implying one is decoration doing the job of an
-    /// argument. "Most videos" is checkable against the rows above it and true
-    /// on the day the product ships.
-    ///
-    /// A hollow badge is worse than none: it spends the reader's trust on the
-    /// one screen where they are deciding whether to hand over money.
-    private var popularBadge: some View {
-        Text("Most videos")
-            .cType(10, .bold)
-            .foregroundColor(Self.accent)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Self.accent.opacity(0.18)))
-            .overlay(Capsule().strokeBorder(Self.accent.opacity(0.45), lineWidth: 1))
-    }
+    /// Every substitute badge was then hollow. "Most popular" asserts evidence
+    /// that does not exist — nothing has been sold. "Most videos" is true and
+    /// redundant: it restates the row's own label. With flat pricing there is
+    /// no honest value claim to make, and decoration standing where an argument
+    /// would go is worse than an empty space, because the reader spends a beat
+    /// discovering it means nothing. The argument for buying more lives in the
+    /// hero, where it is about the subscription.
 
     private func packRow(_ pack: CreditPack) -> some View {
         let isSelected = selectedId == pack.id
@@ -474,15 +463,19 @@ struct CreditsTopUpView: View {
                     if isSelected { Circle().fill(Self.accent).frame(width: 12, height: 12) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
-                        Text("\(pack.videos) videos")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                        if pack.videos == CreditPackCatalog.largestKnownVideos {
-                            popularBadge
-                        }
-                    }
+                    // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
+                    //
+                    // NO BADGE. The 20-pack carried one, and every version of
+                    // it was hollow. "Most popular" was unevidenced — nothing
+                    // has been sold. "Most videos" was true and useless: it
+                    // restates the number immediately to its left, on a row
+                    // that already reads "20 videos". With flat per-video
+                    // pricing there is no value claim available to make here,
+                    // and a badge that says nothing still costs the reader a
+                    // beat working out that it says nothing.
+                    Text("\(pack.videos) videos")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
                     Text("^[\(pack.credits) credit](inflect: true)")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.45))

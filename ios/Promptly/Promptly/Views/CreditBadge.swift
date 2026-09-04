@@ -124,7 +124,7 @@ struct CreditBadge: View {
     /// The bloom is on the glyph ALONE — a glowing pill would be a second
     /// Upgrade button, and the gold pill beside it is already the loud one.
     private func mark(spent: Bool) -> some View {
-        CreditMark(size: 13, isSpent: spent)
+        CreditMark(size: 20, isSpent: spent)
             .shadow(color: CreditMark.accent.opacity(refunding ? 0.9 : 0.35),
                     radius: refunding ? 6 : 3)
             .scaleEffect(refunding ? 1.3 : 1.0)

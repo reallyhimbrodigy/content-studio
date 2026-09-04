@@ -26,28 +26,47 @@ import SwiftUI
 /// variant: nothing is broken when a user spends what they bought, and an
 /// error-shaped glyph would collide with the genuine failure states in the
 /// thread below.
+/// A TOKEN, NOT A FLOATING SYMBOL. The mark sits in a filled disc, so the
+/// balance reads as a thing you HOLD some of rather than an icon decorating a
+/// number. That is the whole difference between a currency and a status glyph,
+/// and it is why the disc is here and not a larger runner: scale makes a symbol
+/// louder, containment makes it an object.
+///
+/// The disc is the accent at low opacity — present enough to bound the mark,
+/// quiet enough that the header does not grow a second button. It carries the
+/// muting too, so a spent balance recedes as one object instead of a dim runner
+/// inside a bright coin.
 struct CreditMark: View {
-    var size: CGFloat = 14
+    /// The TOKEN's diameter. The glyph is inset within it, so call sites size
+    /// the object they are placing rather than the artwork inside it.
+    var size: CGFloat = 22
     /// Zero, not unknown. An unread balance must not dim — see every
     /// "silent when unknown" rule on the surfaces that host this.
     var isSpent: Bool = false
 
     static let accent = Color(hex: "6C5CE7")
 
+    /// 0.7, checked against a render rather than picked. At 0.5 the accent on
+    /// black stopped reading as "receded" and started reading as "disabled" —
+    /// a greyed-out control beside a full-strength number says the balance is
+    /// broken rather than spent.
+    private var strength: Double { isSpent ? 0.7 : 1 }
+
     var body: some View {
-        Image("PromptlyLogo")
-            // TEMPLATE, so the mark takes the accent. The asset ships with an
-            // `original` rendering intent for the places that want the full
-            // logo; here it is a glyph and has to tint.
-            .renderingMode(.template)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: size, height: size)
-            // 0.7, checked against a render rather than picked. At 0.5 the
-            // accent on black stopped reading as "receded" and started reading
-            // as "disabled" — a greyed-out control beside a full-strength
-            // number, which says the balance is broken rather than spent.
-            .foregroundColor(Self.accent.opacity(isSpent ? 0.7 : 1))
+        ZStack {
+            Circle().fill(Self.accent.opacity(0.16 * strength))
+            Circle().strokeBorder(Self.accent.opacity(0.30 * strength), lineWidth: 1)
+            Image("PromptlyLogo")
+                // TEMPLATE, so the mark takes the accent. The asset ships with
+                // an `original` rendering intent for the places that want the
+                // full logo; here it is a glyph and has to tint.
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 0.54, height: size * 0.54)
+                .foregroundColor(Self.accent.opacity(strength))
+        }
+        .frame(width: size, height: size)
     }
 }
 
@@ -83,7 +102,7 @@ struct CreditBalanceStrip: View {
         Group {
             if onboarding.creditsEnabled, let videos = credits.videosRemaining {
                 HStack(spacing: 6) {
-                    CreditMark(size: 12, isSpent: videos == 0)
+                    CreditMark(size: 18, isSpent: videos == 0)
                     Text("\(videos) videos left")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.55))
