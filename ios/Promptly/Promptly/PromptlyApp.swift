@@ -301,12 +301,6 @@ struct PromptlyApp: App {
     /// byte-for-byte. GRANDFATHER: an already-authenticated user who never
     /// entered the flow is not forced through a signup they've already done —
     /// the server's rollout policy governs when THEY meet the wall.
-    private var showWallOnboarding: Bool {
-        guard onboarding.wallOnboardingEnabled == true,
-              !onboarding.hasCompletedOnboarding else { return false }
-        if auth.isAuthenticated && !onboarding.startedFlow { return false }
-        return true
-    }
 
     /// Conversion item 1: the first-launch dismissible paywall — 100% paid-tier
     /// exposure before signup/onboarding, shown exactly once per install.
@@ -349,7 +343,6 @@ struct PromptlyApp: App {
         let s = OnboardingState.shared
         s.hasSeenFirstLaunchPaywall = false
         s.hasCompletedOnboarding = false
-        s.hasSeenAttributionGate = false
         s.preselectedPlanID = nil
         s.v2Step = .audience
     }
@@ -455,15 +448,14 @@ struct PromptlyApp: App {
     /// from `body`: `attribution_gate` is still a live server flag and other
     /// code reads it, so retiring the SURFACE here keeps the knob honest
     /// instead of leaving a flag that appears armed and does nothing.
-    private var showAttributionGate: Bool { false }
 
     /// Conversion build (post-235) — ONBOARDING V2: language → making →
     /// attribution → sign-in; ends at the picker, NO paywall in the flow.
     /// Same guard shape as the wall branch above, incl. the GRANDFATHER rule.
     /// PRECEDENCE: when on, v2 SUPERSEDES the standalone attribution gate
-    /// (see showAttributionGate) and outranks the wall-onboarding branch —
-    /// its ZStack slot sits above showWallOnboarding. Knob off = today's
-    /// branches, byte-for-byte.
+    /// V1 (`OnboardingFlow`) and the standalone attribution ask were DELETED
+    /// 2026-09-04 — not left dark. Both were reachable only by flipping a
+    /// server knob, which is a second funnel waiting for someone to flip it.
     private var showOnboardingV2: Bool {
         #if DEBUG
         if motionProof { return !onboarding.hasCompletedOnboarding }
@@ -523,19 +515,11 @@ struct PromptlyApp: App {
                     // floor. Non-dismissible by design.
                     UpdateRequiredView()
                         .transition(.opacity)
-                } else if showAttributionGate {
-                    // Standalone attribution ask (one screen; the flip of
-                    // hasSeenAttributionGate re-branches, so onDone is empty).
-                    AttributionAskView(context: "attribution_gate", onDone: {})
-                        .transition(.opacity)
                 } else if showFirstLaunchPaywall {
                     FirstLaunchPaywallView()
                         .transition(.opacity)
                 } else if showOnboardingV2 {
                     OnboardingV2Flow()
-                        .transition(.opacity)
-                } else if showWallOnboarding {
-                    OnboardingFlow()
                         .transition(.opacity)
                 } else if auth.isAuthenticated || onboarding.deferredAuthEnabled {
                     // Deferred auth: browsing needs no account. The account is
@@ -561,7 +545,6 @@ struct PromptlyApp: App {
             #if DEBUG
             .onAppear {
                 ReeditProofHarness.runIfRequested()
-                OnboardingProofHarness.runIfRequested()
                 FirstRunProofHarness.runIfRequested()
             }
             #endif
@@ -576,7 +559,6 @@ struct PromptlyApp: App {
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: launchMinElapsed)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: auth.isAuthenticated)
             .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenFirstLaunchPaywall)
-            .animation(.spring(response: 0.32, dampingFraction: 1.0), value: onboarding.hasSeenAttributionGate)
             // Referral intake: a ?ref=CODE on ANY URL that reaches the app
             // (custom scheme today; universal links when provisioned) persists
             // pre-auth and claims at sign-in. Non-referral URLs are ignored.
@@ -613,13 +595,12 @@ struct PromptlyApp: App {
             .onChange(of: auth.isAuthenticated) { _, authed in
                 if authed {
                     AppState.shared.landOnChat()
-                    // Attribution resurrection: an answer given PRE-AUTH (both
-                    // new surfaces ask before sign-in) can't reach
-                    // profile_settings (no token yet) — re-fire the
-                    // best-effort persist the moment auth lands. Flag-guarded:
-                    // inert while both surfaces are dark.
-                    if onboarding.attributionGateEnabled || onboarding.onboardingV2Enabled,
-                       onboarding.attribution != nil {
+                    // Answers given PRE-AUTH can't reach profile_settings (no
+                    // token yet) — re-fire the best-effort persist the moment
+                    // auth lands. The attribution surfaces are gone, but the
+                    // stored answer from an older build may still be here, and
+                    // Q1/Q2 are asked pre-auth on the live path.
+                    if onboarding.onboardingV2Enabled, onboarding.attribution != nil {
                         onboarding.persistAnswersToProfile()
                     }
                 }
@@ -933,59 +914,6 @@ struct UpdateRequiredView: View {
 
 
 #if DEBUG
-/// DEBUG-only presentation proof for the 1.1.7 re-edit P0 fix.
-///
-/// The live 1.1.6 bug (RACE 1): a free user taps Re-edit inside the full-screen
-/// video player; the player is a UIKit `.fullScreen` modal, so setting the
-/// paywall while it owns the presentation context is SILENTLY DROPPED — the user
-/// is left staring at the video. The fix parks the paywall and, on the player's
-/// dismissal completion, presents it via `UIHostingController` from the topmost
-/// VC (`AppState.presentPaywallFromTop`) rather than through the root `.sheet`,
-/// which stays dropped right after a full-screen UIKit modal dismisses.
-///
-/// This harness reproduces the EXACT runtime topology in the simulator using the
-/// REAL `PromptlyPlayerHostVC`, the REAL `AppState.deferPaywall`/`flushDeferredPaywall`
-/// seam, and the REAL `PaywallView`. Launch the app with `-reproReedit` and it:
-///   1. Presents the real player as a full-screen UIKit modal (as the app does).
-///   2. After it settles, fires exactly what a free user's Re-edit tap fires
-///      (PromptlyVideoPlayer.swift:699-700 `deferPaywall(.reedit)` + the host's
-///      onClose at :963 `dismiss { flushDeferredPaywall() }`).
-///   3. If the fix holds, the real re-edit PaywallView rises. If the bug were
-///      still present, the screen would fall back to whatever is behind the
-///      dismissed player with no paywall — the exact live symptom.
-///
-/// Never compiled into Release. No effect unless the launch argument is present.
-/// DEBUG-only presentation proof for the 1.2.0 wall onboarding. Launch with
-/// `-reproOnboarding`: forces the flow on (independent of the server knob) and
-/// walks every beat (hook → quiz → building → social proof → the trial wall) on
-/// a timer, so an external capture loop records each screen. Proves the whole
-/// flow renders — the standing law (presentations proven by presentations).
-@MainActor
-enum OnboardingProofHarness {
-    private static var didRun = false
-    static func runIfRequested() {
-        guard !didRun else { return }
-        guard ProcessInfo.processInfo.arguments.contains("-reproOnboarding") else { return }
-        didRun = true
-        let s = OnboardingState.shared
-        s.debugForceRepro()
-        // Walk the beats. Signup is skipped (needs real auth); every other beat
-        // renders from state alone. ~2.4s per beat so a 1s capture loop catches each.
-        // Conversion beats included: the results wall (skips itself when
-        // /api/health.results_wall is empty — expected in the harness) and the
-        // second personalised paywall (renders on offering data; referral row
-        // shows regardless).
-        let beats: [OnboardingState.Step] = [.language, .audience, .intent, .attribution, .results, .paywall2]
-        Task { @MainActor in
-            for beat in beats {
-                s.debugSet(beat)
-                print("[OnboardingProof] beat=\(beat.rawValue)")
-                try? await Task.sleep(for: .milliseconds(2600))
-            }
-            print("[OnboardingProof] walk complete")
-        }
-    }
-}
 
 /// `-reproFirstRun` — walk the REAL first-launch sequence, in order, through the
 /// REAL root. 2026-09-02.

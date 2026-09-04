@@ -23,7 +23,6 @@ final class OnboardingState: ObservableObject {
     /// nil = not yet fetched (show launch); false = legacy flow; true = wall
     /// onboarding. Defaults FALSE on any failure — the app must never brick
     /// because a config fetch failed (the wall stays a server-enforced fact).
-    @Published private(set) var wallOnboardingEnabled: Bool? = nil
 
     /// Conversion workstream item 1: the FIRST-LAUNCH dismissible paywall.
     /// Separate knob from wall_enforcement (that one is shared with the server
@@ -98,7 +97,6 @@ final class OnboardingState: ObservableObject {
     /// Conversion build 2026-08-27 (post-235): seven surfaces around the
     /// moment of desire, EACH behind its own server flag, default off —
     /// arming order stays a ruling after 235's read.
-    @Published private(set) var attributionGateEnabled = false
     @Published private(set) var onboardingV2Enabled = false
     @Published private(set) var renderTransparencyEnabled = false
     @Published private(set) var exportGatePersonalizationEnabled = false
@@ -161,18 +159,6 @@ final class OnboardingState: ObservableObject {
         }
     }
 
-    /// Show-once guard for the ATTRIBUTION ASK (attribution resurrection).
-    /// ANY disposition — answer or skip, from the standalone gate OR
-    /// onboarding v2's shared beat — sets it, so no flag combination can ever
-    /// re-nag the question. @Published so the root ZStack re-branches the
-    /// moment it flips (same contract as hasSeenFirstLaunchPaywall above).
-    @Published var hasSeenAttributionGate: Bool =
-        UserDefaults.standard.bool(forKey: "attribution_gate_seen") {
-        didSet {
-            UserDefaults.standard.set(hasSeenAttributionGate,
-                                      forKey: "attribution_gate_seen")
-        }
-    }
 
     /// One fetch per launch, ~instant (same host as every other call). Cached
     /// result also persisted so a cold offline launch uses the last-known knob.
@@ -185,7 +171,6 @@ final class OnboardingState: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: req)
             let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             let on = (obj?["wall_enforcement"] as? String) == "on"
-            wallOnboardingEnabled = on
             UserDefaults.standard.set(on, forKey: cacheKey)
             // Second knob rides the same fetch. Field absent (server not yet
             // deployed) → false → the wall stays dark. Never brick on config.
@@ -214,7 +199,6 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(firstSessionAutopickerEnabled, forKey: "first_session_autopicker_enabled")
             UserDefaults.standard.set(yearlyFrameFixEnabled, forKey: "yearly_frame_fix_enabled")
             UserDefaults.standard.set(uploadFailNotifyEnabled, forKey: "upload_fail_notify_enabled")
-            attributionGateEnabled = (obj?["attribution_gate"] as? String) == "on"
             onboardingV2Enabled = (obj?["onboarding_v2"] as? String) == "on"
             renderTransparencyEnabled = (obj?["render_transparency"] as? String) == "on"
             exportGatePersonalizationEnabled = (obj?["exportgate_personalization"] as? String) == "on"
@@ -252,7 +236,6 @@ final class OnboardingState: ObservableObject {
             reverseTrialExpiryEnabled = (obj?["reverse_trial_expiry"] as? String) == "on"
             paywallPersonalizationEnabled = (obj?["paywall_personalization"] as? String) == "on"
             referralProgressEnabled = (obj?["referral_progress"] as? String) == "on"
-            UserDefaults.standard.set(attributionGateEnabled, forKey: "attribution_gate_enabled")
             UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
             UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")
             UserDefaults.standard.set(exportGatePersonalizationEnabled, forKey: "exportgate_personalization_enabled")
@@ -280,7 +263,6 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(referralProgressEnabled, forKey: "referral_progress_enabled")
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
-            wallOnboardingEnabled = UserDefaults.standard.bool(forKey: cacheKey)
             firstLaunchPaywallEnabled = UserDefaults.standard.bool(forKey: flpCacheKey)
             postrenderReferralEnabled = UserDefaults.standard.bool(forKey: "postrender_referral_enabled")
             abandonReferralEnabled = UserDefaults.standard.bool(forKey: "abandon_referral_enabled")
@@ -290,7 +272,6 @@ final class OnboardingState: ObservableObject {
             firstSessionAutopickerEnabled = UserDefaults.standard.bool(forKey: "first_session_autopicker_enabled")
             yearlyFrameFixEnabled = UserDefaults.standard.bool(forKey: "yearly_frame_fix_enabled")
             uploadFailNotifyEnabled = UserDefaults.standard.bool(forKey: "upload_fail_notify_enabled")
-            attributionGateEnabled = UserDefaults.standard.bool(forKey: "attribution_gate_enabled")
             onboardingV2Enabled = UserDefaults.standard.bool(forKey: "onboarding_v2_enabled")
             renderTransparencyEnabled = UserDefaults.standard.bool(forKey: "render_transparency_enabled")
             exportGatePersonalizationEnabled = UserDefaults.standard.bool(forKey: "exportgate_personalization_enabled")
@@ -338,7 +319,6 @@ final class OnboardingState: ObservableObject {
         Self.forcedKeys.insert(key)
         switch key {
         case "first_launch_paywall": if firstLaunchPaywallEnabled != true { firstLaunchPaywallEnabled = true }
-        case "attribution_gate": if !attributionGateEnabled { attributionGateEnabled = true }
         case "onboarding_v2": onboardingV2Enabled = true
         case "render_transparency": if !renderTransparencyEnabled { renderTransparencyEnabled = true }
         case "exportgate_personalization": if !exportGatePersonalizationEnabled { exportGatePersonalizationEnabled = true }
@@ -402,23 +382,7 @@ final class OnboardingState: ObservableObject {
     // so onboarding is now three skippable questions that segment the user and
     // preselect a vibe, then drop them straight on the importer. The paywall
     // moved out entirely; the referral (post-first-video) replaces the trial.
-    enum Step: String, Codable {
-        case language       // pick the app language (kept from the quiz)
-        case signup         // Sign in with Apple
-        case audience       // Q1: who are you making videos for? (required, Skip)
-        case intent         // Q2: what do you want to make? (required, MULTI-select, Skip)
-        case attribution    // Q3: how did you hear about us? (OPTIONAL, last)
-        case results        // the results wall — real renders, right before the ask
-        case paywall2       // the second, personalised paywall (referral = 3rd option)
-        case done           // → straight to the video picker
-    }
 
-    @Published var step: Step = .language {
-        didSet {
-            UserDefaults.standard.set(step.rawValue, forKey: "onboarding_step")
-            Analytics.track("onboarding_step", props: ["step": step.rawValue])
-        }
-    }
 
     // ── Onboarding v2 flow position (the `onboarding_v2` knob) ──────────────
     // OnboardingV2Flow's beats — its OWN enum + persistence key so it can
@@ -547,25 +511,13 @@ final class OnboardingState: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "onboarding_completed") }
     }
 
-    /// True once the wall onboarding has ever been shown on this install.
-    /// The GRANDFATHER rule hangs on this: an already-authenticated user who
-    /// never entered the flow (existing account when the knob flips) is marked
-    /// completed rather than forced through a signup flow they've already done
-    /// — the server's rollout policy walls them only per its own rules.
-    var startedFlow: Bool {
-        get { UserDefaults.standard.bool(forKey: "onboarding_started") }
-    }
+
+
+    /// Marks that this install entered the question flow. Kept when V1 was
+    /// deleted — V2 still calls it, and `onboarding_started` is read by the
+    /// server-side funnel.
     func markFlowStarted() {
         UserDefaults.standard.set(true, forKey: "onboarding_started")
-    }
-
-    func restore() {
-        if let raw = UserDefaults.standard.string(forKey: "onboarding_step"),
-           let s = Step(rawValue: raw) {
-            // The flow container re-derives the right entry from auth +
-            // completion in onAppear; this just seeds the last-known beat.
-            step = s
-        }
     }
 
     /// Persist the three answers into `profile_settings` (POST
@@ -603,13 +555,5 @@ final class OnboardingState: ObservableObject {
     #if DEBUG
     /// Force the wall onboarding on for the presentation-proof harness
     /// (`-reproOnboarding`), independent of the server knob. DEBUG only.
-    func debugForceRepro() {
-        wallOnboardingEnabled = true
-        hasCompletedOnboarding = false
-        UserDefaults.standard.set(false, forKey: "onboarding_started")
-        step = .language
-    }
-    /// Directly set the beat (harness walk).
-    func debugSet(_ s: Step) { step = s }
     #endif
 }

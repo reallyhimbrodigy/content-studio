@@ -13,7 +13,7 @@ cd "$(dirname "$0")/Promptly" || exit 1
 FAIL=0
 declare -a MISSING=()
 for f in Views/PaywallView.swift Views/EditorView.swift \
-         Views/Onboarding/SecondPaywallView.swift Views/ReferralProgressRow.swift; do
+         Views/ReferralProgressRow.swift; do
   [ -f "$f" ] || { echo "referral-max-gate: MISSING FILE $f"; FAIL=1; continue; }
   # Count presentation points vs guarded points.
   PRESENTS=$(grep -c "presentShareSheet(source:" "$f")

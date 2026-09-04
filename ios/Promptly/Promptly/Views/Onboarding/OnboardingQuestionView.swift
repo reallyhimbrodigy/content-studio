@@ -46,7 +46,10 @@ struct OnboardingPressStyle: ButtonStyle {
 /// flow. The typed analytics event fires here so per-step drop-off is measurable
 /// from day one.
 struct OnboardingQuestion {
-    let step: OnboardingState.Step
+    /// Retyped to V2 when the V1 flow was deleted. The two enums both had an
+    /// `.audience` case, so this compiled against the wrong one for as long as
+    /// both existed — it only surfaced when V1 went.
+    let step: OnboardingState.V2Step
     let title: String
     let subtitle: String?
     /// (key stored + emitted, label shown). Order = display order.
@@ -69,54 +72,8 @@ struct OnboardingQuestion {
     // default-deny with no exemption list. They are translated as themselves —
     // brands are not transliterated, so an Arabic reader sees "TikTok".
 
-    static let audience = OnboardingQuestion(
-        step: .audience,
-        title: String(localized: "Who are you making videos for?"),
-        subtitle: String(localized: "So Promptly can tailor the edit."),
-        options: [
-            ("self", String(localized: "Myself / my brand")),
-            ("business", String(localized: "A business")),
-            ("clients", String(localized: "Clients")),
-            ("creator", String(localized: "A creator audience")),
-            ("event", String(localized: "An event")),
-            ("trying", String(localized: "Just trying it out")),
-        ],
-        event: "onboarding_audience",
-        propKey: "audience"
-    )
 
-    static let intent = OnboardingQuestion(
-        step: .intent,
-        title: String(localized: "What do you want to make?"),
-        subtitle: String(localized: "We'll start you on a matching style."),
-        options: [
-            ("viral", String(localized: "Viral / hype")),
-            ("promo", String(localized: "Sales / promo")),
-            ("storytime", String(localized: "Storytime")),
-            ("talkinghead", String(localized: "Talking-head clean-up")),
-            ("highlights", String(localized: "Highlights / recap")),
-            ("unsure", String(localized: "Not sure yet")),
-        ],
-        event: "onboarding_intent",
-        propKey: "intent"
-    )
 
-    static let attribution = OnboardingQuestion(
-        step: .attribution,
-        title: String(localized: "How did you hear about us?"),
-        subtitle: nil,
-        options: [
-            ("tiktok", String(localized: "TikTok")),
-            ("instagram", String(localized: "Instagram")),
-            ("youtube", String(localized: "YouTube")),
-            ("friend", String(localized: "A friend")),
-            ("appstore", String(localized: "App Store search")),
-            ("reddit_x", String(localized: "Reddit / X")),
-            ("other", String(localized: "Other")),
-        ],
-        event: "onboarding_attribution",
-        propKey: "attribution"
-    )
 
     /// Q2 intent → the vibe the editor should open on. nil = default composer.
     static func vibe(forIntent key: String) -> String? {

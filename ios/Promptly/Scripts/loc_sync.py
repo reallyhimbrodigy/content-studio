@@ -62,8 +62,11 @@ LANGS = ["ar", "bn", "de", "en", "es", "fr", "hi", "id", "ja", "ne", "pt-BR", "u
 # visible rather than silent.
 
 ENTRY_POINTS = [
-    "FirstLaunchPaywallView", "PaywallView", "SecondPaywallView", "OfferRevealView",
-    "TrialWallView", "OnboardingV2Flow", "OnboardingFlow",
+    # V1 (`OnboardingFlow`) and `SecondPaywallView` were DELETED 2026-09-04 with
+    # the retired funnel. Leaving them here makes the gate print a "not found"
+    # warning on every run, which is how a real drift warning gets ignored.
+    "FirstLaunchPaywallView", "PaywallView", "OfferRevealView",
+    "TrialWallView", "OnboardingV2Flow",
     # The top-up screen sells three consumables and hosts the upgrade hero — it
     # asks for money as directly as any paywall. It was outside this set because
     # the downward walk starts at the PAYWALL flows and nothing in them

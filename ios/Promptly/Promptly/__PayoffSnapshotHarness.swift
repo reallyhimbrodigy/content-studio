@@ -132,7 +132,6 @@ struct PayoffSnapshotHarnessView: View {
             // Pro maps to 200 credits => 20 videos a month. Posed, because the
             // real source is a server field a simulator never receives.
             o.debugSetCreditsAllowance(200)
-        case 6:  o.debugForceFlag("attribution_gate"); o.hasSeenAttributionGate = false
         case 7, 8, 11, 12, 15:
             o.debugForceFlag("onboarding_v2")
             // Render-caught 2026-08-27: setting v2Step from .task fought the
@@ -172,13 +171,6 @@ struct PayoffSnapshotHarnessView: View {
                 .task { await autoInvokePurchase() }
             case 5: TrialWallView(context: .door, onPassed: {})
                 .task { await autoInvokePurchase() }
-            case 6: AttributionAskView(context: "attribution_gate", onDone: {})
-                .task {
-                    OnboardingState.shared.debugForceFlag("attribution_gate")
-                    // Precondition: the ask is show-once; reset the seen flag so
-                    // the standalone surface proves out on a reused proof sim.
-                    OnboardingState.shared.hasSeenAttributionGate = false
-                }
             case 7: OnboardingV2Flow()
                 .task {
                     OnboardingState.shared.debugForceFlag("onboarding_v2")
