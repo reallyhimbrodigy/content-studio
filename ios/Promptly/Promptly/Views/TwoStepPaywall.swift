@@ -51,12 +51,20 @@ struct PaywallTierOption: Identifiable, Equatable {
 struct PaywallDurationOption: Identifiable, Equatable {
     let id: String
     let label: String
-    let price: String
-    /// The annual plan expressed per month ("$24.16/mo, billed yearly"). This is
-    /// what makes a yearly plan legible: $289.99 next to $29.99 reads as ten
-    /// times more expensive, when it is in fact cheaper per month. Nil for
-    /// non-annual rows, which need no restatement.
-    let perMonthLine: String?
+    /// The BIG figure: each plan expressed at its own billing cadence —
+    /// "$24.16/mo", "$29.99/mo", "$10.99/wk". Normalising the year to a month
+    /// is what makes the ladder legible: $289.99 beside $29.99 reads as ten
+    /// times more expensive when it is in fact cheaper per month.
+    ///
+    /// THE WEEK IS NEVER NORMALISED. It is billed weekly, and showing "/mo" on
+    /// a weekly charge misrepresents what the card is charged — the
+    /// misleading-pricing line Apple actually enforces. Its own cadence, or
+    /// nothing.
+    let rate: String
+    /// The sub-line: what is actually billed, and when. The year carries its
+    /// full charge here so the per-month figure above can never be mistaken
+    /// for the amount taken.
+    let billingLine: String
     /// Computed from live per-territory prices by `PlanSavings`, never a literal.
     let percentOff: Int?
     /// A PAID introductory offer, already phrased. Never a free-trial phrasing.
@@ -141,6 +149,53 @@ enum PaywallMapping {
         if let loc = p.currencyLocale { f.locale = loc }
         guard p.price > 0, let s = f.string(from: (p.price / 12) as NSDecimalNumber) else { return nil }
         return String(localized: "\(s)/mo, billed yearly")
+    }
+
+    /// Each plan at its OWN cadence. Every figure is derived from the live
+    /// storefront price — never a literal — the same rule that keeps the
+    /// percentage claims correct per territory.
+    static func rateLine(_ p: PaywallProduct) -> String {
+        switch p.unit {
+        case .year:
+            guard let per = perMonthAmount(p) else { return p.localizedPrice }
+            return String(localized: "\(per)/mo")
+        case .month:
+            return String(localized: "\(p.localizedPrice)/mo")
+        case .week:
+            // NOT converted to a monthly figure. See `rate`.
+            return String(localized: "\(p.localizedPrice)/wk")
+        case .other:
+            return p.localizedPrice
+        }
+    }
+
+    /// What is billed, and when. The year names its full charge so the /mo
+    /// figure above cannot be read as the amount taken.
+    static func billingLine(_ p: PaywallProduct) -> String {
+        switch p.unit {
+        case .year:  return String(localized: "billed yearly at \(p.localizedPrice)")
+        case .month: return String(localized: "billed monthly")
+        case .week:  return String(localized: "billed weekly")
+        case .other: return ""
+        }
+    }
+
+    /// yearly / 12, ROUNDED — not RevenueCat's `localizedPricePerMonth`, which
+    /// TRUNCATES: $799.99/12 is $66.6658, and that helper reports $66.66 while
+    /// the honest rounding is $66.67. A rounded-down rate understates by a cent
+    /// in the user's favour, which is harmless, but the two figures disagreeing
+    /// across surfaces is not — so this computes it once, explicitly.
+    ///
+    /// Formatted in the PRODUCT's currency locale, never the device's: a user
+    /// on a US storefront with a French device must see dollars.
+    static func perMonthAmount(_ p: PaywallProduct) -> String? {
+        guard p.price > 0 else { return nil }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.roundingMode = .halfUp
+        f.maximumFractionDigits = 2
+        if let loc = p.currencyLocale { f.locale = loc }
+        return f.string(from: (p.price / 12) as NSDecimalNumber)
     }
 
     /// The price a tier card quotes: the MONTHLY product, so both cards are read
@@ -233,8 +288,8 @@ enum PaywallMapping {
             return PaywallDurationOption(
                 id: p.id,
                 label: periodLabel(p.unit),
-                price: p.localizedPrice,
-                perMonthLine: isAnnual ? perMonthLine(p) : nil,
+                rate: rateLine(p),
+                billingLine: billingLine(p),
                 percentOff: isAnnual ? pct : nil,
                 introLine: p.introLine,
                 isAnnual: isAnnual)
@@ -623,8 +678,8 @@ struct PaywallLayout: View {
                                 .background(Capsule().fill(Color.white))
                         }
                     }
-                    if let perMonth = option.perMonthLine {
-                        Text(perMonth)
+                    if !option.billingLine.isEmpty {
+                        Text(option.billingLine)
                             .cType(10)
                             .foregroundColor(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
@@ -648,7 +703,7 @@ struct PaywallLayout: View {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(Color(hex: "F4E4BC")))
                     }
-                    Text(option.price)
+                    Text(option.rate)
                         .cType(15, .bold)
                         .foregroundColor(.white)
                         .lineLimit(1)

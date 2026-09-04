@@ -334,7 +334,19 @@ struct OfferRevealView: View {
                 // with the filled primary above it: the hierarchy is carried by
                 // FILL versus OUTLINE, which is the standard idiom, rather than
                 // by making the alternative hard to see.
-                Text(String(localized: "Or start monthly for \(intro.localizedPriceString) (\(pct)% off)"))
+                // THE TERMS TRAVEL WITH THE PRICE. This read "for $14.99
+                // (50% off)" — a first-period price with no statement of what
+                // follows it, which is the one shape the intro-eligibility work
+                // exists to prevent: a number the user reads as the price and
+                // the receipt later contradicts.
+                //
+                // Both figures are STOREKIT's own formatted strings — the intro
+                // price and the standard price — never composed or computed, so
+                // they are right in every territory for the same reason the
+                // percentage is. `pct` is dropped from the line: the two prices
+                // state the saving more plainly than a number does, and it was
+                // the only part of this sentence a reader had to take on trust.
+                Text(String(localized: "\(intro.localizedPriceString) for your first month, then \(m.storeProduct.localizedPriceString)/mo."))
                     .cType(15, .semibold)
                     .foregroundColor(.white.opacity(0.92))
                     .multilineTextAlignment(.center)
