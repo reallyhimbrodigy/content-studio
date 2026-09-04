@@ -73,7 +73,13 @@ struct MessageBubble: View {
     /// friendly line. Belt-and-suspenders — callers already map to friendly
     /// copy, but this guarantees it even if a new code path forgets to.
     static func displaySafeError(_ raw: String?) -> String {
-        let generic = "Something went wrong. Please try again."
+        // LOCALIZED, unlike what it replaces. This is returned as a String and
+        // rendered with `Text(String)` — the VERBATIM initializer — so a bare
+        // literal here is English on every device, and this is the copy shown
+        // for every failure the technical filter suppresses. The passthrough
+        // branch below stays server English and cannot be fixed client-side
+        // (the server negotiates no locale); the fallback can be, and is.
+        let generic = String(localized: "Something went wrong. Please try again.")
         guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return generic }
         let looksTechnical =
             s.contains("is not defined") || s.contains("undefined") ||

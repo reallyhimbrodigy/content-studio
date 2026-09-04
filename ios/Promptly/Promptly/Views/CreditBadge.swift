@@ -76,7 +76,7 @@ struct CreditBadge: View {
                     .scaleEffect(pulse ? 1.06 : 1.0)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("\(value) credits"))
+                .accessibilityLabel(Text("^[\(value) credit](inflect: true)"))
                 .accessibilityHint(Text("Get more"))
             } else {
                 // A ZERO-SIZE NODE, NOT EmptyView. The condition above depends

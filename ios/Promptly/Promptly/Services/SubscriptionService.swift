@@ -86,8 +86,23 @@ final class SubscriptionService: ObservableObject {
     /// Pro badges) should read this, not the raw `isPro`. The raw
     /// signal stays available for purchase-flow logic that genuinely
     /// needs to know what RevenueCat itself thinks.
+    /// MAX COUNTS, and it did not.
+    ///
+    /// `pro` and `max` are SEPARATE RevenueCat entitlements — `applyCustomerInfo`
+    /// reads them independently — so a subscriber holding only `max` had
+    /// `isPro == false` and was treated as a free user by every gate that asks
+    /// this question: walled renders, a restore that reports failure, no server
+    /// sync. The most expensive tier in the app was the one that could be
+    /// locked out of it.
+    ///
+    /// Whether that can happen in practice depends on how the Max products are
+    /// configured in the RevenueCat dashboard — if they also grant `pro`, this
+    /// term is a no-op. That is exactly why it belongs here: the client must not
+    /// depend on a dashboard setting it cannot see to avoid walling a paying
+    /// customer. Holding the top entitlement can never be worth less than
+    /// holding the one below it.
     var effectiveIsPro: Bool {
-        isPro || UsageService.shared.isPro
+        isPro || isMax || UsageService.shared.isPro
     }
 
     /// The wall tier the client should act on: RevenueCat's view composed with
@@ -97,6 +112,11 @@ final class SubscriptionService: ObservableObject {
     /// `.none` is the wall; `.trial` is limited; `.paid` is unlimited.
     var effectiveTier: EntitlementTier {
         let rc: EntitlementTier = {
+            // Max is paid, full stop — it has no trial period to distinguish
+            // and it must not fall through to `.none` when the `pro`
+            // entitlement is absent. Checked BEFORE the pro guard for that
+            // reason.
+            if isMax && !isPro { return .paid }
             guard isPro else { return .none }
             // RC period type: an active trial entitlement is .trial, else .paid.
             if let ent = lastCustomerInfo?.entitlements[Self.proEntitlementId],
@@ -567,11 +587,14 @@ final class SubscriptionService: ObservableObject {
         do {
             let info = try await Purchases.shared.restorePurchases()
             applyCustomerInfo(info)
-            if isPro {
-                Analytics.setTier("pro") // super-property flips free → pro
+            // EITHER ENTITLEMENT IS A SUCCESSFUL RESTORE. Keyed on `isPro`
+            // alone, a Max-only subscriber tapping Restore got a failure and no
+            // server sync — their purchase silently not restored.
+            if isPro || isMax {
+                Analytics.setTier(isMax ? "max" : "pro")
                 await syncEntitlementWithServer()
             }
-            return isPro
+            return isPro || isMax
         } catch {
             lastError = error.localizedDescription
             return false
@@ -634,7 +657,7 @@ final class SubscriptionService: ObservableObject {
         // purchase. Fires only while diverged and is overlap-guarded, so it
         // can't spam: once the server reflects Pro, UsageService.isPro flips
         // true and this stops triggering.
-        if entitled && !UsageService.shared.isPro {
+        if (entitled || maxEntitled) && !UsageService.shared.isPro {
             reconcileEntitlementIfNeeded()
         }
     }

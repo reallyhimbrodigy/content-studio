@@ -302,9 +302,16 @@ struct OfferRevealView: View {
     /// user is most likely to act on.
     @ViewBuilder
     private var secondaryMonthlyLine: some View {
+        // The percentage is a PRECONDITION, not copy. It is not in the line any
+        // more — that now reads "$X for your first month, then $Y/mo." — but a
+        // computable percent-off is still the proof that StoreKit is offering
+        // this user a real discount rather than the standard price. Bound as a
+        // condition rather than a value so it cannot read as a dropped
+        // interpolation (it compiled with an "unused `pct`" warning, which is
+        // exactly what a dropped price claim would look like).
         if let m = monthlyAlternative,
            let intro = m.storeProduct.introductoryDiscount,
-           let pct = OfferReveal.percentOff(for: m) {
+           OfferReveal.percentOff(for: m) != nil {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 isPurchasing = true

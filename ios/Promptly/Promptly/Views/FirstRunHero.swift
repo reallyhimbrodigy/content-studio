@@ -50,13 +50,28 @@ struct FirstRunHero: View {
             actionRow(icon: "video.badge.plus",
                       title: String(localized: "Upload a video"),
                       action: onUpload)
+            // ROWS 2 AND 3 ARE VIBES, AND THE LABEL IS THE PAYLOAD.
+            //
+            // They were INSTRUCTIONS, and instructions are the one thing this
+            // composer cannot act on from an empty chat. "Cut a long video into
+            // clips" filled the field with "Cut this into short clips for
+            // social" — a different sentence from the one tapped, about a video
+            // that does not exist yet, which `send()` then routes to the text
+            // chat because there is nothing attached. The row named an edit and
+            // produced a conversation.
+            //
+            // The composer's contract is a VIBE — `injectWelcomeIfEmpty` seeds
+            // it from the onboarding answer for exactly that reason, "so they
+            // land ON A VIBE, not a blank field". These now match that
+            // contract, and the label IS the inserted text: what you tapped is
+            // what you would send, so nothing is substituted behind your back.
             actionRow(icon: "scissors",
-                      title: String(localized: "Cut a long video into clips")) {
-                onPrompt(String(localized: "Cut this into short clips for social"))
+                      title: String(localized: "Fast cuts, big captions")) {
+                onPrompt(String(localized: "Fast cuts, big captions"))
             }
-            actionRow(icon: "captions.bubble",
-                      title: String(localized: "Add captions and graphics")) {
-                onPrompt(String(localized: "Add captions and graphics"))
+            actionRow(icon: "sparkles",
+                      title: String(localized: "Clean and professional")) {
+                onPrompt(String(localized: "Clean and professional"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

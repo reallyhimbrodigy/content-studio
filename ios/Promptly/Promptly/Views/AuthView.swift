@@ -465,11 +465,11 @@ struct AuthView: View {
                             print("[apple] no-nonce fallback succeeded")
                         } catch {
                             print("[apple] no-nonce fallback also failed: \(error.localizedDescription)")
-                            errorMessage = "Apple sign in: \(error.localizedDescription)"
+                            errorMessage = String(localized: "Apple sign in: \(error.localizedDescription)")
                         }
                     } else {
                         print("[apple] sign in failed: \(primaryError.localizedDescription)")
-                        errorMessage = "Apple sign in: \(primaryError.localizedDescription)"
+                        errorMessage = String(localized: "Apple sign in: \(primaryError.localizedDescription)")
                     }
                 }
                 isLoading = false
