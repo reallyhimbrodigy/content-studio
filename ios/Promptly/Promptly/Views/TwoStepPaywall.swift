@@ -457,6 +457,17 @@ struct PaywallLayout: View {
         // CTA. Re-applied when the tiers arrive; idempotent, so it cannot yank a
         // row out from under a choice already made.
         .onChange(of: tiers) { _, _ in applyDefaults() }
+        // THE SHIPPING PAYWALL WAS THE UNCAPPED ONE.
+        //
+        // `ConversionColumn` exists precisely for this and was applied to
+        // PaywallView, the onboarding questions and the reveal — but not here,
+        // so on an 834pt iPad the LEGACY paywall rendered in a 614pt column and
+        // the two-tier design that actually ships stretched to 794pt. Measured,
+        // not guessed: ink bounds across the capture matrix.
+        //
+        // A no-op on every iPhone — the cap never binds below 660pt — so the
+        // shipping majority sees no change.
+        .conversionColumn(ConversionColumn.content)
     }
 
     // MARK: Defaults — everything agrees on Pro Year

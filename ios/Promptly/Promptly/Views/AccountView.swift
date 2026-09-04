@@ -170,8 +170,20 @@ struct AccountView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
+                    // 40 CLEARED THE PHONE AND NOT THE iPAD. "Delete account"
+                    // — the last row — sat inside the home-indicator band on an
+                    // 11-inch iPad, measured off the capture matrix. The safe
+                    // area is the right unit for a distance to the screen edge;
+                    // a constant is a guess that happens to be right on the
+                    // device it was checked against.
                     .padding(.bottom, 40)
+                    .safeAreaPadding(.bottom)
                 }
+                // THE ACCOUNT PAGE HAD NO WIDTH BOUND. Rows ran the full 834pt
+                // of an iPad, which is a phone list stretched rather than a
+                // layout. Capped with the same column every conversion surface
+                // uses; a no-op on iPhone.
+                .conversionColumn(ConversionColumn.content)
             }
             .background(Color(.systemBackground))
             // Account is a sheet now (opened from the drawer) — give it a close.

@@ -108,6 +108,10 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
+        case 40, 42:
+            o.debugForceFlag("credits")
+            o.debugSetCreditsAllowance(200)
+            CreditsService.shared.debugSetBalance(40)
         case 32, 33, 34, 36, 37:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
@@ -262,6 +266,25 @@ struct PayoffSnapshotHarnessView: View {
                     CreditPack(id: "promptly_topup_10", videos: 10, price: "$19.99", amount: 19.99),
                     CreditPack(id: "promptly_topup_20", videos: 20, price: "$39.99", amount: 39.99),
                 ], preselectPackVideos: 10)
+            }
+            // ── SURFACES THAT HAD NO STATE AT ALL ────────────────────────
+            // Each of these is reachable in the app only by TAPPING, and
+            // `simctl` has no tap primitive — so none had ever been captured at
+            // any screen size. The account page in particular had never been
+            // photographed once, on any device, which is the definition of a
+            // surface reviewed by its users.
+            case 40: bleed("ACCOUNT — the page, never previously capturable") {
+                AccountView()
+            }
+            case 41: bleed("INVITE RUNG — the ladder's final catch") {
+                ReferralCatchBeat(onSkip: {})
+            }
+            case 42: bleed("CREDIT WALL — the in-thread exhausted bubble") {
+                VStack(alignment: .leading, spacing: 12) {
+                    CreditsExhaustedMessage(refreshDate: nil, onSeePlans: {})
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
             }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
                 // NOT TwoStepPaywall directly. This renders the switch every

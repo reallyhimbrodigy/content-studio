@@ -210,6 +210,9 @@ struct CreditsTopUpView: View {
 
             if selectedPack != nil { buyButton }
         }
+        // Same cap as every other money surface. The top-up screen was built
+        // after the iPad pass and ran the full width there.
+        .conversionColumn(ConversionColumn.content)
         .background(Color.black.ignoresSafeArea())
         .task {
             await credits.refresh()
