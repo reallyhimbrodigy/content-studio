@@ -115,9 +115,26 @@ enum CreditAllowance {
     /// An unrecognised id returns nil, deliberately: showing an invented
     /// allowance for an unknown product is worse than showing none, because it
     /// is a claim about what someone gets for money.
+    /// DELIMITED, because "promptly" CONTAINS "pro".
+    ///
+    /// These were bare substrings, and every product id in the account begins
+    /// `promptly_` — so `"promptly_topup_5".contains("pro")` is TRUE and the
+    /// credit packs classified as Pro tier, allowance 200. The moment the
+    /// consumables are added as packages to the offering they would have
+    /// rendered as duration rows on the Pro tab: "5 videos, $9.99" sitting
+    /// beside Year and Month as if it were a subscription term.
+    ///
+    /// It has been correct until now only by accident — every non-Max product
+    /// happened to BE a Pro product, so the false match returned the right
+    /// answer. Adding one product that is neither exposes it.
+    ///
+    /// The underscores are the fix: tier ids are `promptly_<tier>_<period>`, so
+    /// the tier token is always delimited on both sides. Same lesson as the
+    /// top-up catalogue an hour ago — substring matching on identifiers needs a
+    /// boundary, or it silently matches the wrong thing.
     private static let known: [(match: String, monthly: Int)] = [
-        ("max", 1000),
-        ("pro", 200),
+        ("_max_", 1000),
+        ("_pro_", 200),
     ]
 
     /// Every tier we can describe from the products StoreKit actually returned,
