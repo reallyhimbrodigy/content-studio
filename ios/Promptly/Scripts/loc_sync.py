@@ -175,11 +175,26 @@ def find_stringsdata(derived):
     # The real unit of staleness is the configuration directory: a build
     # refreshes one configuration as a whole, and the others sit frozen. So
     # pick the configuration touched most recently and read only that one.
+    #
+    # …AND THE ARCHITECTURE WITHIN IT. A configuration holds one Objects-normal
+    # directory PER ARCH (arm64, x86_64), and a build for a concrete simulator
+    # refreshes only the arch that simulator needs. The other slice keeps its
+    # previous contents while sitting in the freshest configuration, so it is
+    # selected and read as current.
+    #
+    # That produced a ghost: a key renamed four minutes earlier was reported
+    # NOT IN CATALOG, from an x86_64 artifact that predated the rename, while
+    # the arm64 slice beside it had the new key. A false failure on a correct
+    # tree — precisely the outcome this filter's own comment calls worse than
+    # no gate, since it pressures the next person to undo the fix that caused
+    # it.
     by_config = {}
     for p in paths:
-        # .../Promptly.build/<Configuration>/Promptly.build/Objects-normal/...
+        # .../Promptly.build/<Configuration>/Promptly.build/Objects-normal/<arch>/...
         parts = p.split("/Promptly.build/")
         config = parts[1].split("/")[0] if len(parts) > 2 else os.path.dirname(p)
+        arch = os.path.basename(os.path.dirname(p))
+        config = f"{config}/{arch}"
         try:
             by_config.setdefault(config, []).append((os.path.getmtime(p), p))
         except OSError:

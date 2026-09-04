@@ -17267,6 +17267,83 @@
         }
       }
     },
+    "Most popular": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الأكثر شيوعًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সবচেয়ে জনপ্রিয়"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Am beliebtesten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most popular"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más popular"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le plus choisi"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सबसे लोकप्रिय"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paling populer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "人気No.1"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सबैभन्दा लोकप्रिय"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mais popular"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سب سے مقبول"
+          }
+        }
+      }
+    },
     "My small business": {
       "localizations": {
         "ar": {
@@ -26000,79 +26077,79 @@
         }
       }
     },
-    "That's %@ a video, against %@ buying credits.": {
+    "That's %@ a video, against %@ one-time - plus ^[%lld credit](inflect: true) every month.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أي %1$@ لكل فيديو، مقابل %2$@ عند شراء الرصيد."
+            "value": "أي %1$@ لكل فيديو، مقابل %2$@ لمرة واحدة — بالإضافة إلى ^[%3$lld رصيد](inflect: true) كل شهر."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "অর্থাৎ ভিডিও প্রতি %1$@, ক্রেডিট কিনলে %2$@।"
+            "value": "অর্থাৎ ভিডিও প্রতি %1$@, একবারের জন্য %2$@ — সঙ্গে প্রতি মাসে ^[%3$lld ক্রেডিট](inflect: true)।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das sind %1$@ pro Video, gegenüber %2$@ beim Kauf von Credits."
+            "value": "Das sind %1$@ pro Video statt %2$@ einmalig – plus ^[%3$lld Credit](inflect: true) jeden Monat."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "That's %1$@ a video, against %2$@ buying credits."
+            "value": "That's %1$@ a video, against %2$@ one-time - plus ^[%3$lld credit](inflect: true) every month."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Son %1$@ por vídeo, frente a %2$@ comprando créditos."
+            "value": "Son %1$@ por vídeo, frente a %2$@ puntuales, y ^[%3$lld crédito](inflect: true) cada mes."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Soit %1$@ par vidéo, contre %2$@ en achetant des crédits."
+            "value": "Soit %1$@ par vidéo, contre %2$@ en une fois — plus ^[%3$lld crédit](inflect: true) chaque mois."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "यानी %1$@ प्रति वीडियो, बनाम क्रेडिट खरीदने पर %2$@।"
+            "value": "यानी %1$@ प्रति वीडियो, बनाम एक बार के %2$@ — साथ में हर महीने ^[%3$lld क्रेडिट](inflect: true)।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Itu %1$@ per video, dibanding %2$@ jika membeli kredit."
+            "value": "Itu %1$@ per video, dibanding %2$@ sekali beli — plus ^[%3$lld kredit](inflect: true) setiap bulan."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1本あたり %1$@、クレジット購入なら %2$@ です。"
+            "value": "1本あたり %1$@、買い切りなら %2$@ です。さらに毎月 ^[%3$lld クレジット](inflect: true)。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "अर्थात् प्रति भिडियो %1$@, क्रेडिट किन्दा %2$@।"
+            "value": "अर्थात् प्रति भिडियो %1$@, एक पटकको %2$@ को तुलनामा — साथै हरेक महिना ^[%3$lld क्रेडिट](inflect: true)।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Isso dá %1$@ por vídeo, contra %2$@ comprando créditos."
+            "value": "Isso dá %1$@ por vídeo, contra %2$@ avulso — mais ^[%3$lld crédito](inflect: true) todo mês."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "یعنی فی ویڈیو %1$@، کریڈٹس خریدنے پر %2$@۔"
+            "value": "یعنی فی ویڈیو %1$@، ایک بار کے %2$@ کے مقابلے میں — اور ہر ماہ ^[%3$lld کریڈٹ](inflect: true)۔"
           }
         }
       }

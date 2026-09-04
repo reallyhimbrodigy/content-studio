@@ -348,7 +348,7 @@ struct CreditsTopUpView: View {
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                     if let cmp = perVideoComparison {
-                        Text(cmp)
+                        cmp
                             .cType(13)
                             .foregroundColor(.white.opacity(0.7))
                             .fixedSize(horizontal: false, vertical: true)
@@ -363,13 +363,33 @@ struct CreditsTopUpView: View {
         }
     }
 
-    /// "That is $1.50 a video, against $2.00 buying credits." Both sides
-    /// computed from live prices — the subscription's per-video cost and the
-    /// SMALLEST pack's, which is the one a hesitant buyer reaches for.
+    /// "That's $1.50 a video, against $2.00 one-time - plus 200 credits every
+    /// month." Both prices computed from live products — the subscription's
+    /// per-video cost and the SMALLEST pack's, which is the one a hesitant
+    /// buyer reaches for.
     ///
-    /// Nil unless both sides are known: half a comparison is worse than none,
+    /// THE THIRD CLAUSE IS THE ONE THAT MATTERS. Cheaper-per-video is an
+    /// argument about this purchase; the allowance is an argument about the
+    /// NEXT wall. Someone who just hit zero is about to hit it again, and a
+    /// comparison that only talks about unit price answers the smaller of the
+    /// two questions they have.
+    ///
+    /// PER VIDEO, NOT PER CREDIT. The brief's example figures — "$0.15 a video
+    /// versus $0.20" — are the per-CREDIT numbers: $29.99 over 200 credits is
+    /// $0.15, but a video costs ten credits, so the per-video figures are
+    /// $1.50 and $2.00. Videos are the unit this screen sells in and the unit
+    /// the packs are named in, so the comparison stays in videos; quoting
+    /// credit prices against a row labelled "5 videos" invites the reader to
+    /// divide by ten twice.
+    ///
+    /// Nil unless every side is known: half a comparison is worse than none,
     /// because the reader supplies the missing half themselves.
-    private var perVideoComparison: String? {
+    ///
+    /// A `Text`, not a `String`, so the allowance can carry inflection markup —
+    /// `String(localized:)` would hand that back verbatim. The two rules
+    /// compose: anything with a count wants inflection, and anything with
+    /// inflection has to be rendered rather than produced.
+    private var perVideoComparison: Text? {
         guard let allowance = proAllowance,
               let sub = proMonthlyProduct,
               let pack = packs.first,
@@ -385,7 +405,7 @@ struct CreditsTopUpView: View {
         if let loc = sub.priceFormatter?.locale { f.locale = loc }
         guard let a = f.string(from: subPer as NSNumber),
               let b = f.string(from: packPer as NSNumber) else { return nil }
-        return String(localized: "That's \(a) a video, against \(b) buying credits.")
+        return Text("That's \(a) a video, against \(b) one-time - plus ^[\(allowance) credit](inflect: true) every month.")
     }
 
     private var proAllowance: Int? {
@@ -412,6 +432,28 @@ struct CreditsTopUpView: View {
         }
     }
 
+    /// A PREFERENCE, NOT A SAVING — and the distinction is the whole point.
+    ///
+    /// The obvious way to make the 20-pack attractive is a volume discount, and
+    /// it has now been proposed twice. It breaks the 2x rule: if credits get
+    /// cheaper in bulk, someone stacks top-ups to buy Max's allowance for less
+    /// than Max costs, and the tier the hero above is arguing for becomes the
+    /// worst deal on the screen. Per-video price stays flat at every size.
+    ///
+    /// So the badge says what is TRUE — this is the one people pick — rather
+    /// than implying value that does not exist. A false value claim on a money
+    /// surface is worse than no badge: it is the one kind of copy a buyer can
+    /// check with a calculator, and the packs are priced so that they would.
+    private var popularBadge: some View {
+        Text("Most popular")
+            .cType(10, .bold)
+            .foregroundColor(Self.accent)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Self.accent.opacity(0.18)))
+            .overlay(Capsule().strokeBorder(Self.accent.opacity(0.45), lineWidth: 1))
+    }
+
     private func packRow(_ pack: CreditPack) -> some View {
         let isSelected = selectedId == pack.id
         return Button {
@@ -425,10 +467,15 @@ struct CreditsTopUpView: View {
                     if isSelected { Circle().fill(Self.accent).frame(width: 12, height: 12) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
-                    Text("\(pack.videos) videos")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
+                    HStack(spacing: 8) {
+                        // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
+                        Text("\(pack.videos) videos")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                        if pack.videos == CreditPackCatalog.largestKnownVideos {
+                            popularBadge
+                        }
+                    }
                     Text("^[\(pack.credits) credit](inflect: true)")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.45))
