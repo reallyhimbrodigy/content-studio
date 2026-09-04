@@ -41,10 +41,6 @@ struct CreditBadge: View {
     @State private var pulse = false
     @State private var refunding = false
 
-    /// Cool, against the gold pill beside it.
-    private static let boltTop = Color(hex: "9FE8FF")
-    private static let boltBottom = Color(hex: "4C8DFF")
-
     var body: some View {
         Group {
             if onboarding.creditsEnabled, let value = shown {
@@ -53,7 +49,7 @@ struct CreditBadge: View {
                     onTap()
                 } label: {
                     HStack(spacing: 5) {
-                        bolt
+                        mark(spent: value == 0)
                         Text(value, format: .number)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white.opacity(value == 0 ? 0.45 : 0.92))
@@ -117,17 +113,19 @@ struct CreditBadge: View {
         shown = credits.balance
     }
 
-    /// A minted object: cool gradient, faint bloom, crisp at 12pt.
-    private var bolt: some View {
-        Image(systemName: "bolt.fill")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(
-                LinearGradient(colors: refunding ? [.white, Self.boltTop]
-                                                 : [Self.boltTop, Self.boltBottom],
-                               startPoint: .top, endPoint: .bottom)
-            )
-            // Luminance on the glyph ALONE.
-            .shadow(color: Self.boltTop.opacity(refunding ? 0.9 : 0.45),
+    /// THE SHARED MARK, with this surface's refund flare on top.
+    ///
+    /// It was its own `bolt.fill` with a bespoke blue gradient — one of three
+    /// different credit glyphs in the app. The GLYPH now comes from
+    /// `CreditMark`, so the header, the composer strip and the top-up screen
+    /// show the same object; what stays local is the ANIMATION, which is about
+    /// this badge's job rather than about what a credit looks like.
+    ///
+    /// The bloom is on the glyph ALONE — a glowing pill would be a second
+    /// Upgrade button, and the gold pill beside it is already the loud one.
+    private func mark(spent: Bool) -> some View {
+        CreditMark(size: 13, isSpent: spent)
+            .shadow(color: CreditMark.accent.opacity(refunding ? 0.9 : 0.35),
                     radius: refunding ? 6 : 3)
             .scaleEffect(refunding ? 1.3 : 1.0)
     }

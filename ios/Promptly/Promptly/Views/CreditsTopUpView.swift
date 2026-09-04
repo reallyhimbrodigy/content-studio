@@ -299,13 +299,10 @@ struct CreditsTopUpView: View {
     /// rather than asserting a confident 0 the server never returned.
     private var balanceBlock: some View {
         HStack(spacing: 10) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(
-                    LinearGradient(colors: [Color(hex: "9FE8FF"), Color(hex: "4C8DFF")],
-                                   startPoint: .top, endPoint: .bottom)
-                )
-                .shadow(color: Color(hex: "9FE8FF").opacity(0.45), radius: 5)
+            // THE SHARED MARK — see `CreditMark`. Not a local image and not a
+            // system bolt: the same object the chat header and the composer
+            // strip draw, so a balance reads as one currency across the app.
+            CreditMark(size: 20, isSpent: credits.balance == 0)
             if let b = credits.balance {
                 Text("^[\(b) credit](inflect: true) left")
                     .cType(17, .semibold)
@@ -405,7 +402,12 @@ struct CreditsTopUpView: View {
         if let loc = sub.priceFormatter?.locale { f.locale = loc }
         guard let a = f.string(from: subPer as NSNumber),
               let b = f.string(from: packPer as NSNumber) else { return nil }
-        return Text("That's \(a) a video, against \(b) one-time - plus ^[\(allowance) credit](inflect: true) every month.")
+        // THE FIRST FIGURE IS BOLD, via markdown in the key rather than a
+        // concatenation of styled fragments. Concatenating would hard-code
+        // English word order — "$1.50" leads the sentence here and does not in
+        // German or Japanese — so each translation places its own emphasis and
+        // the bold lands on that language's equivalent phrase.
+        return Text("That's **\(a) a video**, against \(b) one-time - plus ^[\(allowance) credit](inflect: true) every month.")
     }
 
     private var proAllowance: Int? {
@@ -432,7 +434,7 @@ struct CreditsTopUpView: View {
         }
     }
 
-    /// A PREFERENCE, NOT A SAVING — and the distinction is the whole point.
+    /// A FACT, NOT A CLAIM — and each word of it was argued for.
     ///
     /// The obvious way to make the 20-pack attractive is a volume discount, and
     /// it has now been proposed twice. It breaks the 2x rule: if credits get
@@ -440,12 +442,17 @@ struct CreditsTopUpView: View {
     /// than Max costs, and the tier the hero above is arguing for becomes the
     /// worst deal on the screen. Per-video price stays flat at every size.
     ///
-    /// So the badge says what is TRUE — this is the one people pick — rather
-    /// than implying value that does not exist. A false value claim on a money
-    /// surface is worse than no badge: it is the one kind of copy a buyer can
-    /// check with a calculator, and the packs are priced so that they would.
+    /// It then said "Most popular", which is the reflex substitute for a saving
+    /// — and it is hollow twice over. Nothing has been sold yet, so it is not
+    /// evidenced; and with flat pricing there is no value claim available to
+    /// make, so a badge implying one is decoration doing the job of an
+    /// argument. "Most videos" is checkable against the rows above it and true
+    /// on the day the product ships.
+    ///
+    /// A hollow badge is worse than none: it spends the reader's trust on the
+    /// one screen where they are deciding whether to hand over money.
     private var popularBadge: some View {
-        Text("Most popular")
+        Text("Most videos")
             .cType(10, .bold)
             .foregroundColor(Self.accent)
             .padding(.horizontal, 7)

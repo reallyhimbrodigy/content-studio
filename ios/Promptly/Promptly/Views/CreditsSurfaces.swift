@@ -1,5 +1,56 @@
 import SwiftUI
 
+/// THE CREDIT MARK — one component, every surface that shows a balance.
+///
+/// There were three. The chat header badge, the composer strip and the top-up
+/// screen each drew their own `bolt.fill`: one with a cool blue gradient and a
+/// glow, one flat white at 55% opacity, one blue-gradient again at a third
+/// size. Three treatments of the same idea, which is how a currency stops
+/// reading as a currency — the user has no single object to recognise, so the
+/// number in the header and the number on the purchase screen look like they
+/// are counting different things.
+///
+/// It is the RUNNER, not a system bolt, and that is the substantive part. A
+/// bolt is SF Symbols' generic "energy" glyph; it appears in a hundred other
+/// apps and says nothing about whose credits these are. The runner is the mark
+/// on the paywall, the auth screen and the onboarding flow, so a balance now
+/// carries the same identity as the thing being sold.
+///
+/// PURPLE, the funnel accent — the colour of the buy CTA, the selected pack,
+/// the reveal and the invite rung. Cool blue was chosen to sit quietly beside
+/// the gold Upgrade pill; the accent is the better answer because it links the
+/// balance to the action that refills it.
+///
+/// MUTED AT ZERO, NEVER SWAPPED. An empty balance dims — the way an empty
+/// wallet is still a wallet. It does not become a slashed or crossed-out
+/// variant: nothing is broken when a user spends what they bought, and an
+/// error-shaped glyph would collide with the genuine failure states in the
+/// thread below.
+struct CreditMark: View {
+    var size: CGFloat = 14
+    /// Zero, not unknown. An unread balance must not dim — see every
+    /// "silent when unknown" rule on the surfaces that host this.
+    var isSpent: Bool = false
+
+    static let accent = Color(hex: "6C5CE7")
+
+    var body: some View {
+        Image("PromptlyLogo")
+            // TEMPLATE, so the mark takes the accent. The asset ships with an
+            // `original` rendering intent for the places that want the full
+            // logo; here it is a glyph and has to tint.
+            .renderingMode(.template)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            // 0.7, checked against a render rather than picked. At 0.5 the
+            // accent on black stopped reading as "receded" and started reading
+            // as "disabled" — a greyed-out control beside a full-strength
+            // number, which says the balance is broken rather than spent.
+            .foregroundColor(Self.accent.opacity(isSpent ? 0.7 : 1))
+    }
+}
+
 /// Balance, shown BEFORE the action.
 ///
 /// The spec's requirement, and the difference between a meter and a surprise:
@@ -32,9 +83,7 @@ struct CreditBalanceStrip: View {
         Group {
             if onboarding.creditsEnabled, let videos = credits.videosRemaining {
                 HStack(spacing: 6) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.55))
+                    CreditMark(size: 12, isSpent: videos == 0)
                     Text("\(videos) videos left")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.55))

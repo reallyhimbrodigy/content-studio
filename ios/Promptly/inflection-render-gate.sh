@@ -146,7 +146,13 @@ for st in $STATES; do
   swept=$((swept + 1))
   # "inflect" and "^[" are the two halves of the markup; OCR may render the
   # caret as any of several glyphs, so the WORD is the reliable signal.
-  hits=$("$OCR" "$shot" 2>/dev/null | grep -inE 'inflect|\^\[|\]\(inflect' || true)
+  #
+  # `**` IS THE SAME DEFECT CLASS. Markdown emphasis in a LocalizedStringKey is
+  # resolved by the same pipeline and leaks the same way — bold the wrong side
+  # of a String round-trip and the user reads "**$1.50 a video**". The hero
+  # uses it, so the gate that exists because markup reached a purchase screen
+  # covers both kinds of markup rather than only the one that got there first.
+  hits=$("$OCR" "$shot" 2>/dev/null | grep -inE 'inflect|\^\[|\]\(inflect|\*\*' || true)
   if [ -n "$hits" ]; then
     leaks=$((leaks + 1))
     echo "  LEAK on harness state $st:"
