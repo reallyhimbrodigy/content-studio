@@ -320,6 +320,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
 const _freeCredits = require('./lib/free-credits');
+const _darkRefusals = require('./lib/dark-refusals');
 // Default OFF. A debit that can 402 every user in the product is armed by
 // an explicit env flip, after balances are verified -- not by a merge.
 const CREDITS_DEBIT_ENABLED =
@@ -6083,6 +6084,27 @@ const server = http.createServer((req, res) => {
         const _debitFloor = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
         const _debitApplies = _freeCredits.debitApplies(
           { build: _debitBuild, minBuild: _debitFloor });
+        // ARMED-BUT-INERT IS THE FAILURE MODE THIS MAKES VISIBLE.
+        // CREDITS_DEBIT_ENABLED=1 with FREE_CREDITS_MIN_BUILD unset produces a
+        // system that reports `debit_armed: true` at /healthz and debits
+        // NOBODY, because debitApplies() returns false on a non-integer floor.
+        // That state persisted undetected and took an elimination across five
+        // conjuncts to diagnose, since nothing on the path logged anything.
+        //
+        // Deliberately distinguishes the two skips: an UNSET FLOOR is a
+        // configuration defect (the feature cannot work for anyone), while a
+        // BUILD BELOW the floor is correct, expected, and self-resolving as the
+        // installed base upgrades. Collapsing them would bury the defect in the
+        // expected case — which is precisely how this hid.
+        if (CREDITS_DEBIT_ENABLED && !_debitApplies) {
+          _darkRefusals.observeDarkRefusal(
+            Number.isInteger(_debitFloor) ? 'debit_skipped:build_below_floor'
+                                          : 'debit_INERT:min_build_unset',
+            Number.isInteger(_debitFloor)
+              ? `build=${_debitBuild} floor=${_debitFloor}`
+              : 'CREDITS_DEBIT_ENABLED=1 but FREE_CREDITS_MIN_BUILD unset — '
+                + 'NOBODY is being debited');
+        }
         // EXACTLY ONE LIMITER PER REQUEST. When this is true credits are the
         // limiter and the daily cap is retired for this request; when false the
         // daily cap is the limiter and nothing is debited. Both-on would 402 a
@@ -7269,6 +7291,10 @@ const server = http.createServer((req, res) => {
         // live against 241 by accident.
         const _minBuild = parseInt(process.env.REVERSE_TRIAL_MIN_BUILD || '', 10);
         if (!Number.isInteger(_minBuild)) {
+          // OBSERVED, not just refused. A dark path with no trace is
+          // indistinguishable from a path nobody reached.
+          _darkRefusals.observeDarkRefusal('reverse_trial:min_build_unset',
+                                           'REVERSE_TRIAL_MIN_BUILD is not set');
           return sendJson(res, 503, { error: 'reverse_trial_unavailable',
                                       reason: 'min_build_unset' });
         }
@@ -7501,6 +7527,12 @@ const server = http.createServer((req, res) => {
         // a weak key by accident.
         const _minBuild = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
         if (!Number.isInteger(_minBuild)) {
+          // THIS IS THE ONE THAT COST HOURS. Unset, it also makes
+          // debitApplies() false for every user, so the credits debit is
+          // silently inert while /healthz reports debit_armed: true.
+          _darkRefusals.observeDarkRefusal('free_credits:min_build_unset',
+                                           'FREE_CREDITS_MIN_BUILD is not set — '
+                                           + 'the render debit is ALSO inert');
           return sendJson(res, 503, { error: 'free_credits_unavailable',
                                       reason: 'min_build_unset' });
         }
