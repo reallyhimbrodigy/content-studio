@@ -178,7 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
   upgradeBtn.addEventListener('click', async (event) => {
     event.preventDefault();
     emitAnalytics('upgrade_click');
-    const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
+    // NO STRIPE FALLBACK (removed 2026-09-05). The standalone payment link took
+    // money and granted nothing — no webhook writes pro_until. Until RevenueCat
+    // Web Billing serves a real checkout URL from /api/billing/checkout, this
+    // button goes nowhere rather than to a checkout that can't deliver.
     try {
       const resp = await fetch('/api/billing/checkout', {
         method: 'POST',
@@ -187,12 +190,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data && data.url) {
-        window.location.href = data.url;
+        window.location.href = data.url;   // Web Billing, once it exists
         return;
       }
-      window.location.href = fallbackUrl;
+      // No checkout URL yet: do not navigate. (Web Billing not wired.)
+      emitAnalytics('upgrade_click_no_checkout');
     } catch (_) {
-      window.location.href = fallbackUrl;
+      emitAnalytics('upgrade_click_no_checkout');
     }
   });
 });

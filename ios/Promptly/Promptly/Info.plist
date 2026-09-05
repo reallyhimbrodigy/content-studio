@@ -2,21 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>app.usepromptly.ios</string>
-			</array>
-			<key>CFBundleURLName</key>
-			<string>app.usepromptly.ios</string>
-		</dict>
-	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Promptly</string>
+	<string>Promptly</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,21 +18,51 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.usepromptly.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app.usepromptly.ios</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Promptly needs camera access to record videos for editing.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Promptly needs microphone access for voice input.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Promptly needs permission to save edited videos to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Promptly needs photo library access to select videos for editing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Promptly uses speech recognition to convert your voice into text in the composer.</string>
+	<key>SENTRY_DSN</key>
+	<string>https://5d5e022e40e57f46cd40efc9286941d9@o4511288242667520.ingest.us.sentry.io/4511288247320576</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
 	</array>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -58,38 +77,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleLightContent</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>remote-notification</string>
-	</array>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Promptly needs camera access to record videos for editing.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Promptly needs photo library access to select videos for editing.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Promptly needs permission to save edited videos to your photo library.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Promptly needs microphone access for voice input.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Promptly uses speech recognition to convert your voice into text in the composer.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<!--
-		Sentry DSN. Create a project at https://sentry.io/, copy the DSN
-		from Settings → Client Keys (DSN), and paste below. Leave empty
-		to disable crash reporting (init is skipped when string is empty).
-	-->
-	<key>SENTRY_DSN</key>
-	<string>https://5d5e022e40e57f46cd40efc9286941d9@o4511288242667520.ingest.us.sentry.io/4511288247320576</string>
 </dict>
 </plist>

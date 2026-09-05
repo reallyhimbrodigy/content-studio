@@ -150,20 +150,11 @@ struct AppShell: View {
         }
         .sheet(isPresented: $appState.showCredits) {
             CreditsTopUpView {
+                // TOP-UP ONLY (ruling 2026-09-05). The offer ladder lives in the
+                // funnel after the soft paywall and fires from no in-app
+                // surface; the credit wall used to raise the reveal here and no
+                // longer does. Closing the top-up closes the top-up.
                 appState.showCredits = false
-                // THE CREDIT WALL'S OWN EXIT. Closing the top-up without buying
-                // is the same decision as dismissing the paywall — "not now" —
-                // and it is the second of the three the offer is budgeted for.
-                // Deferred so the sheet is gone before the reveal presents;
-                // two modals in flight leaves the second one unpresented.
-                if ExitOffer.shouldOffer(), !SubscriptionService.shared.effectiveIsPro {
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(450))
-                        guard ExitOffer.shouldOffer() else { return }
-                        ExitOffer.record("credit_wall")
-                        appState.showExitOffer = true
-                    }
-                }
             }
         }
         // DEFERRED AUTH — the account ask, at the action that needs one.

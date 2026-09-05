@@ -100,7 +100,7 @@ struct OnboardingV2Flow: View {
             // Anyone restored into one is simply finished: they answered the
             // questions on the old build, and the money moments now live at the
             // credit wall.
-            case .attribution, .reveal, .referralCatch:
+            case .attribution, .referralCatch:
                 Color.black.ignoresSafeArea()
                     .task { complete() }
 
@@ -117,7 +117,20 @@ struct OnboardingV2Flow: View {
                 // against. Routing this through UpgradePaywall would hand it to
                 // someone who has not made a video yet — the automatic reveal
                 // that item 3 removed.
-                FirstLaunchPaywallView(onFinished: { complete() })
+                //
+                // RULED 2026-09-05: the offer ladder lives HERE, after the soft
+                // paywall in the funnel, and nowhere else. A buyer skips to
+                // chat; everyone else meets reveal → invite before landing.
+                FirstLaunchPaywallView(onFinished: {
+                    if SubscriptionService.shared.effectiveIsPro { complete() }
+                    else { withAnimation { state.v2Step = .reveal } }
+                })
+
+            case .reveal:
+                // OfferRevealView → (decline) ReferralCatchBeat → complete, the
+                // exact sequence the credit wall used to own. onPurchased and
+                // the final skip both land in chat.
+                ExitOfferLadder(onFinish: { complete() })
 
             case .done:
                 Color.black.ignoresSafeArea()
