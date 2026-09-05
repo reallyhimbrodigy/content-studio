@@ -270,6 +270,18 @@ struct PayoffSnapshotHarnessView: View {
             // and none of them proves the screen can build itself from the
             // offering. With the consumables now packages on `default`, that is
             // the thing worth proving.
+            // ── STORE SCREENSHOTS ────────────────────────────────────────
+            // The real EditorView over a seeded chat, so the frame carries the
+            // shipping thread and composer rather than a bubble mocked up in
+            // the harness.
+            case 50: bleed("STORE 1 — chat with a finished video") {
+                EditorView()
+                    .task { Self.seedStoreChat(reedit: false) }
+            }
+            case 51: bleed("STORE 5 — re-edit in progress") {
+                EditorView()
+                    .task { Self.seedStoreChat(reedit: true) }
+            }
             case 43: bleed("CREDITS TOP-UP — LIVE packages from the offering") {
                 CreditsTopUpView()
             }
@@ -401,6 +413,23 @@ struct PayoffSnapshotHarnessView: View {
             // run, so the capture shows the configuration that was asked for.
             Self.applyFlags()
             try? await Task.sleep(nanoseconds: 400_000_000)
+            // `-forceLandscape` — the ONLY way this session can see landscape.
+            // simctl has no rotation API, and Simulator's Device > Orientation
+            // menu is as unreachable as its touch surface (synthetic events do
+            // not land). So the app rotates ITSELF through the window scene,
+            // which is both available and honest: it is the same geometry the
+            // OS hands the app when a user turns the device.
+            if ProcessInfo.processInfo.arguments.contains("-forceLandscape") {
+                if let scene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene }).first {
+                    scene.requestGeometryUpdate(
+                        .iOS(interfaceOrientations: .landscapeRight)) { err in
+                        print("SNAPSHOT_ROTATE failed: \(err)")
+                    }
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    print("SNAPSHOT_ORIENTATION \(scene.interfaceOrientation.isLandscape ? "landscape" : "portrait")")
+                }
+            }
             settled = true
             print("SNAPSHOT_SETTLED \(state)")
         }
@@ -493,6 +522,23 @@ struct PayoffSnapshotHarnessView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Seeds a chat the real EditorView will restore and render.
+    @MainActor
+    static func seedStoreChat(reedit: Bool) {
+        var msgs: [SerializedMessage] = []
+        var ask = ChatMessage(role: .user, content: "Fast cuts, big captions")
+        ask.isOnboarding = false
+        msgs.append(SerializedMessage(from: ask))
+        msgs.append(SerializedMessage(from: completedMock))
+        if reedit {
+            var follow = ChatMessage(role: .user, content: "Punchier intro, and hold the reveal a beat longer")
+            msgs.append(SerializedMessage(from: follow))
+            msgs.append(SerializedMessage(from: renderingMock))
+        }
+        ChatStore.shared.debugSeed(Chat(id: "store-demo", title: "Launch clip",
+                                        messages: msgs, createdAt: Date(), updatedAt: Date()))
     }
 
     private var resultBubble: some View { MessageBubble(message: Self.completedMock) }

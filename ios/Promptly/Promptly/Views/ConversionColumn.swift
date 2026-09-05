@@ -38,11 +38,18 @@ struct ConversionColumn: ViewModifier {
     /// `form` stays 460 exactly, so AuthView and OtpInputView are unchanged and
     /// the build-151 rejection fix is untouched.
     static let form: CGFloat = 460
-    /// Content-heavy: paywall, offer reveal, onboarding questions, render
-    /// screen. 660 keeps body text near a readable measure (~75 characters at
-    /// the scaled size) while giving plan cards and benefit rows the room the
-    /// 460 column denied them.
-    static let content: CGFloat = 660
+    /// Content-heavy: paywall, offer reveal, onboarding questions, top-up,
+    /// account.
+    ///
+    /// 660 WAS A PHONE LAYOUT WITH PADDING. On a 13-inch iPad (1032pt portrait)
+    /// it left 186pt of dead black down each side, and the read was correct:
+    /// the app did not look like it knew it was on a tablet. A readable measure
+    /// governs BODY PROSE; these surfaces are mostly rows, cards and controls,
+    /// which want the width.
+    ///
+    /// 920 fills an 11-inch portrait almost entirely and leaves a generous but
+    /// deliberate margin on a 13-inch, while still never binding on any phone.
+    static let content: CGFloat = 920
 
     /// Back-compat default. Existing callers that passed nothing meant "the one
     /// width there was", which was the form width.
@@ -99,11 +106,15 @@ struct ConversionScroll<Content: View>: View {
     /// because that is the size it actually is.
     @Environment(\.horizontalSizeClass) private var hSize
 
-    /// 1.18 rather than something larger. The goal is a screen that looks
-    /// designed for the device, not a magnified phone: past roughly 1.2 the
-    /// proportions start reading as an accessibility setting rather than a
-    /// layout.
-    private var scale: CGFloat { hSize == .regular ? 1.18 : 1.0 }
+    /// 1.32, up from 1.18.
+    ///
+    /// The old note argued that past ~1.2 the proportions read as an
+    /// accessibility setting. That reasoning held the type to phone
+    /// proportions in a container twice the size, and the result was the
+    /// complaint: small type, floating in a wide screen. VIEWING DISTANCE is
+    /// the missing term — an iPad is held further away than a phone, so
+    /// matching apparent size needs more than a token bump.
+    private var scale: CGFloat { hSize == .regular ? 1.32 : 1.0 }
 
     var body: some View {
         GeometryReader { geo in

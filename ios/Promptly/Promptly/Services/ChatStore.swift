@@ -31,6 +31,17 @@ final class ChatStore: ObservableObject {
 
     private init() {}
 
+    #if DEBUG
+    /// Seed a chat locally so a harness can render the REAL `EditorView` —
+    /// thread, composer and all — instead of a bubble in isolation. Store
+    /// screenshots have to be shipping pixels, and `chats` is otherwise only
+    /// ever filled from the server, which needs a signed-in account.
+    func debugSeed(_ chat: Chat) {
+        chats = [chat]
+        activeChatId = chat.id
+    }
+    #endif
+
     /// Reset to a clean slate. Called from AuthService.signOut so the next
     /// user on this device doesn't see the previous user's chat list
     /// lingering in memory. Cancels any in-flight save so we don't write

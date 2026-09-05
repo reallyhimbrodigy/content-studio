@@ -334,6 +334,9 @@ struct PaywallLayout: View {
     var initialTierAllowance: Int? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Regular = iPad or a wide split view. Compact = phone, or a narrow column
+    /// ON an iPad, which correctly gets the phone layout.
+    @Environment(\.horizontalSizeClass) private var hSize
 
     /// A TIER TOGGLE, not two columns.
     ///
@@ -425,7 +428,26 @@ struct PaywallLayout: View {
             }
 
             if let tier = activeTier {
-                tierBody(tier)
+                // TWO COLUMNS ON iPAD. Stacked, the paywall put its benefits
+                // and its prices in a single narrow ribbon down the middle of a
+                // 13-inch screen — a phone layout with padding. Side by side,
+                // what you get sits opposite what it costs, which is the
+                // comparison the screen exists to support, and the width is
+                // used rather than margined away.
+                //
+                // Compact is untouched: the same `tierBody` the fit probe and
+                // every approved capture were measured against.
+                Group {
+                    if hSize == .regular {
+                        HStack(alignment: .top, spacing: 40) {
+                            tierBenefits(tier)
+                            tierPlans(tier)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    } else {
+                        tierBody(tier)
+                    }
+                }
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
                     .frame(maxHeight: .infinity)
@@ -594,7 +616,20 @@ struct PaywallLayout: View {
     /// keeps today's spacing. On a short screen every spacer collapses to its
     /// minimum and the layout is byte-identical to before — which is what keeps
     /// the SE fit intact rather than trading one device's problem for another's.
+    /// COMPACT composition — unchanged. On a phone the two halves stack, which
+    /// is the layout every existing capture and the fit probe were approved
+    /// against.
     private func tierBody(_ tier: PaywallTierOption) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            tierBenefits(tier)
+            Spacer(minLength: 0).frame(maxHeight: 46)
+            tierPlans(tier)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// What the tier gives you. Left column on iPad.
+    private func tierBenefits(_ tier: PaywallTierOption) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let credits = tier.creditsLine {
                 Text(credits)
@@ -627,15 +662,17 @@ struct PaywallLayout: View {
                 }
             }
             .padding(.top, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
 
-            // Capped seams. Uncapped, the remainder collected in whichever gap
-            // came first and the screen read as two voids instead of one — the
-            // same defect moved, not fixed. Caps let each seam take a share and
-            // stop, so a short tier reads as generously spaced rather than
-            // broken apart, and any true remainder lands once, above the CTA,
-            // where a margin is expected.
-            Spacer(minLength: 0).frame(maxHeight: 46)
-
+    /// What it costs. Right column on iPad.
+    ///
+    /// The capped seams below are why the two halves separate cleanly: they
+    /// were already written to let each block take a share of the slack and
+    /// stop, rather than one gap collecting the remainder.
+    private func tierPlans(_ tier: PaywallTierOption) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 6) {
                 ForEach(Array(durations(tier.allowance).enumerated()), id: \.element.id) { idx, row in
                     if idx > 0 { Spacer(minLength: 0).frame(maxHeight: 14) }
