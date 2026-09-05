@@ -1063,14 +1063,26 @@ extension Color {
 /// hands it a concrete size and nothing above it needs an intrinsic height.
 struct RootScale: ViewModifier {
     @Environment(\.horizontalSizeClass) private var hSize
+    @State private var long: CGFloat = 0
     func body(content: Content) -> some View {
-        GeometryReader { geo in
-            let long = max(geo.size.width, geo.size.height)
-            content
-                .environment(\.conversionScale,
-                             hSize == .regular ? long / ConversionColumn.phoneReferenceHeight : 1.0)
-                .frame(width: geo.size.width, height: geo.size.height)
-        }
-        .ignoresSafeArea()
+        // MEASURED FROM BEHIND, NEVER WRAPPED. The first version wrapped the
+        // content in a GeometryReader that ignored the safe area and re-framed
+        // it to the full window — which stripped the safe area from every
+        // screen: on an iPhone the header sat under the status bar and its
+        // Upgrade control was unreachable (executed 2026-09-05, y=6 vs y=68 on
+        // the shipped build). A background reader sees the same window size
+        // and changes nothing about how the content is laid out.
+        content
+            .environment(\.conversionScale,
+                         hSize == .regular && long > 0
+                            ? long / ConversionColumn.phoneReferenceHeight : 1.0)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { long = max(geo.size.width, geo.size.height) }
+                        .onChange(of: geo.size) { _, s in long = max(s.width, s.height) }
+                }
+                .ignoresSafeArea()
+            )
     }
 }

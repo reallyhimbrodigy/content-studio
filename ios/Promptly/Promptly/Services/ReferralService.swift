@@ -148,8 +148,12 @@ final class ReferralService: ObservableObject {
         guard let code = UserDefaults.standard.string(forKey: Self.pendingCodeKey),
               let uid = AuthService.shared.currentUser?.id,
               let token = await AuthService.shared.getValidToken() else { return }
+        // The device rides the claim (ruled 2026-09-05: a referral is an
+        // INSTALL). The database refuses the referrer's own device and any
+        // device already referred — the two reinstall-farming paths.
         let resp = await rpc(function: "claim_referral",
-                             body: ["p_referred": uid, "p_code": code],
+                             body: ["p_referred": uid, "p_code": code,
+                                    "p_device": Analytics.deviceIdForJoin],
                              token: token)
         // VERIFIED CONTRACT (probe 2026-08-22): the RPC answers 200 with a
         // structured body — {"ok":true} on success, {"ok":false,"reason":
@@ -162,6 +166,12 @@ final class ReferralService: ObservableObject {
             let result = resp.data.flatMap { try? JSONDecoder().decode(ClaimResult.self, from: $0) }
             if result?.ok == true {
                 Analytics.track("referral_claimed", durable: true)
+                // Settle the REFERRER's reward now, from this side: the
+                // referrer need not open the app for the third install to
+                // pay. The server reads the referrer from the referral row.
+                _ = await serverPost("/api/referral/claimed", token: token)
+            } else if let reason = result?.reason {
+                Analytics.track("referral_claim_rejected", props: ["reason": reason], durable: true)
             }
             UserDefaults.standard.removeObject(forKey: Self.pendingCodeKey)
         case 400...499:
@@ -169,6 +179,38 @@ final class ReferralService: ObservableObject {
         default:
             break // transient (offline / 5xx): keep pending, retry next session
         }
+    }
+
+    // MARK: - Reward (referrer side)
+
+    /// Ask the server to settle anything owed to THIS user as a referrer.
+    /// Called from the sign-in fan-out; idempotent (the server counts each
+    /// install once and pays once). When days land, the usage snapshot is
+    /// refreshed so `pro_until` shows without a relaunch.
+    func reconcileRewardsIfAny() async {
+        guard AuthService.shared.currentUser?.id != nil,
+              let token = await AuthService.shared.getValidToken() else { return }
+        let resp = await serverPost("/api/referral/reconcile", token: token)
+        struct R: Codable { let ok: Bool; let days: Int?; let installs: Int? }
+        guard (200...299).contains(resp.status), let data = resp.data,
+              let r = try? JSONDecoder().decode(R.self, from: data) else { return }
+        if let d = r.days, d > 0 {
+            Analytics.track("referral_reward_received", props: ["days": d], durable: true)
+            await UsageService.shared.refresh()
+        }
+    }
+
+    private func serverPost(_ path: String, token: String) async -> (status: Int, data: Data?) {
+        guard let url = URL(string: "https://usepromptly.app\(path)") else { return (0, nil) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        req.timeoutInterval = 8
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse else { return (0, nil) }
+        return (http.statusCode, data)
     }
 
     // MARK: - Share

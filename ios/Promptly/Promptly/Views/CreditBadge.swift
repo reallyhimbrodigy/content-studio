@@ -111,6 +111,11 @@ struct CreditBadge: View {
     private func seed() async {
         guard onboarding.creditsEnabled else { return }
         await credits.refresh()
+        if credits.balance == nil {
+            // Unknown balance on a signed-in account: the device may never have
+            // claimed its grant (the 1.3.27 case). Claim, then read again.
+            await credits.claimFreeGrantIfNeeded()
+        }
         shown = credits.balance
     }
 

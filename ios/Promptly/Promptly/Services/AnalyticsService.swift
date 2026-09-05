@@ -3,6 +3,7 @@ import UIKit
 import StoreKit
 import RevenueCat
 import PostHog
+import Sentry
 
 /// Fire-and-forget client analytics — ONE call site, TWO sinks (the analytics
 /// backbone). Every `track` fires the same event name + props to:
@@ -170,6 +171,19 @@ enum Analytics {
         phProps["app_version"] = version
         if let a = anon { phProps["rc_app_user_id"] = a }
         PostHogSDK.shared.capture(event, properties: phProps)
+
+        // Sink 3: a Sentry BREADCRUMB for every tracked event, so the next
+        // crash carries the trail that led to it — upload_started,
+        // upload_completed, render_dispatched, render_complete and every
+        // *_failed are all here by construction, which is what the reviewer
+        // asked for without a breadcrumb call at each of the dozens of sites.
+        // Failures ride at .error so they stand out in the crash's timeline.
+        let lower = event.lowercased()
+        let level: SentryLevel = (lower.contains("fail") || lower.contains("error") || lower.contains("stalled")) ? .error : .info
+        let crumb = Breadcrumb(level: level, category: "app.\(event)")
+        crumb.message = event
+        crumb.data = enrichedProps.compactMapValues { $0 as? String ?? String(describing: $0) }
+        SentrySDK.addBreadcrumb(crumb)
 
         // Sink 2: /api/events → analytics_events (the machine mirror).
         Task.detached(priority: .utility) {

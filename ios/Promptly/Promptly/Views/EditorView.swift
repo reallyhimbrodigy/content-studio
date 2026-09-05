@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import PhotosUI
 import UIKit
 
@@ -1373,6 +1374,7 @@ struct EditorView: View {
             // one place both are visible at once.
             HStack(spacing: 2 * k) {
                 CreditBadge()
+                    .onAppear { registerEditorHooks() }
 
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1508,6 +1510,31 @@ struct EditorView: View {
     }
 
     // MARK: - Video Selection (INSTANT — no copy, uses PHAsset directly)
+
+    /// HARNESS: `-attachClip <path>` puts a clip in the composer through the
+    /// same path a picked video takes. The photo picker's remote content is
+    /// invisible to UI automation, so the credits chain (grant → render →
+    /// debit → wall) could not be executed without this. A no-op in Release.
+    /// Hooks that must not live on the body's main modifier chain: one more
+    /// statement in that `.onAppear` and the type-checker gives up (three
+    /// builds, 2026-09-05). The badge mounts once per editor, so this runs once.
+    private func registerEditorHooks() {
+        debugAttachClipIfRequested()
+        AuthGate.shared.onSendResume = { send() }
+    }
+
+    private func debugAttachClipIfRequested() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let ai = args.firstIndex(of: "-attachClip"), ai + 1 < args.count else { return }
+        let url = URL(fileURLWithPath: args[ai + 1])
+        Task { @MainActor in
+            let secs = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 10
+            let picked = PickedVideo(identifier: "attach-\(url.lastPathComponent)", asset: nil, localFile: url, duration: secs)
+            handlePickedVideos([picked])
+        }
+        #endif
+    }
 
     private func handlePickedVideos(_ videos: [PickedVideo]) {
         Task { @MainActor in
@@ -2912,7 +2939,13 @@ struct EditorView: View {
                     messages[i].jobId = jobId
                     messages[i].jobStatus = "processing"
                 }
-                if !jobId.isEmpty { startSSE(jobId: jobId, messageId: msgId) }
+                if !jobId.isEmpty {
+                    // RENDER START — a breadcrumb for the next crash, and the
+                    // first render-funnel event we've had (dispatch → complete
+                    // was previously unmeasured client-side).
+                    Analytics.track("render_started", props: ["job_id": jobId], durable: true)
+                    startSSE(jobId: jobId, messageId: msgId)
+                }
             case .refusal(let status):
                 if let i = messages.firstIndex(where: { $0.id == msgId }) {
                     messages[i].isThinking = false
@@ -3772,6 +3805,7 @@ struct EditorView: View {
                         messages[idx].jobStatus = "completed"
                         messages[idx].content = "Your video is ready!"
                         messages[idx].stageTimeline?.finish()
+                        Analytics.track("render_completed", props: ["path": "sse"], durable: true)
                         persistMessages()
                         maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
@@ -4069,6 +4103,7 @@ struct EditorView: View {
                 }
                 messages[idx].jobProgress = 100
                 messages[idx].isFinishing = true
+                Analytics.track("render_completed", props: ["job_id": jobId, "path": "reconcile"], durable: true)
                 persistMessages()
                 let finishId = messages[idx].id
                 Task { @MainActor in

@@ -56,6 +56,43 @@ final class CreditsService: ObservableObject {
     /// The cache is invalidated first: RevenueCat caches virtual currencies, and
     /// a stale balance shown before an action is worse than no balance, because
     /// the user makes a decision on it.
+    /// THE FREE GRANT IS DEVICE-CLAIMED, AND NOTHING CLAIMED IT. The server
+    /// grants the monthly 30 only after `POST /api/credits/free-grant` has
+    /// tied this device to the account; without that call every free user
+    /// reads `no_device_claim`, balance 0, badge hidden. 1.3.27 shipped with
+    /// the server half and no caller (0 grants in production, executed
+    /// 2026-09-05). Idempotent: `already_used` on a device that claimed before
+    /// is the normal second answer.
+    private var claimAttempted = false
+    func claimFreeGrantIfNeeded() async {
+        guard !claimAttempted, AuthService.shared.currentUser?.id != nil,
+              let token = await AuthService.shared.getValidToken(),
+              let url = URL(string: "https://usepromptly.app/api/credits/free-grant") else { return }
+        claimAttempted = true
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let build = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0
+        // The server reads the build from the app-version header the rest of
+        // the app already sends — "1.3.27 (246)" — not from a bare build field
+        // (executed 2026-09-05: without it every claim answered build_too_old).
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        req.setValue("\(version) (\(build))", forHTTPHeaderField: "X-App-Version")
+        req.setValue(String(build), forHTTPHeaderField: "X-App-Build")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["device_id": Analytics.deviceIdForJoin, "app_build": build])
+        req.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse else { claimAttempted = false; return }
+        let body = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        Analytics.track("free_credits_device_claimed", props: [
+            "status": http.statusCode,
+            "granted": body["granted"] as? Int ?? 0,
+            "reason": (body["reason"] as? String) ?? (body["error"] as? String) ?? "",
+        ], durable: true)
+        if (200...299).contains(http.statusCode) || http.statusCode == 409 { await refresh() }
+    }
+
     func refresh() async {
         #if DEBUG
         // A posed balance is for a capture; the real read would immediately

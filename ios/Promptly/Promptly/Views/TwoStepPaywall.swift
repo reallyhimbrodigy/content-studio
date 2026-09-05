@@ -945,7 +945,55 @@ struct TwoStepPaywall: View {
         }
     }
 
+    /// The hold expires so an offline launch still gets a paywall: after four
+    /// seconds the last-known knobs are the truth we have.
+    @State private var holdExpired = false
+    @State private var checkout: CheckoutItem?
+    @ObservedObject private var authGate = AuthGate.shared
+
     var body: some View {
+        Group {
+            if onboarding.knobsResolved || holdExpired {
+                resolvedBody
+                    .sheet(item: $checkout) { item in
+                        CheckoutSheet(item: item, onApple: {
+                            checkout = nil
+                            guard let pkg = packages.first(where: { $0.storeProduct.productIdentifier == item.productId }) else { return }
+                            Task {
+                                let ok = await subscription.purchase(pkg, context: PaywallView.reasonKey(for: reason))
+                                if ok { isPresented = false }
+                            }
+                        }, onDismiss: { checkout = nil })
+                        .presentationDetents([.large])
+                    }
+                    // THE DEFERRED-AUTH RESUME, kept in checkout. Sign-in is a
+                    // sheet over THIS view: the plan stays selected underneath,
+                    // and AuthGate.resume re-invokes the purchase for it.
+                    .sheet(isPresented: Binding(
+                        get: { authGate.isPresenting && authGate.pendingIsPurchase },
+                        set: { if !$0 { authGate.cancel() } }
+                    )) {
+                        AuthView()
+                            .onAppear { Analytics.track("signup_start", props: ["step": "auth_gate"]) }
+                    }
+            } else {
+                // NEVER THE DARK VARIANT FIRST. Until the knobs have settled the
+                // screen would be Pro-only with the wrong benefits; a spinner
+                // for a moment is honest, that screen is not.
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    ProgressView().tint(.white)
+                }
+                .accessibilityIdentifier("paywall.holding")
+                .task {
+                    try? await Task.sleep(for: .seconds(4))
+                    holdExpired = true
+                }
+            }
+        }
+    }
+
+    private var resolvedBody: some View {
         let prods = products
         return PaywallLayout(
             title: PaywallView.title(
@@ -960,6 +1008,12 @@ struct TwoStepPaywall: View {
                 guard let pkg = packages.first(where: {
                     $0.storeProduct.productIdentifier == id
                 }) else { return }
+                let noun = id.lowercased().contains("max") ? String(localized: "Max") : String(localized: "Pro")
+                if let item = CheckoutRouter.item(for: pkg, tierNoun: noun,
+                                                  surface: PaywallView.reasonKey(for: reason)) {
+                    checkout = item        // US storefront: the checkout step decides
+                    return
+                }
                 Task {
                     // CONTEXT IS THE ENTRY, not the view. "two_step_paywall"
                     // named the screen, so every purchase from every entry

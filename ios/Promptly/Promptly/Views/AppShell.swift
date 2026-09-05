@@ -174,7 +174,10 @@ struct AppShell: View {
         // present it. On success the pending intent is REPLAYED, so the user
         // lands back in what they were doing instead of at the start.
         .sheet(isPresented: Binding(
-            get: { authGate.isPresenting },
+            // A purchase intent is presented by the paywall itself, so the
+            // paywall stays up through the sign-in and the resumed purchase
+            // lands on the plan the user chose. Everything else presents here.
+            get: { authGate.isPresenting && !(authGate.pending?.isPurchase ?? true) },
             set: { if !$0 { authGate.cancel() } }
         )) {
             AuthView()

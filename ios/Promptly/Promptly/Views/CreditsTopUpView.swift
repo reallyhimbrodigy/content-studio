@@ -156,7 +156,26 @@ struct CreditsTopUpView: View {
             .storeProduct.localizedPriceString
     }
 
+    @State private var checkout: CheckoutItem?
     var body: some View {
+        topUpBody
+            .sheet(item: $checkout) { item in
+                CheckoutSheet(item: item, onApple: {
+                    checkout = nil
+                    guard let pkg = (subscription.offerings?.current?.availablePackages ?? [])
+                        .first(where: { $0.storeProduct.productIdentifier == item.productId }) else { return }
+                    isPurchasing = true
+                    Task {
+                        _ = await subscription.purchase(pkg, context: "credits_topup")
+                        await credits.refresh()
+                        isPurchasing = false
+                    }
+                }, onDismiss: { checkout = nil })
+                .presentationDetents([.large])
+            }
+    }
+
+    private var topUpBody: some View {
         VStack(spacing: 0 * k) {
             header
 
@@ -588,6 +607,10 @@ struct CreditsTopUpView: View {
                       let pkg = (subscription.offerings?.current?.availablePackages ?? [])
                         .first(where: { $0.storeProduct.productIdentifier == pack.id })
                 else { return }
+                if let item = CheckoutRouter.item(for: pkg, tierNoun: String(localized: "credits"), surface: "credits_topup") {
+                    checkout = item        // US storefront: the checkout step decides
+                    return
+                }
                 isPurchasing = true
                 Task {
                     // The same guarded call the paywall uses, so a signed-out

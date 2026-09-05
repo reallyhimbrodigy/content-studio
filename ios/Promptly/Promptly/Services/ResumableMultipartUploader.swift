@@ -179,16 +179,39 @@ final class ResumableMultipartUploader: NSObject {
         }
 
         let plan = MultipartChunker.partPlan(fileSize: manifest.fileSize, partSize: manifest.partSize)
+        // CHUNK WRITES GO OFF THE MAIN ACTOR (PROMPTLY-IOS-3M / -41, "App hanging
+        // … MultipartChunker.writePart"). This class is @MainActor, so the
+        // synchronous multi-megabyte file copy below ran on the main thread and
+        // hung the UI for the length of the copy. The bytes touch no actor
+        // state, so a detached task does them; the main actor only schedules
+        // the upload tasks, which is cheap.
+        let src = URL(fileURLWithPath: manifest.sourcePath)
+        struct PartSpec { let pn: Int; let url: URL; let chunkURL: URL; let range: MultipartPartRange }
+        var specs: [PartSpec] = []
         for pn in decision.partsToSchedule {
             guard pn - 1 >= 0, pn - 1 < manifest.partUrls.count,
                   let range = plan.first(where: { $0.partNumber == pn }),
                   let url = URL(string: manifest.partUrls[pn - 1]) else { continue }
-            let chunkURL = chunkFileURL(uploadId: uploadId, part: pn)
-            do {
-                try MultipartChunker.writePart(from: URL(fileURLWithPath: manifest.sourcePath), range: range, to: chunkURL)
-            } catch {
-                continue   // source unreadable for this part; a later reconcile retries
+            specs.append(PartSpec(pn: pn, url: url, chunkURL: chunkFileURL(uploadId: uploadId, part: pn), range: range))
+        }
+        guard !specs.isEmpty else { return }
+        let toWrite = specs
+        Task.detached(priority: .utility) {
+            var written: [Int] = []
+            for spec in toWrite {
+                do { try MultipartChunker.writePart(from: src, range: spec.range, to: spec.chunkURL); written.append(spec.pn) }
+                catch { continue }   // source unreadable for this part; a later reconcile retries
             }
+            let ok = Set(written)
+            await MainActor.run { self.scheduleWrittenParts(uploadId: uploadId, specs: specs.filter { ok.contains($0.pn) }.map { ($0.pn, $0.url, $0.chunkURL) }) }
+        }
+    }
+
+    /// Create and resume the upload tasks for chunks already written to disk.
+    /// Split out of `scheduleRemaining` so the file copy can run off the main
+    /// actor (see PROMPTLY-IOS-3M). Runs on the main actor; only cheap work.
+    private func scheduleWrittenParts(uploadId: String, specs: [(pn: Int, url: URL, chunkURL: URL)]) {
+        for (pn, url, chunkURL) in specs {
             var req = URLRequest(url: url)
             req.httpMethod = "PUT"
             // P0 fence (same class as bg-single): never let a missing chunk or

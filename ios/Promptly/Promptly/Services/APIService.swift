@@ -919,6 +919,15 @@ class APIService {
         onProgress: ((Double) -> Void)? = nil
     ) async throws {
         guard let remoteUrl = URL(string: url) else { throw APIError.uploadFailed }
+        // The same crash class as PROMPTLY-IOS-2Y, at the foreground session:
+        // `upload(for:fromFile:)` raises an ObjC NSInvalidArgumentException —
+        // not a Swift error — when the file is gone, and a retry after the
+        // staged source was cleaned up is exactly when that happens. Refuse
+        // it as a thrown error the caller already handles.
+        guard FileManager.default.isReadableFile(atPath: fileUrl.path) else {
+            Analytics.track("upload_source_missing", props: ["path": "foreground"], durable: true)
+            throw APIError.uploadFailed
+        }
         var request = URLRequest(url: remoteUrl)
         request.httpMethod = "PUT"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")

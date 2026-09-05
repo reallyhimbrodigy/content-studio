@@ -50,7 +50,25 @@ struct OfferRevealView: View {
         OfferReveal.package(in: packages, preferring: preferredPackage)
     }
 
+    @State private var checkout: CheckoutItem?
     var body: some View {
+        revealBody
+            .sheet(item: $checkout) { item in
+                CheckoutSheet(item: item, onApple: {
+                    checkout = nil
+                    guard let pkg = offerPackage else { return }
+                    isPurchasing = true
+                    Task {
+                        let ok = await subscription.purchase(pkg, context: "offer_reveal")
+                        isPurchasing = false
+                        if ok { onPurchased() }
+                    }
+                }, onDismiss: { checkout = nil })
+                .presentationDetents([.large])
+            }
+    }
+
+    private var revealBody: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
@@ -129,6 +147,10 @@ struct OfferRevealView: View {
                     Button {
                         guard let pkg = offerPackage else { return }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        if let item = CheckoutRouter.item(for: pkg, tierNoun: String(localized: "Pro"), surface: "offer_reveal") {
+                            checkout = item
+                            return
+                        }
                         isPurchasing = true
                         Task {
                             let ok = await subscription.purchase(pkg, context: "offer_reveal")

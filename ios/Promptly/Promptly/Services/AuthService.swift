@@ -448,6 +448,8 @@ class AuthService {
             // CONSUMING the code (and the server's once-per-referred rule),
             // so this call is a cheap no-op on every later pass.
             await ReferralService.shared.claimPendingIfAny()
+            await ReferralService.shared.reconcileRewardsIfAny()
+            await CreditsService.shared.claimFreeGrantIfNeeded()
         }
     }
 

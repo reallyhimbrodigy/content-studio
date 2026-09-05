@@ -33,6 +33,10 @@ final class AuthGate: ObservableObject {
         /// Anything that writes to the user's own row.
         case profileWrite(String)
 
+        /// Purchase intents are presented from inside the paywall so the paywall
+        /// survives the sign-in (a second sheet from AppShell replaced it, and
+        /// the resumed purchase then opened over the chat — executed 2026-09-05).
+        var isPurchase: Bool { if case .purchase = self { return true } else { return false } }
         var analyticsName: String {
             switch self {
             case .purchase:     return "purchase"
@@ -45,6 +49,14 @@ final class AuthGate: ObservableObject {
     /// What the user was doing when we stopped them. Nil when nothing is
     /// pending.
     @Published private(set) var pending: Intent?
+    /// THE SEND SEAM RESUMES. A signed-out send is gated on sign-in and the
+    /// composer keeps its text; when the gate resolves for a send, the editor's
+    /// registered send runs — without this the user signed in and then sat
+    /// looking at their own unsent message (executed 2026-09-05). A closure
+    /// rather than a published value: one more modifier on the editor's body
+    /// chain put the type-checker over its limit.
+    var onSendResume: (() -> Void)?
+    var pendingIsPurchase: Bool { pending?.isPurchase ?? false }
     /// Drives the sign-in presentation.
     @Published var isPresenting = false
 
@@ -78,8 +90,12 @@ final class AuthGate: ObservableObject {
     /// the one bug this whole mechanism must not introduce.
     func takePending() -> Intent? {
         let p = pending
-        pending = nil
+        // ORDER MATTERS. Clearing `pending` first left one frame where
+        // `isPresenting` was still true and `pendingIsPurchase` already false —
+        // AppShell's own sheet became eligible, presented over the paywall's
+        // sheet, and took the paywall down with it (executed 2026-09-05).
         isPresenting = false
+        pending = nil
         if let p { Analytics.track("auth_gate_resumed", props: ["intent": p.analyticsName]) }
         return p
     }

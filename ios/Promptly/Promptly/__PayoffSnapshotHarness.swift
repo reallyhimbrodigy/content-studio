@@ -278,6 +278,22 @@ struct PayoffSnapshotHarnessView: View {
                 EditorView()
                     .task { Self.seedStoreChat(reedit: false) }
             }
+            case 54: bleed("CHECKOUT STEP — US storefront, web preselected") {
+                CheckoutSheet(item: CheckoutItem(
+                    productId: "promptly_pro_yearly", tierNoun: "Pro",
+                    applePrice: 289.99, applePriceText: "$289.99", priceLocale: Locale(identifier: "en_US"),
+                    web: WebCheckoutConfig.Product(webPrice: "$246.99", webPriceMicros: 246_990_000, currency: "USD",
+                                                   url: "https://pay.rev.cat/example/{app_user_id}"),
+                    savedPct: 15, surface: "harness"), onApple: {}, onDismiss: {})
+            }
+            case 52: bleed("PAYWALL HOLD — knobs unresolved: must NOT show tiers") {
+                TwoStepPaywall(isPresented: .constant(true), reason: .manual)
+                    .onAppear { OnboardingState.shared.debugSetKnobsResolved(false) }
+            }
+            case 53: bleed("PAYWALL HOLD — knobs resolved: renders") {
+                TwoStepPaywall(isPresented: .constant(true), reason: .manual)
+                    .onAppear { OnboardingState.shared.debugSetKnobsResolved(true) }
+            }
             case 51: bleed("STORE 5 — re-edit in progress") {
                 EditorView()
                     .task { Self.seedStoreChat(reedit: true) }

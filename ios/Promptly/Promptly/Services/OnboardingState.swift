@@ -114,6 +114,22 @@ final class OnboardingState: ObservableObject {
     /// change, not a client one. That is the honest cost of arming this way and
     /// it should be known before it is needed, not discovered during a rollback.
     @Published private(set) var twoStepPaywallEnabled = true
+
+    /// TRUE once the first `/api/health` read has settled — success OR failure.
+    /// Every knob above defaults dark, so a surface that reads them before this
+    /// flips renders the dark variant for whoever opens it fast enough or
+    /// offline: the paywall did exactly that (a Pro-only "Unlimited videos"
+    /// screen with no Max tier and no credit line, captured on a 13" iPad on
+    /// 1.3.26). Surfaces that change shape with a knob hold on this.
+    @Published private(set) var knobsResolved = false
+    // Harness only in effect (set via debugSetKnobsResolved, DEBUG), but the
+    // property is always compiled so the resolve defer can read it in Release.
+    private var debugHoldUnresolved = false
+
+    /// Web checkout, from `/api/health.web_checkout`. nil = dark = Apple only.
+    /// `-webCheckoutJSON '<json>'` (DEBUG) poses a config so the checkout step
+    /// can be executed before the web offering exists on the server.
+    @Published private(set) var webCheckout: WebCheckoutConfig? = nil
     /// Deferred auth: the funnel runs BEFORE sign-in (paywall, questions,
     /// reveal, chat), and an account is asked for at the first action that needs
     /// one. Dark until flipped; off = today's auth-first order, unchanged.
@@ -159,6 +175,8 @@ final class OnboardingState: ObservableObject {
     /// One fetch per launch, ~instant (same host as every other call). Cached
     /// result also persisted so a cold offline launch uses the last-known knob.
     func resolveExposure() async {
+        // Settled EITHER WAY, on every exit — early returns included.
+        defer { if !debugHoldUnresolved { knobsResolved = true } }
         let cacheKey = "wall_onboarding_enabled"
         let flpCacheKey = "first_launch_paywall_enabled"
         do {
@@ -198,6 +216,16 @@ final class OnboardingState: ObservableObject {
             // refresh — a client default could never have survived. Every other
             // flag here is server-emitted, so none of them hit this; this is the
             // first one armed from the client.
+            var _wc = WebCheckoutConfig(json: obj?["web_checkout"])
+            #if DEBUG
+            if _wc == nil, let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-webCheckoutJSON"),
+               i + 1 < ProcessInfo.processInfo.arguments.count,
+               let data = ProcessInfo.processInfo.arguments[i + 1].data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) {
+                _wc = WebCheckoutConfig(json: json)
+            }
+            #endif
+            webCheckout = _wc
             if let v = obj?["two_step_paywall"] as? String {
                 twoStepPaywallEnabled = v == "on"
             }
@@ -295,6 +323,11 @@ final class OnboardingState: ObservableObject {
     /// flag had simply been overwritten. Remembering what was forced and
     /// re-applying it after each refresh is the only version that holds.
     private static var forcedKeys: Set<String> = []
+
+    func debugSetKnobsResolved(_ v: Bool) {
+        debugHoldUnresolved = !v
+        if knobsResolved != v { knobsResolved = v }
+    }
 
     func debugReapplyForcedFlags() {
         for k in Self.forcedKeys { debugForceFlag(k) }
