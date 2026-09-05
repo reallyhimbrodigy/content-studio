@@ -120,6 +120,7 @@ struct CreditsTopUpView: View {
     @ObservedObject private var onboarding = OnboardingState.shared
     @ObservedObject private var subscription = SubscriptionService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var selectedId: String?
     @State private var isPurchasing = false
@@ -159,7 +160,7 @@ struct CreditsTopUpView: View {
             header
 
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: hSize == .regular ? 34 : 18) {
                     balanceBlock
 
                     Text(headline)
@@ -198,6 +199,11 @@ struct CreditsTopUpView: View {
 
                     if showsMaxUpsell { maxUpsell }
                     allowanceFooter
+                    // On a tablet the content is far shorter than the screen,
+                    // and without this the whole surplus landed as one void
+                    // under the footer (measured 670pt). A flexible tail lets
+                    // the stack breathe into it instead.
+                    if hSize == .regular { Spacer(minLength: 0) }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)

@@ -53,7 +53,20 @@ struct ConversionColumn: ViewModifier {
 
     /// One factor, used by both the scroll container and the bare width cap, so
     /// two surfaces can never disagree about how big an iPad is.
-    static let padScale: CGFloat = 1.32
+    static let padScale: CGFloat = 1.4
+
+    /// ONE FACTOR WAS TOO BLUNT. The brief is role-specific — headlines 1.5x,
+    /// button labels 1.4x, body 1.3x — and a single number cannot deliver
+    /// three. Every label on these surfaces passes its point size through
+    /// `cType`, so the ROLE is inferable from that size without editing
+    /// hundreds of call sites: display type is large, control labels sit in the
+    /// middle, body and detail are small.
+    static func typeFactor(for size: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 1 else { return 1 }
+        if size >= 22 { return 1.5 }      // headlines
+        if size >= 16 { return 1.4 }      // button + row labels
+        return 1.3                        // body, detail, legal
+    }
 
     /// Back-compat default. Existing callers that passed nothing meant "the one
     /// width there was", which was the form width.
@@ -68,11 +81,26 @@ struct ConversionColumn: ViewModifier {
     /// complaint, and it was a wiring gap rather than a design decision.
     @Environment(\.horizontalSizeClass) private var hSize
 
+    /// PROPORTIONAL, NOT A NUMBER. 660 then 920 were both fixed caps, and a
+    /// fixed cap is wrong in two directions at once: it leaves a 13-inch
+    /// portrait (1032pt) short and a 13-inch LANDSCAPE (1376pt) far shorter,
+    /// while a narrow split-view column never reaches it at all. 88% of
+    /// whatever width the container actually has fills both orientations and
+    /// keeps a real margin.
+    ///
+    /// The phone is untouched: `min` with the compact width means the cap
+    /// simply never binds below it.
+    static let padFill: CGFloat = 0.88
+
     func body(content: Content) -> some View {
-        content
-            .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
-            .frame(maxWidth: width)
-            .frame(maxWidth: .infinity)
+        GeometryReader { geo in
+            content
+                .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
+                .frame(maxWidth: hSize == .regular
+                       ? geo.size.width * ConversionColumn.padFill
+                       : width)
+                .frame(maxWidth: .infinity)
+        }
     }
 }
 
@@ -219,7 +247,8 @@ private struct ConversionType: ViewModifier {
     let weight: Font.Weight
     @Environment(\.conversionScale) private var scale
     func body(content: Content) -> some View {
-        content.font(.system(size: (size * scale).rounded(), weight: weight))
+        content.font(.system(size: (size * ConversionColumn.typeFactor(for: size, scale: scale)).rounded(),
+                             weight: weight))
     }
 }
 

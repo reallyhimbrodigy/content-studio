@@ -69,23 +69,11 @@ struct AccountView: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 26)
 
-                    // TWO COLUMNS ON iPAD. Stacked, this page ran one narrow
-                    // ribbon of rows down a 1032pt screen, and in landscape it
-                    // filled 45% of the width with the rest dead. The split is
-                    // by what the sections ARE: the money (plan, restore,
-                    // upgrade, credits) on one side, the preferences and help
-                    // on the other.
-                    if hSize == .regular {
-                        HStack(alignment: .top, spacing: 24) {
-                            VStack(alignment: .leading, spacing: 0) { accountMoneySections }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                            VStack(alignment: .leading, spacing: 0) { accountPrefsSections }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                        }
-                    } else {
-                        accountMoneySections
-                        accountPrefsSections
-                    }
+                    // SINGLE COLUMN ON EVERY DEVICE (ruled 2026-09-05). The
+                    // sections stay in one order at every size; the iPad gets
+                    // them larger, not rearranged.
+                    accountMoneySections
+                    accountPrefsSections
 
                     // ── LOG OUT ──
                     Button { AuthService.shared.signOut() } label: {

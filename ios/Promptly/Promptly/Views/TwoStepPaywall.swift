@@ -437,17 +437,10 @@ struct PaywallLayout: View {
                 //
                 // Compact is untouched: the same `tierBody` the fit probe and
                 // every approved capture were measured against.
-                Group {
-                    if hSize == .regular {
-                        HStack(alignment: .top, spacing: 40) {
-                            tierBenefits(tier)
-                            tierPlans(tier)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    } else {
-                        tierBody(tier)
-                    }
-                }
+                // SINGLE COLUMN ON EVERY DEVICE (ruled 2026-09-05). A tablet
+                // gets the same information architecture as a phone at a
+                // larger size — side by side made it a different screen.
+                tierBody(tier)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
                     .frame(maxHeight: .infinity)

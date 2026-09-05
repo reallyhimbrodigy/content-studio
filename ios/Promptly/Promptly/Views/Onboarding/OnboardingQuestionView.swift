@@ -180,9 +180,13 @@ struct OnboardingQuestionView: View {
                     // fills the width, keeps each tile large enough to hit
                     // comfortably, and shortens the scroll to nothing.
                     if hSize == .regular {
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16),
-                                            GridItem(.flexible(), spacing: 16)],
-                                  spacing: 16) {
+                        // 26pt between tiles, not 16. On a tablet the slack has
+                        // to go somewhere, and putting it BETWEEN the answers
+                        // is what fills the screen; leaving it to the trailing
+                        // Spacer pooled 708pt under the grid.
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 26),
+                                            GridItem(.flexible(), spacing: 26)],
+                                  spacing: 26) {
                             ForEach(question.options, id: \.key) { opt in
                                 chip(opt.key, opt.label)
                             }
@@ -198,7 +202,9 @@ struct OnboardingQuestionView: View {
                     }
                 }
 
-                Spacer(minLength: 8)
+                // Capped on a tablet so the remainder cannot all land here —
+                // the same rule the paywall's seams follow.
+                Spacer(minLength: 8).frame(maxHeight: hSize == .regular ? 40 : .infinity)
 
                 // Continue — DISABLED until a choice is made (Zac's rule) on
                 // required questions; always enabled on the optional one.
