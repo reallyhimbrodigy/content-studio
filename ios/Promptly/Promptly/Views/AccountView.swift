@@ -14,6 +14,7 @@ struct AccountView: View {
     /// The Credits section and the upgrade path both read live state: the
     /// balance so the row updates when a top-up lands, and the flags so the
     /// section stays dark until the meter is armed and Max is purchasable.
+    @Environment(\.horizontalSizeClass) private var hSize
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
 
@@ -68,72 +69,22 @@ struct AccountView: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 26)
 
-                    // ── ACCOUNT ──
-                    settingsGroup("Account") {
-                        cardRow("Name", value: userName.isEmpty ? "Not set" : userName) {
-                            newName = userName; showNameEdit = true
+                    // TWO COLUMNS ON iPAD. Stacked, this page ran one narrow
+                    // ribbon of rows down a 1032pt screen, and in landscape it
+                    // filled 45% of the width with the rest dead. The split is
+                    // by what the sections ARE: the money (plan, restore,
+                    // upgrade, credits) on one side, the preferences and help
+                    // on the other.
+                    if hSize == .regular {
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(alignment: .leading, spacing: 0) { accountMoneySections }
+                                .frame(maxWidth: .infinity, alignment: .top)
+                            VStack(alignment: .leading, spacing: 0) { accountPrefsSections }
+                                .frame(maxWidth: .infinity, alignment: .top)
                         }
-                        cardDivider
-                        cardRow("Email", value: userEmail) {
-                            newEmail = userEmail; showEmailEdit = true
-                        }
-                        if !userPhone.isEmpty {
-                            cardDivider
-                            cardRow("Phone", value: userPhone, trailing: .none, action: nil)
-                        }
-                        cardDivider
-                        subscriptionCardRow
-                        cardDivider
-                        cardRow("Restore purchases", trailing: restoreInFlight ? .progress : .none) {
-                            restorePurchases()
-                        }
-                        cardDivider
-                        upgradeOrManageRow
-                    }
-
-                    // ── CREDITS ──
-                    // Its own section, and only while the meter is live. The
-                    // balance is also in the header badge, but the header shows
-                    // a number and nothing else; this is where the number is
-                    // explained — what the allowance is, when it renews, and
-                    // how to buy more.
-                    if onboarding.creditsEnabled {
-                        settingsGroup("Credits") {
-                            creditsBalanceRow
-                            cardDivider
-                            cardRow("Buy more credits", trailing: .none) {
-                                Analytics.track("credits_topup_open", props: ["source": "account"])
-                                AppState.shared.showCredits = true
-                            }
-                        }
-                    }
-
-                    // ── SETTINGS ──
-                    settingsGroup("Settings") {
-                        cardRow("Change password") { showPasswordReset = true }
-                        cardDivider
-                        // Value reads "System (हिन्दी)" when following the device
-                        // so the row states BOTH that nothing is overridden and
-                        // what the device actually resolved to — otherwise a user
-                        // seeing "System" cannot tell which language that is.
-                        cardRow(String(localized: "Language"), value: languageRowValue) {
-                            showLanguagePicker = true
-                        }
-                        cardDivider
-                        cardRow("Notifications") { openSystemSettings() }
-                    }
-
-                    // ── GET HELP ──
-                    settingsGroup("Get help") {
-                        cardRow("Report an issue") {
-                            feedbackText = ""; feedbackSent = false; showFeedbackSheet = true
-                        }
-                        cardDivider
-                        cardRow("Help center") { openExternal("https://usepromptly.app/help.html") }
-                        cardDivider
-                        cardRow("Privacy Policy") { openExternal("https://usepromptly.app/privacy.html") }
-                        cardDivider
-                        cardRow("Terms of Service") { openExternal("https://usepromptly.app/terms.html") }
+                    } else {
+                        accountMoneySections
+                        accountPrefsSections
                     }
 
                     // ── LOG OUT ──
@@ -142,7 +93,7 @@ struct AccountView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 52)
+                            .cControl(52)
                             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .padding(.horizontal, 16)
@@ -367,6 +318,80 @@ struct AccountView: View {
         }
     }
 
+    /// The money half: plan, restore, upgrade, credits. Right column on iPad.
+    @ViewBuilder private var accountMoneySections: some View {
+            // ── ACCOUNT ──
+            settingsGroup("Account") {
+                cardRow("Name", value: userName.isEmpty ? "Not set" : userName) {
+                    newName = userName; showNameEdit = true
+                }
+                cardDivider
+                cardRow("Email", value: userEmail) {
+                    newEmail = userEmail; showEmailEdit = true
+                }
+                if !userPhone.isEmpty {
+                    cardDivider
+                    cardRow("Phone", value: userPhone, trailing: .none, action: nil)
+                }
+                cardDivider
+                subscriptionCardRow
+                cardDivider
+                cardRow("Restore purchases", trailing: restoreInFlight ? .progress : .none) {
+                    restorePurchases()
+                }
+                cardDivider
+                upgradeOrManageRow
+            }
+
+            // ── CREDITS ──
+            // Its own section, and only while the meter is live. The
+            // balance is also in the header badge, but the header shows
+            // a number and nothing else; this is where the number is
+            // explained — what the allowance is, when it renews, and
+            // how to buy more.
+            if onboarding.creditsEnabled {
+                settingsGroup("Credits") {
+                    creditsBalanceRow
+                    cardDivider
+                    cardRow("Buy more credits", trailing: .none) {
+                        Analytics.track("credits_topup_open", props: ["source": "account"])
+                        AppState.shared.showCredits = true
+                    }
+                }
+            }
+    }
+
+    /// Preferences and help. Left column on iPad.
+    @ViewBuilder private var accountPrefsSections: some View {
+            // ── SETTINGS ──
+            settingsGroup("Settings") {
+                cardRow("Change password") { showPasswordReset = true }
+                cardDivider
+                // Value reads "System (हिन्दी)" when following the device
+                // so the row states BOTH that nothing is overridden and
+                // what the device actually resolved to — otherwise a user
+                // seeing "System" cannot tell which language that is.
+                cardRow(String(localized: "Language"), value: languageRowValue) {
+                    showLanguagePicker = true
+                }
+                cardDivider
+                cardRow("Notifications") { openSystemSettings() }
+            }
+
+            // ── GET HELP ──
+            settingsGroup("Get help") {
+                cardRow("Report an issue") {
+                    feedbackText = ""; feedbackSent = false; showFeedbackSheet = true
+                }
+                cardDivider
+                cardRow("Help center") { openExternal("https://usepromptly.app/help.html") }
+                cardDivider
+                cardRow("Privacy Policy") { openExternal("https://usepromptly.app/privacy.html") }
+                cardDivider
+                cardRow("Terms of Service") { openExternal("https://usepromptly.app/terms.html") }
+            }
+    }
+
     // MARK: - Subscription rows (card-styled)
 
     /// Current-plan status row: a gold PRO badge when Pro, a neutral FREE chip
@@ -404,7 +429,7 @@ struct AccountView: View {
                 }
                 chevron
             }
-            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
+            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -452,7 +477,7 @@ struct AccountView: View {
                 Spacer()
                 chevron
             }
-            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
+            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -656,7 +681,7 @@ struct AccountView: View {
                 case .none: EmptyView()
                 }
             }
-            .padding(.horizontal, 16).frame(height: 52).contentShape(Rectangle())
+            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(action == nil)

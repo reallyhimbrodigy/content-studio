@@ -51,14 +51,26 @@ struct ConversionColumn: ViewModifier {
     /// deliberate margin on a 13-inch, while still never binding on any phone.
     static let content: CGFloat = 920
 
+    /// One factor, used by both the scroll container and the bare width cap, so
+    /// two surfaces can never disagree about how big an iPad is.
+    static let padScale: CGFloat = 1.32
+
     /// Back-compat default. Existing callers that passed nothing meant "the one
     /// width there was", which was the form width.
     static let columnWidth: CGFloat = form
 
     var width: CGFloat = ConversionColumn.columnWidth
 
+    /// THE SCALE TRAVELS WITH THE COLUMN. It used to be set only by
+    /// `ConversionScroll`, so surfaces that took the width cap directly —
+    /// the account page, the top-up screen — got an iPad-width column full of
+    /// phone-sized type and phone-sized controls. That is the shape of the
+    /// complaint, and it was a wiring gap rather than a design decision.
+    @Environment(\.horizontalSizeClass) private var hSize
+
     func body(content: Content) -> some View {
         content
+            .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
             .frame(maxWidth: width)
             .frame(maxWidth: .infinity)
     }
@@ -114,7 +126,7 @@ struct ConversionScroll<Content: View>: View {
     /// complaint: small type, floating in a wide screen. VIEWING DISTANCE is
     /// the missing term — an iPad is held further away than a phone, so
     /// matching apparent size needs more than a token bump.
-    private var scale: CGFloat { hSize == .regular ? 1.32 : 1.0 }
+    private var scale: CGFloat { hSize == .regular ? ConversionColumn.padScale : 1.0 }
 
     var body: some View {
         GeometryReader { geo in
@@ -173,6 +185,33 @@ extension View {
     func cSpacing(_ base: CGFloat, _ edges: Edge.Set = .all) -> some View {
         modifier(ConversionSpacing(base: base, edges: edges))
     }
+
+    /// A CONTROL's height, scaled with the type.
+    ///
+    /// Type and spacing scaled; hit targets did not, so an iPad rendered larger
+    /// labels inside phone-sized buttons — the "buttons still phone-sized"
+    /// read. A touch target is not a typographic quantity, but it is a physical
+    /// one, and the reason type grows here (a tablet is held further away, on a
+    /// desk or a lap) applies to the thing you have to hit at least as much.
+    ///
+    /// At the 1.32 factor a 50pt phone button becomes 66pt, inside the 64-72pt
+    /// range a tablet control wants.
+    func cControl(_ base: CGFloat) -> some View {
+        modifier(ConversionControl(base: base))
+    }
+
+    /// A CAPPED SEAM, scaled for the container.
+    ///
+    /// The caps exist so slack is shared between the gaps instead of pooling in
+    /// whichever comes first. Fixed at phone values they under-share on a
+    /// tablet: a 1376pt portrait iPad has far more slack than three 46pt caps
+    /// can absorb, and the remainder lands as one void under the content — the
+    /// dead space measured at 660pt. Scaling the caps keeps the rule and lets
+    /// them take a tablet-sized share. 3x on top of the type factor, because
+    /// the surplus grows with the screen, not with the type.
+    func cSeam(_ base: CGFloat) -> some View {
+        modifier(ConversionSeam(base: base))
+    }
 }
 
 private struct ConversionType: ViewModifier {
@@ -190,5 +229,21 @@ private struct ConversionSpacing: ViewModifier {
     @Environment(\.conversionScale) private var scale
     func body(content: Content) -> some View {
         content.padding(edges, (base * scale).rounded())
+    }
+}
+
+private struct ConversionControl: ViewModifier {
+    let base: CGFloat
+    @Environment(\.conversionScale) private var scale
+    func body(content: Content) -> some View {
+        content.frame(height: (base * scale).rounded())
+    }
+}
+
+private struct ConversionSeam: ViewModifier {
+    let base: CGFloat
+    @Environment(\.conversionScale) private var scale
+    func body(content: Content) -> some View {
+        content.frame(maxHeight: scale > 1 ? base * scale * 3 : base)
     }
 }

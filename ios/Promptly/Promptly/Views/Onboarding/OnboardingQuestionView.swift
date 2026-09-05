@@ -114,6 +114,7 @@ struct OnboardingQuestionView: View {
     /// nil default.
     var autoDriveKey: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSize
     /// Required questions gate Continue on a selection; the optional one never does.
     private var canContinue: Bool { isOptional || !selected.isEmpty }
 
@@ -173,12 +174,28 @@ struct OnboardingQuestionView: View {
                 .padding(.bottom, 24)
 
                 ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(question.options, id: \.key) { opt in
-                            chip(opt.key, opt.label)
+                    // A REAL TABLET GRID, not a phone list in a wider column.
+                    // Six answers stacked one-per-row down a 1032pt screen is
+                    // the shape that reads as an adapted phone; two across
+                    // fills the width, keeps each tile large enough to hit
+                    // comfortably, and shortens the scroll to nothing.
+                    if hSize == .regular {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16),
+                                            GridItem(.flexible(), spacing: 16)],
+                                  spacing: 16) {
+                            ForEach(question.options, id: \.key) { opt in
+                                chip(opt.key, opt.label)
+                            }
                         }
+                        .padding(.horizontal, 20)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(question.options, id: \.key) { opt in
+                                chip(opt.key, opt.label)
+                            }
+                        }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
                 }
 
                 Spacer(minLength: 8)
@@ -192,7 +209,7 @@ struct OnboardingQuestionView: View {
                     Text("Continue")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 54)
+                        .cControl(54)
                         .foregroundStyle(canContinue ? .black : .white.opacity(0.4))
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)

@@ -430,6 +430,18 @@ struct PayoffSnapshotHarnessView: View {
                     print("SNAPSHOT_ORIENTATION \(scene.interfaceOrientation.isLandscape ? "landscape" : "portrait")")
                 }
             }
+            // THE APP REPORTS ITS OWN GEOMETRY. simctl screenshots come back at
+            // the device's native pixel size whatever the orientation, so the
+            // file cannot tell you which way up it was taken — which is how two
+            // earlier reports got landscape wrong in both directions. Asking
+            // the scene is unambiguous.
+            if let sc = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first {
+                let o = sc.interfaceOrientation
+                let name = o.isLandscape ? "landscape" : (o == .portraitUpsideDown ? "portraitUpsideDown" : "portrait")
+                let sz = sc.screen.bounds.size
+                print("SNAPSHOT_GEOMETRY orientation=\(name) size=\(Int(sz.width))x\(Int(sz.height)) sizeClass=\(sc.traitCollection.horizontalSizeClass == .regular ? "regular" : "compact")")
+            }
             settled = true
             print("SNAPSHOT_SETTLED \(state)")
         }

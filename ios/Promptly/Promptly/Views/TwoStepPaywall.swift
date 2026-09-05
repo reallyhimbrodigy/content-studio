@@ -582,7 +582,7 @@ struct PaywallLayout: View {
                         .cType(15, .bold)
                         .foregroundColor(isOn ? .black : .white.opacity(0.75))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .cControl(34)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(isOn ? Color.white : Color.clear)
@@ -622,7 +622,7 @@ struct PaywallLayout: View {
     private func tierBody(_ tier: PaywallTierOption) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             tierBenefits(tier)
-            Spacer(minLength: 0).frame(maxHeight: 46)
+            Spacer(minLength: 0).cSeam(46)
             tierPlans(tier)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -645,7 +645,7 @@ struct PaywallLayout: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(tier.features.enumerated()), id: \.element) { idx, line in
-                    if idx > 0 { Spacer(minLength: 0).frame(maxHeight: 22) }
+                    if idx > 0 { Spacer(minLength: 0).cSeam(22) }
                     HStack(alignment: .top, spacing: 9) {
                         ZStack {
                             Circle().fill(Color.white).frame(width: 18, height: 18)
@@ -675,13 +675,13 @@ struct PaywallLayout: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 6) {
                 ForEach(Array(durations(tier.allowance).enumerated()), id: \.element.id) { idx, row in
-                    if idx > 0 { Spacer(minLength: 0).frame(maxHeight: 14) }
+                    if idx > 0 { Spacer(minLength: 0).cSeam(14) }
                     durationRow(row)
                 }
             }
             .padding(.top, 10)
 
-            Spacer(minLength: 0).frame(maxHeight: 46)
+            Spacer(minLength: 0).cSeam(46)
 
             Text("Cancel anytime · no commitment")
                 .cType(10)
@@ -790,7 +790,7 @@ struct PaywallLayout: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .cControl(48)
                     .background(Capsule().fill(Self.accent))
             }
             .buttonStyle(.plain)

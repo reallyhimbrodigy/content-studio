@@ -611,7 +611,7 @@ struct CreditsTopUpView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 50)
+                    .cControl(50)
                     .background(Capsule().fill(Self.accent))
             }
             .buttonStyle(.plain)
