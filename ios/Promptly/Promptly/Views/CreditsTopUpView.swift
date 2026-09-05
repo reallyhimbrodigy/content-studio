@@ -97,6 +97,7 @@ enum CreditPackCatalog {
 /// do NOT need a pack — and burying it would be selling a top-up to someone
 /// whose credits refresh on Thursday.
 struct CreditsTopUpView: View {
+    @Environment(\.conversionScale) private var k
     var onClose: () -> Void = {}
     /// Posed packs, for a review capture only. The SKUs do not exist yet, so a
     /// live build has zero products and correctly shows the empty state — which
@@ -156,11 +157,11 @@ struct CreditsTopUpView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 0 * k) {
             header
 
             ScrollView {
-                VStack(spacing: hSize == .regular ? 34 : 18) {
+                VStack(spacing: 18 * k) {
                     balanceBlock
 
                     Text(headline)
@@ -175,7 +176,7 @@ struct CreditsTopUpView: View {
                     // reads as one.
                     upgradeHero
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 10 * k) {
                         Text("Or top up once")
                             .cType(13, .semibold)
                             .foregroundColor(.white.opacity(0.55))
@@ -186,7 +187,7 @@ struct CreditsTopUpView: View {
                         // disclaimers live — and this is the opposite of a
                         // disclaimer: it is the reason a one-time buy is safe.
                         if !packs.isEmpty {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 6 * k) {
                                 Image(systemName: "infinity")
                                     .cType(11, .bold)
                                     .foregroundColor(.white.opacity(0.6))
@@ -199,19 +200,14 @@ struct CreditsTopUpView: View {
 
                     if showsMaxUpsell { maxUpsell }
                     allowanceFooter
-                    // On a tablet the content is far shorter than the screen,
-                    // and without this the whole surplus landed as one void
-                    // under the footer (measured 670pt). A flexible tail lets
-                    // the stack breathe into it instead.
-                    if hSize == .regular { Spacer(minLength: 0) }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.horizontal, 20 * k)
+                .padding(.top, 8 * k)
                 // Clears the pinned CTA. Without it the scroll content runs
                 // UNDER the button and the Max upsell — the one line on this
                 // screen that is supposed to change the decision — sat behind
                 // it, half legible.
-                .padding(.bottom, selectedPack != nil ? 96 : 24)
+                .padding(.bottom, selectedPack != nil ? 96 * k : 24 * k)
             }
 
             if selectedPack != nil { buyButton }
@@ -280,18 +276,18 @@ struct CreditsTopUpView: View {
                 onClose()
             } label: {
                 ZStack {
-                    Circle().fill(Color.white).frame(width: 32, height: 32)
+                    Circle().fill(Color.white).frame(width: 32 * k, height: 32 * k)
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * k, weight: .bold))
                         .foregroundColor(.black)
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 44 * k, height: 44 * k)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             Spacer()
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 8 * k)
     }
 
     // MARK: Balance
@@ -307,11 +303,11 @@ struct CreditsTopUpView: View {
     /// same rule the header badge follows — so it says "Checking your balance"
     /// rather than asserting a confident 0 the server never returned.
     private var balanceBlock: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * k) {
             // THE SHARED MARK — see `CreditMark`. Not a local image and not a
             // system bolt: the same object the chat header and the composer
             // strip draw, so a balance reads as one currency across the app.
-            CreditMark(size: 30, isSpent: credits.balance == 0)
+            CreditMark(size: 30 * k, isSpent: credits.balance == 0)
             if let b = credits.balance {
                 Text("^[\(b) credit](inflect: true) left")
                     .cType(17, .semibold)
@@ -325,8 +321,8 @@ struct CreditsTopUpView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .padding(.vertical, 12 * k)
+        .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
             .fill(Color.white.opacity(0.06)))
     }
 
@@ -347,7 +343,7 @@ struct CreditsTopUpView: View {
                 onClose()
                 AppState.shared.presentPaywall(.manual)
             } label: {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 6 * k) {
                     Text("Pro gives you ^[\(allowance) credit](inflect: true) a month for \(price)")
                         .cType(16, .semibold)
                         .foregroundColor(.white)
@@ -361,8 +357,8 @@ struct CreditsTopUpView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(hSize == .regular ? 26 : 14)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .padding(14 * k)
+                .background(RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
                     .fill(Self.accent))
             }
             .buttonStyle(.plain)
@@ -436,7 +432,7 @@ struct CreditsTopUpView: View {
     private var proMonthlyPrice: String? { proMonthlyProduct?.localizedPriceString }
 
     private var packList: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 10 * k) {
             ForEach(packs) { pack in
                 packRow(pack)
             }
@@ -465,13 +461,13 @@ struct CreditsTopUpView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = pack.id
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 ZStack {
-                    Circle().strokeBorder(isSelected ? Self.accent : Color.white.opacity(0.3), lineWidth: 1.5)
-                        .frame(width: 22, height: 22)
-                    if isSelected { Circle().fill(Self.accent).frame(width: 12, height: 12) }
+                    Circle().strokeBorder(isSelected ? Self.accent : Color.white.opacity(0.3), lineWidth: 1.5 * k)
+                        .frame(width: 22 * k, height: 22 * k)
+                    if isSelected { Circle().fill(Self.accent).frame(width: 12 * k, height: 12 * k) }
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     // NAMED IN VIDEOS. Nobody decides to buy 200 credits.
                     //
                     // NO BADGE. The 20-pack carried one, and every version of
@@ -483,35 +479,32 @@ struct CreditsTopUpView: View {
                     // and a badge that says nothing still costs the reader a
                     // beat working out that it says nothing.
                     Text("\(pack.videos) videos")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16 * k, weight: .semibold))
                         .foregroundColor(.white)
                     Text("^[\(pack.credits) credit](inflect: true)")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * k))
                         .foregroundColor(.white.opacity(0.45))
                         .monospacedDigit()
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
                 Text(pack.price)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16 * k, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            // 88pt on a tablet, matching the paywall's plan rows — these are
-            // the same kind of control and were the same phone height.
-            .frame(minHeight: hSize == .regular ? 88 : nil)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .padding(.horizontal, 14 * k)
+            .padding(.vertical, 12 * k)
+            .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                 // PURPLE, not a lighter grey. Greyscale selection is what made
                 // this read as a debug view rather than a purchase screen, and
                 // the accent is the same one every other primary in the funnel
                 // uses.
                 .fill(isSelected ? Self.accent.opacity(0.22) : Color.white.opacity(0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                 .strokeBorder(isSelected ? Self.accent : Color.white.opacity(0.10),
                               lineWidth: isSelected ? 2 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -521,11 +514,11 @@ struct CreditsTopUpView: View {
     /// broken screen.
     private var packsUnavailable: some View {
         Text("Top-up packs aren't available yet.")
-            .font(.system(size: 14))
+            .font(.system(size: 14 * k))
             .foregroundColor(.white.opacity(0.5))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
+            .padding(.vertical, 24 * k)
     }
 
     // MARK: Max upsell
@@ -542,23 +535,23 @@ struct CreditsTopUpView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             AppState.shared.presentPaywall(.manual)
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * k, weight: .semibold))
                     .foregroundColor(Color(hex: "F4E4BC"))
                 upsellLine
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * k))
                     .foregroundColor(.white.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
+                Spacer(minLength: 0 * k)
             }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .padding(14 * k)
+            .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                 .fill(Color(hex: "F4E4BC").opacity(0.08)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(hex: "F4E4BC").opacity(0.25), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                .strokeBorder(Color(hex: "F4E4BC").opacity(0.25), lineWidth: 1 * k))
+            .contentShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -577,7 +570,7 @@ struct CreditsTopUpView: View {
         Group {
             if let monthly = onboarding.creditsMonthlyAllowance, monthly > 0 {
                 Text("Your plan adds ^[\(monthly) credit](inflect: true) every month.")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * k))
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -589,7 +582,7 @@ struct CreditsTopUpView: View {
     // MARK: Buy
 
     private var buyButton: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 6 * k) {
             Button {
                 guard let pack = selectedPack,
                       let pkg = (subscription.offerings?.current?.availablePackages ?? [])
@@ -617,7 +610,7 @@ struct CreditsTopUpView: View {
                         Text("Choose a pack")
                     }
                 }
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 17 * k, weight: .bold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .cControl(50)
@@ -627,10 +620,10 @@ struct CreditsTopUpView: View {
             .disabled(isPurchasing)
 
             Text("One-time purchase.")
-                .font(.system(size: 10))
+                .font(.system(size: 10 * k))
                 .foregroundColor(.white.opacity(0.4))
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 20 * k)
+        .padding(.bottom, 10 * k)
     }
 }

@@ -26,6 +26,7 @@ enum OnboardingMotion {
 /// STYLE, driven by `configuration.isPressed`, so the gesture is never
 /// waiting on an animation to finish.
 struct OnboardingPressStyle: ButtonStyle {
+    @Environment(\.conversionScale) private var k
     var reduceMotion: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -101,6 +102,7 @@ struct OnboardingQuestion {
 }
 
 struct OnboardingQuestionView: View {
+    @Environment(\.conversionScale) private var k
     let question: OnboardingQuestion
     /// Q2 is multi-select (ruled 2026-08-21); Q1/Q3 stay single-select.
     var multiSelect: Bool = false
@@ -142,11 +144,11 @@ struct OnboardingQuestionView: View {
             // the title read "ho are you making videos for?". Bounding the
             // column to the container is the fix; it is inert for the short
             // labels the wall flow uses.
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0 * k) {
                 // Progress + Skip. Skip is always available on required
                 // questions (the escape); on the optional one Continue already
                 // never blocks, but Skip stays for consistency.
-                HStack(spacing: 12) {
+                HStack(spacing: 12 * k) {
                     if let p = progress {
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -159,33 +161,33 @@ struct OnboardingQuestionView: View {
                                     .animation(OnboardingMotion.step(reduceMotion), value: p.index)
                             }
                         }
-                        .frame(width: 120, height: 4)
+                        .frame(width: 120 * k, height: 4 * k)
                         .accessibilityLabel("Step \(p.index) of \(p.total)")
                     }
                     Spacer()
                     Button("Skip") { onContinue([]); onSkip() }
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 16 * k, weight: .medium))
                         .foregroundStyle(.white.opacity(0.55))
                 }
-                .padding(.top, 8)
-                .padding(.horizontal, 20)
+                .padding(.top, 8 * k)
+                .padding(.horizontal, 20 * k)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8 * k) {
                     OnboardingMark()
-                        .padding(.bottom, 6)
+                        .padding(.bottom, 6 * k)
                     Text(question.title)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 28 * k, weight: .bold))
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                     if let subtitle = question.subtitle {
                         Text(subtitle)
-                            .font(.system(size: 16))
+                            .font(.system(size: 16 * k))
                             .foregroundStyle(.white.opacity(0.6))
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 28)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 20 * k)
+                .padding(.top, 28 * k)
+                .padding(.bottom, 24 * k)
 
                 ScrollView {
                     // A REAL TABLET GRID, not a phone list in a wider column.
@@ -193,52 +195,26 @@ struct OnboardingQuestionView: View {
                     // the shape that reads as an adapted phone; two across
                     // fills the width, keeps each tile large enough to hit
                     // comfortably, and shortens the scroll to nothing.
-                    if hSize == .regular {
-                        // ROWS THAT DISTRIBUTE, not a grid that packs.
-                        //
-                        // A LazyVGrid alone made this WORSE — measured 708pt of
-                        // void before, 848pt after — because two-up makes the
-                        // content SHORTER (three rows instead of six) and
-                        // nothing claimed what it freed. Pairs in a VStack with
-                        // flexible seams between them spread across whatever
-                        // height there is, and the tiles are 1.5x so each row
-                        // is substantial rather than a wide sliver.
-                        VStack(spacing: 0) {
-                            ForEach(Array(stride(from: 0, to: question.options.count, by: 2)), id: \.self) { i in
-                                if i > 0 { Spacer(minLength: 20) }
-                                HStack(spacing: 26) {
-                                    chip(question.options[i].key, question.options[i].label)
-                                    if i + 1 < question.options.count {
-                                        chip(question.options[i+1].key, question.options[i+1].label)
-                                    } else {
-                                        Color.clear
-                                    }
-                                }
-                            }
+                    // ONE LAYOUT (ruled 2026-09-05): the phone list, times k.
+                    // A tablet grid was tried twice and both times it was a
+                    // second layout to keep in step with the first.
+                    VStack(spacing: 12 * k) {
+                        ForEach(question.options, id: \.key) { opt in
+                            chip(opt.key, opt.label)
                         }
-                        .frame(maxHeight: .infinity)
-                        .padding(.horizontal, 20)
-                    } else {
-                        VStack(spacing: 12) {
-                            ForEach(question.options, id: \.key) { opt in
-                                chip(opt.key, opt.label)
-                            }
-                        }
-                        .padding(.horizontal, 20)
                     }
+                    .padding(.horizontal, 20 * k)
 
                     if let key = question.freeTextKey, selected.contains(key) {
                         freeTextField
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
+                            .padding(.horizontal, 20 * k)
+                            .padding(.top, 16 * k)
                             .transition(reduceMotion ? .opacity
                                         : .opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
 
-                // Capped on a tablet so the remainder cannot all land here —
-                // the same rule the paywall's seams follow.
-                Spacer(minLength: 8).frame(maxHeight: hSize == .regular ? 40 : .infinity)
+                Spacer(minLength: 8 * k)
 
                 // Continue — DISABLED until a choice is made (Zac's rule) on
                 // required questions; always enabled on the optional one.
@@ -247,12 +223,12 @@ struct OnboardingQuestionView: View {
                     onContinue(selected)
                 } label: {
                     Text("Continue")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17 * k, weight: .semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: hSize == .regular ? 116 : 54)
+                        .cControl(54)
                         .foregroundStyle(canContinue ? .black : .white.opacity(0.4))
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
                                 .fill(canContinue ? Color.white : Color.white.opacity(0.12))
                         )
                         // Enabling is an EVENT, not a colour swap: the button
@@ -262,8 +238,8 @@ struct OnboardingQuestionView: View {
                 }
                 .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
                 .disabled(!canContinue)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 20 * k)
+                .padding(.bottom, 16 * k)
             }
             // The only width bound on the question column — capping here
             // constrains the header, the options and the CTA together.
@@ -290,12 +266,12 @@ struct OnboardingQuestionView: View {
             .focused($freeTextFocused)
             .cType(16)
             .foregroundColor(.white)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 14 * k)
             .cControl(52)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                 .fill(Color.white.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(freeTextFocused ? 0.28 : 0.10), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                .strokeBorder(Color.white.opacity(freeTextFocused ? 0.28 : 0.10), lineWidth: 1 * k))
             .submitLabel(.done)
     }
 
@@ -312,11 +288,11 @@ struct OnboardingQuestionView: View {
         } label: {
             HStack {
                 Text(label)
-                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 17 * k, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
                 // The check springs in rather than blinking on — the one
                 // moment the user is told "yes, that one".
                 Image(systemName: "checkmark.circle.fill")
@@ -324,16 +300,16 @@ struct OnboardingQuestionView: View {
                     .scaleEffect(isSelected ? 1 : 0.4)
                     .opacity(isSelected ? 1 : 0)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 18 * k)
             .frame(maxWidth: .infinity, minHeight: 56)
             .animation(OnboardingMotion.tap(reduceMotion), value: isSelected)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.16 : 0.07))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(isSelected ? 0.9 : 0.0), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                    .stroke(Color.white.opacity(isSelected ? 0.9 : 0.0), lineWidth: 1.5 * k)
             )
         }
         .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
@@ -357,6 +333,7 @@ struct OnboardingQuestionView: View {
 /// its arrival rather than a second logo appearing in a new style. Under
 /// Reduce Motion it simply is there, with no travel.
 struct OnboardingMark: View {
+    @Environment(\.conversionScale) private var k
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var arrived = false
 
@@ -365,7 +342,7 @@ struct OnboardingMark: View {
             .renderingMode(.original)
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .frame(width: 30, height: 30)
+            .frame(width: 30 * k, height: 30 * k)
             .scaleEffect(arrived ? 1.0 : 1.12)
             .blur(radius: arrived ? 0 : 6)
             .opacity(arrived ? 1 : 0)

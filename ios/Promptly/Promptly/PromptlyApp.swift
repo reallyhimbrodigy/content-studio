@@ -542,6 +542,8 @@ struct PromptlyApp: App {
                 }
                 #endif
             }
+            // k, once, for the whole window. See RootScale.
+            .modifier(RootScale())
             #if DEBUG
             .onAppear {
                 ReeditProofHarness.runIfRequested()
@@ -1047,5 +1049,28 @@ extension Color {
         g = Double((int >> 8) & 0xFF) / 255.0
         b = Double(int & 0xFF) / 255.0
         self.init(red: r, green: g, blue: b)
+    }
+}
+
+
+/// THE IPAD IS THE IPHONE LAYOUT TIMES ONE CONSTANT (ruled 2026-09-05).
+///
+/// k = the window's long side / 852 (iPhone 17 Pro), on a regular-width
+/// container; 1.0 everywhere else. It is set HERE, at the root, so every view
+/// in the window reads the same value — including the ones that sit outside
+/// any conversion column, which is exactly where the Upgrade pill was still
+/// rendering at phone size. A GeometryReader is safe at this level: the window
+/// hands it a concrete size and nothing above it needs an intrinsic height.
+struct RootScale: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
+    func body(content: Content) -> some View {
+        GeometryReader { geo in
+            let long = max(geo.size.width, geo.size.height)
+            content
+                .environment(\.conversionScale,
+                             hSize == .regular ? long / ConversionColumn.phoneReferenceHeight : 1.0)
+                .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .ignoresSafeArea()
     }
 }

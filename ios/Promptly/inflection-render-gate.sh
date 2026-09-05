@@ -1,5 +1,7 @@
 #!/bin/bash
-# NO USER-FACING STRING MAY CONTAIN A LITERAL "^[" AT RENDER TIME.
+# NO USER-FACING STRING MAY CONTAIN A LITERAL "^[" AT RENDER TIME — AND EVERY
+# HARNESS STATE MUST RENDER SOMETHING. Run it against an iPad simulator too
+# (INFLECTION_GATE_SIM=<ipad udid>): regular width is where layouts collapse.
 #
 # ── WHAT SHIPPED ────────────────────────────────────────────────────────────
 # The primary CTA of the top-up screen read:
@@ -144,6 +146,20 @@ for st in $STATES; do
   shot="$WORK/state-$st.png"
   xcrun simctl io "$SIM" screenshot "$shot" >/dev/null 2>&1 || continue
   swept=$((swept + 1))
+  # A BLANK SCREEN IS A FAILURE, not a clean sweep. Three surfaces rendered
+  # nothing but a close button on iPad — a width modifier that resolved to no
+  # width inside a ScrollView — and this gate reported "no markup on any
+  # screen" for all of them, because a blank screen has no markup. A pass
+  # produced by an absence of content is the failure mode this project keeps
+  # re-learning. Fewer than three lines of text on a harness state means the
+  # state did not render.
+  lines=$("$OCR" "$shot" 2>/dev/null | grep -cE '[A-Za-z]{3,}' || true)
+  if [ "${lines:-0}" -lt 3 ]; then
+    leaks=$((leaks + 1))
+    echo "  BLANK on harness state $st: only ${lines:-0} text line(s) rendered"
+    cp "$shot" "${TMPDIR:-/tmp}/blank-state-$st.png"
+    echo "      capture: ${TMPDIR:-/tmp}/blank-state-$st.png"
+  fi
   # "inflect" and "^[" are the two halves of the markup; OCR may render the
   # caret as any of several glyphs, so the WORD is the reliable signal.
   #

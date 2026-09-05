@@ -23,14 +23,15 @@ enum PromptlyGold {
 // locked buttons.
 
 struct PROBadge: View {
+    @Environment(\.conversionScale) private var k
     var compact: Bool = false
     var body: some View {
         Text("PRO")
-            .font(.system(size: compact ? 9 : 10, weight: .heavy))
-            .tracking(0.6)
+            .font(.system(size: compact ? 9 * k : 10 * k, weight: .heavy))
+            .tracking(0.6 * k)
             .foregroundColor(.black)
-            .padding(.horizontal, compact ? 5 : 7)
-            .padding(.vertical, compact ? 2 : 3)
+            .padding(.horizontal, compact ? 5 * k : 7 * k)
+            .padding(.vertical, compact ? 2 * k : 3 * k)
             .background(
                 Capsule(style: .continuous)
                     .fill(Color.white)
@@ -114,6 +115,7 @@ enum PlanSavings {
 /// ("Pro saves and shares every video"), no new marketing copy. Checkmark
 /// rows per the reference layout; white ink, no gold (2026-08-26 rebuild).
 struct PaywallFeatureChecklist: View {
+    @Environment(\.conversionScale) private var k
     /// Reads ProBenefits — this screen owns NO list. It used to spell its own
     /// five claims, which is how "Unlimited renders" here drifted against
     /// "Unlimited videos, no daily cap" on the first-launch paywall and
@@ -121,13 +123,13 @@ struct PaywallFeatureChecklist: View {
     /// phrasings of one promise, on three screens of one purchase.
     static var features: [String] { ProBenefits.core.map(\.text) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14 * k) {
             ForEach(Self.features, id: \.self) { text in
-                HStack(spacing: 14) {
+                HStack(spacing: 14 * k) {
                     ZStack {
                         Circle()
                             .fill(Color.white)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 24 * k, height: 24 * k)
                         Image(systemName: "checkmark")
                             .cType(11, .heavy)
                             .foregroundColor(.black)
@@ -153,6 +155,7 @@ struct PaywallFeatureChecklist: View {
 /// 402'd on /api/video-jobs, `.dailyChats` on chat, `.reedit` on the
 /// locked re-edit button.
 struct PaywallView: View {
+    @Environment(\.conversionScale) private var k
     @Binding var isPresented: Bool
     let reason: PaywallReason
     /// exportgate_personalization: the blocked video's identity for an
@@ -262,8 +265,8 @@ struct PaywallView: View {
                 exportBenefitPage
             } else {
             ConversionScroll(width: ConversionColumn.content) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 60)
+                VStack(spacing: 0 * k) {
+                    Spacer().frame(height: 60 * k)
 
                     // exportgate_personalization: the blocked video's OWN
                     // thumbnail replaces the brand mark — the user is buying
@@ -274,25 +277,25 @@ struct PaywallView: View {
                        let thumbStr = exportContext?.thumbnailUrl,
                        let thumbUrl = URL(string: thumbStr) {
                         blockedVideoThumb(thumbUrl)
-                            .padding(.bottom, 20)
+                            .padding(.bottom, 20 * k)
                     } else {
                         proCrown
-                            .padding(.bottom, 20)
+                            .padding(.bottom, 20 * k)
                     }
 
                     Text(title)
                         .cType(28, .bold)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 28 * k)
                         .entrance(delay: 0.05)
 
                     Text(subtitle)
                         .cType(16)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 10)
+                        .padding(.horizontal, 32 * k)
+                        .padding(.top, 10 * k)
 
                     // offer_surfacing (b), iOS 18+: the store carries win-back
                     // offers on a plan here and this account bought before but
@@ -303,8 +306,8 @@ struct PaywallView: View {
                             .cType(13, .semibold)
                             .foregroundColor(.white.opacity(0.85))
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                            .padding(.top, 12)
+                            .padding(.horizontal, 32 * k)
+                            .padding(.top, 12 * k)
                             .onAppear {
                                 Analytics.track("offer_line_shown", props: [
                                     "context": reasonKey, "kind": "win_back",
@@ -312,46 +315,34 @@ struct PaywallView: View {
                             }
                     }
 
-                    Spacer().frame(height: 32)
+                    Spacer().frame(height: 32 * k)
 
                     featureList
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 28 * k)
                         .entrance(delay: 0.12)
 
-                    Spacer().frame(height: 28)
+                    Spacer().frame(height: 28 * k)
 
                     if let packages = currentPackages, !packages.isEmpty {
                         packagePicker(packages: packages)
-                            .padding(.horizontal, 24)
-                        // Ambient-wall referral row (conversion standing): 88% of
-                        // wall exposure is THIS wall in .manual context at 0.2-0.3%
-                        // buy — the curious get a non-paying path. Outside the
-                        // radio selection; never wedges the buy button. Flag:
-                        // ambient_wall_referral (server, default off).
-                        if case .manual = reason, onboardingStateRef.ambientWallReferralEnabled,
-                           referralsRef.shouldOffer {
-                            ambientReferralRow
-                                .onAppear { ReferralService.shared.trackImpression(source: "ambient_wall") }
-                                .padding(.horizontal, 24)
-                                .padding(.top, 10)
-                        }
+                            .padding(.horizontal, 24 * k)
                     } else if subscription.isLoadingOfferings {
                         ProgressView()
                             .tint(.white)
-                            .padding(.vertical, 40)
+                            .padding(.vertical, 40 * k)
                     } else {
                         // Offerings settled with nothing to show (empty or a
                         // fetch error). Never an infinite spinner — a visible
                         // message + Retry. The single point of failure for all
                         // revenue does not get to fail invisibly.
                         offeringsUnavailable
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 28 * k)
                     }
 
-                    Spacer().frame(height: 24)
+                    Spacer().frame(height: 24 * k)
 
                     ctaButton
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 24 * k)
                         .entrance(delay: 0.26)
 
                     // yearly_frame_fix: the exact charge, BEFORE the sheet —
@@ -364,15 +355,15 @@ struct PaywallView: View {
                             .cType(12)
                             .foregroundColor(.white.opacity(0.55))
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                            .padding(.top, 10)
+                            .padding(.horizontal, 32 * k)
+                            .padding(.top, 10 * k)
                     }
 
                     fineprint
-                        .padding(.horizontal, 32)
-                        .padding(.top, 14)
+                        .padding(.horizontal, 32 * k)
+                        .padding(.top, 14 * k)
 
-                    VStack(spacing: 14) {
+                    VStack(spacing: 14 * k) {
                         Button("Restore Purchases") {
                             Task {
                                 let ok = await subscription.restorePurchases()
@@ -384,7 +375,7 @@ struct PaywallView: View {
 
                         // Apple 3.1.2: a subscription paywall MUST carry functional
                         // links to the Terms of Use (EULA) and the Privacy Policy.
-                        HStack(spacing: 6) {
+                        HStack(spacing: 6 * k) {
                             Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
                             Text("·").foregroundColor(.white.opacity(0.3))
                             Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
@@ -392,8 +383,8 @@ struct PaywallView: View {
                         .cType(12, .medium)
                         .foregroundColor(.white.opacity(0.5))
                     }
-                    .padding(.top, 20)
-                    .padding(.bottom, 36)
+                    .padding(.top, 20 * k)
+                    .padding(.bottom, 36 * k)
                 }
                 // Presented BOTH as a sheet (an iPad pageSheet is already a
                 // ~704pt card) and as a fullScreenCover, and only the second
@@ -412,13 +403,13 @@ struct PaywallView: View {
                 Image(systemName: "xmark")
                     .cType(14, .bold)
                     .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 36 * k, height: 36 * k)
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5 * k))
             }
-            .padding(.trailing, 18)
-            .padding(.top, 14)
+            .padding(.trailing, 18 * k)
+            .padding(.top, 14 * k)
 
             // Fix 3: post-purchase confirmation replaces the silent dismiss —
             // rendered over the paywall the moment a purchase/trial completes.
@@ -476,14 +467,14 @@ struct PaywallView: View {
     /// real one (this video is finished and waiting).
     private var exportBenefitPage: some View {
         ConversionScroll(width: ConversionColumn.content) {
-            VStack(spacing: 0) {
-                Spacer().frame(height: 72)
+            VStack(spacing: 0 * k) {
+                Spacer().frame(height: 72 * k)
 
                 if let thumbStr = exportContext?.thumbnailUrl,
                    let thumbUrl = URL(string: thumbStr) {
-                    blockedVideoThumb(thumbUrl).padding(.bottom, 22)
+                    blockedVideoThumb(thumbUrl).padding(.bottom, 22 * k)
                 } else {
-                    proCrown.padding(.bottom, 22)
+                    proCrown.padding(.bottom, 22 * k)
                 }
 
                 Text(benefitHeadline)
@@ -497,20 +488,20 @@ struct PaywallView: View {
                     // Wrap + a small floor keeps every localisation inside.
                     .fixedSize(horizontal: false, vertical: true)
                     .minimumScaleFactor(0.85)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 28 * k)
 
                 Text(String(localized: "Your edit is finished and waiting."))
                     .cType(16)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 10)
+                    .padding(.horizontal, 32 * k)
+                    .padding(.top, 10 * k)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 14 * k) {
                     ForEach(benefitLines, id: \.self) { line in
-                        HStack(spacing: 14) {
+                        HStack(spacing: 14 * k) {
                             ZStack {
-                                Circle().fill(Color.white).frame(width: 24, height: 24)
+                                Circle().fill(Color.white).frame(width: 24 * k, height: 24 * k)
                                 Image(systemName: "checkmark")
                                     .cType(11, .heavy)
                                     .foregroundColor(.black)
@@ -522,8 +513,8 @@ struct PaywallView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 30)
+                .padding(.horizontal, 28 * k)
+                .padding(.top, 30 * k)
 
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -535,12 +526,12 @@ struct PaywallView: View {
                     Text(String(localized: "See plans"))
                         .cType(17, .bold)
                         .foregroundColor(.black)
-                        .frame(maxWidth: .infinity).frame(height: 56)
+                        .frame(maxWidth: .infinity).frame(height: 56 * k)
                         .background(Color.white, in: Capsule())
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 34)
-                .padding(.bottom, 40)
+                .padding(.horizontal, 24 * k)
+                .padding(.top, 34 * k)
+                .padding(.bottom, 40 * k)
             }
             .frame(maxWidth: .infinity)
         }
@@ -586,7 +577,7 @@ struct PaywallView: View {
     // not a premium offer. Animated with the LaunchView entrance, luminous
     // halo instead of the gold glow.
     private var proCrown: some View {
-        AnimatedPromptlyMark(size: 76, halo: true)
+        AnimatedPromptlyMark(size: 76 * k, halo: true)
     }
 
     /// The blocked video's context: the harness's direct injection wins, else
@@ -636,10 +627,10 @@ struct PaywallView: View {
                 Color.white.opacity(0.06)
             }
         }
-        .frame(width: 96, height: 150)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+        .frame(width: 96 * k, height: 150 * k)
+        .clipShape(RoundedRectangle(cornerRadius: 16 * k, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
+            .stroke(Color.white.opacity(0.15), lineWidth: 0.5 * k))
     }
 
     private var featureList: some View {
@@ -692,7 +683,7 @@ struct PaywallView: View {
     /// for this storefront). Replaces the old infinite spinner: a visible
     /// reason + a Retry that re-runs the fetch.
     private var offeringsUnavailable: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 14 * k) {
             Image(systemName: "exclamationmark.triangle")
                 .cType(28, .semibold)
                 .foregroundColor(.white.opacity(0.75))
@@ -707,63 +698,27 @@ struct PaywallView: View {
                 Text("Retry")
                     .cType(15, .semibold)
                     .foregroundColor(.black)
-                    .padding(.horizontal, 30)
-                    .frame(height: 46)
+                    .padding(.horizontal, 30 * k)
+                    .frame(height: 46 * k)
                     .background(Color.white)
                     .clipShape(Capsule())
             }
             .disabled(subscription.isLoadingOfferings)
         }
-        .padding(.vertical, 28)
+        .padding(.vertical, 28 * k)
     }
 
     private func packagePicker(packages: [Package]) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 10 * k) {
             ForEach(packages, id: \.identifier) { pkg in
                 packageRow(pkg)
             }
         }
         // Headroom for the annual card's badge, which overhangs its top edge
         // (reference layout) — without this the first card's badge clips.
-        .padding(.top, 6)
+        .padding(.top, 6 * k)
     }
 
-    /// Fix 1 anchor for a yearly plan. Prefers RevenueCat's own localized
-    /// per-month string; falls back to price ÷ 12 formatted with the product's
-    /// own formatter. Both are storefront-derived — never a hardcoded currency,
-    /// so ₹19,900 renders "₹1,658/mo" and CAD renders CAD, worldwide, for free.
-    private var ambientReferralRow: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            Task { await referralsRef.presentShareSheet(source: "ambient_wall") }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "person.2.fill")
-                    .cType(15, .semibold)
-                    .foregroundColor(.white)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Or get Pro free")
-                        .cType(15, .semibold)
-                        .foregroundColor(.white)
-                    Text(ReferralCopy.offer)
-                        .cType(12)
-                        .foregroundColor(.white.opacity(0.65))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Image(systemName: "square.and.arrow.up")
-                    .cType(15)
-                    .foregroundColor(.white.opacity(0.55))
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 
     private func monthlyAnchor(for pkg: Package) -> String? {
         if let perMonth = pkg.storeProduct.localizedPricePerMonth,
@@ -946,18 +901,18 @@ struct PaywallView: View {
             // names the surface, same key the purchase_* terminals carry.
             Analytics.track("plan_selected", props: ["plan": subscription.planKey(pkg), "currency": pkg.storeProduct.currencyCode ?? "", "price": "\(pkg.storeProduct.price)", "context": reasonKey].merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         } label: {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 14 * k) {
                 ZStack {
                     Circle()
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.25), lineWidth: 2)
-                        .frame(width: 22, height: 22)
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.25), lineWidth: 2 * k)
+                        .frame(width: 22 * k, height: 22 * k)
                     if isSelected {
                         Circle()
                             .fill(Color.white)
-                            .frame(width: 12, height: 12)
+                            .frame(width: 12 * k, height: 12 * k)
                     }
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     // Our OWN plan label — NEVER StoreKit's localizedTitle
                     // (which can carry "(Promptly Pro)" suffixes / ASC naming
                     // quirks). Bare nouns per the reference. (build 216 rule)
@@ -1031,24 +986,24 @@ struct PaywallView: View {
                     .cType(16, .semibold)
                     .foregroundColor(.white.opacity(0.95))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 16 * k)
+            .padding(.vertical, 16 * k)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .fill(Color.white.opacity(isSelected ? 0.08 : 0.04))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .stroke(isSelected ? Color.white : Color.white.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
             )
             .overlay(alignment: .topTrailing) {
                 if let pctOff {
                     Text("\(pctOff)% OFF")
                         .cType(10, .heavy)
-                        .tracking(0.4)
+                        .tracking(0.4 * k)
                         .foregroundColor(.black)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8 * k)
+                        .padding(.vertical, 3 * k)
                         .background(Capsule().fill(Color.white))
                         .offset(x: -12, y: -9)
                 }
@@ -1083,7 +1038,7 @@ struct PaywallView: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * k) {
                 if subscription.isLoadingPurchase {
                     ProgressView().tint(.black)
                 } else {
@@ -1093,7 +1048,7 @@ struct PaywallView: View {
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
-            .frame(height: 56)
+            .frame(height: 56 * k)
             .background(Color.white)
             .clipShape(Capsule())
         }
@@ -1133,13 +1088,13 @@ struct PaywallView: View {
                 Image(systemName: "xmark")
                     .cType(14, .bold)
                     .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 36 * k, height: 36 * k)
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5 * k))
             }
-            .padding(.trailing, 18)
-            .padding(.top, 14)
+            .padding(.trailing, 18 * k)
+            .padding(.top, 14 * k)
         }
     }
 }
@@ -1156,6 +1111,7 @@ struct PaywallView: View {
 /// Honest transaction-abandon recovery, SHARED by both purchase surfaces:
 /// the user closed Apple's sheet — confirm no charge, same offer, no new flow.
 struct AbandonRecoveryOverlay: View {
+    @Environment(\.conversionScale) private var k
     let onBack: () -> Void
     @ObservedObject private var onboarding = OnboardingState.shared
     @ObservedObject private var referrals = ReferralService.shared
@@ -1163,7 +1119,7 @@ struct AbandonRecoveryOverlay: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.72).ignoresSafeArea()
-            VStack(spacing: 16) {
+            VStack(spacing: 16 * k) {
                 Image(systemName: "checkmark.shield.fill")
                     .cType(38)
                     .foregroundColor(.green)
@@ -1178,44 +1134,20 @@ struct AbandonRecoveryOverlay: View {
                     Text("Back to Pro")
                         .cType(16, .semibold)
                         .foregroundColor(.black)
-                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .frame(maxWidth: .infinity).frame(height: 50 * k)
                         .background(Color.white, in: Capsule())
                 }
-                // P1 (conversion standing): the two-step ask — the decline is
-                // the qualifier. Only sheet-decliners ever see this, so it
-                // cannot cannibalise a willing buyer by construction. Flag:
-                // abandon_referral (server, default off).
-                if onboarding.abandonReferralEnabled, referrals.shouldOffer {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task { await referrals.presentShareSheet(source: "abandon") }
-                        onBack()
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text("Or get Pro free")
-                                .cType(14, .semibold)
-                                .foregroundColor(.white)
-                            Text(ReferralCopy.offer)
-                                .cType(12)
-                                .foregroundColor(.white.opacity(0.6))
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
+                .buttonStyle(.plain)
             }
-            .padding(26)
-            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24))
-            .padding(.horizontal, 36)
+            .padding(26 * k)
+            .background(Color(white: 0.10), in: RoundedRectangle(cornerRadius: 24 * k))
+            .padding(.horizontal, 36 * k)
         }
-        // Impression anchored in the VIEW, not at the call sites: this overlay
-        // is mounted in three places, and a fourth mount must not be able to
-        // ship without a denominator.
-        .onAppear { if onboarding.abandonReferralEnabled { referrals.trackImpression(source: "abandon") } }
     }
 }
 
 struct ProCelebrationView: View {
+    @Environment(\.conversionScale) private var k
     let price: String
     let onContinue: () -> Void
 
@@ -1238,12 +1170,12 @@ struct ProCelebrationView: View {
             .ignoresSafeArea()
 
             ConversionScroll(width: ConversionColumn.content) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 88)
+                VStack(spacing: 0 * k) {
+                    Spacer().frame(height: 88 * k)
 
                     // Brand mark, not a crown — same swap as the paywall header.
-                    AnimatedPromptlyMark(size: 88, halo: true)
-                        .padding(.bottom, 22)
+                    AnimatedPromptlyMark(size: 88 * k, halo: true)
+                        .padding(.bottom, 22 * k)
 
                     Text(TrialCopy.proMomentTitle)
                         .cType(28, .heavy)
@@ -1261,16 +1193,16 @@ struct ProCelebrationView: View {
                         .cType(15)
                         .foregroundColor(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 36)
-                        .padding(.top, 10)
+                        .padding(.horizontal, 36 * k)
+                        .padding(.top, 10 * k)
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12 * k) {
                         ForEach(unlocked, id: \.text) { item in
-                            HStack(spacing: 12) {
+                            HStack(spacing: 12 * k) {
                                 Image(systemName: item.icon)
                                     .cType(14, .semibold)
                                     .foregroundColor(.white)
-                                    .frame(width: 22)
+                                    .frame(width: 22 * k)
                                 Text(item.text)
                                     .cType(15, .medium)
                                     .foregroundColor(.white)
@@ -1278,19 +1210,19 @@ struct ProCelebrationView: View {
                             }
                         }
                     }
-                    .padding(18)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .padding(.horizontal, 28)
-                    .padding(.top, 26)
+                    .padding(18 * k)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
+                    .padding(.horizontal, 28 * k)
+                    .padding(.top, 26 * k)
 
                     Text(TrialCopy.confirmationBody(price: price))
                         .cType(12)
                         .foregroundColor(.white.opacity(0.5))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 36)
-                        .padding(.top, 16)
+                        .padding(.horizontal, 36 * k)
+                        .padding(.top, 16 * k)
 
-                    Spacer().frame(height: 32)
+                    Spacer().frame(height: 32 * k)
 
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1300,11 +1232,11 @@ struct ProCelebrationView: View {
                             .cType(17, .bold)
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
+                            .frame(height: 56 * k)
                             .background(Color.white, in: Capsule())
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
+                    .padding(.horizontal, 24 * k)
+                    .padding(.bottom, 40 * k)
                 }
             }
         }

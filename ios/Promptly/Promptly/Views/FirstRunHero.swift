@@ -19,8 +19,27 @@ import SwiftUI
 ///
 /// Deliberately UIKit-free in the body (haptics live in the caller's closures)
 /// so it renders standalone in the snapshot harness.
+/// THE APPROVED VIBES, in one place.
+///
+/// The composer's chip row carried its own list — "Viral engaging video",
+/// "Professional corporate style", "Fast paced punchy" — as bare, unlocalized
+/// literals, so the same screen offered one set of vibes in its empty state
+/// and a different set above the composer the moment a render finished, and
+/// the second set was English in every language. Two lists of the same thing
+/// drift; there is now one.
+///
+/// "Upload a video" is deliberately not here: it is an ACTION on the empty
+/// state, and a chip inserts text. Everything here is a sentence someone
+/// would send.
+enum VibeSuggestions {
+    static var approved: [String] {
+        [String(localized: "Fast cuts, big captions"),
+         String(localized: "Clean and professional")]
+    }
+}
+
 struct FirstRunHero: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     /// Open the picker to upload the user's own clip.
     let onUpload: () -> Void
     /// Put a starting instruction in the composer and focus it.
@@ -36,14 +55,14 @@ struct FirstRunHero: View {
         // does it. Centred between two Spacers they floated mid-screen with a
         // gap under them, which reads as an unfinished layout on a tall device
         // and wastes the reachable area on a phone held one-handed.
-        VStack(alignment: .leading, spacing: padSize == .regular ? 18 : 0) {
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 0 * k) {
+            Spacer(minLength: 0 * k)
 
             if let name = greetName {
                 Text("Hey \(name),")
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * k))
                     .foregroundStyle(.tertiary)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 10 * k)
             }
 
             // NO HEADING. The reference has none, and the rows already say what
@@ -66,28 +85,16 @@ struct FirstRunHero: View {
             // land ON A VIBE, not a blank field". These now match that
             // contract, and the label IS the inserted text: what you tapped is
             // what you would send, so nothing is substituted behind your back.
-            actionRow(icon: "scissors",
-                      title: String(localized: "Fast cuts, big captions")) {
-                onPrompt(String(localized: "Fast cuts, big captions"))
+            actionRow(icon: "scissors", title: VibeSuggestions.approved[0]) {
+                onPrompt(VibeSuggestions.approved[0])
             }
-            actionRow(icon: "sparkles",
-                      title: String(localized: "Clean and professional")) {
-                onPrompt(String(localized: "Clean and professional"))
+            actionRow(icon: "sparkles", title: VibeSuggestions.approved[1]) {
+                onPrompt(VibeSuggestions.approved[1])
             }
-
-            // CENTRED ON A TABLET, bottom-anchored on a phone.
-            //
-            // The single top Spacer is right for a phone — the note above says
-            // so, and it puts the choices within thumb reach. On a 1376pt iPad
-            // it left 949pt of black above three cards sitting on the composer.
-            // A second Spacer balances them into the middle of the screen,
-            // which is where a tablet empty state reads as composed rather
-            // than as content that fell to the bottom.
-            if padSize == .regular { Spacer(minLength: 0) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 20 * k)
+        .padding(.bottom, 8 * k)
         .contentShape(Rectangle())
     }
 
@@ -97,30 +104,21 @@ struct FirstRunHero: View {
     private func actionRow(icon: String, title: String,
                            action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 Image(systemName: icon)
-                    .font(.system(size: padSize == .regular ? 22 : 15, weight: .regular))
+                    .font(.system(size: 15 * k, weight: .regular))
                     .foregroundStyle(.secondary)
-                    .frame(width: 22, alignment: .center)
+                    .frame(width: 22 * k, alignment: .center)
                 Text(title)
-                    .font(.system(size: padSize == .regular ? 24 : 16))
+                    .font(.system(size: 16 * k))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     // Wrap, never clip — the same rule the old subtitle broke at
                     // 375pt.
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+                Spacer(minLength: 0 * k)
             }
-            // CARDS ON A TABLET, rows on a phone. The same three choices at
-            // the same weight — the structure does not change, the size does.
-            .padding(.vertical, padSize == .regular ? 26 : 11)
-            .padding(.horizontal, padSize == .regular ? 22 : 0)
-            .background {
-                if padSize == .regular {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                }
-            }
+            .padding(.vertical, 11 * k)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

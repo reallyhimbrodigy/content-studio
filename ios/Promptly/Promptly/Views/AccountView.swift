@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 
 struct AccountView: View {
+    @Environment(\.conversionScale) private var k
     // Observe BOTH Pro signals so the view re-renders the moment either
     // flips. RevenueCat (SubscriptionService) is authoritative for paid
     // purchases; UsageService is authoritative for server-comped or
@@ -56,18 +57,18 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0 * k) {
                     // Large title
                     Text("Account")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(.system(size: 34 * k, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, 20 * k)
+                        .padding(.top, 12 * k)
+                        .padding(.bottom, 20 * k)
 
                     profileRow
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 26)
+                        .padding(.horizontal, 20 * k)
+                        .padding(.bottom, 26 * k)
 
                     // SINGLE COLUMN ON EVERY DEVICE (ruled 2026-09-05). The
                     // sections stay in one order at every size; the iPad gets
@@ -78,44 +79,44 @@ struct AccountView: View {
                     // ── LOG OUT ──
                     Button { AuthService.shared.signOut() } label: {
                         Text("Log out")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17 * k, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .cControl(52)
-                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16 * k, style: .continuous))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
+                    .padding(.horizontal, 16 * k)
+                    .padding(.top, 4 * k)
 
                     // Delete + version
-                    VStack(spacing: 14) {
+                    VStack(spacing: 14 * k) {
                         Button { showDeleteAccount = true } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 8 * k) {
                                 if isDeletingAccount {
                                     ProgressView()
                                         .controlSize(.small)
                                         .tint(.red.opacity(0.75))
                                 }
                                 Text(isDeletingAccount ? "Deleting account…" : "Delete account")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 13 * k))
                                     .foregroundColor(.red.opacity(0.75))
                             }
                         }
                         .disabled(isDeletingAccount)
 
                         Text(versionString)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12 * k))
                             .foregroundColor(Color(.tertiaryLabel))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 24)
+                    .padding(.top, 24 * k)
                     // 40 CLEARED THE PHONE AND NOT THE iPAD. "Delete account"
                     // — the last row — sat inside the home-indicator band on an
                     // 11-inch iPad, measured off the capture matrix. The safe
                     // area is the right unit for a distance to the screen edge;
                     // a constant is a guess that happens to be right on the
                     // device it was checked against.
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 40 * k)
                     .safeAreaPadding(.bottom)
                 }
                 // THE ACCOUNT PAGE HAD NO WIDTH BOUND. Rows ran the full 834pt
@@ -132,13 +133,13 @@ struct AccountView: View {
                     AppState.shared.showAccount = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * k, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 32 * k, height: 32 * k)
                         .background(Color.white.opacity(0.08), in: Circle())
                 }
-                .padding(.trailing, 16)
-                .padding(.top, 14)
+                .padding(.trailing, 16 * k)
+                .padding(.top, 14 * k)
                 .accessibilityLabel("Close")
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -255,16 +256,16 @@ struct AccountView: View {
             showLanguagePicker = false
         } label: {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     Text(label)
                     if let detail {
-                        Text(detail).font(.system(size: 12)).foregroundColor(.secondary)
+                        Text(detail).font(.system(size: 12 * k)).foregroundColor(.secondary)
                     }
                 }
                 Spacer()
                 if languageOverride == code {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14 * k, weight: .semibold))
                 }
             }
         }
@@ -274,20 +275,20 @@ struct AccountView: View {
 
     private var feedbackSheet: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 16 * k) {
                 Text("What's on your mind? Bugs, ideas, anything — it comes straight to us.")
-                    .font(.system(size: 15))
+                    .font(.system(size: 15 * k))
                     .foregroundColor(Color(.secondaryLabel))
 
                 TextField("Your feedback", text: $feedbackText, axis: .vertical)
                     .lineLimit(5...12)
-                    .padding(12)
+                    .padding(12 * k)
                     .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
 
                 Spacer()
             }
-            .padding(20)
+            .padding(20 * k)
             .navigationTitle("Send feedback")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -392,9 +393,9 @@ struct AccountView: View {
                 AppState.shared.presentPaywall(.manual)
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 Text("Subscription")
-                    .font(.system(size: 16))
+                    .font(.system(size: 16 * k))
                     .foregroundColor(.white)
                 Spacer()
                 // THE ACTUAL TIER, not a Pro/Free binary. With Max live, a Max
@@ -402,22 +403,22 @@ struct AccountView: View {
                 // below the one they pay for.
                 if subscription.isMax {
                     Text("MAX")
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .font(.system(size: 11 * k, weight: .bold))
+                        .padding(.horizontal, 9 * k).padding(.vertical, 3 * k)
                         .background(Color.white, in: Capsule())
                         .foregroundColor(.black)
                 } else if effectiveIsPro {
                     PROBadge()
                 } else {
                     Text("FREE")
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .font(.system(size: 11 * k, weight: .bold))
+                        .padding(.horizontal, 9 * k).padding(.vertical, 3 * k)
                         .background(Color.white.opacity(0.08), in: Capsule())
                         .foregroundColor(.secondary)
                 }
                 chevron
             }
-            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
+            .padding(.horizontal, 16 * k).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -453,19 +454,19 @@ struct AccountView: View {
                 openExternal("https://apps.apple.com/account/subscriptions")
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 if canUpgrade {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 15 * k, weight: .bold))
                         .foregroundStyle(PromptlyGold.gradient)
                 }
                 Text(upgradeLabel)
-                    .font(.system(size: 16, weight: canUpgrade ? .semibold : .regular))
+                    .font(.system(size: 16 * k, weight: canUpgrade ? .semibold : .regular))
                     .foregroundColor(canUpgrade ? PromptlyGold.solid : .white)
                 Spacer()
                 chevron
             }
-            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
+            .padding(.horizontal, 16 * k).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -486,14 +487,14 @@ struct AccountView: View {
     /// tier allowance is known, and the renewal line only when the server sent
     /// a date.
     private var creditsBalanceRow: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 10 * k) {
+            VStack(alignment: .leading, spacing: 3 * k) {
                 Text("Balance")
-                    .font(.system(size: 16))
+                    .font(.system(size: 16 * k))
                     .foregroundColor(.white)
                 if let sub = creditsSubtitle {
                     sub
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * k))
                         .foregroundColor(.secondary)
                 }
             }
@@ -512,10 +513,10 @@ struct AccountView: View {
                     Text(verbatim: "—").foregroundColor(.secondary)
                 }
             }
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 16 * k, weight: .semibold))
             .monospacedDigit()
         }
-        .padding(.horizontal, 16).frame(minHeight: 52)
+        .padding(.horizontal, 16 * k).frame(minHeight: 52 * k)
     }
 
     /// "200 credits/month - about 20 videos". Derived from the same constants
@@ -538,7 +539,7 @@ struct AccountView: View {
     // MARK: - Profile row
 
     private var profileRow: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 14 * k) {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 ZStack(alignment: .bottomTrailing) {
                     avatarCircle
@@ -555,24 +556,24 @@ struct AccountView: View {
                         )
                     Circle()
                         .fill(Color.white)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 20 * k, height: 20 * k)
                         .overlay {
                             Image(systemName: "camera.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 10 * k, weight: .semibold))
                                 .foregroundColor(.black)
                         }
                         .overlay(
-                            Circle().stroke(Color(.systemBackground), lineWidth: 2)
+                            Circle().stroke(Color(.systemBackground), lineWidth: 2 * k)
                         )
                 }
             }
             .accessibilityLabel("Change profile photo")
             .onChange(of: selectedPhoto) { _, item in uploadAvatar(item) }
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3 * k) {
+                HStack(spacing: 8 * k) {
                     Text(userName.isEmpty ? "User" : userName)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17 * k, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     // Inline PRO badge — sits right next to the name
@@ -585,7 +586,7 @@ struct AccountView: View {
                     }
                 }
                 Text(userEmail)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * k))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -603,7 +604,7 @@ struct AccountView: View {
                     initialCircle
                 }
             }
-            .frame(width: 56, height: 56)
+            .frame(width: 56 * k, height: 56 * k)
             .clipShape(Circle())
         } else {
             initialCircle
@@ -613,10 +614,10 @@ struct AccountView: View {
     private var initialCircle: some View {
         Circle()
             .fill(Color(.tertiarySystemBackground))
-            .frame(width: 56, height: 56)
+            .frame(width: 56 * k, height: 56 * k)
             .overlay {
                 Text(userInitial)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 20 * k, weight: .semibold))
                     .foregroundColor(.secondary)
             }
     }
@@ -628,22 +629,22 @@ struct AccountView: View {
     /// A grouped section: an uppercase header label above a rounded card that
     /// holds the rows. Mirrors the structure in iOS Settings / ChatGPT.
     private func settingsGroup<Content: View>(_ header: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * k) {
             Text(header.uppercased())
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.5)
+                .font(.system(size: 12 * k, weight: .semibold))
+                .tracking(0.5 * k)
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 32)
-            VStack(spacing: 0) { content() }
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 32 * k)
+            VStack(spacing: 0 * k) { content() }
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16 * k, style: .continuous))
+                .padding(.horizontal, 16 * k)
         }
-        .padding(.bottom, 26)
+        .padding(.bottom, 26 * k)
     }
 
     private var chevron: some View {
         Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 13 * k, weight: .semibold))
             .foregroundColor(Color(.tertiaryLabel))
             .accessibilityHidden(true)
     }
@@ -652,14 +653,14 @@ struct AccountView: View {
     private func cardRow(_ label: String, value: String? = nil, tint: Color = .white,
                          trailing: CardTrailing = .chevron, action: (() -> Void)?) -> some View {
         Button { action?() } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 Text(label)
-                    .font(.system(size: 16))
+                    .font(.system(size: 16 * k))
                     .foregroundColor(tint)
                 Spacer()
                 if let v = value, !v.isEmpty {
                     Text(v)
-                        .font(.system(size: 15))
+                        .font(.system(size: 15 * k))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -669,7 +670,7 @@ struct AccountView: View {
                 case .none: EmptyView()
                 }
             }
-            .padding(.horizontal, 16).cControl(52).contentShape(Rectangle())
+            .padding(.horizontal, 16 * k).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(action == nil)
@@ -682,8 +683,8 @@ struct AccountView: View {
     private var cardDivider: some View {
         Rectangle()
             .fill(Color.white.opacity(0.08))
-            .frame(height: 0.5)
-            .padding(.leading, 16)
+            .frame(height: 0.5 * k)
+            .padding(.leading, 16 * k)
     }
 
     // MARK: - Small actions

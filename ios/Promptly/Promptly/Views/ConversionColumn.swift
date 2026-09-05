@@ -53,20 +53,12 @@ struct ConversionColumn: ViewModifier {
 
     /// One factor, used by both the scroll container and the bare width cap, so
     /// two surfaces can never disagree about how big an iPad is.
-    static let padScale: CGFloat = 1.4
-
-    /// ONE FACTOR WAS TOO BLUNT. The brief is role-specific — headlines 1.5x,
-    /// button labels 1.4x, body 1.3x — and a single number cannot deliver
-    /// three. Every label on these surfaces passes its point size through
-    /// `cType`, so the ROLE is inferable from that size without editing
-    /// hundreds of call sites: display type is large, control labels sit in the
-    /// middle, body and detail are small.
-    static func typeFactor(for size: CGFloat, scale: CGFloat) -> CGFloat {
-        guard scale > 1 else { return 1 }
-        if size >= 22 { return 1.5 }      // headlines
-        if size >= 16 { return 1.4 }      // button + row labels
-        return 1.3                        // body, detail, legal
-    }
+    /// THE ONE CONSTANT, defined by the screen: the tablet's long side over the
+    /// iPhone 17 Pro's 852pt. 1376 / 852 = 1.615 on a 13-inch, 1194 / 852 =
+    /// 1.40 on an 11-inch. Every dimension on every screen multiplies by it —
+    /// type, padding, radius, icon, stroke, control height, tile height — and
+    /// nothing gets a second layout. Set once at the window root.
+    static let phoneReferenceHeight: CGFloat = 852
 
     /// Back-compat default. Existing callers that passed nothing meant "the one
     /// width there was", which was the form width.
@@ -94,7 +86,11 @@ struct ConversionColumn: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
+            // The scale is NOT set here any more. It is one value, set once at
+            // the window root (`RootScale`), so a nav bar, a pill in a header
+            // and a plan row all read the same k. Setting it per column was how
+            // the Upgrade pill stayed phone-sized on a tablet: it sat outside
+            // every column.
             // `containerRelativeFrame`, NOT a GeometryReader.
             //
             // The proportional width was first written with a GeometryReader,
@@ -113,20 +109,33 @@ struct ConversionColumn: ViewModifier {
     }
 }
 
-/// Width relative to the container, height left alone.
+/// Width relative to the container, height left alone — measured, not asked.
+///
+/// `containerRelativeFrame` was the first attempt and it has a hole: applied
+/// to the CONTENT of a ScrollView it resolves to no width at all, and three
+/// surfaces built that way (PaywallView, both paths, and the offer reveal)
+/// rendered blank on iPad while every surface that applied the column outside
+/// a scroll view was fine. A GeometryReader in the BACKGROUND is the idiom
+/// that measures without laying out: it takes no part in the height (so the
+/// composer's safe-area inset is unaffected — the bug before this one), and
+/// inside a vertical ScrollView the proposed width is the viewport's, which is
+/// exactly the measure the 88% rule wants.
 private struct ProportionalWidth: ViewModifier {
     let active: Bool
     let fraction: CGFloat
     let fallback: CGFloat
+    @State private var available: CGFloat = 0
     func body(content: Content) -> some View {
-        if active {
-            content
-                .containerRelativeFrame(.horizontal) { length, _ in length * fraction }
-        } else {
-            content
-                .frame(maxWidth: fallback)
-                .frame(maxWidth: .infinity)
-        }
+        content
+            .frame(maxWidth: active && available > 0 ? available * fraction : fallback)
+            .frame(maxWidth: .infinity)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { available = geo.size.width }
+                        .onChange(of: geo.size.width) { _, w in available = w }
+                }
+            )
     }
 }
 
@@ -180,14 +189,24 @@ struct ConversionScroll<Content: View>: View {
     /// complaint: small type, floating in a wide screen. VIEWING DISTANCE is
     /// the missing term — an iPad is held further away than a phone, so
     /// matching apparent size needs more than a token bump.
-    private var scale: CGFloat { hSize == .regular ? ConversionColumn.padScale : 1.0 }
 
     var body: some View {
         GeometryReader { geo in
             ScrollView(showsIndicators: showsIndicators) {
+                // NOT `.conversionColumn(width)` here. That modifier now sizes
+                // with `containerRelativeFrame`, and inside a ScrollView that
+                // is itself inside this GeometryReader the container width
+                // resolves to nothing — PaywallView and the offer reveal, the
+                // two surfaces built on this scroll, rendered BLANK on iPad
+                // (only the close button, which sits outside the scroll,
+                // survived). The phone was untouched because the rule is
+                // compact-gated. This container already knows its width, so it
+                // applies the same 88% fill directly.
                 content()
-                    .environment(\.conversionScale, scale)
-                    .conversionColumn(width)
+                    .frame(maxWidth: hSize == .regular
+                           ? geo.size.width * ConversionColumn.padFill
+                           : width)
+                    .frame(maxWidth: .infinity)
                     .frame(minHeight: geo.size.height)
             }
         }
@@ -273,8 +292,7 @@ private struct ConversionType: ViewModifier {
     let weight: Font.Weight
     @Environment(\.conversionScale) private var scale
     func body(content: Content) -> some View {
-        content.font(.system(size: (size * ConversionColumn.typeFactor(for: size, scale: scale)).rounded(),
-                             weight: weight))
+        content.font(.system(size: (size * scale).rounded(), weight: weight))
     }
 }
 
@@ -299,6 +317,6 @@ private struct ConversionSeam: ViewModifier {
     let base: CGFloat
     @Environment(\.conversionScale) private var scale
     func body(content: Content) -> some View {
-        content.frame(maxHeight: scale > 1 ? base * scale * 3 : base)
+        content.frame(maxHeight: (base * scale).rounded())
     }
 }

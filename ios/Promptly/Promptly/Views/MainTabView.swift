@@ -11,6 +11,7 @@ import SwiftUI
 /// works for EVERY user regardless of push tokens, permissions, or email: it reads
 /// the same completed-edit list the Library does and tracks "seen" ids locally.
 struct MainTabView: View {
+    @Environment(\.conversionScale) private var k
     // Singleton store, observed for the featured/dismissed state. Using the shared
     // instance keeps the seen-set + last fetch consistent across foreground cycles.
     @StateObject private var readyStore = ReadyStateStore.shared
@@ -39,7 +40,7 @@ struct MainTabView: View {
         // `if` inside the content leaves the modifier applied and the safe area
         // consumed regardless of what it draws.
         if hasBanner {
-            editor.safeAreaInset(edge: .top, spacing: 0) { bannerSlot }
+            editor.safeAreaInset(edge: .top, spacing: 0 * k) { bannerSlot }
         } else {
             editor
         }
@@ -273,51 +274,52 @@ final class ReadyStateStore: ObservableObject {
     /// Version-awareness soft banner: one line, Update, and an X that dismisses
 /// for THIS latest version (a newer one re-shows it once).
 private struct UpdateBanner: View {
+    @Environment(\.conversionScale) private var k
     let notes: String?
     let onUpdate: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * k) {
             Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16 * k, weight: .semibold))
                 .foregroundStyle(PromptlyGold.gradient)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 1 * k) {
                 Text("Update available")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14 * k, weight: .semibold))
                     .foregroundColor(.white)
                 Text(notes ?? "Improvements and fixes")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * k))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: 4 * k)
             Button(action: onUpdate) {
                 Text("Update")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * k, weight: .bold))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .padding(.horizontal, 12 * k).padding(.vertical, 6 * k)
                     .background(Capsule().fill(Color.white))
             }
             .buttonStyle(.plain)
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * k, weight: .bold))
                     .foregroundColor(Color(.secondaryLabel))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 28 * k, height: 28 * k)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 12 * k)
+        .padding(.vertical, 9 * k)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
+        .padding(.horizontal, 12 * k)
+        .padding(.top, 6 * k)
     }
 }
 
@@ -329,32 +331,33 @@ private struct UpdateBanner: View {
 // uses (VideoPlayerPresenter.present). Tapping the ✕ dismisses. Both mark the video
 // seen so the card shows exactly once.
 private struct ReadyVideoBanner: View {
+    @Environment(\.conversionScale) private var k
     let job: VideoJob
     let extraCount: Int
     let onOpen: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 12 * k) {
             // Tappable open region — the thumbnail + copy. Kept as a plain
             // contentShape + onTapGesture (not a Button) so it never competes with
             // the dismiss Button beside it for the same touch.
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 thumbnail
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     Text("Your video is ready 🎬")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15 * k, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
 
                     Text(subtitle)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: 12.5 * k))
                         .foregroundColor(Color(.secondaryLabel))
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 4 * k)
             }
             .contentShape(Rectangle())
             .onTapGesture { open() }
@@ -365,30 +368,30 @@ private struct ReadyVideoBanner: View {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12 * k, weight: .bold))
                     .foregroundColor(Color(.secondaryLabel))
-                    .frame(width: 30, height: 30)
+                    .frame(width: 30 * k, height: 30 * k)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 4)
-        .padding(.vertical, 9)
+        .padding(.leading, 10 * k)
+        .padding(.trailing, 4 * k)
+        .padding(.vertical, 9 * k)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(PromptlyGold.gradient, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 16 * k, style: .continuous)
+                        .stroke(PromptlyGold.gradient, lineWidth: 1 * k)
                         .opacity(0.55)
                 )
         )
         .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .padding(.bottom, 2)
+        .padding(.horizontal, 12 * k)
+        .padding(.top, 6 * k)
+        .padding(.bottom, 2 * k)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Your video is ready. \(subtitle). Double tap to watch.")
     }
@@ -420,9 +423,9 @@ private struct ReadyVideoBanner: View {
     }
 
     private var thumbnail: some View {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
+        RoundedRectangle(cornerRadius: 11 * k, style: .continuous)
             .fill(Color(.tertiarySystemBackground))
-            .frame(width: 46, height: 46)
+            .frame(width: 46 * k, height: 46 * k)
             .overlay {
                 if let t = job.thumbnail_url, let u = URL(string: t) {
                     AsyncImage(url: u) { phase in
@@ -439,20 +442,20 @@ private struct ReadyVideoBanner: View {
             // Play affordance so the thumbnail reads as tappable video.
             .overlay {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * k, weight: .bold))
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 11 * k, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 11 * k, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5 * k)
             )
     }
 
     private var filmIcon: some View {
         Image(systemName: "film.fill")
-            .font(.system(size: 18))
+            .font(.system(size: 18 * k))
             .foregroundStyle(PromptlyGold.gradient)
     }
 }

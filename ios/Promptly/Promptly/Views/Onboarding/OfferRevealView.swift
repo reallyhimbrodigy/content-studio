@@ -22,6 +22,7 @@ import RevenueCat
 ///   • The escape hatch is a text link ("Decline offer"), never an X — the
 ///     user must be able to leave, and must not be able to leave by accident.
 struct OfferRevealView: View {
+    @Environment(\.conversionScale) private var k
     let onDecline: () -> Void
     let onPurchased: () -> Void
 
@@ -53,11 +54,11 @@ struct OfferRevealView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 76)
+                VStack(spacing: 0 * k) {
+                    Spacer().frame(height: 76 * k)
 
-                    AnimatedPromptlyMark(size: 72, halo: true)
-                        .padding(.bottom, 22)
+                    AnimatedPromptlyMark(size: 72 * k, halo: true)
+                        .padding(.bottom, 22 * k)
 
                     // Personalised lead, ABOVE the discount headline and never
                     // inside it — the headline is a money claim guarded by the
@@ -74,7 +75,7 @@ struct OfferRevealView: View {
                             .cType(15, .medium)
                             .foregroundColor(.white.opacity(0.6))
                             .multilineTextAlignment(.center)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, 4 * k)
                     }
 
                     Text(offerPackage.map { OfferReveal.headline(for: $0) }
@@ -84,20 +85,20 @@ struct OfferRevealView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 28 * k)
 
                     if offerPackage != nil {
-                        oneTimeBadge.padding(.top, 18)
+                        oneTimeBadge.padding(.top, 18 * k)
                     }
 
                     if let pkg = offerPackage {
                         priceBlock(pkg)
-                            .padding(.top, 22)
+                            .padding(.top, 22 * k)
                             .scaleEffect(priceLanded || reduceMotion ? 1 : 0.88)
                             .opacity(priceLanded ? 1 : 0)
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 14 * k) {
                         // FIVE, not six. Six checkmarks is past the point where
                         // a list is read rather than scanned, and "Save and
                         // share every video" was the weakest of them — the one
@@ -108,9 +109,9 @@ struct OfferRevealView: View {
                         ForEach(OfferReveal.benefitLines(audience: onboarding.v2Audience,
                                                          videoType: onboarding.v2VideoType)
                                     .prefix(5), id: \.self) { line in
-                            HStack(spacing: 14) {
+                            HStack(spacing: 14 * k) {
                                 ZStack {
-                                    Circle().fill(Color.white).frame(width: 24, height: 24)
+                                    Circle().fill(Color.white).frame(width: 24 * k, height: 24 * k)
                                     Image(systemName: "checkmark")
                                         .cType(11, .heavy)
                                         .foregroundColor(.black)
@@ -122,8 +123,8 @@ struct OfferRevealView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.top, 28)
+                    .padding(.horizontal, 28 * k)
+                    .padding(.top, 28 * k)
 
                     Button {
                         guard let pkg = offerPackage else { return }
@@ -149,13 +150,13 @@ struct OfferRevealView: View {
                         // the largest commitment was the only one opting out of
                         // the pattern.
                         .foregroundColor(.white)
-                        .frame(maxWidth: .infinity).frame(height: 56)
+                        .frame(maxWidth: .infinity).frame(height: 56 * k)
                         .background(Color(hex: "6C5CE7"), in: Capsule())
                     }
                     .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
                     .disabled(offerPackage == nil || isPurchasing)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 32)
+                    .padding(.horizontal, 24 * k)
+                    .padding(.top, 32 * k)
 
                     // 2. WHAT IS ACTUALLY BEING AGREED TO, at the point of
                     // commitment. The renewal terms are already stated under
@@ -171,8 +172,8 @@ struct OfferRevealView: View {
                             .cType(12)
                             .foregroundColor(.white.opacity(0.55))
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 8)
+                            .padding(.horizontal, 24 * k)
+                            .padding(.top, 8 * k)
                     }
 
                     // SECONDARY PLAN LINE. The yearly stays the hero; this
@@ -182,19 +183,10 @@ struct OfferRevealView: View {
                     // never louder than the plan being sold.
                     secondaryMonthlyLine
 
-                    // THE FREE PATH, offered at the moment someone declines to
-                    // pay — which is exactly when "there is another way to get
-                    // this" is worth hearing, and the only moment on this
-                    // screen where it is not competing with the sale.
-                    //
-                    // It sits ABOVE the decline link deliberately: a user who
-                    // has decided not to buy should meet the alternative before
-                    // the exit, not after it. Below the link it would be seen
-                    // only by people who had already left.
-                    if OnboardingState.shared.referralProgressEnabled {
-                        ReferralProgressRow(source: "offer_reveal", compact: true)
-                            .padding(.top, 20)
-                    }
+                    // No referral line here (ruled 2026-09-05). The referral
+                    // offer exists in exactly one place — the invite rung that
+                    // follows a decline — and a second mention on the screen
+                    // being declined is a second place.
 
                     // The escape hatch: a text link, never an X (an X invites
                     // an accidental dismissal of a one-time reveal).
@@ -215,11 +207,11 @@ struct OfferRevealView: View {
                         Text(String(localized: "Decline offer"))
                             .cType(16, .medium)
                             .foregroundColor(.white.opacity(0.82))
-                            .frame(minHeight: 44)
-                            .padding(.horizontal, 20)
+                            .frame(minHeight: 44 * k)
+                            .padding(.horizontal, 20 * k)
                             .contentShape(Rectangle())
                     }
-                    .padding(.top, 18)
+                    .padding(.top, 18 * k)
 
                     // The auto-renew disclosure. Spacing is tighter than the
                     // rest of the screen on purpose: in German this line wraps
@@ -234,9 +226,9 @@ struct OfferRevealView: View {
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 12)
-                        .padding(.bottom, 28)
+                        .padding(.horizontal, 24 * k)
+                        .padding(.top, 12 * k)
+                        .padding(.bottom, 28 * k)
                 }
                 // Root cause of the whole surface's iPad stretch: this was the
                 // only width bound on the reveal column.
@@ -359,16 +351,16 @@ struct OfferRevealView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
+                    .frame(minHeight: 52 * k)
                     .background(
-                        Capsule().strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+                        Capsule().strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5 * k)
                     )
                     .contentShape(Capsule())
             }
             .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
             .disabled(isPurchasing)
-            .padding(.top, 16)
-            .padding(.horizontal, 24)
+            .padding(.top, 16 * k)
+            .padding(.horizontal, 24 * k)
         }
     }
 
@@ -402,10 +394,10 @@ struct OfferRevealView: View {
     private var oneTimeBadge: some View {
         Text(String(localized: "ONE TIME OFFER"))
             .cType(12, .heavy)
-            .tracking(1.4)
+            .tracking(1.4 * k)
             .foregroundColor(.black)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 14 * k)
+            .padding(.vertical, 7 * k)
             .background(
                 Capsule().fill(Color.white)
                     .shadow(color: .white.opacity(reduceMotion ? 0.45 : glowStrength),
@@ -434,8 +426,8 @@ struct OfferRevealView: View {
     /// Struck-through standard price beside the live intro price. Both strings
     /// come from the store; we format neither.
     private func priceBlock(_ pkg: Package) -> some View {
-        VStack(spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(spacing: 6 * k) {
+            HStack(alignment: .firstTextBaseline, spacing: 12 * k) {
                 Text(pkg.storeProduct.localizedPriceString)
                     .cType(20, .semibold)
                     .foregroundColor(.white.opacity(0.5))
@@ -451,7 +443,7 @@ struct OfferRevealView: View {
                 .foregroundColor(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 28 * k)
     }
 }
 

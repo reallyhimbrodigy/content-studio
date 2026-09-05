@@ -3,7 +3,7 @@ import PhotosUI
 import UIKit
 
 struct EditorView: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var chatStore = ChatStore.shared
     // Observed so the model picker can reconcile its selection the moment
@@ -105,25 +105,15 @@ struct EditorView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(luxuryBackdrop)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .safeAreaInset(edge: .bottom, spacing: 0 * k) {
                 // Tight composer stack: re-edit chip (when active) +
                 // input bar. The static vibe-chip row was removed in
                 // favor of in-bubble ghost-text rotation (see inputBar).
-                VStack(spacing: 0) {
+                VStack(spacing: 0 * k) {
                     reeditChip
-                    // P2 (conversion standing): the delight-moment referral card,
-                    // shown ONCE, only after a completed render exists in this
-                    // chat — the ask lands at the payoff, not at a wall. Flag:
-                    // postrender_referral (server, default off).
-                    if onboardingState.postrenderReferralEnabled,
-                       ReferralService.shared.shouldOffer,
-                       !UserDefaults.standard.bool(forKey: "postrender_referral_shown"),
-                       messages.contains(where: { $0.jobStatus == "completed" }) {
-                        PostRenderReferralCard {
-                            UserDefaults.standard.set(true, forKey: "postrender_referral_shown")
-                        }
-                        .onAppear { ReferralService.shared.trackImpression(source: "postrender") }
-                    }
+                    // The post-render referral card was REMOVED (ruled 2026-09-05).
+                    // The referral offer exists in exactly one place — the
+                    // funnel's invite rung — and nowhere else.
                     // CONTEXTUAL update prompt (version awareness): an upload
                     // just failed AND this build is older than what's live —
                     // the known-fixed-failure case (1.3.6's upload defect,
@@ -395,7 +385,7 @@ struct EditorView: View {
         // custom top bar drew over the clock and the carrier name. The window
         // itself reports a 20pt top inset on an SE; it was being consumed
         // before this modifier ever saw it. Out here the inset is the real one.
-        .safeAreaInset(edge: .top, spacing: 0) { customTopBar }
+        .safeAreaInset(edge: .top, spacing: 0 * k) { customTopBar }
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -629,7 +619,7 @@ struct EditorView: View {
     @ViewBuilder
     private var reeditChip: some View {
         if let session = reeditSession {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 if let thumbUrl = session.thumbnailUrl, let url = URL(string: thumbUrl) {
                     AsyncImage(url: url) { phase in
                         if let img = phase.image {
@@ -638,46 +628,46 @@ struct EditorView: View {
                             Color(.tertiarySystemBackground)
                         }
                     }
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 36 * k, height: 36 * k)
+                    .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
                 } else {
                     Image(systemName: "wand.and.stars")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 15 * k, weight: .medium))
                         .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 36 * k, height: 36 * k)
                         .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     Text("Re-editing")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * k, weight: .semibold))
                         .foregroundColor(.secondary)
                     Text(session.oldVibe.isEmpty ? "Previous edit" : session.oldVibe)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13 * k))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
 
                 Button {
                     withAnimation(.easeOut(duration: 0.2)) { reeditSession = nil }
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * k, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 20 * k, height: 20 * k)
                         .background(Color.black.opacity(0.6))
                         .clipShape(Circle())
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10 * k)
+            .padding(.vertical, 8 * k)
             .background(Color(.tertiarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
+            .clipShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
+            .padding(.horizontal, 12 * k)
+            .padding(.bottom, 4 * k)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
@@ -731,7 +721,7 @@ struct EditorView: View {
                 // rather than floating against the composer. Worth it
                 // — being able to actually scroll to the action row is
                 // strictly more important than aesthetic anchoring.
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 8 * k) {
                     ForEach(messages) { message in
                         MessageBubble(
                             message: message,
@@ -751,7 +741,7 @@ struct EditorView: View {
                     // "is the user looking at the very bottom of the
                     // chat?" without per-frame geometry math.
                     Color.clear
-                        .frame(height: 1)
+                        .frame(height: 1 * k)
                         .id("chat-bottom-sentinel")
                         .onAppear {
                             withAnimation(.easeOut(duration: 0.18)) {
@@ -764,7 +754,7 @@ struct EditorView: View {
                             }
                         }
                 }
-                .padding(16)
+                .padding(16 * k)
                 .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
@@ -781,17 +771,17 @@ struct EditorView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.down")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 14 * k, weight: .bold))
                             .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 36 * k, height: 36 * k)
                             .background(.ultraThinMaterial, in: Circle())
                             .overlay(
-                                Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                                Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5 * k)
                             )
                             .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
                     }
                     .buttonStyle(.plain)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 12 * k)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
                     .accessibilityLabel("Scroll to latest message")
                 }
@@ -849,10 +839,10 @@ struct EditorView: View {
     // bottom message bubble when keyboard was up.
 
     private var inputBar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0 * k) {
             if !pendingVideos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Space.xs) {
+                    HStack(spacing: Theme.Space.xs * k) {
                         ForEach(pendingVideos) { video in
                             PendingVideoThumb(video: video) {
                                 withAnimation(.easeOut(duration: 0.2)) {
@@ -861,42 +851,42 @@ struct EditorView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                    .padding(.horizontal, 10 * k)
+                    .padding(.top, 10 * k)
+                    .padding(.bottom, 4 * k)
                 }
-                .frame(height: 72)
+                .frame(height: 72 * k)
             }
 
             if !pendingImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Space.xs) {
+                    HStack(spacing: Theme.Space.xs * k) {
                         ForEach(pendingImages) { img in
                             ZStack(alignment: .topTrailing) {
                                 Image(uiImage: img.image)
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                    .frame(width: 56, height: 56)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .frame(width: 56 * k, height: 56 * k)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
                                 Button {
                                     withAnimation(.easeOut(duration: 0.2)) {
                                         pendingImages.removeAll { $0.id == img.id }
                                     }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 16))
+                                        .font(.system(size: 16 * k))
                                         .foregroundStyle(.white, .black.opacity(0.6))
                                 }
-                                .offset(x: 5, y: -5)
+                                .offset(x: 5 * k, y: -5)
                                 .accessibilityLabel("Remove image")
                             }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                    .padding(.horizontal, 10 * k)
+                    .padding(.top, 10 * k)
+                    .padding(.bottom, 4 * k)
                 }
-                .frame(height: 72)
+                .frame(height: 72 * k)
             }
 
             // Vibe-edit pill. Visible only when the backend told us
@@ -914,10 +904,10 @@ struct EditorView: View {
             // Hides cleanly the moment the user starts typing.
             vibeChipRow
 
-            HStack(alignment: .bottom, spacing: 0) {
+            HStack(alignment: .bottom, spacing: 0 * k) {
                 Button { tapAddVideo() } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17 * k, weight: .semibold))
                         .foregroundColor(.white)
                         // 30×30 frame to MATCH the mic/send button on the
                         // right. Previously 36×36 with the same 5pt bottom
@@ -927,13 +917,13 @@ struct EditorView: View {
                         // both buttons sit at exactly the same y-position
                         // in the composer, which is what "centered" reads
                         // as to the eye.
-                        .frame(width: 30, height: 30)
+                        .frame(width: 30 * k, height: 30 * k)
                         .accessibilityHidden(true)
                 }
                 .accessibilityLabel("Add video")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
-                .padding(.leading, 5)
-                .padding(.bottom, 5)
+                .padding(.leading, 5 * k)
+                .padding(.bottom, 5 * k)
 
                 // §1 attach button: images ride the TEXT chat path only, so the
                 // button hides while a video is staged or a re-edit is active
@@ -941,14 +931,14 @@ struct EditorView: View {
                 if onboardingState.chatMediaEnabled && pendingVideos.isEmpty && reeditSession == nil {
                     PhotosPicker(selection: $pickedChatImageItem, matching: .images) {
                         Image(systemName: "photo")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15 * k, weight: .semibold))
                             .foregroundColor(pendingImages.count >= 3 ? .white.opacity(0.3) : .white)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 30 * k, height: 30 * k)
                             .accessibilityHidden(true)
                     }
                     .disabled(pendingImages.count >= 3)
                     .accessibilityLabel("Attach an image")
-                    .padding(.bottom, 5)
+                    .padding(.bottom, 5 * k)
                     .onChange(of: pickedChatImageItem) { _, item in
                         guard let item else { return }
                         pickedChatImageItem = nil
@@ -963,9 +953,9 @@ struct EditorView: View {
                     if inputText.isEmpty && reeditSession == nil {
                         Text("Tell me the vibe…")
                             .font(.system(.body, design: .default).weight(.regular))
-                            .tracking(0.3)
+                            .tracking(0.3 * k)
                             .foregroundColor(Color.white.opacity(0.35))
-                            .padding(.vertical, padSize == .regular ? 20 : 9)
+                            .padding(.vertical, 9 * k)
                             .allowsHitTesting(false)
                     }
 
@@ -974,16 +964,13 @@ struct EditorView: View {
                         .lineLimit(1...6)
                         .foregroundColor(.white)
                         .font(.system(.body, design: .default))
-                        .tracking(0.3)
+                        .tracking(0.3 * k)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .tint(.white)
                         .submitLabel(.send)
                         .onSubmit { send() }
-                        // 64pt COMPOSER ON A TABLET. The bar's height comes
-                        // from this padding, so it is the lever: ~9pt each side
-                        // gives the ~40pt phone bar, ~20pt gives 64.
-                        .padding(.vertical, padSize == .regular ? 20 : 9)
-                        .padding(.trailing, 4)
+                        .padding(.vertical, 9 * k)
+                        .padding(.trailing, 4 * k)
                         .accessibilityLabel("Describe your edit")
                 }
                 .contentShape(Rectangle())
@@ -998,9 +985,9 @@ struct EditorView: View {
                         showVoiceInput = true
                     } label: {
                         Image(systemName: "mic.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15 * k, weight: .bold))
                             .foregroundColor(.black)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 30 * k, height: 30 * k)
                             .background(Color.white)
                             .clipShape(Circle())
                             // VISUAL 30, TOUCH 44. The glyph stays the size it
@@ -1008,9 +995,9 @@ struct EditorView: View {
                             // HIG minimum. Applied INSIDE the Button label —
                             // padding applied outside a Button is not part of
                             // its hit test, which is why the existing
-                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44, height: 44)
+                            .frame(width: 44 * k, height: 44 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1022,9 +1009,9 @@ struct EditorView: View {
                     // Send — surfaces the moment there's something to send.
                     Button(action: send) {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15 * k, weight: .bold))
                             .foregroundColor(.black)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 30 * k, height: 30 * k)
                             .background(Color.white)
                             .clipShape(Circle())
                             // VISUAL 30, TOUCH 44. The glyph stays the size it
@@ -1032,9 +1019,9 @@ struct EditorView: View {
                             // HIG minimum. Applied INSIDE the Button label —
                             // padding applied outside a Button is not part of
                             // its hit test, which is why the existing
-                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44, height: 44)
+                            .frame(width: 44 * k, height: 44 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1055,9 +1042,9 @@ struct EditorView: View {
                         }
                     } label: {
                         Image(systemName: "stop.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 13 * k, weight: .bold))
                             .foregroundColor(.black)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 30 * k, height: 30 * k)
                             .background(Color.white)
                             .clipShape(Circle())
                             // VISUAL 30, TOUCH 44. The glyph stays the size it
@@ -1065,9 +1052,9 @@ struct EditorView: View {
                             // HIG minimum. Applied INSIDE the Button label —
                             // padding applied outside a Button is not part of
                             // its hit test, which is why the existing
-                            // .padding(.trailing, 5) on the enclosing ZStack
+                            // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44, height: 44)
+                            .frame(width: 44 * k, height: 44 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1078,23 +1065,23 @@ struct EditorView: View {
                 }
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isChatStreaming)
-                .padding(.trailing, 5)
-                .padding(.bottom, 5)
+                .padding(.trailing, 5 * k)
+                .padding(.bottom, 5 * k)
             }
             // §7 (looks-like-a-product): the Flare/Lumen model picker was removed from
             // the composer — users never pick a model. The render tier now follows
             // their PLAN silently (Pro → premium pipeline, free → standard); see
             // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
-            .padding(.bottom, 6)
+            .padding(.bottom, 6 * k)
         }
         .background(
             ZStack {
                 // Vision-pro glass: ultra-thin material over a subtle
                 // top-to-bottom gradient. Replaces the flat
                 // tertiarySystemBackground fill that was reading "cheap."
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
                     .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -1104,13 +1091,13 @@ struct EditorView: View {
                             startPoint: .top, endPoint: .bottom
                         )
                     )
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5 * k)
             }
         )
-        .padding(.horizontal, Theme.Space.sm)
-        .padding(.top, Theme.Space.xxs)
-        .padding(.bottom, Theme.Space.xs)
+        .padding(.horizontal, Theme.Space.sm * k)
+        .padding(.top, Theme.Space.xxs * k)
+        .padding(.bottom, Theme.Space.xs * k)
         .animation(.spring(response: 0.45, dampingFraction: 0.78), value: pendingVideos.count)
         // Animate the chip row's appearance/disappearance as the user
         // starts/stops typing. easeInOut is enough — the chips already
@@ -1123,11 +1110,9 @@ struct EditorView: View {
     /// affordance and keeps the chip row from sprawling. Each chip is
     /// short enough to read at a glance, distinct enough in feel to
     /// guide users toward different render styles.
-    private static let featuredVibes: [String] = [
-        "Viral engaging video",
-        "Professional corporate style",
-        "Fast paced punchy"
-    ]
+    /// The same list the empty state shows — see `VibeSuggestions`. Not a
+    /// second list.
+    private static var featuredVibes: [String] { VibeSuggestions.approved }
 
     /// Re-edit suggestion chips. Shown above the composer when a
     /// re-edit session is active and the input is empty. Each chip
@@ -1161,23 +1146,23 @@ struct EditorView: View {
     @ViewBuilder
     private var vibeEditPill: some View {
         if pendingVibeEditMessageId != nil {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * k) {
                 Image(systemName: "wand.and.sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * k, weight: .semibold))
                     .foregroundColor(.white.opacity(0.75))
                 Text("Editing vibe for your previous video")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13 * k, weight: .medium))
                     .foregroundColor(.white.opacity(0.88))
                     .lineLimit(1)
-                Spacer(minLength: 6)
+                Spacer(minLength: 6 * k)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     pendingVibeEditMessageId = nil
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * k, weight: .bold))
                         .foregroundColor(.white.opacity(0.75))
-                        .frame(width: 18, height: 18)
+                        .frame(width: 18 * k, height: 18 * k)
                         .background(
                             Circle().fill(Color.white.opacity(0.10))
                         )
@@ -1185,17 +1170,17 @@ struct EditorView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel vibe edit")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12 * k)
+            .padding(.vertical, 8 * k)
             .background(
                 Capsule().fill(Color.white.opacity(0.08))
             )
             .overlay(
-                Capsule().stroke(Color.white.opacity(0.16), lineWidth: 0.5)
+                Capsule().stroke(Color.white.opacity(0.16), lineWidth: 0.5 * k)
             )
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 10 * k)
+            .padding(.top, 10 * k)
+            .padding(.bottom, 4 * k)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
@@ -1206,7 +1191,7 @@ struct EditorView: View {
     @ViewBuilder
     private var vibeChipRow: some View {
         // Two surfaces share the same chip row UI:
-        //   - First-render: featured vibe chips ("Viral engaging…").
+        //   - First-render: the approved vibe chips (VibeSuggestions.approved).
         //   - Re-edit: change-request suggestions matched to the
         //     worker's plan-diff classifier ("Pace the middle faster"…).
         // Picked via the same `inputText.isEmpty` gate so the chips
@@ -1223,7 +1208,7 @@ struct EditorView: View {
         }()
         if let suggestions {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * k) {
                     // §5 reduce-steps: once a clip is picked with no vibe typed, the
                     // FIRST chip is a one-tap default — pick → tap → dispatch, zero
                     // composing (the right floor for a first render). Styled as a
@@ -1235,15 +1220,15 @@ struct EditorView: View {
                             inputText = "Clean and engaging edit"
                             send()
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 6 * k) {
                                 Text("Clean & engaging")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.system(size: 13 * k, weight: .semibold))
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.system(size: 13 * k, weight: .semibold))
                             }
                             .foregroundColor(.black)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, 13 * k)
+                            .padding(.vertical, 7 * k)
                             .background(Capsule().fill(Color.white))
                         }
                         .buttonStyle(.plain)
@@ -1255,34 +1240,34 @@ struct EditorView: View {
                             inputText = vibe
                             focusInput()
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 6 * k) {
                                 Image(systemName: "sparkles")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 11 * k, weight: .semibold))
                                     .foregroundColor(Color.white.opacity(0.55))
                                 Text(vibe)
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(.system(size: 13 * k, weight: .medium))
                                     .foregroundColor(Color.white.opacity(0.88))
                                     .lineLimit(1)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, 12 * k)
+                            .padding(.vertical, 7 * k)
                             .background(
                                 Capsule()
                                     .fill(Color.white.opacity(0.06))
                             )
                             .overlay(
                                 Capsule()
-                                    .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                                    .stroke(Color.white.opacity(0.14), lineWidth: 0.5 * k)
                             )
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Use vibe: \(vibe)")
                     }
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 10 * k)
             }
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+            .padding(.top, 10 * k)
+            .padding(.bottom, 4 * k)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
@@ -1305,7 +1290,7 @@ struct EditorView: View {
     // Attached via .safeAreaInset(.top); the nav bar is hidden. Buttons carry a
     // 40×40 tap target so nothing here is hard to hit.
     private var customTopBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * k) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Self.dismissKeyboard()
@@ -1315,9 +1300,9 @@ struct EditorView: View {
                 }
             } label: {
                 Image(systemName: "sidebar.leading")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17 * k, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 40 * k, height: 40 * k)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1339,11 +1324,11 @@ struct EditorView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     appState.presentPaywall(.manual)
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 5 * k) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 12 * k, weight: .semibold))
                         Text("Upgrade")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14 * k, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
@@ -1355,10 +1340,10 @@ struct EditorView: View {
                     // old rotating gradient failed that test for a whole session
                     // at a time. No gradient, no glow, nothing animated.
                     .foregroundColor(Color(hex: "F4E4BC"))
-                    .padding(.horizontal, 13)
-                    .frame(height: 32)
+                    .padding(.horizontal, 13 * k)
+                    .frame(height: 32 * k)
                     .background(Capsule().fill(Color(hex: "F4E4BC").opacity(0.10)))
-                    .overlay(Capsule().strokeBorder(Color(hex: "F4E4BC").opacity(0.28), lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(Color(hex: "F4E4BC").opacity(0.28), lineWidth: 1 * k))
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -1369,13 +1354,13 @@ struct EditorView: View {
             // carries no condition — the same contract UsageMeterStrip uses, and
             // the reason a dark-flag build shows nothing here rather than a
             // guessed number.
-            Spacer(minLength: 8)
+            Spacer(minLength: 8 * k)
 
             // TIGHT against the new-chat button, so the right side reads as ONE
             // group. With the shell's own spacing between them the badge floated
             // in the middle of the bar and looked like a third, unrelated
             // element rather than part of the trailing controls.
-            Spacer(minLength: 8)
+            Spacer(minLength: 8 * k)
 
             // ONE TRAILING GROUP. The badge sits tight against the new-chat
             // button so the right side reads as a single cluster; with the
@@ -1386,7 +1371,7 @@ struct EditorView: View {
             // loud pill: it counted RENDERS while the meter counts CREDITS, so
             // the header would have carried two units for one allowance in the
             // one place both are visible at once.
-            HStack(spacing: 2) {
+            HStack(spacing: 2 * k) {
                 CreditBadge()
 
                 Button {
@@ -1395,17 +1380,17 @@ struct EditorView: View {
                     Task { await startNewChat() }
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17 * k, weight: .semibold))
                         .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 40 * k, height: 40 * k)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("New chat")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 10 * k)
+        .padding(.vertical, 2 * k)
         .frame(maxWidth: .infinity)
         .background(Color.black)
     }
@@ -4212,6 +4197,7 @@ private extension UIImage {
 }
 
 struct PendingVideoThumb: View {
+    @Environment(\.conversionScale) private var k
     @ObservedObject var video: PendingVideo
     let onRemove: () -> Void
 
@@ -4232,8 +4218,8 @@ struct PendingVideoThumb: View {
                     Image(uiImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .frame(width: 56 * k, height: 56 * k)
+                        .clipShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
                 } else {
                     // No thumbnail yet — neutral surface, no spinner. The
                     // PHAsset thumbnail loads in milliseconds for cached
@@ -4241,22 +4227,22 @@ struct PendingVideoThumb: View {
                     // with no cached thumb) just show the surface until
                     // it arrives. No "loading" spinner that the user
                     // would read as "stuck."
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
                         .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 56, height: 56)
+                        .frame(width: 56 * k, height: 56 * k)
                         .overlay {
                             Image(systemName: "video.fill")
-                                .font(.system(size: 18, weight: .medium))
+                                .font(.system(size: 18 * k, weight: .medium))
                                 .foregroundColor(Color(.tertiaryLabel))
                         }
                 }
 
                 if didFail {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
                         .fill(Color.red.opacity(0.18))
-                        .frame(width: 56, height: 56)
+                        .frame(width: 56 * k, height: 56 * k)
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16 * k, weight: .semibold))
                         .foregroundColor(.red)
                 }
             }
@@ -4266,15 +4252,15 @@ struct PendingVideoThumb: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * k, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 18 * k, height: 18 * k)
                     .background(Color.black.opacity(0.7))
                     .clipShape(Circle())
                     .accessibilityHidden(true)
             }
             .accessibilityLabel("Remove video")
-            .offset(x: 5, y: -5)
+            .offset(x: 5 * k, y: -5)
         }
     }
 }
@@ -4294,6 +4280,7 @@ private struct Layer2RejectionSentinel: Error {}
 /// Extracted into a ViewModifier so its two-button + message closures type-check
 /// on their own instead of inside EditorView.body's already-maximal modifier chain.
 private struct PushExplainerAlert: ViewModifier {
+    @Environment(\.conversionScale) private var k
     @Binding var isPresented: Bool
     func body(content: Content) -> some View {
         content.alert("Get notified when it's ready?", isPresented: $isPresented) {
@@ -4316,88 +4303,33 @@ private struct PushExplainerAlert: ViewModifier {
 
 // MARK: - Freemium usage meter + upgrade pill (staged for 1.3.1)
 
-/// Thin usage strip that sits directly above the composer. Free users only —
-/// it removes itself for Pro (unlimited) and before the first snapshot loads.
-/// With quota it's a quiet "N free videos left today"; at the cap it escalates
-/// to a reset countdown + a gold "Get more usage" link into the paywall. This
-/// is DISPLAY ONLY — the server is the real gate (see UsageService).
-/// P2 — the delight-moment referral ask: one card, after a finished video,
-/// dismissed forever on interaction. "Ask at the payoff, not the paywall."
-private struct PostRenderReferralCard: View {
-    let onDone: () -> Void
-    @ObservedObject private var referrals = ReferralService.shared
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(PromptlyGold.gradient)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Love it? Get Pro free")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(ReferralCopy.offer)
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.65))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 6)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                Task { await referrals.presentShareSheet(source: "postrender") }
-                onDone()
-            } label: {
-                Text("Invite")
-                    .font(.system(size: 12.5, weight: .bold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Capsule().fill(Color.white))
-            }
-            .buttonStyle(.plain)
-            Button {
-                onDone()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.45))
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.05))
-        .entrance()
-    }
-}
 
 /// Version awareness — the contextual "this failure is fixed in the update"
 /// strip. One honest line + the store button; no error language beyond what
 /// the failed tile already shows.
 private struct UpdateFixStrip: View {
+    @Environment(\.conversionScale) private var k
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             VersionAwareness.shared.openAppStore(source: "upload_fix_strip")
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * k) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * k, weight: .semibold))
                     .foregroundStyle(PromptlyGold.gradient)
                 Text("Uploads are more reliable in the latest version")
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: 12.5 * k, weight: .medium))
                     .foregroundColor(.white.opacity(0.85))
-                Spacer(minLength: 6)
+                Spacer(minLength: 6 * k)
                 Text("Update")
-                    .font(.system(size: 12.5, weight: .bold))
+                    .font(.system(size: 12.5 * k, weight: .bold))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .padding(.horizontal, 10 * k).padding(.vertical, 5 * k)
                     .background(Capsule().fill(Color.white))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12 * k)
+            .padding(.vertical, 8 * k)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -4406,6 +4338,7 @@ private struct UpdateFixStrip: View {
 }
 
 private struct UsageMeterStrip: View {
+    @Environment(\.conversionScale) private var k
     var onUpgrade: () -> Void
     @ObservedObject private var usage = UsageService.shared
     @ObservedObject private var subscription = SubscriptionService.shared
@@ -4424,9 +4357,9 @@ private struct UsageMeterStrip: View {
         // this both hides the strip for Pro and shows nothing until we have a
         // real server number — never a guessed limit.
         if !subscription.effectiveIsPro, let left = usage.rendersLeft {
-            HStack(spacing: 7) {
+            HStack(spacing: 7 * k) {
                 Image(systemName: left > 0 ? "bolt.fill" : "bolt.slash.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11 * k, weight: .semibold))
                     .foregroundStyle(left > 0 ? PromptlyGold.solid : Color.white.opacity(0.45))
 
                 Group {
@@ -4459,7 +4392,7 @@ private struct UsageMeterStrip: View {
                         Text("No free videos left today")
                     }
                 }
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12 * k, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
                 // WRAPS RATHER THAN TRUNCATES. At one line with a 0.85 floor
                 // this truncated tail-first on a 390pt iPHONE in fr and es —
@@ -4472,7 +4405,7 @@ private struct UsageMeterStrip: View {
                 .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
 
                 if left <= 0 {
                     Button {
@@ -4480,15 +4413,15 @@ private struct UsageMeterStrip: View {
                         onUpgrade()
                     } label: {
                         Text("Get more usage")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 12 * k, weight: .semibold))
                             .foregroundStyle(PromptlyGold.solid)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, Theme.Space.sm)
-            .padding(.top, 2)
-            .padding(.bottom, 6)
+            .padding(.horizontal, Theme.Space.sm * k)
+            .padding(.top, 2 * k)
+            .padding(.bottom, 6 * k)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: left)
         }
@@ -4511,6 +4444,7 @@ private struct UsageMeterStrip: View {
 // promptly-logo.png, hasAlpha) renders with .original — its transparency intact
 // on black, no plate, no box. Reduce Motion → a static (non-rotating) border.
 struct UpgradePill: View {
+    @Environment(\.conversionScale) private var k
     var action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -4531,14 +4465,14 @@ struct UpgradePill: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 6 * k) {
                 Image("PromptlyLogo")
                     .renderingMode(.original)   // keep the mark's transparency + white
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 14 * k, height: 14 * k)
                 Text("Upgrade")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * k, weight: .semibold))
                     .foregroundColor(.white)
                     // NOT `.fixedSize()` on the stack. That made the pill
                     // incompressible at its ideal width, which is fine for the
@@ -4559,9 +4493,9 @@ struct UpgradePill: View {
             }
             // Bounded rather than fixed: the pill may shrink toward its floor
             // under pressure instead of shoving its neighbour off the bar.
-            .frame(maxWidth: 168)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .frame(maxWidth: 168 * k)
+            .padding(.horizontal, 12 * k)
+            .padding(.vertical, 6 * k)
             .background(
                 // Subtle top-lit dark capsule — depth, not a flat chip.
                 Capsule().fill(
@@ -4573,7 +4507,7 @@ struct UpgradePill: View {
                 // CA-driven rotating conic border — cannot be frozen by hosting.
                 // ~8s / revolution: slow, subtle, luxurious.
                 RotatingConicBorder(colors: Self.uiSpectrum,
-                                    lineWidth: 1.5,
+                                    lineWidth: 1.5 * k,
                                     period: 8,
                                     animated: !reduceMotion)
                     .clipShape(Capsule())

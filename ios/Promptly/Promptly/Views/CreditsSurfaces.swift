@@ -37,6 +37,7 @@ import SwiftUI
 /// muting too, so a spent balance recedes as one object instead of a dim runner
 /// inside a bright coin.
 struct CreditMark: View {
+    @Environment(\.conversionScale) private var k
     /// The TOKEN's diameter. The glyph is inset within it, so call sites size
     /// the object they are placing rather than the artwork inside it.
     var size: CGFloat = 22
@@ -55,7 +56,7 @@ struct CreditMark: View {
     var body: some View {
         ZStack {
             Circle().fill(Self.accent.opacity(0.16 * strength))
-            Circle().strokeBorder(Self.accent.opacity(0.30 * strength), lineWidth: 1)
+            Circle().strokeBorder(Self.accent.opacity(0.30 * strength), lineWidth: 1 * k)
             Image("PromptlyLogo")
                 // TEMPLATE, so the mark takes the accent. The asset ships with
                 // an `original` rendering intent for the places that want the
@@ -83,6 +84,7 @@ struct CreditMark: View {
 /// have nothing left. This project has already paid once for treating an
 /// unreadable metric as a confident zero; the strip simply does not draw.
 struct CreditBalanceStrip: View {
+    @Environment(\.conversionScale) private var k
     @ObservedObject private var credits = CreditsService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
 
@@ -101,14 +103,14 @@ struct CreditBalanceStrip: View {
         // whether to draw.
         Group {
             if onboarding.creditsEnabled, let videos = credits.videosRemaining {
-                HStack(spacing: 6) {
-                    CreditMark(size: 18, isSpent: videos == 0)
+                HStack(spacing: 6 * k) {
+                    CreditMark(size: 18 * k, isSpent: videos == 0)
                     Text("\(videos) videos left")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 12 * k, weight: .medium))
                         .foregroundColor(.white.opacity(0.55))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 12 * k)
+                .padding(.vertical, 5 * k)
                 .accessibilityElement(children: .combine)
             }
         }
@@ -138,6 +140,7 @@ struct CreditBalanceStrip: View {
 /// available here and the product makes it for itself: someone at zero can still
 /// iterate on everything they have already made.
 struct CreditsExhaustedMessage: View {
+    @Environment(\.conversionScale) private var k
     let refreshDate: Date?
     let onSeePlans: () -> Void
 
@@ -151,32 +154,32 @@ struct CreditsExhaustedMessage: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * k) {
             Text("You're out of credits for now")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15 * k, weight: .semibold))
                 .foregroundColor(.white)
 
             if let refreshLine {
                 Text(refreshLine)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * k))
                     .foregroundColor(.white.opacity(0.7))
             }
 
             // The product's own argument, not a sales line.
             Text("Re-editing anything you've already made is still free.")
-                .font(.system(size: 14))
+                .font(.system(size: 14 * k))
                 .foregroundColor(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onSeePlans) {
                 Text("See plans")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14 * k, weight: .semibold))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .frame(height: 36)
+                    .padding(.horizontal, 16 * k)
+                    .frame(height: 36 * k)
                     .background(Color.white, in: Capsule())
             }
-            .padding(.top, 2)
+            .padding(.top, 2 * k)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
@@ -194,15 +197,16 @@ struct CreditsExhaustedMessage: View {
 ///
 /// The client never performs this restore; it renders what the server reports.
 struct CreditsRefundedMessage: View {
+    @Environment(\.conversionScale) private var k
     let amount: Int
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 8 * k) {
             Image(systemName: "arrow.uturn.backward.circle.fill")
-                .font(.system(size: 14))
+                .font(.system(size: 14 * k))
                 .foregroundColor(.green.opacity(0.8))
             Text("\(amount) credits back. That video didn't count.")
-                .font(.system(size: 14))
+                .font(.system(size: 14 * k))
                 .foregroundColor(.white.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -222,26 +226,27 @@ struct CreditsRefundedMessage: View {
 ///
 /// Its own event, so its conversion is readable separately from the credit wall.
 struct FreeExportSpentMessage: View {
+    @Environment(\.conversionScale) private var k
     let onSeePlans: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * k) {
             Text("Your video is ready — you've used your free export")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15 * k, weight: .semibold))
                 .foregroundColor(.white)
             Text("Pro and Max save and share every video, with no export limit.")
-                .font(.system(size: 14))
+                .font(.system(size: 14 * k))
                 .foregroundColor(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: onSeePlans) {
                 Text("See plans")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14 * k, weight: .semibold))
                     .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .frame(height: 36)
+                    .padding(.horizontal, 16 * k)
+                    .frame(height: 36 * k)
                     .background(Color.white, in: Capsule())
             }
-            .padding(.top, 2)
+            .padding(.top, 2 * k)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {

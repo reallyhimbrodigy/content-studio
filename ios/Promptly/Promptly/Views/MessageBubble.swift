@@ -3,9 +3,7 @@ import AVKit
 import Photos
 
 struct MessageBubble: View {
-    /// Regular = iPad. The chat is where users spend their time and it was the
-    /// one surface still rendered at phone dimensions on a 13-inch screen.
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     /// render_transparency: one `render_transparency_viewed` per job, not per
     /// SwiftUI body pass (the bubble re-renders on every progress tick).
     static var transparencySeen = Set<String>()
@@ -97,9 +95,9 @@ struct MessageBubble: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .top, spacing: 0 * k) {
             if message.role == .user {
-                Spacer(minLength: 48)
+                Spacer(minLength: 48 * k)
                 userContent
             } else {
                 // 225 item 2: assistant messages are FULL-WIDTH (bubbles stay for
@@ -137,7 +135,7 @@ struct MessageBubble: View {
 
     @ViewBuilder
     private func chatAttachmentsRow(_ atts: [ChatAttachmentPayload]) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 8 * k) {
             ForEach(atts) { att in
                 Button { viewerAttachment = att } label: {
                     chatAttachmentThumb(att)
@@ -181,20 +179,20 @@ struct MessageBubble: View {
                     .task { await resolveAttachmentIfNeeded(att) }
             }
         }
-        .frame(width: 132, height: 132)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(width: 132 * k, height: 132 * k)
+        .clipShape(RoundedRectangle(cornerRadius: 16 * k, style: .continuous))
     }
 
     @ViewBuilder
     private var userContent: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .trailing, spacing: 8 * k) {
             if let attachment = message.videoAttachment {
                 if let thumb = attachment.thumbnail {
                     Image(uiImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 172, height: 229)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .frame(width: 172 * k, height: 229 * k)
+                        .clipShape(RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
                         .accessibilityLabel("Attached video")
                 } else if let thumbUrlStr = attachment.remoteThumbnailUrl, let thumbUrl = URL(string: thumbUrlStr) {
                     AsyncImage(url: thumbUrl) { phase in
@@ -204,8 +202,8 @@ struct MessageBubble: View {
                             Color(.tertiarySystemBackground)
                         }
                     }
-                    .frame(width: 172, height: 229)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .frame(width: 172 * k, height: 229 * k)
+                    .clipShape(RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
                     .accessibilityLabel("Attached video")
                 }
             }
@@ -217,20 +215,20 @@ struct MessageBubble: View {
             if !message.content.isEmpty {
                 bubbleText(message.content)
                     .font(.system(.body, design: .default).weight(.regular))
-                    .tracking(0.2)
+                    .tracking(0.2 * k)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
+                    .padding(.horizontal, 16 * k)
+                    .padding(.vertical, 11 * k)
                     .background(
                         // User bubble: brighter glass — vision-pro feel,
                         // distinct from the assistant's softer treatment
                         // below so the conversation flow is legible.
                         ZStack {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
                                 .fill(.ultraThinMaterial)
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
@@ -243,10 +241,10 @@ struct MessageBubble: View {
                         }
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5 * k)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 20 * k, style: .continuous))
                     .contextMenu {
                         Button {
                             UIPasteboard.general.string = message.content
@@ -271,16 +269,16 @@ struct MessageBubble: View {
 
     @ViewBuilder
     private var assistantContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12 * k) {
             if message.isThinking {
                 // Typing indicator wrapped in the same bubble shape as a
                 // real reply, so the transition from "thinking" to "answer"
                 // feels like the bubble's content morphing in place.
                 ThinkingDots()
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
+                    .padding(.horizontal, 14 * k)
+                    .padding(.vertical, 9 * k)
                     .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
             }
 
             // §5 progressive playback: once the backend emits the HLS manifest
@@ -309,7 +307,7 @@ struct MessageBubble: View {
                         )
                     }
                 )
-                .padding(.bottom, 6)
+                .padding(.bottom, 6 * k)
             }
 
             // Show the progress UI ONLY while the job is not terminal (and the
@@ -347,7 +345,7 @@ struct MessageBubble: View {
                     if let vibe = message.originalVibe, status != "needs_input",
                        !OnboardingState.shared.progressRingEnabled {
                         PlanPreviewCard(vibe: vibe)
-                            .padding(.bottom, 10)
+                            .padding(.bottom, 10 * k)
                     }
                     // Instant question — asked while the render is in flight, so
                     // the wait does something. Zero network: the spec is a
@@ -381,7 +379,7 @@ struct MessageBubble: View {
                                 "applied": false,
                             ])
                         }
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 10 * k)
                         .onAppear {
                             // Keyed on jobId, not fired from body. The bubble
                             // re-renders on every progress tick and rows are
@@ -447,7 +445,7 @@ struct MessageBubble: View {
                 AskCard(ask: ask, jobId: message.jobId ?? "") {
                     onAskResolved?()
                 }
-                .padding(.top, 8)
+                .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
@@ -457,14 +455,14 @@ struct MessageBubble: View {
                 // toggled by the .task below only while message.isStreaming).
                 bubbleText(message.isStreaming && caretOn ? message.content + "\u{258C}" : message.content)
                     .font(.system(.body, design: .default).weight(.regular))
-                    .tracking(0.2)
+                    .tracking(0.2 * k)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 16 * k)
+                    .padding(.vertical, 4 * k)
                     .task(id: message.isStreaming) {
                         guard message.isStreaming else { return }
                         while !Task.isCancelled {
@@ -515,9 +513,9 @@ struct MessageBubble: View {
             }
 
             if message.jobStatus == "failed" || message.jobStatus == "error" {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 10 * k) {
                     Text(Self.displaySafeError(message.error))
-                        .font(.system(size: 14))
+                        .font(.system(size: 14 * k))
                         .foregroundColor(.red)
 
                     // Credit reassurance (free tier): a failed render refunds the
@@ -553,12 +551,12 @@ struct MessageBubble: View {
                     } else if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
                         CreditsRefundedMessage(amount: refunded)
                     } else if !SubscriptionService.shared.effectiveIsPro {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 5 * k) {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11 * k))
                                 .foregroundColor(.green.opacity(0.85))
                             Text("You weren't charged. This didn't use today's free video.")
-                                .font(.system(size: 12))
+                                .font(.system(size: 12 * k))
                                 .foregroundColor(Color(.secondaryLabel))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -576,20 +574,20 @@ struct MessageBubble: View {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onRetry()
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 6 * k) {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: 12 * k, weight: .semibold))
                                 Text("Try Again")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 14 * k, weight: .semibold))
                             }
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16 * k)
+                            .padding(.vertical, 8 * k)
                             .background(
                                 Capsule().fill(Color.white.opacity(0.12))
                             )
                             .overlay(
-                                Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                                Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5 * k)
                             )
                         }
                         .buttonStyle(.plain)
@@ -604,26 +602,26 @@ struct MessageBubble: View {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onMakeAnother()
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 6 * k) {
                                 Image(systemName: "video.badge.plus")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: 12 * k, weight: .semibold))
                                 Text("Upload a new video")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 14 * k, weight: .semibold))
                             }
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16 * k)
+                            .padding(.vertical, 8 * k)
                             .background(Capsule().fill(Color.white.opacity(0.12)))
-                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5 * k))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Upload a new video")
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 14 * k)
+                .padding(.vertical, 9 * k)
                 .background(Color.red.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
             }
         }
     }
@@ -662,18 +660,19 @@ struct MessageBubble: View {
 // MARK: - Thinking Dots (minimal, inline — no bubble)
 
 struct ThinkingDots: View {
+    @Environment(\.conversionScale) private var k
     @State private var animating = false
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * k) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
                     .fill(Color(.secondaryLabel))
-                    .frame(width: 7, height: 7)
+                    .frame(width: 7 * k, height: 7 * k)
                     .opacity(animating ? 1 : 0.3)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(Double(i) * 0.15), value: animating)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 4 * k)
         .onAppear { animating = true }
     }
 }
@@ -801,7 +800,7 @@ final class TrickleProgress: ObservableObject {
 // that eases toward the backend target and never freezes or snaps.
 
 struct ProcessingIndicator: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     let stepMessage: String
     let progress: Int              // target from upload/SSE
     var finishing: Bool = false    // true on real completion → release to 100
@@ -809,16 +808,16 @@ struct ProcessingIndicator: View {
     @State private var pulse = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10 * k) {
+            HStack(spacing: 10 * k) {
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 6 * k, height: 6 * k)
                     .opacity(pulse ? 1 : 0.35)
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
 
                 Text(stepMessage)
-                    .font(.system(size: 15))
+                    .font(.system(size: 15 * k))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     // Smooth fade + slight slide when SSE rotates the
@@ -834,10 +833,10 @@ struct ProcessingIndicator: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .animation(.easeInOut(duration: 0.28), value: stepMessage)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
 
                 Text("\(max(Int(trickle.displayed), 1))%")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13 * k, weight: .medium))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
@@ -852,9 +851,9 @@ struct ProcessingIndicator: View {
                         .frame(width: max(6, geo.size.width * CGFloat(max(0.02, trickle.displayed / 100.0))))
                 }
             }
-            .frame(height: 3)
+            .frame(height: 3 * k)
         }
-        .frame(maxWidth: padSize == .regular ? 490 : 320, alignment: .leading)
+        .frame(maxWidth: 320 * k, alignment: .leading)
         // No implicit .animation here — TrickleProgress already moves the
         // bar continuously at ~30fps, so the width follows it frame-by-
         // frame. An ease-out tween on top would fight that and re-introduce
@@ -900,7 +899,7 @@ struct ProcessingIndicator: View {
 /// lists what every Promptly edit delivers, so the wait feels like a craft in
 /// progress. Purely honest reassurance — no fabricated per-clip specifics.
 struct PlanPreviewCard: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     let vibe: String
     private static let gold = Color(red: 1, green: 0.82, blue: 0.5)
     private static let deliverables: [(icon: String, label: String)] = [
@@ -912,41 +911,41 @@ struct PlanPreviewCard: View {
     private var trimmedVibe: String { vibe.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 9 * k) {
+            HStack(spacing: 6 * k) {
                 Image(systemName: "wand.and.sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * k, weight: .semibold))
                     .foregroundStyle(Self.gold)
                 Text("Making your edit")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * k, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
             }
             if !trimmedVibe.isEmpty {
                 Text("“\(trimmedVibe)”")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * k))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 ForEach(Self.deliverables, id: \.label) { d in
-                    HStack(spacing: 4) {
-                        Image(systemName: d.icon).font(.system(size: 10, weight: .semibold))
-                        Text(d.label).font(.system(size: 11, weight: .medium))
+                    HStack(spacing: 4 * k) {
+                        Image(systemName: d.icon).font(.system(size: 10 * k, weight: .semibold))
+                        Text(d.label).font(.system(size: 11 * k, weight: .medium))
                     }
                     .foregroundStyle(.white.opacity(0.7))
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: padSize == .regular ? 460 : 300, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        .padding(12 * k)
+        .frame(maxWidth: 300 * k, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5 * k))
     }
 }
 
 struct PipelineProgressView: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     @ObservedObject var timeline: StageTimeline
     let progress: Int
     /// Optional finer-grained SSE message (e.g. "Reading the speaker's
@@ -1038,19 +1037,19 @@ struct PipelineProgressView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12 * k) {
             // Active stage header
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4 * k) {
+                HStack(alignment: .center, spacing: 10 * k) {
                     stageIcon
                     Text(activeStage?.title ?? "Starting")
-                        .font(.system(size: 15))
+                        .font(.system(size: 15 * k))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .transition(.opacity)
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 8 * k)
                     Text("\(max(Int(trickle.displayed), 1))%")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 13 * k, weight: .medium))
                         .foregroundColor(.secondary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
@@ -1063,10 +1062,10 @@ struct PipelineProgressView: View {
                 // the headline stage label is unchanged.
                 if let sub = effectiveSubMessage {
                     Text(sub)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * k))
                         .foregroundColor(Color.white.opacity(0.6))
                         .lineLimit(2)
-                        .padding(.leading, 28)  // align past the stageIcon
+                        .padding(.leading, 28 * k)  // align past the stageIcon
                         .id(sub)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                         .animation(.easeInOut(duration: 0.28), value: sub)
@@ -1081,9 +1080,9 @@ struct PipelineProgressView: View {
                     let quiet = context.date.timeIntervalSince(lastUpdateAt)
                     if quiet >= 20 {
                         Text("still working — last update \(relativeQuiet(quiet)) ago")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * k))
                             .foregroundColor(Color.white.opacity(0.45))
-                            .padding(.leading, 28)
+                            .padding(.leading, 28 * k)
                             .transition(.opacity)
                     }
                 }
@@ -1101,23 +1100,23 @@ struct PipelineProgressView: View {
                         .frame(width: max(6, geo.size.width * CGFloat(max(0.02, trickle.displayed / 100.0))))
                 }
             }
-            .frame(height: 3)
+            .frame(height: 3 * k)
 
             // Completed trail — last two finished stages, compact
             if !completedTrail.isEmpty {
-                HStack(spacing: 10) {
+                HStack(spacing: 10 * k) {
                     ForEach(completedTrail) { stage in
-                        HStack(spacing: 4) {
+                        HStack(spacing: 4 * k) {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.system(size: 9 * k, weight: .semibold))
                             Text(stage.title)
-                                .font(.system(size: 11))
+                                .font(.system(size: 11 * k))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
                         .foregroundColor(Color(.secondaryLabel))
                     }
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 0 * k)
                 }
                 .transition(.opacity)
             }
@@ -1127,36 +1126,36 @@ struct PipelineProgressView: View {
             // edit recipe. It fades/scales out the instant the pipeline reaches
             // `plan`, so the affordance disappears exactly when cancelling can no
             // longer save the GPU work.
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() }
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 4 * k) {
                         Text(expanded ? "Hide steps" : "View all steps")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12 * k, weight: .medium))
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10 * k, weight: .semibold))
                             .rotationEffect(.degrees(expanded ? 180 : 0))
                     }
                     .foregroundColor(Color(.secondaryLabel))
                 }
                 .buttonStyle(.plain)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
 
                 if let onCancel, timeline.isCancellable {
                     Button(role: .destructive) {
                         showCancelConfirm = true
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 4 * k) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12 * k, weight: .semibold))
                             Text("Cancel")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12 * k, weight: .semibold))
                         }
                         .foregroundColor(.red)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4 * k)
+                        .padding(.horizontal, 10 * k)
                         .background(
                             Capsule().fill(Color.red.opacity(0.12))
                         )
@@ -1183,18 +1182,18 @@ struct PipelineProgressView: View {
                 // server fires their event — the list grows as the pipeline
                 // progresses instead of dumping the whole roadmap on the
                 // user at once.
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8 * k) {
                     ForEach(timeline.stages.filter { (timeline.states[$0.id] ?? .upcoming) != .upcoming }) { stage in
                         stageRow(stage)
                             .transition(.opacity.combined(with: .move(edge: .leading)))
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, 2 * k)
                 .animation(.easeOut(duration: 0.25), value: timeline.currentStageId)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(maxWidth: padSize == .regular ? 520 : 340, alignment: .leading)
+        .frame(maxWidth: 340 * k, alignment: .leading)
         // Rehydrate from the persisted/polled progress so a view recreated on
         // relaunch (or scrolled back on) resumes at TRUE progress instead of
         // re-ramping from 0 — the 50%→1% snap-back fix.
@@ -1248,27 +1247,27 @@ struct PipelineProgressView: View {
     private var stageIcon: some View {
         if let stage = activeStage {
             Image(systemName: stage.icon)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15 * k, weight: .medium))
                 .foregroundColor(.white)
                 .symbolEffect(.pulse.byLayer, options: .repeating)
-                .frame(width: 20, height: 20)
+                .frame(width: 20 * k, height: 20 * k)
                 .transition(.scale.combined(with: .opacity))
         } else {
             // Neutral "Starting…" glyph shown during the brief window between
             // user tapping Send and the first stage event arriving. Avoids
             // leading with a specific stage label before the worker confirms it.
             Image(systemName: "sparkles")
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15 * k, weight: .medium))
                 .foregroundColor(.white)
                 .symbolEffect(.pulse.byLayer, options: .repeating)
-                .frame(width: 20, height: 20)
+                .frame(width: 20 * k, height: 20 * k)
         }
     }
 
     @ViewBuilder
     private func stageRow(_ stage: PipelineStage) -> some View {
         let state = timeline.states[stage.id] ?? .upcoming
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * k) {
             Group {
                 switch state {
                 case .completed:
@@ -1286,28 +1285,28 @@ struct PipelineProgressView: View {
                         .foregroundColor(Color(.tertiaryLabel))
                 }
             }
-            .font(.system(size: 14))
-            .frame(width: 18, height: 18)
+            .font(.system(size: 14 * k))
+            .frame(width: 18 * k, height: 18 * k)
 
             Text(stage.title)
-                .font(.system(size: 13))
+                .font(.system(size: 13 * k))
                 .foregroundColor(rowTextColor(state))
                 .strikethrough(state == .skipped, color: Color(.tertiaryLabel))
                 .lineLimit(1)
 
             if state == .skipped {
                 Text("not needed")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10 * k, weight: .medium))
                     .foregroundColor(Color(.tertiaryLabel))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 6 * k)
+                    .padding(.vertical, 2 * k)
                     .background(Color(.tertiarySystemBackground).opacity(0.6))
                     .clipShape(Capsule())
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 0 * k)
         }
-        .padding(.leading, stage.parent != nil ? 20 : 0)
+        .padding(.leading, stage.parent != nil ? 20 * k : 0)
     }
 
     private func rowTextColor(_ state: StageState) -> Color {
@@ -1577,7 +1576,7 @@ final class VideoExporter: ObservableObject {
 // MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
 
 struct VideoActionRow: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     /// Threaded through so the share/save EXPORT events carry job_id.
@@ -1610,7 +1609,7 @@ struct VideoActionRow: View {
     private var isPro: Bool { subscription.isPro || usage.isPro }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12 * k) {
             // The free tier's export, spent. It sits ABOVE the action row it
             // just refused, so the explanation is adjacent to the button the
             // user pressed rather than in a sheet that covers it. This is the
@@ -1632,7 +1631,7 @@ struct VideoActionRow: View {
             shareHeroButton
 
             // Secondary actions — save, re-edit, start another.
-            HStack(spacing: 14) {
+            HStack(spacing: 14 * k) {
                 pill(
                     icon: "square.and.arrow.down",
                     label: "Save",
@@ -1647,10 +1646,10 @@ struct VideoActionRow: View {
                 if let onMakeAnother {
                     makeAnotherPill(action: onMakeAnother)
                 }
-                Spacer(minLength: 0)
+                Spacer(minLength: 0 * k)
             }
         }
-        .padding(.top, 8)
+        .padding(.top, 8 * k)
     }
 
     /// P4 banner: the one-tap keep step. Saving goes through the SAME gated
@@ -1661,36 +1660,36 @@ struct VideoActionRow: View {
             exporter.save()
             onSaveCtaHandled?()
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * k) {
                 Image(systemName: "square.and.arrow.down.fill")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17 * k, weight: .semibold))
                     .foregroundStyle(PromptlyGold.gradient)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * k) {
                     Text("Keep this video")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15 * k, weight: .semibold))
                         .foregroundColor(.white)
                     Text("Save it to Photos — one tap")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * k))
                         .foregroundColor(.white.opacity(0.65))
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: 8 * k)
                 Button {
                     onSaveCtaHandled?()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12 * k, weight: .semibold))
                         .foregroundColor(.white.opacity(0.45))
-                        .frame(width: 28, height: 28)
+                        .frame(width: 28 * k, height: 28 * k)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss save suggestion")
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .padding(.horizontal, 14 * k).padding(.vertical, 12 * k)
+            .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                 .fill(Color.white.opacity(0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(PromptlyGold.solid.opacity(0.35), lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                .stroke(PromptlyGold.solid.opacity(0.35), lineWidth: 0.5 * k))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1708,17 +1707,17 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6) {
+            VStack(spacing: 6 * k) {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18 * k, weight: .semibold))
                         .foregroundColor(Color(.secondaryLabel))
                 }
-                .frame(width: 48, height: 48)
-                .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                .frame(width: 48 * k, height: 48 * k)
+                .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5 * k))
                 Text("New")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11 * k, weight: .medium))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
             }
@@ -1748,20 +1747,20 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6) {
+            VStack(spacing: 6 * k) {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     if isPro {
                         Image(systemName: "wand.and.stars")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17 * k, weight: .semibold))
                             .foregroundStyle(PromptlyGold.gradient)
                     } else {
                         Image(systemName: "wand.and.stars")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17 * k, weight: .semibold))
                             .foregroundColor(Color(.secondaryLabel))
                     }
                 }
-                .frame(width: 48, height: 48)
+                .frame(width: 48 * k, height: 48 * k)
                 .overlay(
                     Circle()
                         .stroke(
@@ -1782,17 +1781,17 @@ struct VideoActionRow: View {
                         ZStack {
                             Circle()
                                 .fill(Color(.systemBackground))
-                                .frame(width: 18, height: 18)
+                                .frame(width: 18 * k, height: 18 * k)
                             Image(systemName: "lock.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * k, weight: .bold))
                                 .foregroundColor(Color(.secondaryLabel))
                         }
-                        .offset(x: 2, y: 2)
+                        .offset(x: 2 * k, y: 2 * k)
                     }
                 }
 
                 Text("Re-edit")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11 * k, weight: .medium))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
             }
@@ -1814,19 +1813,19 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6) {
+            VStack(spacing: 6 * k) {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     pillSymbol(icon: icon, state: state)
                 }
-                .frame(width: 48, height: 48)
+                .frame(width: 48 * k, height: 48 * k)
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5 * k)
                 )
 
                 Text(labelText(state: state, defaultLabel: label))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11 * k, weight: .medium))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
                     .contentTransition(.identity)
@@ -1867,7 +1866,7 @@ struct VideoActionRow: View {
         switch state {
         case .idle:
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 18 * k, weight: .medium))
                 .foregroundColor(.white)
                 .symbolRenderingMode(.hierarchical)
         case .loading:
@@ -1876,12 +1875,12 @@ struct VideoActionRow: View {
                 .tint(.white)
         case .success:
             Image(systemName: "checkmark")
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 18 * k, weight: .bold))
                 .foregroundColor(.white)
                 .transition(.scale.combined(with: .opacity))
         case .error:
             Image(systemName: "exclamationmark")
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 18 * k, weight: .bold))
                 .foregroundColor(.white)
         }
     }
@@ -1909,19 +1908,19 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             exporter.share()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * k) {
                 if isSharing {
                     ProgressView().tint(.black)
                 } else {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16 * k, weight: .semibold))
                 }
                 Text(isSharing ? "Preparing…" : "Share")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16 * k, weight: .semibold))
             }
             .foregroundColor(.black)
-            .frame(maxWidth: padSize == .regular ? 460 : 300)
-            .padding(.vertical, 13)
+            .frame(maxWidth: 300 * k)
+            .padding(.vertical, 13 * k)
             .background(Capsule().fill(Color.white))
         }
         .buttonStyle(.plain)
@@ -1938,24 +1937,24 @@ struct VideoActionRow: View {
 /// quiet "why this edit" note. Each field is optional — only what's present is
 /// shown; `hasContent` gates the whole block at the call site.
 struct PostPackageView: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     let package: PostPackage
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12 * k) {
             if let hook = package.postHook {
                 Text(hook)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17 * k, weight: .semibold))
                     .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
             }
 
             if let caption = package.postCaption {
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: 9 * k) {
                     Text(caption)
-                        .font(.system(size: 14))
+                        .font(.system(size: 14 * k))
                         .foregroundColor(Color(.label))
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
@@ -1967,42 +1966,42 @@ struct PostPackageView: View {
                             withAnimation(.easeInOut(duration: 0.2)) { copied = false }
                         }
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 5 * k) {
                             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12 * k, weight: .semibold))
                             Text(copied ? "Copied" : "Copy caption")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 13 * k, weight: .semibold))
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 12 * k)
+                        .padding(.vertical, 7 * k)
                         .background(Capsule().fill(Color.white.opacity(0.14)))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(copied ? "Caption copied" : "Copy caption")
                 }
-                .padding(12)
+                .padding(12 * k)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                         .fill(Color.white.opacity(0.06))
                 )
             }
 
             if let why = package.editRationale {
-                HStack(alignment: .top, spacing: 7) {
+                HStack(alignment: .top, spacing: 7 * k) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * k))
                         .foregroundColor(Color(.tertiaryLabel))
-                        .padding(.top, 1)
+                        .padding(.top, 1 * k)
                     Text(why)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13 * k))
                         .foregroundColor(Color(.secondaryLabel))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .frame(maxWidth: padSize == .regular ? 460 : 300, alignment: .leading)
+        .frame(maxWidth: 300 * k, alignment: .leading)
     }
 }
 
@@ -2017,7 +2016,7 @@ struct PostPackageView: View {
 // buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
-    @Environment(\.horizontalSizeClass) private var padSize
+    @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     let hlsManifestUrl: String?
@@ -2084,7 +2083,7 @@ struct CompletedVideoView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2 * k) {
             if !videoSurfaceHidden {
             Button {
                 guard isPlayable else { return }
@@ -2100,9 +2099,7 @@ struct CompletedVideoView: View {
                 }
                 if let jobId,
                    OnboardingState.shared.postrenderSaveCtaEnabled,
-                   !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)"),
-                   !(OnboardingState.shared.postrenderReferralEnabled
-                     && !UserDefaults.standard.bool(forKey: "postrender_referral_shown")) {
+                   !UserDefaults.standard.bool(forKey: "save_cta_shown_\(jobId)") {
                     withAnimation(.easeInOut(duration: 0.28)) { showSaveCta = true }
                 }
                 VideoPlayerPresenter.present(
@@ -2117,11 +2114,8 @@ struct CompletedVideoView: View {
                 )
             } label: {
                 thumbnailContent
-                    // 300pt wide at 9:16 is 533pt tall — over the 480pt floor
-                    // the brief sets, so a rendered clip reads as phone-sized
-                    // on a 13-inch screen instead of a thumbnail.
-                    .frame(maxWidth: padSize == .regular ? 300 : 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(maxWidth: 240 * k)
+                    .clipShape(RoundedRectangle(cornerRadius: 20 * k, style: .continuous))
                     .overlay {
                         LinearGradient(
                             colors: [.black.opacity(0.0), .black.opacity(0.25)],
@@ -2130,7 +2124,7 @@ struct CompletedVideoView: View {
                         .allowsHitTesting(false)
                     }
                     .overlay { thumbnailOverlay }
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 20 * k, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!isPlayable)
@@ -2177,7 +2171,7 @@ struct CompletedVideoView: View {
             // the fields that survived; absent package → nothing (no empty box).
             if let pkg = postPackage, pkg.hasContent {
                 PostPackageView(package: pkg)
-                    .padding(.top, 10)
+                    .padding(.top, 10 * k)
             }
 
             VideoActionRow(
@@ -2212,8 +2206,8 @@ struct CompletedVideoView: View {
                         withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
                     }
                 )
-                .frame(maxWidth: padSize == .regular ? 490 : 320, alignment: .leading)
-                .padding(.top, 8)
+                .frame(maxWidth: 320 * k, alignment: .leading)
+                .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -2238,11 +2232,11 @@ struct CompletedVideoView: View {
             if isPlayable {
                 Circle()
                     .fill(.ultraThinMaterial)
-                    .frame(width: 62, height: 62)
+                    .frame(width: 62 * k, height: 62 * k)
                 Image(systemName: "play.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 22 * k, weight: .semibold))
                     .foregroundColor(.white)
-                    .offset(x: 2)
+                    .offset(x: 2 * k)
                     .accessibilityHidden(true)
             } else {
                 // Dim the thumbnail and show a centered spinner while the
@@ -2322,6 +2316,7 @@ struct CompletedVideoView: View {
 /// toggle, close button. The app's first still-image surface
 /// (VideoPlayerPresenter is video-only).
 struct ChatImageViewer: View {
+    @Environment(\.conversionScale) private var k
     let attachment: ChatAttachmentPayload
     @Environment(\.dismiss) private var dismiss
     @State private var zoom: CGFloat = 1
@@ -2354,12 +2349,12 @@ struct ChatImageViewer: View {
                         if let image = phase.image {
                             image.resizable().aspectRatio(contentMode: .fit)
                         } else if phase.error != nil {
-                            VStack(spacing: 10) {
+                            VStack(spacing: 10 * k) {
                                 Image(systemName: "photo")
-                                    .font(.system(size: 40))
+                                    .font(.system(size: 40 * k))
                                     .foregroundColor(.white.opacity(0.3))
                                 Text("This image link expired")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 14 * k))
                                     .foregroundColor(.white.opacity(0.5))
                             }
                             .task { await resolveIfNeeded() }
@@ -2387,13 +2382,13 @@ struct ChatImageViewer: View {
 
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16 * k, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 40 * k, height: 40 * k)
                     .background(Circle().fill(Color.white.opacity(0.12)))
             }
-            .padding(.top, 8)
-            .padding(.trailing, 16)
+            .padding(.top, 8 * k)
+            .padding(.trailing, 16 * k)
             .accessibilityLabel("Close image")
         }
     }

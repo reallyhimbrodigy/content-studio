@@ -30,38 +30,6 @@ import Foundation
 ///    implying a reward for installing.
 enum ReferralCopy {
 
-    /// The offer, stated once. Referrer-only, tied to completed videos.
-    ///
-    /// CORRECTED 2026-09-01. This said "A day of Pro each time someone you
-    /// invite makes their first video" — wrong on BOTH halves of the ruled
-    /// reward. It is not a day, and it is not per referral: the reward is a week
-    /// of Pro for THREE qualified referrals. The old wording promised roughly
-    /// seven times more Pro per referral than the product grants, on the one
-    /// surface whose entire job is to be believed, in twelve languages.
-    ///
-    /// I FIRST WROTE "Invite 3 friends who make a video — get a week of Pro"
-    /// and claimed it was correct under BOTH candidate rulings. It is not, and
-    /// trial-copy-gate caught it: under the 2/4/7 LADDER the reward starts at
-    /// friend ONE, so naming three states a quota that does not exist and hides
-    /// the 2 days already earned. The gate's rule says exactly that — "states a
-    /// quota before the first share; the ladder pays from invite one" — which
-    /// is a ruling that predates me and that I walked straight into.
-    ///
-    /// So the two candidate rulings genuinely need DIFFERENT copy and no single
-    /// string covers both:
-    ///   ladder 2/4/7  -> pays from friend one, so no number belongs in the
-    ///                    headline. This wording.
-    ///   flat 3 -> 7   -> a quota IS the truth, and the headline must say three.
-    ///                    That wording would fail the gate as written, because
-    ///                    the gate encodes the ladder assumption. If Zac rules
-    ///                    flat, the RULE has to move too — not be worked around.
-    ///
-    /// Written for the ladder, which is the standing ruling.
-    ///
-    /// The string is already in the catalog and already translated x11 — it was
-    /// written for the second paywall and is the same promise.
-    static let offer = String(localized: "Every friend who makes a video earns you free Pro")
-
     /// The paywall's invite line — RULED FLAT 2026-09-01.
     ///
     /// This states the quota, which the standing rule banned. The ban was
@@ -78,20 +46,6 @@ enum ReferralCopy {
     /// resolution my own note on `offer` prescribed for exactly this case.
     static let inviteOffer = String(localized: "Or invite 3 friends and get 1 week of Promptly Pro free.")
 
-    /// The intermediate rewards, shown only if the LADDER survives Zac's
-    /// ruling. Nil under a flat 3-to-7, where naming a partial reward that does
-    /// not exist would repeat the defect this comment documents.
-    ///
-    /// PENDING: ladder 2/4/7 vs flat 3 -> 7. Set `ladderConfirmed` when ruled.
-    static let ladderConfirmed = false
-    static var ladderDetail: String? {
-        guard ladderConfirmed else { return nil }
-        return String(localized: "1 friend gets you 2 days, 2 gets you 4, 3 gets you a week")
-    }
-
-
-    /// Section heading on surfaces that host the invite.
-    static let heading = String(localized: "Get Pro free")
 
     /// THE DECLINE CATCH — its own rung, not a line on the reveal.
     ///
@@ -147,15 +101,6 @@ enum ReferralCopy {
 
     /// Shown the moment the third friend qualifies, before the grant lands.
     static let progressComplete = String(localized: "All 3 friends are in — your free week is on the way")
-
-    /// Shown only once a reward has actually been granted, never as a promise.
-    /// A reward the user cannot see is worse than no reward, so this states what
-    /// landed rather than what might.
-    static func granted(days: Int) -> String {
-        days == 1
-            ? String(localized: "You earned a day of Pro")
-            : String(localized: "You earned \(days) days of Pro")
-    }
 
     // MARK: - The shared message
 

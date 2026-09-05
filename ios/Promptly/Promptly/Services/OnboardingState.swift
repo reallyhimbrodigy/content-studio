@@ -31,16 +31,12 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var firstLaunchPaywallEnabled: Bool? = nil
 
     /// Conversion-experiment knobs (one per experiment; default off, cached).
-    @Published private(set) var postrenderReferralEnabled = false
-    @Published private(set) var abandonReferralEnabled = false
-    @Published private(set) var ambientWallReferralEnabled = false
     /// The referral row on the SECOND paywall. Added 2026-08-29 because it was
     /// the only referral surface with NO flag at all — it shipped live to every
     /// wall-onboarding user while its three siblings sat dark, and it is the
     /// one that showed a progress promise ("0 of 3 friends have made a video")
     /// against attribution that has been 0% all-time. A promise the pipeline
     /// cannot keep is worse than no surface.
-    @Published private(set) var secondPaywallReferralEnabled = false
     // ── 2026-08-31 build: six independent experiments ────────────────────────
     // Each on its OWN flag so their effects are separable. The reverse trial in
     // particular is split from its expiry surface: the grant is a non-event and
@@ -181,19 +177,11 @@ final class OnboardingState: ObservableObject {
             // force flag/notes — all server-driven).
             VersionAwareness.shared.ingest(obj)
             // Referral-surfacing experiment knobs (P2/P1/ambient-wall).
-            postrenderReferralEnabled = (obj?["postrender_referral"] as? String) == "on"
-            abandonReferralEnabled = (obj?["abandon_referral"] as? String) == "on"
-            ambientWallReferralEnabled = (obj?["ambient_wall_referral"] as? String) == "on"
-            secondPaywallReferralEnabled = (obj?["second_paywall_referral"] as? String) == "on"
             postrenderSaveCtaEnabled = (obj?["postrender_save_cta"] as? String) == "on"
             chatMediaEnabled = (obj?["chat_media"] as? String) == "on"
             firstSessionAutopickerEnabled = (obj?["first_session_autopicker"] as? String) == "on"
             yearlyFrameFixEnabled = (obj?["yearly_frame_fix"] as? String) == "on"
             uploadFailNotifyEnabled = (obj?["upload_fail_notify"] as? String) == "on"
-            UserDefaults.standard.set(postrenderReferralEnabled, forKey: "postrender_referral_enabled")
-            UserDefaults.standard.set(abandonReferralEnabled, forKey: "abandon_referral_enabled")
-            UserDefaults.standard.set(ambientWallReferralEnabled, forKey: "ambient_wall_referral_enabled")
-            UserDefaults.standard.set(secondPaywallReferralEnabled, forKey: "second_paywall_referral_enabled")
             UserDefaults.standard.set(postrenderSaveCtaEnabled, forKey: "postrender_save_cta_enabled")
             UserDefaults.standard.set(chatMediaEnabled, forKey: "chat_media_enabled")
             UserDefaults.standard.set(firstSessionAutopickerEnabled, forKey: "first_session_autopicker_enabled")
@@ -264,9 +252,6 @@ final class OnboardingState: ObservableObject {
         } catch {
             // Offline / server hiccup: last-known knobs, default off.
             firstLaunchPaywallEnabled = UserDefaults.standard.bool(forKey: flpCacheKey)
-            postrenderReferralEnabled = UserDefaults.standard.bool(forKey: "postrender_referral_enabled")
-            abandonReferralEnabled = UserDefaults.standard.bool(forKey: "abandon_referral_enabled")
-            ambientWallReferralEnabled = UserDefaults.standard.bool(forKey: "ambient_wall_referral_enabled")
             postrenderSaveCtaEnabled = UserDefaults.standard.bool(forKey: "postrender_save_cta_enabled")
             chatMediaEnabled = UserDefaults.standard.bool(forKey: "chat_media_enabled")
             firstSessionAutopickerEnabled = UserDefaults.standard.bool(forKey: "first_session_autopicker_enabled")

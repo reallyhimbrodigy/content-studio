@@ -23,6 +23,7 @@ import SwiftUI
 /// project has already paid once for treating an unreadable metric as a
 /// confident zero.
 struct CreditBadge: View {
+    @Environment(\.conversionScale) private var k
     /// Tapping a balance is the natural moment to want MORE of that balance, so
     /// it opens the top-up screen rather than the subscription paywall. Someone
     /// checking what they hold is asking to add to it; answering with a plan
@@ -48,16 +49,16 @@ struct CreditBadge: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onTap()
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 5 * k) {
                         mark(spent: value == 0)
                         Text(value, format: .number)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13 * k, weight: .semibold))
                             .foregroundColor(.white.opacity(value == 0 ? 0.45 : 0.92))
                             .monospacedDigit()   // width must not jitter as digits change
                             .contentTransition(.numericText(countsDown: !refunding))
                     }
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
+                    .padding(.horizontal, 10 * k)
+                    .frame(height: 30 * k)
                     // The PILL stays neutral and flat. No glow, no gradient —
                     // the glyph carries the identity.
                     //
@@ -70,7 +71,7 @@ struct CreditBadge: View {
                     // with the failure states in the thread below, where red
                     // means a render actually broke.
                     .background(Capsule().fill(Color.white.opacity(value == 0 ? 0.05 : 0.08)))
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(value == 0 ? 0.07 : 0.10), lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(value == 0 ? 0.07 : 0.10), lineWidth: 1 * k))
                     .opacity(value == 0 ? 0.75 : 1.0)
                     .contentShape(Capsule())
                     .scaleEffect(pulse ? 1.06 : 1.0)
@@ -88,7 +89,7 @@ struct CreditBadge: View {
                 // CreditBalanceStrip from ever drawing, and it does not announce
                 // itself because an invisible view looks exactly like a view
                 // that decided not to draw.
-                Color.clear.frame(width: 0, height: 0)
+                Color.clear.frame(width: 0 * k, height: 0 * k)
             }
         }
         .task { await seed() }
@@ -124,7 +125,7 @@ struct CreditBadge: View {
     /// The bloom is on the glyph ALONE — a glowing pill would be a second
     /// Upgrade button, and the gold pill beside it is already the loud one.
     private func mark(spent: Bool) -> some View {
-        CreditMark(size: 20, isSpent: spent)
+        CreditMark(size: 20 * k, isSpent: spent)
             .shadow(color: CreditMark.accent.opacity(refunding ? 0.9 : 0.35),
                     radius: refunding ? 6 : 3)
             .scaleEffect(refunding ? 1.3 : 1.0)

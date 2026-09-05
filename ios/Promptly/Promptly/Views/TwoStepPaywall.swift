@@ -324,6 +324,7 @@ enum PaywallMapping {
 /// that fails closed, the referral row, twelve languages, and claims that flip
 /// with the credits flag. None of that survives a template.
 struct PaywallLayout: View {
+    @Environment(\.conversionScale) private var k
     let title: String
     let tiers: [PaywallTierOption]
     let durations: (Int) -> [PaywallDurationOption]
@@ -374,15 +375,15 @@ struct PaywallLayout: View {
     private static let accent = Color(hex: "6C5CE7")
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 0 * k) {
             header
 
             Image("PromptlyLogo")
                 .renderingMode(.original)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 24, height: 24)
-                .padding(.bottom, 6)
+                .frame(width: 24 * k, height: 24 * k)
+                .padding(.bottom, 6 * k)
 
             // OUTCOME-LED. It sells the result; the tier name is carried by the
             // toggle directly beneath and by the CTA at the bottom, so naming it
@@ -407,8 +408,8 @@ struct PaywallLayout: View {
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 4)
+                    .padding(.horizontal, 24 * k)
+                    .padding(.bottom, 4 * k)
             }
 
             Text("Edit any video just by typing")
@@ -416,15 +417,15 @@ struct PaywallLayout: View {
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
+                .padding(.horizontal, 20 * k)
+                .padding(.bottom, 10 * k)
 
             // A one-tier toggle is a control with nothing to choose. While Max
             // is unapproved this is a Pro-only paywall, so the segmented row
             // does not draw at all.
             if tiers.count > 1 {
                 tierToggle
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 20 * k)
             }
 
             if let tier = activeTier {
@@ -441,23 +442,23 @@ struct PaywallLayout: View {
                 // gets the same information architecture as a phone at a
                 // larger size — side by side made it a different screen.
                 tierBody(tier)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
+                    .padding(.horizontal, 20 * k)
+                    .padding(.top, 10 * k)
                     .frame(maxHeight: .infinity)
                     .transition(reduceMotion ? .opacity : .opacity)
             }
 
-            // Was `Spacer(minLength: 8)` — the single pool the whole band came
+            // Was `Spacer(minLength: 8 * k)` — the single pool the whole band came
             // from. The tier body now takes the slack, so this is only the
             // fixed breathing room above the social-proof line.
-            Spacer(minLength: 0)
-                .frame(height: 8)
+            Spacer(minLength: 0 * k)
+                .frame(height: 8 * k)
 
             Text("★ 4.8 · 25,000+ creators")
                 .cType(11, .semibold)
                 .foregroundColor(.white.opacity(0.6))
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 6)
+                .padding(.bottom, 6 * k)
 
             footer
         }
@@ -544,24 +545,24 @@ struct PaywallLayout: View {
                 onClose()
             } label: {
                 ZStack {
-                    Circle().fill(Color.white).frame(width: 30, height: 30)
+                    Circle().fill(Color.white).frame(width: 30 * k, height: 30 * k)
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 13 * k, weight: .bold))
                         .foregroundColor(.black)
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 44 * k, height: 44 * k)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             Spacer()
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 8 * k)
     }
 
     // MARK: Toggle
 
     private var tierToggle: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 4 * k) {
             ForEach(tiers) { tier in
                 let isOn = tier.allowance == tierAllowance
                 Button {
@@ -577,16 +578,16 @@ struct PaywallLayout: View {
                         .frame(maxWidth: .infinity)
                         .cControl(34)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10 * k, style: .continuous)
                                 .fill(isOn ? Color.white : Color.clear)
                         )
-                        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 10 * k, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .padding(4 * k)
+        .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
             .fill(Color.white.opacity(0.08)))
     }
 
@@ -595,7 +596,7 @@ struct PaywallLayout: View {
     /// THE TAB FILLS ITS COLUMN. Reported three times as "an empty band below
     /// the plans", worst on Max.
     ///
-    /// The cause was a single `Spacer(minLength: 8)` in the outer stack, between
+    /// The cause was a single `Spacer(minLength: 8 * k)` in the outer stack, between
     /// this body and the social proof. One spacer means ALL the slack pools in
     /// ONE gap, so whatever the tier did not use appeared as a dead band in that
     /// exact spot — and Max, with three bullets against Pro's five and two
@@ -613,9 +614,9 @@ struct PaywallLayout: View {
     /// is the layout every existing capture and the fit probe were approved
     /// against.
     private func tierBody(_ tier: PaywallTierOption) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0 * k) {
             tierBenefits(tier)
-            Spacer(minLength: 0).cSeam(46)
+            Spacer(minLength: 0 * k).cSeam(46)
             tierPlans(tier)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -623,7 +624,7 @@ struct PaywallLayout: View {
 
     /// What the tier gives you. Left column on iPad.
     private func tierBenefits(_ tier: PaywallTierOption) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0 * k) {
             if let credits = tier.creditsLine {
                 Text(credits)
                     .cType(16, .bold)
@@ -633,28 +634,28 @@ struct PaywallLayout: View {
                 Text(videos)
                     .cType(12)
                     .foregroundColor(.white.opacity(0.5))
-                    .padding(.top, 1)
+                    .padding(.top, 1 * k)
             }
 
-            VStack(alignment: .leading, spacing: hSize == .regular ? 16 : 7) {
+            VStack(alignment: .leading, spacing: 7 * k) {
                 ForEach(Array(tier.features.enumerated()), id: \.element) { idx, line in
-                    if idx > 0 { Spacer(minLength: 0).cSeam(22) }
-                    HStack(alignment: .top, spacing: 9) {
+                    if idx > 0 { Spacer(minLength: 0 * k).cSeam(22) }
+                    HStack(alignment: .top, spacing: 9 * k) {
                         ZStack {
-                            Circle().fill(Color.white).frame(width: 18, height: 18)
+                            Circle().fill(Color.white).frame(width: 18 * k, height: 18 * k)
                             Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .heavy))
+                                .font(.system(size: 10 * k, weight: .heavy))
                                 .foregroundColor(.black)
                         }
                         Text(line)
                             .cType(14, .medium)
                             .foregroundColor(.white)
                             .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
+                        Spacer(minLength: 0 * k)
                     }
                 }
             }
-            .padding(.top, 10)
+            .padding(.top, 10 * k)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -665,28 +666,22 @@ struct PaywallLayout: View {
     /// were already written to let each block take a share of the slack and
     /// stop, rather than one gap collecting the remainder.
     private func tierPlans(_ tier: PaywallTierOption) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // PLAN ROWS ARE 88pt ON A TABLET (brief). They were padding-sized,
-            // which on iPad meant phone-height rows in a full-width column —
-            // the content stopped short of the bottom and the surplus showed up
-            // as a void. Giving the rows the height the brief specifies fills
-            // the column with the thing the screen is actually for.
-            VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 0 * k) {
+            VStack(spacing: 6 * k) {
                 ForEach(Array(durations(tier.allowance).enumerated()), id: \.element.id) { idx, row in
-                    if idx > 0 { Spacer(minLength: 0).cSeam(14) }
+                    if idx > 0 { Spacer(minLength: 0 * k).cSeam(14) }
                     durationRow(row)
-                        .frame(minHeight: hSize == .regular ? 88 : nil)
                 }
             }
-            .padding(.top, 10)
+            .padding(.top, 10 * k)
 
-            Spacer(minLength: 0).cSeam(46)
+            Spacer(minLength: 0 * k).cSeam(46)
 
             Text("Cancel anytime · no commitment")
                 .cType(10)
                 .foregroundColor(.white.opacity(0.5))
                 .frame(maxWidth: .infinity)
-                .padding(.top, 8)
+                .padding(.top, 8 * k)
         }
         // .topLeading, not .leading. With only a horizontal alignment the
         // expanded frame centred the column vertically, which opened a gap
@@ -705,14 +700,14 @@ struct PaywallLayout: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * k) {
                 ZStack {
-                    Circle().strokeBorder(Color.white.opacity(isSelected ? 1 : 0.35), lineWidth: 2)
-                        .frame(width: 20, height: 20)
-                    if isSelected { Circle().fill(Color.white).frame(width: 11, height: 11) }
+                    Circle().strokeBorder(Color.white.opacity(isSelected ? 1 : 0.35), lineWidth: 2 * k)
+                        .frame(width: 20 * k, height: 20 * k)
+                    if isSelected { Circle().fill(Color.white).frame(width: 11 * k, height: 11 * k) }
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 2 * k) {
+                    HStack(spacing: 6 * k) {
                         Text(option.label)
                             .cType(15, .semibold)
                             .foregroundColor(.white)
@@ -720,8 +715,8 @@ struct PaywallLayout: View {
                             Text("\(pct)% OFF")
                                 .cType(9, .heavy)
                                 .foregroundColor(.black)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, 5 * k)
+                                .padding(.vertical, 2 * k)
                                 .background(Capsule().fill(Color.white))
                         }
                     }
@@ -740,14 +735,14 @@ struct PaywallLayout: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Spacer(minLength: 6)
-                VStack(alignment: .trailing, spacing: 2) {
+                Spacer(minLength: 6 * k)
+                VStack(alignment: .trailing, spacing: 2 * k) {
                     if isRecommended {
                         Text("RECOMMENDED")
                             .cType(8, .heavy)
                             .foregroundColor(.black)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6 * k)
+                            .padding(.vertical, 2 * k)
                             .background(Capsule().fill(Color(hex: "F4E4BC")))
                     }
                     Text(option.rate)
@@ -757,20 +752,20 @@ struct PaywallLayout: View {
                         .minimumScaleFactor(0.65)
                 }
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 11 * k)
+            .padding(.vertical, 8 * k)
             // SELECTED READS AT ARM'S LENGTH. The border already carried the
             // state, but a 2pt white stroke against a 0.16 fill is a difference
             // you have to look for — on the one control that decides what the
             // CTA charges. Fill does the work at a glance and the border
             // confirms it up close; both move together so the state is legible
             // at either distance.
-            .background(RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .background(RoundedRectangle(cornerRadius: 13 * k, style: .continuous)
                 .fill(isSelected ? Color.white.opacity(0.30) : Color.white.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .overlay(RoundedRectangle(cornerRadius: 13 * k, style: .continuous)
                 .strokeBorder(isSelected ? Color.white : Color.white.opacity(0.10),
                               lineWidth: isSelected ? 2.5 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 13 * k, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -779,7 +774,7 @@ struct PaywallLayout: View {
     // MARK: Footer
 
     private var footer: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 6 * k) {
             Button {
                 if let id = selectedId { onPurchase(id) }
             } label: {
@@ -803,7 +798,7 @@ struct PaywallLayout: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             // Apple requires both on a surface that sells a subscription.
-            HStack(spacing: 14) {
+            HStack(spacing: 14 * k) {
                 Button("Terms of Use") { openLegal("https://usepromptly.app/terms.html") }
                 Button("Privacy Policy") { openLegal("https://usepromptly.app/privacy.html") }
             }
@@ -811,8 +806,8 @@ struct PaywallLayout: View {
             .foregroundColor(.white.opacity(0.45))
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 20 * k)
+        .padding(.bottom, 8 * k)
     }
 
     /// Names the tier AND the duration, so the last control before a charge says
@@ -843,6 +838,7 @@ struct PaywallLayout: View {
 /// terms for one product. Tier ordering is derived from the allowance a product
 /// maps to, so a fourth tier sorts itself without a build.
 struct TwoStepPaywall: View {
+    @Environment(\.conversionScale) private var k
     @Binding var isPresented: Bool
     let reason: PaywallReason
 

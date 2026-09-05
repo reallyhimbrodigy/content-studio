@@ -34,6 +34,7 @@ import RevenueCat
 /// the same screen (see VideoTypeQuestionView). Both halves are encoded into
 /// one stored key so `vibeV2` can compose the prefill from each.
 struct OnboardingV2Flow: View {
+    @Environment(\.conversionScale) private var k
     @StateObject private var state = OnboardingState.shared
     @ObservedObject private var subscription = SubscriptionService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -318,6 +319,7 @@ extension OnboardingQuestion {
 /// reward by a factor of seven; a fifth spelling it here would be that defect
 /// returning through a new door.
 struct ReferralCatchBeat: View {
+    @Environment(\.conversionScale) private var k
     let onSkip: () -> Void
 
     @ObservedObject private var onboarding = OnboardingState.shared
@@ -327,40 +329,40 @@ struct ReferralCatchBeat: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 24)
+            VStack(spacing: 0 * k) {
+                Spacer(minLength: 24 * k)
 
                 Image("PromptlyLogo")
                     .renderingMode(.original)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 28, height: 28)
-                    .padding(.bottom, 18)
+                    .frame(width: 28 * k, height: 28 * k)
+                    .padding(.bottom, 18 * k)
 
                 Text(ReferralCopy.catchHeading)
                     .cType(26, .bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 24 * k)
 
                 Text(ReferralCopy.catchOffer)
                     .cType(15, .medium)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 10)
+                    .padding(.horizontal, 28 * k)
+                    .padding(.top, 10 * k)
 
                 // The live count, when the user has already shared. It reports
                 // where they are rather than restating the ask — and it is the
                 // reason this rung is worth returning to.
                 if onboarding.referralProgressEnabled {
                     ReferralProgressRow(source: "decline_catch", compact: true)
-                        .padding(.top, 18)
-                        .padding(.horizontal, 24)
+                        .padding(.top, 18 * k)
+                        .padding(.horizontal, 24 * k)
                 }
 
-                Spacer(minLength: 16)
+                Spacer(minLength: 16 * k)
 
                 Button {
                     Analytics.track("referral_share", props: ["source": "decline_catch"])
@@ -371,21 +373,21 @@ struct ReferralCatchBeat: View {
                         .cType(16, .semibold)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 16 * k)
                         .background(
-                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            RoundedRectangle(cornerRadius: 28 * k, style: .continuous)
                                 .fill(Color(hex: "6C5CE7"))
                         )
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 20 * k)
 
                 Button(action: onSkip) {
                     Text(ReferralCopy.catchSkip)
                         .cType(14, .medium)
                         .foregroundColor(.white.opacity(0.55))
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 14 * k)
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 8 * k)
             }
         }
         .onAppear {
