@@ -194,17 +194,29 @@ struct OnboardingQuestionView: View {
                     // fills the width, keeps each tile large enough to hit
                     // comfortably, and shortens the scroll to nothing.
                     if hSize == .regular {
-                        // 26pt between tiles, not 16. On a tablet the slack has
-                        // to go somewhere, and putting it BETWEEN the answers
-                        // is what fills the screen; leaving it to the trailing
-                        // Spacer pooled 708pt under the grid.
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 26),
-                                            GridItem(.flexible(), spacing: 26)],
-                                  spacing: 26) {
-                            ForEach(question.options, id: \.key) { opt in
-                                chip(opt.key, opt.label)
+                        // ROWS THAT DISTRIBUTE, not a grid that packs.
+                        //
+                        // A LazyVGrid alone made this WORSE — measured 708pt of
+                        // void before, 848pt after — because two-up makes the
+                        // content SHORTER (three rows instead of six) and
+                        // nothing claimed what it freed. Pairs in a VStack with
+                        // flexible seams between them spread across whatever
+                        // height there is, and the tiles are 1.5x so each row
+                        // is substantial rather than a wide sliver.
+                        VStack(spacing: 0) {
+                            ForEach(Array(stride(from: 0, to: question.options.count, by: 2)), id: \.self) { i in
+                                if i > 0 { Spacer(minLength: 20) }
+                                HStack(spacing: 26) {
+                                    chip(question.options[i].key, question.options[i].label)
+                                    if i + 1 < question.options.count {
+                                        chip(question.options[i+1].key, question.options[i+1].label)
+                                    } else {
+                                        Color.clear
+                                    }
+                                }
                             }
                         }
+                        .frame(maxHeight: .infinity)
                         .padding(.horizontal, 20)
                     } else {
                         VStack(spacing: 12) {
@@ -237,7 +249,7 @@ struct OnboardingQuestionView: View {
                     Text("Continue")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
-                        .cControl(54)
+                        .frame(height: hSize == .regular ? 116 : 54)
                         .foregroundStyle(canContinue ? .black : .white.opacity(0.4))
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)

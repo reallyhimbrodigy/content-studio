@@ -20,6 +20,7 @@ import SwiftUI
 /// Deliberately UIKit-free in the body (haptics live in the caller's closures)
 /// so it renders standalone in the snapshot harness.
 struct FirstRunHero: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     /// Open the picker to upload the user's own clip.
     let onUpload: () -> Void
     /// Put a starting instruction in the composer and focus it.
@@ -35,7 +36,7 @@ struct FirstRunHero: View {
         // does it. Centred between two Spacers they floated mid-screen with a
         // gap under them, which reads as an unfinished layout on a tall device
         // and wastes the reachable area on a phone held one-handed.
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: padSize == .regular ? 18 : 0) {
             Spacer(minLength: 0)
 
             if let name = greetName {
@@ -73,6 +74,16 @@ struct FirstRunHero: View {
                       title: String(localized: "Clean and professional")) {
                 onPrompt(String(localized: "Clean and professional"))
             }
+
+            // CENTRED ON A TABLET, bottom-anchored on a phone.
+            //
+            // The single top Spacer is right for a phone — the note above says
+            // so, and it puts the choices within thumb reach. On a 1376pt iPad
+            // it left 949pt of black above three cards sitting on the composer.
+            // A second Spacer balances them into the middle of the screen,
+            // which is where a tablet empty state reads as composed rather
+            // than as content that fell to the bottom.
+            if padSize == .regular { Spacer(minLength: 0) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
@@ -88,11 +99,11 @@ struct FirstRunHero: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: padSize == .regular ? 22 : 15, weight: .regular))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, alignment: .center)
                 Text(title)
-                    .font(.system(size: 16))
+                    .font(.system(size: padSize == .regular ? 24 : 16))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     // Wrap, never clip — the same rule the old subtitle broke at
@@ -100,7 +111,16 @@ struct FirstRunHero: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 11)
+            // CARDS ON A TABLET, rows on a phone. The same three choices at
+            // the same weight — the structure does not change, the size does.
+            .padding(.vertical, padSize == .regular ? 26 : 11)
+            .padding(.horizontal, padSize == .regular ? 22 : 0)
+            .background {
+                if padSize == .regular {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

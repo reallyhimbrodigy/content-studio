@@ -3,6 +3,7 @@ import PhotosUI
 import UIKit
 
 struct EditorView: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var chatStore = ChatStore.shared
     // Observed so the model picker can reconcile its selection the moment
@@ -964,7 +965,7 @@ struct EditorView: View {
                             .font(.system(.body, design: .default).weight(.regular))
                             .tracking(0.3)
                             .foregroundColor(Color.white.opacity(0.35))
-                            .padding(.vertical, 9)
+                            .padding(.vertical, padSize == .regular ? 20 : 9)
                             .allowsHitTesting(false)
                     }
 
@@ -978,7 +979,10 @@ struct EditorView: View {
                         .tint(.white)
                         .submitLabel(.send)
                         .onSubmit { send() }
-                        .padding(.vertical, 9)
+                        // 64pt COMPOSER ON A TABLET. The bar's height comes
+                        // from this padding, so it is the lever: ~9pt each side
+                        // gives the ~40pt phone bar, ~20pt gives 64.
+                        .padding(.vertical, padSize == .regular ? 20 : 9)
                         .padding(.trailing, 4)
                         .accessibilityLabel("Describe your edit")
                 }

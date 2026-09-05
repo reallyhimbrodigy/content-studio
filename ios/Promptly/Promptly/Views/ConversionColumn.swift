@@ -93,12 +93,38 @@ struct ConversionColumn: ViewModifier {
     static let padFill: CGFloat = 0.88
 
     func body(content: Content) -> some View {
-        GeometryReader { geo in
+        content
+            .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
+            // `containerRelativeFrame`, NOT a GeometryReader.
+            //
+            // The proportional width was first written with a GeometryReader,
+            // and a GeometryReader reports NO intrinsic height. EditorView
+            // attaches its composer with `.safeAreaInset(edge: .bottom)`, whose
+            // height comes from the content's ideal height — so the inset
+            // collapsed, the composer took the whole screen, and the chat
+            // rendered with the input at the TOP and everything below it empty.
+            // A width mechanism silently broke a layout anchor.
+            //
+            // `containerRelativeFrame` asks the container for its width without
+            // claiming the height, which is exactly the question being asked.
+            .modifier(ProportionalWidth(active: hSize == .regular,
+                                        fraction: ConversionColumn.padFill,
+                                        fallback: width))
+    }
+}
+
+/// Width relative to the container, height left alone.
+private struct ProportionalWidth: ViewModifier {
+    let active: Bool
+    let fraction: CGFloat
+    let fallback: CGFloat
+    func body(content: Content) -> some View {
+        if active {
             content
-                .environment(\.conversionScale, hSize == .regular ? ConversionColumn.padScale : 1.0)
-                .frame(maxWidth: hSize == .regular
-                       ? geo.size.width * ConversionColumn.padFill
-                       : width)
+                .containerRelativeFrame(.horizontal) { length, _ in length * fraction }
+        } else {
+            content
+                .frame(maxWidth: fallback)
                 .frame(maxWidth: .infinity)
         }
     }
