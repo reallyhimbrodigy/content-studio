@@ -3510,113 +3510,121 @@ const server = http.createServer((req, res) => {
   // deploy-sanity pass can assert prod is running the commit we just pushed —
   // added after a blueprint-sync failure raised the question "is prod even
   // rolling new commits?" and nothing could answer it from outside.
-  // ── REFERRAL RECONCILE ───────────────────────────────────────────────────
-  // The payout path. Until now the loop was CLAIM-ONLY: a referral could be
-  // created and could never qualify or pay, because qualify_referral and
-  // grant_referral_reward were revoked from `authenticated` (correctly — they
-  // were exploitable) and nothing called them as service_role. Closing the
-  // claim path while the payout path is dead is the worst ordering, and the
-  // invite link is about to work for the first time.
+  // ── REFERRAL: INSTALLS → SEVEN DAYS ──────────────────────────────────────
+  // Ruled 2026-09-05: three installs, seven days, once. An install is a row in
+  // `referrals` — the referred account claimed the code at sign-in, and the
+  // claim already refused the referrer's own device and any device referred
+  // before. No render requirement, no `qualified_at`: the render rule paid
+  // nothing for two weeks because nothing computed it, and a flag any client
+  // could set is not a fact.
   //
-  // TRUSTS NOTHING IT IS TOLD. The referrer is taken from the auth token, never
-  // the body. Qualification is decided by whether the referred user actually
-  // has a completed render — never by referrals.qualified_at, which is a flag
-  // that was until recently settable by any authenticated caller.
+  // TWO ENTRANCES, ONE FUNCTION. The referred user's client calls `claimed`
+  // right after the claim, so the reward lands without the referrer opening
+  // the app; the referrer's client calls `reconcile` on launch as the
+  // belt-and-braces. Both resolve the referrer server-side — never from the
+  // body.
+  async function reconcileReferrer(referrerId) {
+    const { reconcile } = require('./lib/referral-reconcile');
+    const { endTimeMs, REWARD_AT, REWARD_DAYS } = require('./lib/referral-rewards');
+
+    const { data: refs } = await supabaseAdmin
+      .from('referrals').select('id, referred_id, counted_at').eq('referrer_id', referrerId);
+    const rows = refs || [];
+    if (!rows.length) return { ok: true, days: 0, reason: 'no_referrals', installs: 0, threshold: REWARD_AT };
+
+    const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+    const { data: grants } = await supabaseAdmin
+      .from('referral_rewards').select('days_granted, granted_at').eq('user_id', referrerId);
+    const all = grants || [];
+    const grantedInWindow = all.filter((g) => g.granted_at >= since)
+      .reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+    const alreadyRewarded = all.some((g) => (Number(g.days_granted) || 0) > 0);
+    const priorCounted = rows.filter((r) => r.counted_at).length;
+
+    const decision = reconcile({ referrerId, referrals: rows, priorCounted, alreadyRewarded, grantedInWindow });
+    const installs = decision.countedAfter;
+
+    // Count the new installs whether or not they cross the line, so progress
+    // toward three is visible to the referrer and never re-counted.
+    if (decision.eligible.length && decision.days <= 0) {
+      await supabaseAdmin.from('referrals')
+        .update({ counted_at: new Date().toISOString() })
+        .eq('referrer_id', referrerId)
+        .in('referred_id', decision.eligible.map((e) => e.referred_id));
+    }
+
+    if (decision.days <= 0) {
+      return { ok: true, days: 0, reason: decision.reason, installs, threshold: REWARD_AT,
+               rewarded: alreadyRewarded, capped: decision.cap.capped };
+    }
+
+    const { data: prof } = await supabaseAdmin
+      .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
+    const beforeIso = prof?.pro_until || null;
+    const tierAfter = tierAfterGrant(prof?.tier, 'pro');
+    const fromMs = grantFromMs(beforeIso);
+    const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
+
+    // Ledger first, provider_ok false: a failed grant is visible, not absent.
+    const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
+      user_id: referrerId, days_granted: decision.days,
+      pro_until_before: beforeIso, pro_until_after: untilIso,
+      referral_ids: decision.eligible.map((e) => e.referred_id),
+      provider: 'db', provider_ok: false,
+    }).select('id').maybeSingle();
+
+    const { error: upErr } = await supabaseAdmin
+      .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
+
+    if (!upErr && ledger?.id) {
+      await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
+      await supabaseAdmin.from('referrals')
+        .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
+        .eq('referrer_id', referrerId)
+        .in('referred_id', decision.eligible.map((e) => e.referred_id));
+    }
+
+    supabaseAdmin.from('analytics_events').insert({
+      event: 'referral_reward_granted', platform: 'server', app_version: 'server',
+      user_id: referrerId,
+      props: { days: decision.days, installs, threshold: REWARD_AT, reward_days: REWARD_DAYS, provider_ok: !upErr },
+    }).then(() => {}).catch(() => {});
+
+    return { ok: !upErr, days: decision.days, pro_until: untilIso, installs, threshold: REWARD_AT, rewarded: true };
+  }
+
   if (parsed.pathname === '/api/referral/reconcile' && req.method === 'POST') {
     (async () => {
       try {
         if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
         const user = await requireSupabaseUser(req).catch(() => null);
         if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-        const referrerId = user.id;
-
-        const { reconcile } = require('./lib/referral-reconcile');
-        const { endTimeMs, CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
-
-        const { data: refs } = await supabaseAdmin
-          .from('referrals').select('id, referred_id, qualified_at, counted_at')
-          .eq('referrer_id', referrerId);
-        const rows = refs || [];
-        if (!rows.length) return sendJson(res, 200, { ok: true, days: 0, reason: 'no_referrals' });
-
-        // The fact the payout rests on, read directly rather than trusted.
-        const ids = rows.map((r) => r.referred_id).filter(Boolean);
-        const { data: jobs } = await supabaseAdmin
-          .from('video_jobs').select('user_id').in('user_id', ids).eq('status', 'completed');
-        const withRender = new Set((jobs || []).map((j) => j.user_id));
-
-        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
-        const { data: grants } = await supabaseAdmin
-          .from('referral_rewards').select('days_granted').eq('user_id', referrerId).gte('granted_at', since);
-        const grantedInWindow = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
-        const priorCounted = rows.filter((r) => r.counted_at).length;
-
-        const decision = reconcile({
-          referrerId, referrals: rows, referredWithRender: withRender, priorCounted, grantedInWindow,
-        });
-
-        // Qualified-with-no-render is a FINDING, not noise: it would mean
-        // qualification became reachable by something other than finishing a
-        // video. Recorded whether or not anything is granted.
-        const suspicious = decision.rejected.filter((r) => r.reason === 'qualified_without_render');
-        if (suspicious.length) {
-          supabaseAdmin.from('analytics_events').insert({
-            event: 'referral_qualified_without_render', platform: 'server', app_version: 'server',
-            user_id: referrerId, props: { count: suspicious.length },
-          }).then(() => {}).catch(() => {});
-        }
-
-        if (decision.days <= 0) {
-          return sendJson(res, 200, {
-            ok: true, days: 0, reason: decision.reason,
-            eligible: decision.eligible.length, capped: decision.cap.capped,
-          });
-        }
-
-        const { data: prof } = await supabaseAdmin
-          .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
-        const beforeIso = prof?.pro_until || null;
-        // A grant may only RAISE a tier. This wrote tier:'pro' unconditionally,
-        // so an active Max subscriber earning a referral was clobbered DOWN.
-        const tierAfter = tierAfterGrant(prof?.tier, 'pro');
-        const fromMs = grantFromMs(beforeIso);
-        const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
-
-        // LEDGER FIRST, provider_ok false. A row exists either way, so a failed
-        // grant is visible rather than absent — absence and failure are
-        // otherwise the same nothing.
-        const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
-          user_id: referrerId, days_granted: decision.days,
-          pro_until_before: beforeIso, pro_until_after: untilIso,
-          referral_ids: decision.eligible.map((e) => e.referred_id),
-          provider: 'db', provider_ok: false,
-        }).select('id').maybeSingle();
-
-        const { error: upErr } = await supabaseAdmin
-          .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
-
-        if (!upErr && ledger?.id) {
-          await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
-          await supabaseAdmin.from('referrals')
-            .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
-            .eq('referrer_id', referrerId)
-            .in('referred_id', decision.eligible.map((e) => e.referred_id));
-        }
-
-        supabaseAdmin.from('analytics_events').insert({
-          event: 'referral_reward_granted', platform: 'server', app_version: 'server',
-          user_id: referrerId,
-          props: { days: decision.days, capped: decision.cap.capped,
-                   withheld: decision.cap.withheld, cap: CAP_DAYS_PER_30D, provider_ok: !upErr },
-        }).then(() => {}).catch(() => {});
-
-        return sendJson(res, 200, {
-          ok: !upErr, days: decision.days, pro_until: untilIso,
-          capped: decision.cap.capped, withheld: decision.cap.withheld,
-        });
+        return sendJson(res, 200, await reconcileReferrer(user.id));
       } catch (err) {
         console.error('[referral/reconcile] error', err);
         return sendJson(res, 500, { ok: false, error: 'reconcile_failed' });
+      }
+    })();
+    return;
+  }
+
+  // The referred user, right after `claim_referral` said ok: settle the
+  // REFERRER's side now. The referrer is read from the referral row.
+  if (parsed.pathname === '/api/referral/claimed' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
+        const user = await requireSupabaseUser(req).catch(() => null);
+        if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        const { data: row } = await supabaseAdmin
+          .from('referrals').select('referrer_id').eq('referred_id', user.id).maybeSingle();
+        if (!row?.referrer_id) return sendJson(res, 200, { ok: true, days: 0, reason: 'not_referred' });
+        const r = await reconcileReferrer(row.referrer_id);
+        // Never tell the referred user about the referrer's account.
+        return sendJson(res, 200, { ok: r.ok, counted: true, installs: r.installs, threshold: r.threshold, rewarded: r.days > 0 });
+      } catch (err) {
+        console.error('[referral/claimed] error', err);
+        return sendJson(res, 500, { ok: false, error: 'claimed_failed' });
       }
     })();
     return;
@@ -3876,6 +3884,27 @@ const server = http.createServer((req, res) => {
       // the negotiation is DARK and the client must send the header before any
       // of this reaches a user. supported is the app's own 12 locales.
       i18n: { supported: _i18n.SUPPORTED.length, ..._i18n.localeStats() },
+      // ── WEB CHECKOUT (US storefront only, decided on the device) ─────────
+      // One JSON blob, filled from the RevenueCat Web Billing offering:
+      //   {"storefronts":["USA"],"saved_pct":15,"products":{
+      //      "promptly_pro_yearly":{"web_price":"$246.99","web_price_micros":246990000,
+      //                             "currency":"USD","url":"https://pay.rev.cat/<app>/{app_user_id}?..."}}}
+      // The client renders nothing unless the blob parses AND its storefront is
+      // listed AND the selected product has an entry. Absent → the feature is
+      // dark on every device, which is the state until the web offering exists.
+      web_checkout: (() => {
+        try {
+          const raw = String(process.env.WEB_CHECKOUT_JSON || '').trim();
+          if (!raw) return null;
+          const j = JSON.parse(raw);
+          if (!j || typeof j !== 'object' || !j.products || typeof j.products !== 'object') return null;
+          return {
+            storefronts: Array.isArray(j.storefronts) && j.storefronts.length ? j.storefronts : ['USA'],
+            saved_pct: Number.isFinite(Number(j.saved_pct)) ? Number(j.saved_pct) : 15,
+            products: j.products,
+          };
+        } catch (_) { return null; }
+      })(),
       latest_version: String(process.env.LATEST_APP_VERSION || ''),
       min_supported_version: String(process.env.MIN_SUPPORTED_APP_VERSION || ''),
       force_update: String(process.env.FORCE_UPDATE || '') === '1' ? 'on' : 'off',
@@ -4084,6 +4113,7 @@ const server = http.createServer((req, res) => {
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          'render_started', 'render_completed', 'upload_source_missing',
           // Picker instrumentation (UNS/first-run BUILD(1)): picker_opened on every
           // present; picker_result {raw,resolved,dropped} on dismissal; and a durable
           // picker_asset_unresolved when a picked result resolves to no PHAsset (the
@@ -4103,7 +4133,7 @@ const server = http.createServer((req, res) => {
           // Referral program (conversion workstream; schema live 2026-08-21):
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
-          'referral_share', 'referral_link_opened', 'referral_claimed',
+          'referral_share', 'referral_link_opened', 'referral_claimed', 'referral_claim_rejected', 'referral_reward_received', 'upgrade_click_no_checkout', 'external_link_tap', 'checkout_method_chosen', 'checkout_sheet_shown',
           // The DENOMINATOR the referral loop never had (2026-08-29). All four
           // surfaces could report shares and none could report a share RATE, so
           // the ladder's entire purpose — making the first invite pay, and
