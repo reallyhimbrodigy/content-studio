@@ -75,8 +75,9 @@ struct OnboardingV2Flow: View {
                 }, autoDriveKey: motionProof ? "clients" : nil)
 
             case .videoType:
-                VideoTypeQuestionView(progress: (2, 2), onSkip: {},
-                                      onContinue: { picked in
+                OnboardingQuestionView(question: .videoTypeV2,
+                                       progress: (2, 2), onSkip: {},
+                                       onContinue: { picked in
                     record(step: "video_type", value: picked.first) { state.v2VideoType = $0 }
                     // The ONE question that still feeds the edit: its answer
                     // becomes the composer prefill → vibe_input on the render.
@@ -87,7 +88,7 @@ struct OnboardingV2Flow: View {
                     // first value again, which is the trade being made
                     // knowingly; what it does not do is trap anyone.
                     state.v2Step = .paywall
-                }, autoDrive: motionProof ? ("podcast", "fast") : nil)
+                }, autoDriveKey: motionProof ? "podcast" : nil)
 
             // ── RETIRED BEATS ────────────────────────────────────────────
             // The paywall, the reveal, the invite rung and attribution are no
@@ -215,6 +216,28 @@ extension OnboardingQuestion {
         ],
         event: "onboarding_v2_step",
         propKey: "audience"
+    )
+
+    /// Q2 — what you make. The one answer that still feeds the edit: it becomes
+    /// the composer prefill. Free text on "Something else" so the users who fit
+    /// no preset are not stored as the bare key `other`, which personalises
+    /// nothing.
+    static let videoTypeV2 = OnboardingQuestion(
+        step: .videoType,
+        title: String(localized: "What kind of videos do you make?"),
+        subtitle: String(localized: "We'll start you on a matching style."),
+        options: [
+            ("talkinghead", String(localized: "Talking head")),
+            ("podcast", String(localized: "Podcast clips")),
+            ("vlogs", String(localized: "Vlogs")),
+            ("promo", String(localized: "Product or promo")),
+            ("personal", String(localized: "Personal / everyday")),
+            ("other", String(localized: "Something else")),
+        ],
+        event: "onboarding_video_type",
+        propKey: "video_type",
+        freeTextKey: "other",
+        freeTextPrompt: String(localized: "What kind of videos?")
     )
 
     // Q2 has NO OnboardingQuestion entry: it is not a plain option list.

@@ -361,7 +361,7 @@ struct CreditsTopUpView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
+                .padding(hSize == .regular ? 26 : 14)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Self.accent))
             }
@@ -499,6 +499,9 @@ struct CreditsTopUpView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
+            // 88pt on a tablet, matching the paywall's plan rows — these are
+            // the same kind of control and were the same phone height.
+            .frame(minHeight: hSize == .regular ? 88 : nil)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 // PURPLE, not a lighter grey. Greyscale selection is what made
                 // this read as a debug view rather than a purchase screen, and

@@ -636,7 +636,7 @@ struct PaywallLayout: View {
                     .padding(.top, 1)
             }
 
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: hSize == .regular ? 16 : 7) {
                 ForEach(Array(tier.features.enumerated()), id: \.element) { idx, line in
                     if idx > 0 { Spacer(minLength: 0).cSeam(22) }
                     HStack(alignment: .top, spacing: 9) {
@@ -666,10 +666,16 @@ struct PaywallLayout: View {
     /// stop, rather than one gap collecting the remainder.
     private func tierPlans(_ tier: PaywallTierOption) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            // PLAN ROWS ARE 88pt ON A TABLET (brief). They were padding-sized,
+            // which on iPad meant phone-height rows in a full-width column —
+            // the content stopped short of the bottom and the surplus showed up
+            // as a void. Giving the rows the height the brief specifies fills
+            // the column with the thing the screen is actually for.
             VStack(spacing: 6) {
                 ForEach(Array(durations(tier.allowance).enumerated()), id: \.element.id) { idx, row in
                     if idx > 0 { Spacer(minLength: 0).cSeam(14) }
                     durationRow(row)
+                        .frame(minHeight: hSize == .regular ? 88 : nil)
                 }
             }
             .padding(.top, 10)

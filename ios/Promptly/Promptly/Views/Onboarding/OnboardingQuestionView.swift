@@ -59,6 +59,18 @@ struct OnboardingQuestion {
     /// Prop key under which the chosen option rides, e.g. "audience".
     let propKey: String
 
+    /// The option that opens a free-text field, if the question has one.
+    ///
+    /// This is why there used to be a SECOND question view. Q2 needed an
+    /// escape hatch — picking "Something else" stored the bare key `other`,
+    /// which returns nil from every personalisation lookup. That behaviour is a
+    /// property of ONE QUESTION and it was implemented as a whole extra screen,
+    /// and the two drifted: a tablet grid added to this file missed the other
+    /// entirely, so a measured fix came back byte-identical to no change. One
+    /// view, one behaviour, selected by data.
+    var freeTextKey: String? = nil
+    var freeTextPrompt: String? = nil
+
     // MARK: - The three questions
 
     // `title`/`subtitle`/`label` are plain `String`, NOT LocalizedStringKey, so
@@ -115,6 +127,8 @@ struct OnboardingQuestionView: View {
     var autoDriveKey: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var hSize
+    @State private var freeText: String = ""
+    @FocusState private var freeTextFocused: Bool
     /// Required questions gate Continue on a selection; the optional one never does.
     private var canContinue: Bool { isOptional || !selected.isEmpty }
 
@@ -200,6 +214,14 @@ struct OnboardingQuestionView: View {
                         }
                         .padding(.horizontal, 20)
                     }
+
+                    if let key = question.freeTextKey, selected.contains(key) {
+                        freeTextField
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
+                            .transition(reduceMotion ? .opacity
+                                        : .opacity.combined(with: .move(edge: .bottom)))
+                    }
                 }
 
                 // Capped on a tablet so the remainder cannot all land here —
@@ -244,6 +266,25 @@ struct OnboardingQuestionView: View {
             onContinue(selected)
         }
         #endif
+    }
+
+    /// OPTIONAL, always. Continue gates on the option alone — demanding a
+    /// sentence would turn the escape hatch into a second question.
+    private var freeTextField: some View {
+        TextField("", text: $freeText, prompt:
+            Text(question.freeTextPrompt ?? "")
+                .foregroundColor(.white.opacity(0.35)))
+            .textInputAutocapitalization(.sentences)
+            .focused($freeTextFocused)
+            .cType(16)
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .cControl(52)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.white.opacity(freeTextFocused ? 0.28 : 0.10), lineWidth: 1))
+            .submitLabel(.done)
     }
 
     private func chip(_ key: String, _ label: String) -> some View {

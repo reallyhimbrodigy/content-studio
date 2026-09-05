@@ -3,6 +3,9 @@ import AVKit
 import Photos
 
 struct MessageBubble: View {
+    /// Regular = iPad. The chat is where users spend their time and it was the
+    /// one surface still rendered at phone dimensions on a 13-inch screen.
+    @Environment(\.horizontalSizeClass) private var padSize
     /// render_transparency: one `render_transparency_viewed` per job, not per
     /// SwiftUI body pass (the bubble re-renders on every progress tick).
     static var transparencySeen = Set<String>()
@@ -798,6 +801,7 @@ final class TrickleProgress: ObservableObject {
 // that eases toward the backend target and never freezes or snaps.
 
 struct ProcessingIndicator: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     let stepMessage: String
     let progress: Int              // target from upload/SSE
     var finishing: Bool = false    // true on real completion → release to 100
@@ -850,7 +854,7 @@ struct ProcessingIndicator: View {
             }
             .frame(height: 3)
         }
-        .frame(maxWidth: 320, alignment: .leading)
+        .frame(maxWidth: padSize == .regular ? 490 : 320, alignment: .leading)
         // No implicit .animation here — TrickleProgress already moves the
         // bar continuously at ~30fps, so the width follows it frame-by-
         // frame. An ease-out tween on top would fight that and re-introduce
@@ -896,6 +900,7 @@ struct ProcessingIndicator: View {
 /// lists what every Promptly edit delivers, so the wait feels like a craft in
 /// progress. Purely honest reassurance — no fabricated per-clip specifics.
 struct PlanPreviewCard: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     let vibe: String
     private static let gold = Color(red: 1, green: 0.82, blue: 0.5)
     private static let deliverables: [(icon: String, label: String)] = [
@@ -934,13 +939,14 @@ struct PlanPreviewCard: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: 300, alignment: .leading)
+        .frame(maxWidth: padSize == .regular ? 460 : 300, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
     }
 }
 
 struct PipelineProgressView: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     @ObservedObject var timeline: StageTimeline
     let progress: Int
     /// Optional finer-grained SSE message (e.g. "Reading the speaker's
@@ -1188,7 +1194,7 @@ struct PipelineProgressView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(maxWidth: 340, alignment: .leading)
+        .frame(maxWidth: padSize == .regular ? 520 : 340, alignment: .leading)
         // Rehydrate from the persisted/polled progress so a view recreated on
         // relaunch (or scrolled back on) resumes at TRUE progress instead of
         // re-ramping from 0 — the 50%→1% snap-back fix.
@@ -1571,6 +1577,7 @@ final class VideoExporter: ObservableObject {
 // MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
 
 struct VideoActionRow: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     /// Threaded through so the share/save EXPORT events carry job_id.
@@ -1913,7 +1920,7 @@ struct VideoActionRow: View {
                     .font(.system(size: 16, weight: .semibold))
             }
             .foregroundColor(.black)
-            .frame(maxWidth: 300)
+            .frame(maxWidth: padSize == .regular ? 460 : 300)
             .padding(.vertical, 13)
             .background(Capsule().fill(Color.white))
         }
@@ -1931,6 +1938,7 @@ struct VideoActionRow: View {
 /// quiet "why this edit" note. Each field is optional — only what's present is
 /// shown; `hasContent` gates the whole block at the call site.
 struct PostPackageView: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     let package: PostPackage
     @State private var copied = false
 
@@ -1994,7 +2002,7 @@ struct PostPackageView: View {
                 }
             }
         }
-        .frame(maxWidth: 300, alignment: .leading)
+        .frame(maxWidth: padSize == .regular ? 460 : 300, alignment: .leading)
     }
 }
 
@@ -2009,6 +2017,7 @@ struct PostPackageView: View {
 // buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
+    @Environment(\.horizontalSizeClass) private var padSize
     let videoUrlStr: String
     let thumbnailUrlStr: String?
     let hlsManifestUrl: String?
@@ -2108,7 +2117,10 @@ struct CompletedVideoView: View {
                 )
             } label: {
                 thumbnailContent
-                    .frame(maxWidth: 240)
+                    // 300pt wide at 9:16 is 533pt tall — over the 480pt floor
+                    // the brief sets, so a rendered clip reads as phone-sized
+                    // on a 13-inch screen instead of a thumbnail.
+                    .frame(maxWidth: padSize == .regular ? 300 : 240)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay {
                         LinearGradient(
@@ -2200,7 +2212,7 @@ struct CompletedVideoView: View {
                         withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
                     }
                 )
-                .frame(maxWidth: 320, alignment: .leading)
+                .frame(maxWidth: padSize == .regular ? 490 : 320, alignment: .leading)
                 .padding(.top, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
