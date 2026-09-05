@@ -401,7 +401,9 @@ struct PromptlyApp: App {
               // sold what they already pay for, once per install. The fix for
               // one defect created the other, which is why the user-type matrix
               // exists rather than spot-checking the happy path.
-              !subscription.isPro,
+              // effectiveIsPro (2026-09-05): RC-only `isPro` missed a signed-in
+              // subscriber whose server entitlement was the authoritative one.
+              !subscription.effectiveIsPro,
               // AND WAIT FOR REVENUECAT TO ANSWER (2026-09-02, deferred auth).
               //
               // `isPro` starts false and becomes true a moment after launch when
@@ -468,10 +470,34 @@ struct PromptlyApp: App {
         guard onboarding.onboardingV2Enabled,
               !onboarding.hasCompletedOnboarding,
               (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated),
-              // Same reasoning as the paywall. The reveal already self-skips for
-              // Pro users, but the three questions would still have run — an
-              // existing subscriber walked through an upsell funnel.
-              !subscription.isPro else { return false }
+              // NEVER THE FUNNEL FOR SOMEONE WHO IS PAYING (2026-09-05).
+              //
+              // Zac hit this on a TestFlight 1.3.28 install: signed in via the
+              // Keychain, active Pro entitlement, and still got Q1 → Q2 →
+              // paywall. Two reasons, both fixed here.
+              //
+              // 1. `isPro` is RevenueCat-ONLY and starts false, so the clause
+              //    could not see a subscriber whose receipt had not resolved
+              //    yet. `effectiveIsPro` composes RC with the server's
+              //    /api/usage view, which is what "entitled" actually means —
+              //    and it covers the signed-in-and-paying case the ruling
+              //    names, plus a new device with a receipt but no session.
+              //
+              // 2. Nothing waited for that answer. A fresh install wipes
+              //    `hasCompletedOnboarding` (UserDefaults) and can lose the
+              //    Keychain FirstRun marker, so the funnel was decided on an
+              //    unread entitlement. The first-launch paywall above already
+              //    waits; this now waits the same way — but only when there IS
+              //    a session to resolve, so a signed-out fresh install still
+              //    gets the funnel with no added delay.
+              !subscription.effectiveIsPro,
+              // countdown-ok: a bounded internal wait for RevenueCat's first
+              // answer, the same one the first-launch paywall above takes.
+              // Nothing counts down on screen and no time is shown to the user;
+              // it only stops the funnel being decided on an unread entitlement.
+              (!auth.isAuthenticated || subscription.hasResolvedCustomerInfo
+               || resolveDeadlinePassed)   // countdown-ok: internal wait, not UI
+        else { return false }
         return true
     }
 
@@ -716,6 +742,15 @@ struct PromptlyApp: App {
                     try? await Task.sleep(for: .milliseconds(700))
                     launchMinElapsed = true
                 }
+                #if DEBUG
+                // HARNESS: `-poseEntitled` makes effectiveIsPro true (isMax is
+                // one of its three inputs) so the "signed in and paying" launch
+                // branch can be executed without touching a real entitlement.
+                // DEBUG only — compiled out of Release, like every other arg.
+                if ProcessInfo.processInfo.arguments.contains("-poseEntitled") {
+                    SubscriptionService.debugPosedEntitled = true
+                }
+                #endif
                 // The one knob, resolved in parallel with the auth check
                 // (pre-auth endpoint; last-known value on failure). Skipped
                 // under the presentation-proof harness so it can't override

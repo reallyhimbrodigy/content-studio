@@ -102,8 +102,19 @@ final class SubscriptionService: ObservableObject {
     /// customer. Holding the top entitlement can never be worth less than
     /// holding the one below it.
     var effectiveIsPro: Bool {
-        isPro || isMax || UsageService.shared.isPro
+        #if DEBUG
+        // Harness: a STICKY posed entitlement. `debugSetMax` alone is clobbered
+        // by the next `applyCustomerInfo`, so the launch branch could never be
+        // executed as "signed in and paying". Posed here, on the value the
+        // gates actually read, it survives every refresh. DEBUG only.
+        if Self.debugPosedEntitled { return true }
+        #endif
+        return isPro || isMax || UsageService.shared.isPro
     }
+
+    #if DEBUG
+    nonisolated(unsafe) static var debugPosedEntitled = false
+    #endif
 
     /// The wall tier the client should act on: RevenueCat's view composed with
     /// the server-derived tier, most-privileged wins (EntitlementTier.resolve —
