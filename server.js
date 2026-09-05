@@ -5296,6 +5296,24 @@ const server = http.createServer((req, res) => {
           'PRODUCT_CHANGE',
           'UNCANCELLATION',
           'NON_RENEWING_PURCHASE',
+          // WEB BILLING (2026-09-05, confirmed against RevenueCat's event
+          // reference, not assumed). Stripe / RC Billing / Paddle purchases
+          // emit the same five names above, so those needed no change. But
+          // PURCHASE_REDEEMED is WEB-EXCLUSIVE ("a Paddle, RevenueCat Billing,
+          // or Stripe purchase was redeemed") and had no handler — it fell to
+          // the unhandled branch, which logs and acks 200 WITHOUT writing.
+          //
+          // Why that is a real grant and not a duplicate: on web flows the
+          // purchase and the redemption can carry DIFFERENT app_user_ids — the
+          // buyer purchases (INITIAL_PURCHASE) and the redeeming account
+          // attaches the entitlement (PURCHASE_REDEEMED). Handling only the
+          // former grants Pro to the wrong id and leaves the actual user
+          // unentitled, which is exactly the silent web-purchase failure this
+          // webhook exists to prevent.
+          //
+          // INVOICE_ISSUANCE is the other web-exclusive event and is
+          // deliberately NOT here: it is an UNPAID invoice.
+          'PURCHASE_REDEEMED',
         ]);
         // Events that revoke Pro IMMEDIATELY (vs CANCELLATION which lets
         // them stay Pro through expiration_at_ms).
@@ -5528,13 +5546,33 @@ const server = http.createServer((req, res) => {
           if (grantsPro.has(type) && payload.tier) {
             try {
               const { data: cur } = await supabaseAdmin
-                .from('profiles').select('tier').eq('id', id).maybeSingle();
+                .from('profiles').select('tier, pro_until').eq('id', id).maybeSingle();
               const raised = tierAfterGrant(cur && cur.tier, payload.tier);
               if (raised !== payload.tier) {
                 console.log(`[RevenueCat] raise-guard: keeping stored tier '${raised}' `
                   + `over incoming grant '${payload.tier}' for ${id}`);
               }
               payload.tier = raised;
+              // EXPIRY GUARD, GRANTS ONLY (2026-09-05). A grant carries
+              // pro_until = expiration_at_ms, and expirationIso is null when the
+              // event omits that field. Writing it would NULL a still-valid paid
+              // period — a grant that REVOKES. CANCELLATION already guards
+              // exactly this ("a missing/zero expiration must NOT null it out");
+              // the grant path did not, and PURCHASE_REDEEMED is the event most
+              // likely to arrive without one since the expiry lives on the
+              // original purchase.
+              //
+              // Only ever KEEPS a longer/existing future expiry — it never
+              // shortens one, so a genuine expiry change still applies.
+              if (payload.pro_until === null || payload.pro_until === undefined) {
+                const stored = cur && cur.pro_until;
+                if (stored && new Date(stored).getTime() > Date.now()) {
+                  console.log(`[RevenueCat] expiry-guard: ${type} carried no `
+                    + `expiration; keeping stored pro_until '${stored}' for ${id} `
+                    + `rather than nulling a paid period`);
+                  payload.pro_until = stored;
+                }
+              }
             } catch (_) {
               // A failed read must not drop the grant. Worst case we write the
               // incoming tier, which is exactly the pre-guard behaviour.
