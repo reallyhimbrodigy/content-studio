@@ -375,6 +375,8 @@ struct PaywallLayout: View {
     private static let accent = Color(hex: "6C5CE7")
 
     var body: some View {
+        GeometryReader { geo in
+            ScrollView(showsIndicators: false) {
         VStack(spacing: 0 * k) {
             header
 
@@ -461,6 +463,9 @@ struct PaywallLayout: View {
                 .padding(.bottom, 6 * k)
 
             footer
+            }
+            .frame(minHeight: geo.size.height)
+            }
         }
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88),

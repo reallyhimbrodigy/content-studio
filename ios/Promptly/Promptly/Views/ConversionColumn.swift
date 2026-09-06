@@ -202,17 +202,80 @@ struct ConversionScroll<Content: View>: View {
                 // survived). The phone was untouched because the rule is
                 // compact-gated. This container already knows its width, so it
                 // applies the same 88% fill directly.
-                content()
-                    .frame(maxWidth: hSize == .regular
-                           ? geo.size.width * ConversionColumn.padFill
-                           : width)
-                    .frame(maxWidth: .infinity)
+                // THE SYMMETRY RULE (2026-09-05). `minHeight: container` let the
+                // phone layout's single trailing Spacer stretch on a much taller
+                // iPad, which pinned the CTA to the bottom and opened a 300–1100pt
+                // hole in the middle of six screens. Empty space is fine; a hole
+                // with content jammed against both edges is not.
+                //
+                // On regular width the content is held to its intrinsic height
+                // (fixedSize collapses that internal Spacer to its minimum) and
+                // centred between two equal Spacers, so the slack splits into
+                // near-equal top and bottom bands. Compact is untouched — the
+                // phone still pushes its CTA to the thumb zone, which is right
+                // there and wrong here.
+                VStack(spacing: 0) {
+                    if hSize == .regular { Spacer(minLength: 0) }
+                    content()
+                        .frame(maxWidth: hSize == .regular
+                               ? geo.size.width * ConversionColumn.padFill
+                               : width)
+                        .frame(maxWidth: .infinity)
+                    if hSize == .regular { Spacer(minLength: 0) }
+                }
                     .frame(minHeight: geo.size.height)
             }
         }
     }
 }
 
+
+/// `fixedSize(vertical:)` only where it is wanted. Applied unconditionally it
+/// would collapse legitimately-scrolling content on a phone; applied on regular
+/// width it is what stops an internal Spacer from stretching into a hole.
+private struct IntrinsicHeightOnRegular: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if active { content.fixedSize(horizontal: false, vertical: true) }
+        else { content }
+    }
+}
+
+/// THE SYMMETRY RULE, as a modifier (2026-09-05).
+///
+/// These surfaces are `ZStack { Color.black; content }`, and a ZStack CENTRES
+/// its children. On a phone the content fills the screen so that is invisible.
+/// On an iPad the same content is short, its trailing Spacer stretches to the
+/// full container, and the CTA gets pinned to the bottom edge — one hole in the
+/// middle, content jammed against both edges. Holding the content to a
+/// phone-ish height lets the ZStack do what it already does: centre it, so the
+/// slack becomes near-equal bands top and bottom.
+///
+/// Compact is untouched: the phone still pushes its CTA into the thumb zone,
+/// which is right there and wrong on a 13-inch screen.
+struct SymmetricHeightOnRegular: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
+    let cap: CGFloat
+    func body(content: Content) -> some View {
+        if hSize == .regular {
+            // INTRINSIC HEIGHT, not a cap. A cap still lets the internal
+            // Spacers stretch inside it, which just makes a smaller hole.
+            // fixedSize collapses them to their minLength, so the block is its
+            // natural height and the parent ZStack centres it — equal bands,
+            // no hole. Capped as a backstop so content taller than the screen
+            // cannot overflow off the top and bottom.
+            content
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxHeight: cap)
+        } else { content }
+    }
+}
+
+extension View {
+    func symmetricHeightOnRegular(_ cap: CGFloat = 900) -> some View {
+        modifier(SymmetricHeightOnRegular(cap: cap))
+    }
+}
 
 // MARK: - iPad type + spacing scale
 

@@ -402,6 +402,7 @@ struct ReferralCatchBeat: View {
                 }
                 .padding(.bottom, 8 * k)
             }
+            .symmetricHeightOnRegular()
         }
         .onAppear {
             Analytics.track("referral_shown", props: ["source": "decline_catch"])

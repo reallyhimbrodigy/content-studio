@@ -178,6 +178,23 @@ final class ResumableMultipartUploader: NSObject {
             return
         }
 
+        // A CONFIRMED (OR UNRECOVERABLE) UPLOAD IS NEVER RETRIED (2026-09-05).
+        //
+        // The staged source is deleted the instant its upload confirms. This
+        // scheduler used to re-enter with the manifest still on disk, write
+        // chunks from a path that no longer exists, and hand a dead file to
+        // `uploadTask(with:fromFile:)` — the PROMPTLY-IOS-2Y class. The fence
+        // there turned the crash into a failed upload, but the retry itself was
+        // the defect: there are no bytes to send and there never will be again.
+        // Give the upload up ONCE and clear its state so nothing reschedules it.
+        guard FileManager.default.isReadableFile(atPath: manifest.sourcePath) else {
+            Analytics.track("upload_source_missing", props: [
+                "path": "multipart-schedule", "upload_id": uploadId,
+            ], durable: true)
+            Task { await self.giveUp(uploadId: uploadId, reason: "source no longer on disk") }
+            return
+        }
+
         let plan = MultipartChunker.partPlan(fileSize: manifest.fileSize, partSize: manifest.partSize)
         // CHUNK WRITES GO OFF THE MAIN ACTOR (PROMPTLY-IOS-3M / -41, "App hanging
         // … MultipartChunker.writePart"). This class is @MainActor, so the

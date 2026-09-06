@@ -900,6 +900,17 @@ class APIService {
         }
 
         // Single-PUT fallback — the 225 path, unchanged (emits its own upload_attempt).
+        // THE FALL-THROUGH IS A RETRY, SO IT OBEYS THE SAME RULE (2026-09-05).
+        // Multipart failing does not mean the bytes are still on disk: a
+        // confirmed upload deletes its staged copy, and re-entering here would
+        // re-upload a path that is gone. No source, no retry — fail honestly so
+        // the caller shows its recovery instead of the fence catching a task
+        // that should never have been created.
+        guard FileManager.default.isReadableFile(atPath: fileUrl.path) else {
+            Analytics.track("upload_source_missing", props: ["path": "never-worse-fallthrough"], durable: true)
+            throw APIError.uploadFailed
+        }
+
         onPublicUrlResolved(singlePutPublicUrl)
         try await uploadFileToS3(
             url: singlePutUrl, fileUrl: fileUrl, mimeType: "video/mp4",

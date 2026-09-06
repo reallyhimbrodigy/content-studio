@@ -241,6 +241,7 @@ struct OnboardingQuestionView: View {
                 .padding(.horizontal, 20 * k)
                 .padding(.bottom, 16 * k)
             }
+            .symmetricHeightOnRegular()
             // The only width bound on the question column — capping here
             // constrains the header, the options and the CTA together.
             .conversionColumn(ConversionColumn.content)
