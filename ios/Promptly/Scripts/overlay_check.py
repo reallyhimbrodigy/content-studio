@@ -120,14 +120,25 @@ def main():
 
     measurable = [(p, c) for p, c in zip(pp, cc)
                   if p[0] > lo + 1 and p[1] < hi - 1 and c[0] > lo + 1 and c[1] < hi - 1]
-    offs = sorted(c[0] - p[0] for p, c in measurable)
-    shift = offs[len(offs) // 2] if offs else 0.0
+    # OFFSET ACCUMULATES, BECAUSE REWRAPPING DOES.
+    #
+    # A filling text block is wider on the iPad relative to its type, so its
+    # paragraph wraps into fewer lines and the block is SHORTER. Everything below
+    # it then sits higher by exactly that much. Demanding one shared offset for
+    # every block would fail a text conversation for doing what the width rule
+    # tells it to do. So each block is checked against the offset it should have:
+    # the first block's offset plus the height differences of every block above
+    # it. Ordering and count are still strict, and a block that moves for any
+    # OTHER reason still fails.
+    shift = (measurable[0][1][0] - measurable[0][0][0]) if measurable else 0.0
+    carried = 0.0
     for n, (p, c) in enumerate(measurable, 1):
-        dtop = (c[0] - p[0]) - shift
+        dtop = (c[0] - p[0]) - shift - carried
+        carried += (c[1] - c[0]) - (p[1] - p[0])
         dh = (c[1] - c[0]) - (p[1] - p[0])
         if abs(dtop) > TOL_PT:
-            faults.append(f"block {n} at y={p[0]:.0f}pt sits {dtop:+.0f}pt off the common "
-                          f"{shift:+.0f}pt offset")
+            faults.append(f"block {n} at y={p[0]:.0f}pt sits {dtop:+.0f}pt off where the "
+                          f"rewrapping above it puts it")
         elif abs(dh) > TOL_PT:
             # A block that FILLS gets wider relative to its type on the iPad, so
             # a paragraph inside it wraps into fewer lines and the block is

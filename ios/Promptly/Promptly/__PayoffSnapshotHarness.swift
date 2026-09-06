@@ -302,6 +302,10 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
+            case 58: bleed("CHAT SHAPE — user right, assistant left with the mark") {
+                EditorView()
+                    .task { Self.seedShapeChat() }
+            }
             case 56: bleed("STORE 3 — a re-edit: asked again, answered again") {
                 EditorView()
                     .task { Self.seedReeditChat() }
@@ -590,6 +594,37 @@ struct PayoffSnapshotHarnessView: View {
         }
         ChatStore.shared.debugSeed(Chat(id: "store-demo", title: "Launch clip",
                                         messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// THE THREAD'S SHAPE, WITHOUT A VIDEO IN THE WAY.
+    ///
+    /// The finished-video states are scrolled to their newest message, and on a
+    /// 13-inch iPad the video fills the column — so neither shows a user bubble
+    /// or the Promptly mark, and neither can be used to judge whether the thread
+    /// reads as an LLM chat. This one is text only and fits, so the arrangement
+    /// is the whole frame: user right in a bubble, assistant left, full width,
+    /// no bubble, mark in the gutter.
+    @MainActor
+    static func seedShapeChat() {
+        var ask = ChatMessage(role: .user, content: "What makes a good hook for a short video?")
+        ask.isOnboarding = false
+        var reply = ChatMessage(role: .assistant, content:
+            "A good hook earns the next two seconds. Open on the most surprising "
+            + "frame you have, say the promise out loud, and cut the throat-clear "
+            + "before it. If the first line could open any video, it is not a hook.")
+        reply.isOnboarding = false
+        var back = ChatMessage(role: .user, content: "Give me one for a launch clip")
+        back.isOnboarding = false
+        var reply2 = ChatMessage(role: .assistant, content:
+            "\"We built this in a weekend and it already broke twice.\" Then cut "
+            + "straight to the thing working.")
+        reply2.isOnboarding = false
+        ChatStore.shared.debugSeed(Chat(id: "chat-shape", title: "Hooks",
+                                        messages: [SerializedMessage(from: ask),
+                                                   SerializedMessage(from: reply),
+                                                   SerializedMessage(from: back),
+                                                   SerializedMessage(from: reply2)],
+                                        createdAt: Date(), updatedAt: Date()))
     }
 
     /// STORE 3 — the same chat, asked again. Two real renders, the second one
