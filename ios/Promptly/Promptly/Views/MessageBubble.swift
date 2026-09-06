@@ -1842,8 +1842,11 @@ struct CompletedVideoView: View {
         if let thumbUrl = effectiveThumbnailUrl, let url = URL(string: thumbUrl) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    image.resizable()
-                        .aspectRatio(contentMode: hSizeCVV == .regular ? .fill : .fit)
+                    if hSizeCVV == .regular {
+                        BlurredFillImage(image: image)
+                    } else {
+                        image.resizable().aspectRatio(contentMode: .fit)
+                    }
                 } else if phase.error != nil {
                     // Stored signed URL expired (or otherwise rejected).
                     // Ask the server for a fresh one; on success the

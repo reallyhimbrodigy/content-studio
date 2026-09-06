@@ -306,6 +306,42 @@ enum ThreadColumn {
 /// An action pill on iPad: capsule behind it, an equal share of the row.
 /// A placeholder that is 9:16 on a phone and shapeless on iPad, where the
 /// media box's own 772x480 frame decides the shape.
+/// A FITTED IMAGE OVER A BLURRED FILL OF ITSELF (ruled 2026-09-05).
+///
+/// The media box is 772x480 landscape; the footage is 1080x1920 portrait.
+/// `.fill` cropped the subject's head off, `.fit` would letterbox onto flat
+/// black. This does what every video app does with mismatched aspect: the frame
+/// is fitted whole, and the empty sides are a blurred, enlarged copy of the same
+/// frame — so the box is full, nothing is cropped, and the colour comes from the
+/// footage rather than a black bar.
+struct BlurredFillImage: View {
+    let image: Image
+    var blur: CGFloat = 28
+    var body: some View {
+        // BOTH LAYERS ARE SIZED EXPLICITLY. In a bare ZStack the stack takes its
+        // size from the FITTED child, so the "fill" layer was handed the same
+        // letterboxed box and never covered the sides — the box rendered with
+        // black bars. GeometryReader hands each layer the container's real size,
+        // so the fill genuinely overflows and is clipped.
+        GeometryReader { geo in
+            ZStack {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .blur(radius: blur, opaque: true)
+                    .overlay(Color.black.opacity(0.28))
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width, height: geo.size.height)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}
+
 struct MediaBoxAspect: ViewModifier {
     let regular: Bool
     func body(content: Content) -> some View {
@@ -360,8 +396,10 @@ struct ThreadVideo: ViewModifier {
             // is clipped rather than letterboxed — the inner views declare a
             // 9:16 `.fit`, which inside this box would letterbox to a narrow
             // strip and reintroduce the phone outline this replaced.
+            // No outer scaledToFill: BlurredFillImage already composes the
+            // fitted frame over its own blurred fill, and forcing the whole
+            // stack to fill would crop the fitted layer straight back off.
             content
-                .scaledToFill()
                 .frame(width: ThreadColumn.maxWidth - ThreadColumn.videoInset,
                        height: ThreadColumn.videoHeight)
                 .clipped()

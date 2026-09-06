@@ -235,11 +235,11 @@ struct RenderProgressRing: View {
     /// image; an empty tone just reads as a frame that has not painted yet.
     @ViewBuilder private var frameContent: some View {
         if let t = thumbnail {
-            Image(uiImage: t).resizable().aspectRatio(contentMode: .fill)
+            BlurredFillImage(image: Image(uiImage: t))
         } else if let u = thumbnailUrl, let url = URL(string: u) {
             AsyncImage(url: url) { phase in
                 if case .success(let img) = phase {
-                    img.resizable().aspectRatio(contentMode: .fill)
+                    BlurredFillImage(image: img)
                 } else {
                     Color.white.opacity(0.05)
                 }
