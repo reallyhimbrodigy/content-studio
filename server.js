@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
+const { installSeen } = require('./lib/install-seen');
 const _i18n = require('./lib/i18n');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
@@ -31,6 +32,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
+const { isOwnedSource } = require('./lib/source-ownership');
 const apiLedger = require('./lib/api-outcome-ledger');
 const { makeJob404Guard } = require('./lib/job404-guard');
 const { isTerminalJobStatus, classifyLostTransition } = require('./lib/job-status');
@@ -111,8 +113,15 @@ function warmDispatcherOnIntent() {
   const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
   const warmUrl = process.env.MODAL_WARMUP_URL || modalRunUrl.replace(/-run-job(\.|$)/, '-warmup$1');
   if (!warmUrl) return;
+  // CARRIES THE WORKER SECRET like every other dispatch. This call posted a
+  // bare '{}' — the ONE worker endpoint out of three not sending auth, found by
+  // auditing all call sites rather than the two that were obvious. When the
+  // worker starts enforcing (step 3), an unauthenticated warmup would 403 and
+  // the on-intent warm would silently stop working: not an outage, just a
+  // slower first render that nobody would connect to this change.
   Promise.resolve(fetch(warmUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(8000),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...workerAuthField() }), signal: AbortSignal.timeout(8000),
   })).then(() => {}, (e) => console.warn('[warm-on-intent] warmup failed (non-fatal):', e && e.message));
 }
 
@@ -3670,6 +3679,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // INSTALL RECOGNITION — unauthenticated by necessity: it is asked BEFORE
+  // signup, which is the whole point. Answers only a boolean about a device id
+  // the caller already holds, so it discloses nothing a caller does not know.
+  if (parsed.pathname === '/api/install/seen' && req.method === 'GET') {
+    // `parsed` is url.parse(req.url, true) — the query bag, not URLSearchParams.
+    const deviceId = (parsed.query || {}).device_id;
+    installSeen(deviceId, supabaseAdmin).then((r) => {
+      if (r.retryAfter) { try { res.setHeader('Retry-After', String(r.retryAfter)); } catch {} }
+      sendJson(res, r.status, r.body);
+    }).catch(() => sendJson(res, 503, { error: 'lookup_failed' }));
+    return;
+  }
+
   if (parsed.pathname === '/api/health' && req.method === 'GET') {
     return sendJson(res, 200, {
       ok: true,
@@ -4253,6 +4275,11 @@ const server = http.createServer((req, res) => {
           // picker asset is a pick that never becomes a job.
           'device_id_keychain_write_failed', 'first_run_keychain_write_failed',
           'picker_asset_unrecoverable',
+          // The RECOVERY half of the two above: the keychain lost the identity
+          // and the device_id was recovered anyway. Emitted by shipped iOS and
+          // dropped silently until 2026-09-06 — without it the keychain-failure
+          // events read as pure loss, with no denominator for how many recover.
+          'first_run_recovered_from_device_id',
           // Onboarding language choice — segments every funnel above by locale.
           'language_changed',
           // FREE-TIER CREDITS (2026-09-02). Allowlisted BEFORE the client emits
@@ -6106,6 +6133,40 @@ const server = http.createServer((req, res) => {
         }
         if (proxyVideoUrl && !isSafeRemoteMediaUrl(proxyVideoUrl)) {
           return sendJson(res, 400, { error: 'invalid_proxy_url' });
+        }
+
+        // ── PROVENANCE, NOT JUST SAFETY ──────────────────────────────────────
+        // isSafeRemoteMediaUrl is an SSRF guard: it proves the URL is not
+        // internal. It says NOTHING about who owns it, so any public https URL
+        // passed — an arbitrary internet video the worker would download and
+        // render on our compute, or ANOTHER USER'S source key. The keys are
+        // unguessable, but unguessable is secrecy, not authorisation: a shared
+        // or leaked URL rendered fine.
+        //
+        // Ownership is in the key. /api/upload-url mints
+        // `sources/${authUser.id}/...`, so the owner is derivable from the path
+        // and no confirm table is needed.
+        //
+        // THE SAMPLE CLIP IS THE ONE EXEMPTION, and it is exempt because it is
+        // the server's OWN configured source — matched by exact equality
+        // against the env value, never by pattern. It cannot be user-supplied.
+        const _sampleSrc = String(process.env.SAMPLE_DEMO_SOURCE_URL || '').trim();
+        // BOTH URLs, because the worker downloads BOTH. proxy_video_url is not
+        // persisted on the job row, which is exactly why it is easy to miss —
+        // it is passed straight through to the worker (see the dispatch body
+        // below) and fetched there, so an unguarded proxy is the same hole
+        // wearing a different parameter name.
+        for (const [label, u] of [['video_url', videoUrl], ['proxy_video_url', proxyVideoUrl]]) {
+          if (!u) continue;
+          if (u === _sampleSrc) continue;
+          if (isOwnedSource(u, authUser.id)) continue;
+          console.warn('[render] rejected a source this user does not own: field=%s url=%s user=%s',
+            label, stripQuery(u).slice(0, 120), authUser.id);
+          return sendJson(res, 403, {
+            error: 'source_not_owned',
+            field: label,
+            message: 'That video was not uploaded by this account. Upload it again and retry.',
+          });
         }
 
         // §4 sample-clip demo. The exemption (no daily-quota decrement, no
