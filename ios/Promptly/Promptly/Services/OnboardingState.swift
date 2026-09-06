@@ -93,7 +93,6 @@ final class OnboardingState: ObservableObject {
     /// moment of desire, EACH behind its own server flag, default off —
     /// arming order stays a ruling after 235's read.
     @Published private(set) var onboardingV2Enabled = false
-    @Published private(set) var renderTransparencyEnabled = false
     @Published private(set) var exportGatePersonalizationEnabled = false
     @Published private(set) var badRenderSuppressorEnabled = false
     @Published private(set) var annualDollarLineEnabled = false
@@ -205,7 +204,6 @@ final class OnboardingState: ObservableObject {
             UserDefaults.standard.set(yearlyFrameFixEnabled, forKey: "yearly_frame_fix_enabled")
             UserDefaults.standard.set(uploadFailNotifyEnabled, forKey: "upload_fail_notify_enabled")
             onboardingV2Enabled = (obj?["onboarding_v2"] as? String) == "on"
-            renderTransparencyEnabled = (obj?["render_transparency"] as? String) == "on"
             exportGatePersonalizationEnabled = (obj?["exportgate_personalization"] as? String) == "on"
             badRenderSuppressorEnabled = (obj?["bad_render_suppressor"] as? String) == "on"
             annualDollarLineEnabled = (obj?["annual_dollar_line"] as? String) == "on"
@@ -251,7 +249,6 @@ final class OnboardingState: ObservableObject {
             paywallPersonalizationEnabled = (obj?["paywall_personalization"] as? String) == "on"
             referralProgressEnabled = (obj?["referral_progress"] as? String) == "on"
             UserDefaults.standard.set(onboardingV2Enabled, forKey: "onboarding_v2_enabled")
-            UserDefaults.standard.set(renderTransparencyEnabled, forKey: "render_transparency_enabled")
             UserDefaults.standard.set(exportGatePersonalizationEnabled, forKey: "exportgate_personalization_enabled")
             UserDefaults.standard.set(badRenderSuppressorEnabled, forKey: "bad_render_suppressor_enabled")
             UserDefaults.standard.set(annualDollarLineEnabled, forKey: "annual_dollar_line_enabled")
@@ -283,7 +280,6 @@ final class OnboardingState: ObservableObject {
             yearlyFrameFixEnabled = UserDefaults.standard.bool(forKey: "yearly_frame_fix_enabled")
             uploadFailNotifyEnabled = UserDefaults.standard.bool(forKey: "upload_fail_notify_enabled")
             onboardingV2Enabled = UserDefaults.standard.bool(forKey: "onboarding_v2_enabled")
-            renderTransparencyEnabled = UserDefaults.standard.bool(forKey: "render_transparency_enabled")
             exportGatePersonalizationEnabled = UserDefaults.standard.bool(forKey: "exportgate_personalization_enabled")
             badRenderSuppressorEnabled = UserDefaults.standard.bool(forKey: "bad_render_suppressor_enabled")
             annualDollarLineEnabled = UserDefaults.standard.bool(forKey: "annual_dollar_line_enabled")
@@ -334,7 +330,6 @@ final class OnboardingState: ObservableObject {
         switch key {
         case "first_launch_paywall": if firstLaunchPaywallEnabled != true { firstLaunchPaywallEnabled = true }
         case "onboarding_v2": onboardingV2Enabled = true
-        case "render_transparency": if !renderTransparencyEnabled { renderTransparencyEnabled = true }
         case "exportgate_personalization": if !exportGatePersonalizationEnabled { exportGatePersonalizationEnabled = true }
         case "bad_render_suppressor": if !badRenderSuppressorEnabled { badRenderSuppressorEnabled = true }
         case "annual_dollar_line": if !annualDollarLineEnabled { annualDollarLineEnabled = true }

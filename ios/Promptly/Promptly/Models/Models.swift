@@ -423,10 +423,16 @@ struct SerializedMessage: Codable, Hashable {
                 msg.stageTimeline = nil
                 msg.stepMessage = nil
             } else {
-                msg.stageTimeline = StageTimeline(mode: "full")
+                // A RESTORED RENDER SHOWS THE LOADER, NOT RECOVERY COPY.
+                // `StageTimeline(mode:)` with no `startWith` leaves no active
+                // stage, so the ring fell through to this stepMessage and the
+                // user read "Picking up where it left off…" — recovery text
+                // standing in for the loader. Seeding the first stage gives the
+                // ring a real personality line while the poll catches up.
+                msg.stageTimeline = StageTimeline(mode: "full", startWith: "analyze")
                 if jobStatus == nil { msg.jobStatus = "processing" }
                 // Keep the parked question label; the poll re-shows the ask card.
-                msg.stepMessage = jobStatus == "needs_input" ? "Lumen has a question" : "Picking up where it left off..."
+                msg.stepMessage = jobStatus == "needs_input" ? "Lumen has a question" : nil
             }
         }
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {

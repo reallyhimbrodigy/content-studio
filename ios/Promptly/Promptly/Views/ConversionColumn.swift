@@ -277,6 +277,98 @@ extension View {
     }
 }
 
+/// THE THREAD FILLS ITS COLUMN ON IPAD (ruled 2026-09-05).
+///
+/// Phone caps stop a line of text running the whole screen. On an iPad the same
+/// caps left the entire conversation — the finished video, the caption block,
+/// the assistant message, Share — inside a ~430pt column with 60% of the screen
+/// empty, while the composer (which does scale) spanned ~770pt. k reached the
+/// composer and stopped at the thread.
+///
+/// On regular width these fill the conversation column, which is itself 88% of
+/// the container — the same content width every other screen uses. Compact
+/// keeps the phone cap exactly, because there the cap is right.
+/// THE CHAT THREAD GETS ITS OWN RULE (ruled 2026-09-05).
+/// Everything else on iPad is 88% of the container. A conversation is not a
+/// form: at 88% of a 13-inch landscape screen a line of message text runs
+/// ~1210pt and stops being readable. The thread is capped at 820pt and CENTRED;
+/// the composer and the empty-state rows stay full width.
+enum ThreadColumn {
+    static let maxWidth: CGFloat = 820
+    /// The bubble's own horizontal padding, so the media box lines up with the
+    /// text above it rather than overhanging.
+    static let videoInset: CGFloat = 48
+    /// One media height for BOTH states — the render container and the finished
+    /// video — so the transition from in-progress to result does not jump.
+    static let videoHeight: CGFloat = 480
+}
+
+/// An action pill on iPad: capsule behind it, an equal share of the row.
+/// A placeholder that is 9:16 on a phone and shapeless on iPad, where the
+/// media box's own 772x480 frame decides the shape.
+struct MediaBoxAspect: ViewModifier {
+    let regular: Bool
+    func body(content: Content) -> some View {
+        if regular { content } else { content.aspectRatio(9/16, contentMode: .fit) }
+    }
+}
+
+struct ThreadPillChrome: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if active {
+            content
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+        } else { content }
+    }
+}
+
+extension View {
+    func threadPillChrome(_ active: Bool) -> some View { modifier(ThreadPillChrome(active: active)) }
+}
+
+struct ThreadFill: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
+    let phoneCap: CGFloat
+    let alignment: Alignment
+    func body(content: Content) -> some View {
+        content.frame(maxWidth: hSize == .regular ? .infinity : phoneCap, alignment: alignment)
+    }
+}
+
+extension View {
+    func threadFill(_ phoneCap: CGFloat, alignment: Alignment = .leading) -> some View {
+        modifier(ThreadFill(phoneCap: phoneCap, alignment: alignment))
+    }
+    /// The finished video: fills the column and is never smaller than 480pt tall
+    /// on an iPad, where a 384pt cap read as a phone screenshot pasted in.
+    func threadVideo(_ phoneCap: CGFloat) -> some View {
+        modifier(ThreadVideo(phoneCap: phoneCap))
+    }
+}
+
+struct ThreadVideo: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
+    let phoneCap: CGFloat
+    func body(content: Content) -> some View {
+        if hSize == .regular {
+            // THE SAME BOX AS THE RENDER CONTAINER ABOVE IT, so the transition
+            // from in-progress to finished does not jump. The content fills and
+            // is clipped rather than letterboxed — the inner views declare a
+            // 9:16 `.fit`, which inside this box would letterbox to a narrow
+            // strip and reintroduce the phone outline this replaced.
+            content
+                .scaledToFill()
+                .frame(width: ThreadColumn.maxWidth - ThreadColumn.videoInset,
+                       height: ThreadColumn.videoHeight)
+                .clipped()
+        } else { content.frame(maxWidth: phoneCap) }
+    }
+}
+
 // MARK: - iPad type + spacing scale
 
 /// How much larger type and spacing run on a regular-width (iPad) container.

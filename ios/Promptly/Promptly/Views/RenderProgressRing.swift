@@ -93,8 +93,20 @@ struct RenderProgressRing: View {
     /// Large enough to be the subject of the message. 9:16, the shape of the
     /// footage people actually bring, so a vertical clip fills it rather than
     /// being cropped to fit a frame of some other proportion.
-    private let frameWidth: CGFloat = 208
-    private var frameHeight: CGFloat { frameWidth * 16 / 9 }
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    /// THE RENDER CONTAINER IS THE COLUMN, NOT A PHONE OUTLINE (ruled
+    /// 2026-09-05). 208pt is a phone frame; in an 820pt conversation column it
+    /// read as a little portrait rectangle floating on the left. On iPad it
+    /// takes the column width and stands 480pt tall, with the source thumbnail
+    /// filling it and the trace drawn around it — the same box the finished
+    /// video lands in, so in-progress → finished does not jump.
+    private var frameWidth: CGFloat {
+        hSize == .regular ? ThreadColumn.maxWidth - ThreadColumn.videoInset : 208
+    }
+    private var frameHeight: CGFloat {
+        hSize == .regular ? ThreadColumn.videoHeight : frameWidth * 16 / 9
+    }
     private let corner: CGFloat = 26
 
     private var activeStage: PipelineStage? {

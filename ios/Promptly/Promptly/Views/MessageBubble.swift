@@ -319,17 +319,6 @@ struct MessageBubble: View {
                 // OWN job above the stage feed, from the v2 survey answers
                 // where they exist. The stage list below is unchanged and
                 // remains the only claim about pipeline state.
-                if OnboardingState.shared.renderTransparencyEnabled,
-                   status != "needs_input" {
-                    RenderTransparencyHeader()
-                        .onAppear {
-                            guard let jid = message.jobId,
-                                  !MessageBubble.transparencySeen.contains(jid) else { return }
-                            MessageBubble.transparencySeen.insert(jid)
-                            Analytics.track("render_transparency_viewed",
-                                            props: ["context": "render_wait"])
-                        }
-                }
                 if let timeline = message.stageTimeline {
                     // §5 plan preview: reflect the user's vibe + what Promptly is
                     // making, so the multi-minute wait reads as a craft in progress
@@ -846,7 +835,7 @@ struct ProcessingIndicator: View {
             }
             .frame(height: 3 * k)
         }
-        .frame(maxWidth: 320 * k, alignment: .leading)
+        .threadFill(320 * k)
         // No implicit .animation here — TrickleProgress already moves the
         // bar continuously at ~30fps, so the width follows it frame-by-
         // frame. An ease-out tween on top would fight that and re-introduce
@@ -1147,6 +1136,19 @@ final class VideoExporter: ObservableObject {
 // MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
 
 struct VideoActionRow: View {
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    /// THE ACTION ROW IS THREE PILLS ON IPAD (ruled 2026-09-05).
+    /// On a phone each action is a circular icon with its label beneath — right
+    /// at 390pt. In an 820pt column that read as three icons floating in space,
+    /// so on regular width each becomes a real pill (icon AND label on one
+    /// line, capsule behind) and the three share the column equally, matching
+    /// the Share button's width above them.
+    private var pillLayout: AnyLayout {
+        hSize == .regular ? AnyLayout(HStackLayout(spacing: 10 * k))
+                          : AnyLayout(VStackLayout(spacing: 6 * k))
+    }
+    private var pillIconSize: CGFloat { hSize == .regular ? 30 * k : 48 * k }
     @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
@@ -1202,6 +1204,11 @@ struct VideoActionRow: View {
             shareHeroButton
 
             // Secondary actions — save, re-edit, start another.
+            // THE ACTION ROW DISTRIBUTES ACROSS THE COLUMN on iPad. On a phone
+            // the three pills sit left with a trailing Spacer, which is right at
+            // 390pt. In a 1200pt conversation column that left them huddled in
+            // the corner under a full-width Share, so on regular width the
+            // spacing goes BETWEEN them instead of all at the end.
             HStack(spacing: 14 * k) {
                 pill(
                     icon: "square.and.arrow.down",
@@ -1217,8 +1224,9 @@ struct VideoActionRow: View {
                 if let onMakeAnother {
                     makeAnotherPill(action: onMakeAnother)
                 }
-                Spacer(minLength: 0 * k)
+                if hSize != .regular { Spacer(minLength: 0 * k) }
             }
+            .threadFill(.infinity)
         }
         .padding(.top, 8 * k)
     }
@@ -1278,14 +1286,14 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6 * k) {
+            pillLayout {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     Image(systemName: "plus")
                         .font(.system(size: 18 * k, weight: .semibold))
                         .foregroundColor(Color(.secondaryLabel))
                 }
-                .frame(width: 48 * k, height: 48 * k)
+                .frame(width: pillIconSize, height: pillIconSize)
                 .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5 * k))
                 Text("New")
                     .font(.system(size: 11 * k, weight: .medium))
@@ -1294,6 +1302,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
+        .threadPillChrome(hSize == .regular)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Make another video")
     }
@@ -1318,7 +1327,7 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6 * k) {
+            pillLayout {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     if isPro {
@@ -1331,7 +1340,7 @@ struct VideoActionRow: View {
                             .foregroundColor(Color(.secondaryLabel))
                     }
                 }
-                .frame(width: 48 * k, height: 48 * k)
+                .frame(width: pillIconSize, height: pillIconSize)
                 .overlay(
                     Circle()
                         .stroke(
@@ -1368,6 +1377,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
+        .threadPillChrome(hSize == .regular)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Re-edit this video")
         .accessibilityValue(isPro ? "" : "Pro feature, tap to unlock")
@@ -1384,12 +1394,12 @@ struct VideoActionRow: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(spacing: 6 * k) {
+            pillLayout {
                 ZStack {
                     Circle().fill(Color(.tertiarySystemBackground))
                     pillSymbol(icon: icon, state: state)
                 }
-                .frame(width: 48 * k, height: 48 * k)
+                .frame(width: pillIconSize, height: pillIconSize)
                 .overlay(
                     Circle()
                         .stroke(Color.white.opacity(0.08), lineWidth: 0.5 * k)
@@ -1403,6 +1413,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
+        .threadPillChrome(hSize == .regular)
         .disabled(state == .loading)
         // Combine the icon + text into one VoiceOver element with a
         // dedicated label per action and a value reflecting in-flight
@@ -1490,7 +1501,7 @@ struct VideoActionRow: View {
                     .font(.system(size: 16 * k, weight: .semibold))
             }
             .foregroundColor(.black)
-            .frame(maxWidth: 300 * k)
+            .threadFill(300 * k, alignment: .center)
             .padding(.vertical, 13 * k)
             .background(Capsule().fill(Color.white))
         }
@@ -1572,7 +1583,7 @@ struct PostPackageView: View {
                 }
             }
         }
-        .frame(maxWidth: 300 * k, alignment: .leading)
+        .threadFill(300 * k)
     }
 }
 
@@ -1587,6 +1598,7 @@ struct PostPackageView: View {
 // buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
+    @Environment(\.horizontalSizeClass) private var hSizeCVV
     @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
@@ -1685,7 +1697,7 @@ struct CompletedVideoView: View {
                 )
             } label: {
                 thumbnailContent
-                    .frame(maxWidth: 240 * k)
+                    .threadVideo(240 * k)
                     .clipShape(RoundedRectangle(cornerRadius: 20 * k, style: .continuous))
                     .overlay {
                         LinearGradient(
@@ -1777,7 +1789,7 @@ struct CompletedVideoView: View {
                         withAnimation(.easeInOut(duration: 0.28)) { showFeedbackPrompt = false }
                     }
                 )
-                .frame(maxWidth: 320 * k, alignment: .leading)
+                .threadFill(320 * k)
                 .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -1830,22 +1842,23 @@ struct CompletedVideoView: View {
         if let thumbUrl = effectiveThumbnailUrl, let url = URL(string: thumbUrl) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fit)
+                    image.resizable()
+                        .aspectRatio(contentMode: hSizeCVV == .regular ? .fill : .fit)
                 } else if phase.error != nil {
                     // Stored signed URL expired (or otherwise rejected).
                     // Ask the server for a fresh one; on success the
                     // @State change re-renders with the new URL.
                     Color(.tertiarySystemBackground)
-                        .aspectRatio(9/16, contentMode: .fit)
+                        .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
                         .task { await refreshIfNeeded() }
                 } else {
                     Color(.tertiarySystemBackground)
-                        .aspectRatio(9/16, contentMode: .fit)
+                        .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
                 }
             }
         } else {
             Color(.tertiarySystemBackground)
-                .aspectRatio(9/16, contentMode: .fit)
+                .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
         }
     }
 

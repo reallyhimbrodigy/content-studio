@@ -4,6 +4,7 @@ import PhotosUI
 import UIKit
 
 struct EditorView: View {
+    @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.conversionScale) private var k
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var chatStore = ChatStore.shared
@@ -770,6 +771,12 @@ struct EditorView: View {
                         }
                 }
                 .padding(16 * k)
+                .frame(maxWidth: .infinity)
+                // THE CONVERSATION COLUMN: 820pt max on iPad, CENTRED. Not the
+                // 88% every other surface uses — at 88% of a landscape 13-inch
+                // a message line runs ~1210pt and stops being readable. The
+                // composer and the empty-state rows stay full width.
+                .frame(maxWidth: hSize == .regular ? ThreadColumn.maxWidth : .infinity)
                 .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
