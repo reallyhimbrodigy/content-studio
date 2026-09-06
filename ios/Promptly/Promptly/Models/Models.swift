@@ -600,6 +600,9 @@ final class AppState: ObservableObject {
     /// this stuck non-nil and muting every later trigger for the session — the
     /// RACE 1 / RACE 2 wedge. Decision core: `PaywallRouting`.
     @Published private(set) var paywallReason: PaywallReason?
+    /// Set by presentPaywall, read when the paywall builds: which tier tab to
+    /// open on. The account row knows the user's tier, so it can say.
+    @Published private(set) var pendingPreselectTierAllowance: Int?
     private var paywallRouting = PaywallRouting<PaywallReason>()
 
     /// The trial WALL (distinct from the upgrade paywall): set when an enforced
@@ -625,7 +628,14 @@ final class AppState: ObservableObject {
     /// the blocked video — its thumbnail for the personalized ask, and (when the
     /// caller holds both durations) the passthrough signal the bad-render
     /// suppressor gates on. Defaulted so every existing call site is unchanged.
-    func presentPaywall(_ reason: PaywallReason, exportContext: ExportGatePaywallContext? = nil) {
+    /// `preselectTierAllowance` opens the paywall on a specific tab. The account
+    /// row knows the user's tier, so it can say which tier is being SOLD — a Pro
+    /// account lands on Max, a free account on Pro — instead of the paywall
+    /// guessing from a recommendation.
+    func presentPaywall(_ reason: PaywallReason,
+                        exportContext: ExportGatePaywallContext? = nil,
+                        preselectTierAllowance: Int? = nil) {
+        pendingPreselectTierAllowance = preselectTierAllowance
         if case .exportGate = reason {
             // bad_render_suppressor: a render the client can MEASURE as a
             // passthrough (see ExportGatePaywallContext.isPassthroughRender) is

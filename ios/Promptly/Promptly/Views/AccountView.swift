@@ -28,8 +28,13 @@ struct AccountView: View {
     @State private var tier = "free"
     @State private var isLoading = true
 
+    /// ONE DEFINITION, THE APP'S. This was `subscription.isPro || usage.isPro`
+    /// — a second, narrower rule that ignored the receipt-resolution and pose
+    /// inputs `SubscriptionService.effectiveIsPro` composes. The account page
+    /// reasoning about tier differently from every other surface is how it came
+    /// to show the wrong allowance in the first place.
     private var effectiveIsPro: Bool {
-        subscription.isPro || usage.isPro
+        subscription.effectiveIsPro
     }
     @State private var showNameEdit = false
     @State private var showEmailEdit = false
@@ -340,7 +345,11 @@ struct AccountView: View {
             // how to buy more.
             if onboarding.creditsEnabled {
                 settingsGroup("Credits") {
-                    creditsBalanceRow
+                    // THE BALANCE ROW IS DELETED (Zac's ruling): balance lives in
+                    // the chat header and on the top-up screen. The ALLOWANCE
+                    // line was that row's subtitle and is not the same thing —
+                    // it says what the plan includes, so it stays, on its own.
+                    allowanceRow
                     cardDivider
                     cardRow("Buy more credits", trailing: .none) {
                         Analytics.track("credits_topup_open", props: ["source": "account"])
@@ -390,7 +399,7 @@ struct AccountView: View {
             if effectiveIsPro {
                 openExternal("https://apps.apple.com/account/subscriptions")
             } else {
-                AppState.shared.presentPaywall(.manual)
+                AppState.shared.presentPaywall(.manual, preselectTierAllowance: upgradeTargetAllowance)
             }
         } label: {
             HStack(spacing: 10 * k) {
@@ -449,7 +458,7 @@ struct AccountView: View {
         Button {
             if canUpgrade {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                AppState.shared.presentPaywall(.manual)
+                AppState.shared.presentPaywall(.manual, preselectTierAllowance: upgradeTargetAllowance)
             } else {
                 openExternal("https://apps.apple.com/account/subscriptions")
             }
@@ -471,11 +480,31 @@ struct AccountView: View {
         .buttonStyle(.plain)
     }
 
+    /// ONE WORD (Zac, on 248). The row named the tier it was selling — "Upgrade
+    /// to Promptly Max" — which is both longer than the row and a decision the
+    /// paywall is there to make. The row says Upgrade; the paywall opens on the
+    /// right tab.
+    /// What the user's plan includes each month. Not a balance.
+    @ViewBuilder private var allowanceRow: some View {
+        if let sub = creditsSubtitle {
+            sub
+                .font(.system(size: 13 * k))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16 * k)
+                .padding(.vertical, 12 * k)
+        }
+    }
+
     private var upgradeLabel: String {
         if !canUpgrade { return String(localized: "Manage subscription") }
-        return effectiveIsPro
-            ? String(localized: "Upgrade to Promptly Max")
-            : String(localized: "Upgrade to Promptly Pro")
+        return String(localized: "Upgrade")
+    }
+
+    /// The tab the paywall opens on, from the tier the row already knows: a Pro
+    /// account is being sold Max, a free account is being sold Pro.
+    private var upgradeTargetAllowance: Int {
+        effectiveIsPro ? CreditAllowance.maxMonthly : CreditAllowance.proMonthly
     }
 
     /// Balance, allowance and renewal in one row.
@@ -486,39 +515,6 @@ struct AccountView: View {
     /// balance shows a dash, not a zero. The allowance line only appears when a
     /// tier allowance is known, and the renewal line only when the server sent
     /// a date.
-    private var creditsBalanceRow: some View {
-        HStack(spacing: 10 * k) {
-            VStack(alignment: .leading, spacing: 3 * k) {
-                Text("Balance")
-                    .font(.system(size: 16 * k))
-                    .foregroundColor(.white)
-                if let sub = creditsSubtitle {
-                    sub
-                        .font(.system(size: 12 * k))
-                        .foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            // `Text(balance.map { "\(  $0 )" })` looked harmless and put a bare
-            // `%lld` in the string catalog — the interpolation reads as a
-            // localizable key with no sentence around it, untranslatable by
-            // anyone who ever opens the catalog. `format: .number` also gets
-            // locale-correct digits and grouping, which the interpolation did
-            // not, and matches how CreditBadge renders the same value.
-            Group {
-                if let b = credits.balance {
-                    Text(b, format: .number)
-                        .foregroundColor(b == 0 ? .secondary : .white)
-                } else {
-                    Text(verbatim: "—").foregroundColor(.secondary)
-                }
-            }
-            .font(.system(size: 16 * k, weight: .semibold))
-            .monospacedDigit()
-        }
-        .padding(.horizontal, 16 * k).frame(minHeight: 52 * k)
-    }
-
     /// "200 credits/month - about 20 videos". Derived from the same constants
     /// the paywall uses, so the two cannot disagree about what money buys.
     ///
@@ -530,7 +526,18 @@ struct AccountView: View {
     /// and correctly inflected — because both check the CATALOGUE and neither
     /// checked the CALL. `inflection-render-gate.sh` now checks the call.
     private var creditsSubtitle: Text? {
-        guard let monthly = onboarding.creditsMonthlyAllowance ?? ProBenefits.storeKitAllowance(),
+        // THE USER'S OWN TIER (Zac, on 248). This preferred the server knob,
+        // which carries one number for everyone, and fell back to a StoreKit
+        // lookup that took the MAX across the offering — so a Pro account read
+        // Max's 1,000. The entitlement decides; the knob is only a fallback for
+        // a tier we cannot resolve.
+        let tierAllowance: Int? = {
+            let sub = SubscriptionService.shared
+            if sub.isMax { return CreditAllowance.maxMonthly }
+            if sub.effectiveIsPro { return CreditAllowance.proMonthly }
+            return CreditAllowance.free
+        }()
+        guard let monthly = tierAllowance ?? onboarding.creditsMonthlyAllowance,
               monthly > 0 else { return nil }
         let videos = ProBenefits.monthlyVideos(credits: monthly)
         return Text("\(monthly) credits a month - about ^[\(videos) video](inflect: true)")

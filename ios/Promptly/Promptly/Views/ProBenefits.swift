@@ -71,14 +71,24 @@ enum ProBenefits {
     /// three, because it means the claim falls back to wording that does not
     /// state a number.
     @MainActor
+    /// THE USER'S OWN ALLOWANCE, NOT THE LARGEST ON SALE (Zac, on 248).
+    ///
+    /// This took `.max()` across every available package, so it returned Max's
+    /// 1,000 to EVERY subscriber — a Pro account read "1,000 credits a month —
+    /// about 100 videos" when Pro is 200 and about 20. The offering is what is
+    /// for sale; the entitlement is what the user holds, and this line is about
+    /// what they hold.
     static func storeKitAllowance() -> Int? {
-        guard SubscriptionService.shared.effectiveIsPro else { return nil }
-        let ids = (SubscriptionService.shared.offerings?.current?.availablePackages ?? [])
+        let sub = SubscriptionService.shared
+        guard sub.effectiveIsPro else { return nil }
+        let allowances = (sub.offerings?.current?.availablePackages ?? [])
             .map(\.storeProduct.productIdentifier)
-        // Highest matched allowance: a subscriber holding several products
-        // should be described by the best one they actually have.
-        return ids.compactMap { CreditAllowance.monthly(forProductId: $0) }.max()
+            .compactMap { CreditAllowance.monthly(forProductId: $0) }
+        guard !allowances.isEmpty else { return nil }
+        // Max holds the top tier; anyone else entitled holds the one below it.
+        return sub.isMax ? allowances.max() : allowances.min()
     }
+
 
     /// The headline claim, which MUST match whichever meter is actually running.
     ///

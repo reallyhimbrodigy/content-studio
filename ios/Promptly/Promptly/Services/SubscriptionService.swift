@@ -69,7 +69,13 @@ final class SubscriptionService: ObservableObject {
     /// set, a render loop that never settled. The harness caught it by refusing
     /// to screenshot an unsettled screen; the production path has always
     /// guarded the same way in `applyCustomerInfo`.
-    func debugSetMax(_ v: Bool) { if isMax != v { isMax = v } }
+    /// Sticky, like `debugPosedEntitled`: `applyCustomerInfo` writes `isMax`
+    /// from the receipt and would otherwise clobber the pose a capture depends on.
+    nonisolated(unsafe) static var debugPosedMax: Bool? = nil
+    func debugSetMax(_ v: Bool) {
+        Self.debugPosedMax = v
+        if isMax != v { isMax = v }
+    }
     #endif
 
     /// THE source-of-truth Pro flag for every iOS gate that needs one.
@@ -659,7 +665,7 @@ final class SubscriptionService: ObservableObject {
         }
         let maxEntitled = info.entitlements[Self.maxEntitlementId]?.isActive == true
         if maxEntitled != isMax {
-            isMax = maxEntitled
+            isMax = Self.debugPosedMax ?? maxEntitled
         }
         // Self-heal divergence: RevenueCat says Pro but the server profile
         // hasn't caught up (webhook lag/failure, restore on a fresh install,

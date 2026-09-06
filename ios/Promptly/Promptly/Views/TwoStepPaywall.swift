@@ -1075,7 +1075,10 @@ struct TwoStepPaywall: View {
             // point: the posed harness states run on HarnessPaywallMock's
             // hardcoded prices, and a review screenshot showing prices Apple
             // cannot match against the product is worse than none.
-            initialTierAllowance: Self.debugPreselectedTier)
+            // The account row and the top-up hero both know which tier they are
+            // selling, and say so through AppState. A DEBUG pose still wins.
+            initialTierAllowance: Self.debugPreselectedTier
+                ?? AppState.shared.pendingPreselectTierAllowance)
         // THE SHARED PAYWALL WAS SILENT. It emitted no view event at all, while
         // the legacy PaywallView it replaces emits `upgrade_wall_viewed` — so
         // the moment this ships, every paywall view metric would drop to the

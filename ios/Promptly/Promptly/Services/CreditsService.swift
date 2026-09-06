@@ -140,6 +140,10 @@ final class CreditsService: ObservableObject {
 /// money.
 enum CreditAllowance {
     static let free = 30
+    /// The two subscription allowances, named rather than looked up by taking a
+    /// max over whatever happens to be on sale — see ProBenefits.storeKitAllowance.
+    static let proMonthly = 200
+    static let maxMonthly = 1000
     /// Tier allowances, longest match FIRST so "max" is not shadowed by the
     /// "pro" substring in a product id like `promptly_pro_max_yearly`.
     ///

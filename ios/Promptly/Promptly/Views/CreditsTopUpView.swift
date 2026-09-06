@@ -367,20 +367,50 @@ struct CreditsTopUpView: View {
     /// EVERY FIGURE IS DERIVED. The allowance, the price and both per-video
     /// numbers come from the live products; nothing here is typed, so it stays
     /// true per territory the same way the percentage claims do.
+    /// THE HERO SELLS THE NEXT TIER UP, NOT ALWAYS PRO (Zac, on 248).
+    ///
+    /// It read "Pro gives you..." to everyone, so a Pro subscriber opening the
+    /// top-up screen was being sold the thing they already pay for. Free is sold
+    /// Pro, Pro is sold Max, and Max is sold nothing — the packs are the whole
+    /// screen for them. Allowance and price both come from StoreKit.
+    private var heroTier: (allowance: Int, price: String, isMax: Bool)? {
+        let sub = SubscriptionService.shared
+        if sub.isMax { return nil }
+        if sub.effectiveIsPro {
+            guard let a = maxAllowance, let p = maxMonthlyPrice else { return nil }
+            return (a, p, true)
+        }
+        guard let a = proAllowance, let p = proMonthlyPrice else { return nil }
+        return (a, p, false)
+    }
+
     @ViewBuilder private var upgradeHero: some View {
-        if let allowance = proAllowance, let price = proMonthlyPrice {
+        if let tier = heroTier {
+            let allowance = tier.allowance
+            let price = tier.price
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Analytics.track("credits_topup_upgrade_tap", props: ["source": "credit_wall"])
                 onClose()
-                AppState.shared.presentPaywall(.manual)
+                AppState.shared.presentPaywall(
+                    .manual,
+                    preselectTierAllowance: tier.isMax ? CreditAllowance.maxMonthly
+                                                       : CreditAllowance.proMonthly)
             } label: {
                 VStack(alignment: .leading, spacing: 6 * k) {
-                    Text("Pro gives you ^[\(allowance) credit](inflect: true) a month for \(price)")
+                    if tier.isMax {
+                        Text("Max gives you ^[\(allowance) credit](inflect: true) a month for only \(price)")
+                            .cType(16, .semibold)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Pro gives you ^[\(allowance) credit](inflect: true) a month for only \(price)")
                         .cType(16, .semibold)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let cmp = perVideoComparison {
                         cmp
                             .cType(13)

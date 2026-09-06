@@ -558,6 +558,26 @@ struct PromptlyApp: App {
     /// difference matters for deferred auth: the question is not what AppShell
     /// looks like, it is what the SERVICES do when nothing is signed in, and
     /// only the real root reaches them.
+    /// `-poseTier free|pro|max` — the three states the account and top-up fixes
+    /// are tier-aware for, posed so each can be captured. Idempotent, so both
+    /// the harness path and the root task can call it.
+    @MainActor
+    static func applyTierPose() {
+        let a = ProcessInfo.processInfo.arguments
+        guard let i = a.firstIndex(of: "-poseTier"), i + 1 < a.count else { return }
+        switch a[i + 1] {
+        case "max":
+            SubscriptionService.debugPosedEntitled = true
+            SubscriptionService.shared.debugSetMax(true)
+        case "pro":
+            SubscriptionService.debugPosedEntitled = true
+            SubscriptionService.shared.debugSetMax(false)
+        default:
+            SubscriptionService.debugPosedEntitled = false
+            SubscriptionService.shared.debugSetMax(false)
+        }
+    }
+
     private static var forcedFlags: [String] {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-forceFlags"), i + 1 < args.count else { return [] }
@@ -601,6 +621,10 @@ struct PromptlyApp: App {
                 // paywall views on mock data for an external screenshot capture.
                 if ProcessInfo.processInfo.arguments.contains("-snapshotPayoff") {
                     PayoffSnapshotHarnessView()
+                        // The tier pose has to be applied on THIS path too: the
+                        // harness covers the app before the root's .task runs,
+                        // so a pose set only there arrives after the capture.
+                        .onAppear { Self.applyTierPose() }
                 }
                 #endif
             }
@@ -732,6 +756,7 @@ struct PromptlyApp: App {
                 // answer so the three first-install proofs can be run on a
                 // simulator, which has no device the server would know.
                 let a = ProcessInfo.processInfo.arguments
+                Self.applyTierPose()
                 if a.contains("-poseDeviceSeen") { InstallHistory.debugPose(seen: true) }
                 if a.contains("-poseDeviceNew") { InstallHistory.debugPose(seen: false) }
                 // Applied before anything reads a flag, and re-applied is free

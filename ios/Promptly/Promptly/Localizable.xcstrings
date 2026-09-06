@@ -17076,6 +17076,77 @@
         }
       }
     },
+    "Max gives you ^[%lld credit](inflect: true) a month for only %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Max ‏%lld رصيدًا شهريًا مقابل %@ فقط"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max আপনাকে মাসে %lld ক্রেডিট দেয়, মাত্র %@-এ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max gibt dir %lld Credits im Monat für nur %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max te da %lld créditos al mes por solo %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max te donne %lld crédits par mois pour seulement %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max आपको हर महीने %lld क्रेडिट देता है, केवल %@ में"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max memberi kamu %lld kredit sebulan hanya %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maxなら月に%lldクレジット、たったの%@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ले तपाईंलाई महिनामा %lld क्रेडिट दिन्छ, मात्र %@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max te dá %lld créditos por mês por apenas %@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max آپ کو ماہانہ %lld کریڈٹ دیتا ہے، صرف %@ میں"
+          }
+        }
+      }
+    },
     "Max is ^[%lld credit](inflect: true) a month for %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -21025,6 +21096,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pro آپ کو ماہانہ ^[%1$lld کریڈٹ](inflect: true) دیتا ہے %2$@ میں"
+          }
+        }
+      }
+    },
+    "Pro gives you ^[%lld credit](inflect: true) a month for only %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Pro ‏%lld رصيدًا شهريًا مقابل %@ فقط"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro আপনাকে মাসে %lld ক্রেডিট দেয়, মাত্র %@-এ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro gibt dir %lld Credits im Monat für nur %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro te da %lld créditos al mes por solo %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro te donne %lld crédits par mois pour seulement %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro आपको हर महीने %lld क्रेडिट देता है, केवल %@ में"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro memberi kamu %lld kredit sebulan hanya %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proなら月に%lldクレジット、たったの%@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro ले तपाईंलाई महिनामा %lld क्रेडिट दिन्छ, मात्र %@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Pro te dá %lld créditos por mês por apenas %@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro آپ کو ماہانہ %lld کریڈٹ دیتا ہے، صرف %@ میں"
           }
         }
       }
