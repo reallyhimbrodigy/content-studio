@@ -93,23 +93,21 @@ struct RenderProgressRing: View {
     /// Large enough to be the subject of the message. 9:16, the shape of the
     /// footage people actually bring, so a vertical clip fills it rather than
     /// being cropped to fit a frame of some other proportion.
-    @Environment(\.horizontalSizeClass) private var hSize
-    @Environment(\.windowIsPortrait) private var isPortrait
+    /// THE PHONE'S BOX, SCALED (ruled 2026-09-05). 208pt on a phone, 208·k on
+    /// an iPad — the same box the finished video lands in, so in-progress →
+    /// finished does not jump, and both are the phone's frame times k.
+    @Environment(\.conversionScale) private var k
 
-    /// THE RENDER CONTAINER IS THE COLUMN, NOT A PHONE OUTLINE (ruled
-    /// 2026-09-05). 208pt is a phone frame; in an 820pt conversation column it
-    /// read as a little portrait rectangle floating on the left. On iPad it
-    /// takes the column width and stands 480pt tall, with the source thumbnail
-    /// filling it and the trace drawn around it — the same box the finished
-    /// video lands in, so in-progress → finished does not jump.
     private var frameWidth: CGFloat {
-        hSize == .regular ? ThreadColumn.mediaBox(isPortrait: isPortrait).width : 208
+        208 * k
     }
     private var frameHeight: CGFloat {
-        hSize == .regular ? ThreadColumn.mediaBox(isPortrait: isPortrait).height
-                          : frameWidth * 16 / 9
+        frameWidth * 16 / 9
     }
-    private let corner: CGFloat = 26
+    /// EVERY DIMENSION SCALES (ruled 2026-09-05). The box already did; the
+    /// corner, the trace, the status line and the padding did not, so on an
+    /// iPad the ring was a scaled frame wearing phone-sized furniture.
+    private var corner: CGFloat { 26 * k }
 
     private var activeStage: PipelineStage? {
         if let did = timeline.currentDerivedId, let s = timeline.stages.first(where: { $0.id == did }) { return s }
@@ -157,7 +155,7 @@ struct RenderProgressRing: View {
         // other assistant bubble hangs off the leading edge, so a centered block
         // spanning the full width is the one shape in the conversation that
         // belongs to no speaker, which is exactly how a modal looks.
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16 * k) {
             ZStack {
                 frameContent
                     .frame(width: frameWidth, height: frameHeight)
@@ -168,14 +166,14 @@ struct RenderProgressRing: View {
 
                 // The unfilled track. Faint — it should suggest the path without
                 // competing with the progress itself.
-                FrameTrace(cornerRadius: corner + 3)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 3)
-                    .frame(width: frameWidth + 6, height: frameHeight + 6)
+                FrameTrace(cornerRadius: corner + 3 * k)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 3 * k)
+                    .frame(width: frameWidth + 6 * k, height: frameHeight + 6 * k)
 
-                FrameTrace(cornerRadius: corner + 3)
+                FrameTrace(cornerRadius: corner + 3 * k)
                     .trim(from: 0, to: traceValue)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .frame(width: frameWidth + 6, height: frameHeight + 6)
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: 3 * k, lineCap: .round))
+                    .frame(width: frameWidth + 6 * k, height: frameHeight + 6 * k)
                     .animation(reduceMotion ? nil : .linear(duration: 0.12), value: traceValue)
             }
             .accessibilityElement(children: .ignore)
@@ -183,14 +181,14 @@ struct RenderProgressRing: View {
             .accessibilityValue(Text("\(Int(trickle.displayed))%"))
 
             Text(line)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15 * k, weight: .medium))
                 .foregroundColor(.white.opacity(0.9))
                 // ONE line, and it never truncates mid-word into an ellipsis:
                 // these are short catalog titles that fit, and the scale floor
                 // absorbs the longest translations rather than cutting them.
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .frame(maxWidth: 208, alignment: .leading)
+                .frame(maxWidth: 208 * k, alignment: .leading)
                 .id(line)
                 .transition(.opacity)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: line)
@@ -198,7 +196,7 @@ struct RenderProgressRing: View {
             if let onCancel, timeline.isCancellable {
                 Button(role: .destructive) { showCancelConfirm = true } label: {
                     Text("Stop making this")
-                        .font(.system(size: 13))
+                        .font(.system(size: 13 * k))
                         .foregroundColor(.white.opacity(0.4))
                 }
                 .confirmationDialog(String(localized: "Stop making this video?"),
@@ -214,7 +212,7 @@ struct RenderProgressRing: View {
         // assistant bubble. Not maxWidth: .infinity — that stretched the block
         // across the thread and centered it.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .padding(.vertical, 8 * k)
         // Driven EXACTLY as PipelineProgressView drives it. Copying the contract
         // rather than inventing a trace-specific one is the point: the
         // presentation changed twice now, the progress semantics have not.

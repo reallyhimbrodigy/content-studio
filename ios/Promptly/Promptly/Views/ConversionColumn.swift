@@ -285,33 +285,23 @@ extension View {
 /// empty, while the composer (which does scale) spanned ~770pt. k reached the
 /// composer and stopped at the thread.
 ///
-/// On regular width these fill the conversation column, which is itself 88% of
-/// the container — the same content width every other screen uses. Compact
-/// keeps the phone cap exactly, because there the cap is right.
-/// THE CHAT THREAD GETS ITS OWN RULE (ruled 2026-09-05).
-/// Everything else on iPad is 88% of the container. A conversation is not a
-/// form: at 88% of a 13-inch landscape screen a line of message text runs
-/// ~1210pt and stops being readable. The thread is capped at 820pt and CENTRED;
-/// the composer and the empty-state rows stay full width.
+/// THE IPAD CHAT IS THE IPHONE CHAT, SCALED (ruled 2026-09-05).
+///
+/// Everything else on iPad is 88% of the container. The chat is not: it is the
+/// phone's chat with every dimension multiplied by k, which means the thread
+/// occupies a phone-width column scaled the same way. 820pt was the earlier
+/// ruled column; content is sized `phoneCap * k` and never filled it, so all
+/// 820 did was sit the thread somewhere the scaled phone does not put it.
 enum ThreadColumn {
-    static let maxWidth: CGFloat = 820
-    /// The bubble's own horizontal padding, so the media box lines up with the
-    /// text above it rather than overhanging.
-    static let videoInset: CGFloat = 48
+    /// The reference phone's content width, the partner of
+    /// `ConversionColumn.phoneReferenceHeight`. k is derived from the height, so
+    /// this times k is exactly the scaled phone's screen width.
+    static let phoneReferenceWidth: CGFloat = 393
 
-    /// THE MEDIA BOX FOLLOWS THE ORIENTATION (amended 2026-09-05).
-    /// A column-width x 480 box is right in LANDSCAPE. In portrait it is a
-    /// landscape box holding a portrait video, so the blur fill became most of
-    /// the frame and the video a strip down the middle. In portrait the box is
-    /// portrait too — 9:16, tall enough to show the video at real size, centred
-    /// in the column — so the blur only appears where the aspect genuinely
-    /// differs. Both states share whichever box applies, so the in-progress →
-    /// finished transition still does not jump.
-    static func mediaBox(isPortrait: Bool) -> CGSize {
-        isPortrait ? CGSize(width: 394, height: 700)
-                   : CGSize(width: maxWidth - videoInset, height: 480)
-    }
+    /// The thread's column at a given scale.
+    static func width(_ k: CGFloat) -> CGFloat { phoneReferenceWidth * k }
 }
+
 
 /// An action pill on iPad: capsule behind it, an equal share of the row.
 /// A placeholder that is 9:16 on a phone and shapeless on iPad, where the
@@ -353,35 +343,31 @@ struct BlurredFillImage: View {
 }
 
 struct MediaBoxAspect: ViewModifier {
-    let regular: Bool
     func body(content: Content) -> some View {
-        if regular { content } else { content.aspectRatio(9/16, contentMode: .fit) }
+        content.aspectRatio(9/16, contentMode: .fit)
     }
 }
 
+/// Kept as a no-op seam. The iPad no longer wraps the action row in capsules —
+/// that was a restructure, and the row is the phone's row scaled.
 struct ThreadPillChrome: ViewModifier {
     let active: Bool
-    func body(content: Content) -> some View {
-        if active {
-            content
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background(Capsule().fill(Color.white.opacity(0.07)))
-                .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.5))
-        } else { content }
-    }
+    func body(content: Content) -> some View { content }
 }
 
 extension View {
     func threadPillChrome(_ active: Bool) -> some View { modifier(ThreadPillChrome(active: active)) }
 }
 
+/// THE IPAD CHAT IS THE IPHONE CHAT, SCALED (ruled 2026-09-05).
+/// Every cap here arrives as `X * k`, so one branch-free rule gives the phone X
+/// and the iPad X·k. The size-class branch this replaced stretched the iPad to
+/// the full column, which is a different layout rather than a scaled one.
 struct ThreadFill: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var hSize
     let phoneCap: CGFloat
     let alignment: Alignment
     func body(content: Content) -> some View {
-        content.frame(maxWidth: hSize == .regular ? .infinity : phoneCap, alignment: alignment)
+        content.frame(maxWidth: phoneCap, alignment: alignment)
     }
 }
 
@@ -397,25 +383,9 @@ extension View {
 }
 
 struct ThreadVideo: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var hSize
-    @Environment(\.windowIsPortrait) private var isPortrait
     let phoneCap: CGFloat
     func body(content: Content) -> some View {
-        if hSize == .regular {
-            // THE SAME BOX AS THE RENDER CONTAINER ABOVE IT, so the transition
-            // from in-progress to finished does not jump. The content fills and
-            // is clipped rather than letterboxed — the inner views declare a
-            // 9:16 `.fit`, which inside this box would letterbox to a narrow
-            // strip and reintroduce the phone outline this replaced.
-            // No outer scaledToFill: BlurredFillImage already composes the
-            // fitted frame over its own blurred fill, and forcing the whole
-            // stack to fill would crop the fitted layer straight back off.
-            content
-                .frame(width: ThreadColumn.mediaBox(isPortrait: isPortrait).width,
-                       height: ThreadColumn.mediaBox(isPortrait: isPortrait).height)
-                .clipped()
-                .frame(maxWidth: .infinity)
-        } else { content.frame(maxWidth: phoneCap) }
+        content.frame(maxWidth: phoneCap)
     }
 }
 

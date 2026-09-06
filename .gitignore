@@ -23,3 +23,5 @@ __pycache__/
 *.pyc
 ios/Promptly/Fixtures/store-demo.mov
 ios/Promptly/Fixtures/store-demo-render.mp4
+ios/Promptly/Fixtures/store-demo2-render.mp4
+ios/Promptly/Fixtures/store-demo3-render.mp4

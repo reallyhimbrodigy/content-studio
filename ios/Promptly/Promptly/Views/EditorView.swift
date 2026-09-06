@@ -108,24 +108,24 @@ struct EditorView: View {
             // because SwiftUI's vertical distribution interacts with
             // ScrollView in subtle ways that produce empty space.
             Group {
+                // ONE BRANCH, BOTH DEVICES. The iPad ran a welcome branch of
+                // its own; a branch the phone does not have cannot be the
+                // phone's screen scaled.
                 if messages.isEmpty {
                     emptyState
-                } else if hSize == .regular && messages.allSatisfy({ $0.isOnboarding }) {
-                    // THE IPAD EMPTY STATE IS THE THREE ROWS (ruled 2026-09-05).
-                    // A chat holding only the injected welcome is still empty in
-                    // every sense that matters, but it took the messages list —
-                    // so on a 13-inch screen the welcome sat small near the
-                    // bottom with 90% of the screen black above it. On regular
-                    // width the rows are the hero, centred, with the welcome
-                    // line above them at k-scale.
-                    iPadWelcomeState
                 } else {
                     messagesList
                 }
             }
+            // THE CHAT IS THE PHONE'S CHAT, SCALED. Held to the reference
+            // phone's width times k and centred, so every element inside lands
+            // where the scaled phone puts it. Left to fill a 13-inch screen the
+            // empty state spanned 1032pt against the phone's 393 — 2.6x, not k.
+            .frame(maxWidth: ThreadColumn.width(k))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(luxuryBackdrop)
             .safeAreaInset(edge: .bottom, spacing: 0 * k) {
+                // The composer scales with the chat it belongs to.
                 // Tight composer stack: re-edit chip (when active) +
                 // input bar. The static vibe-chip row was removed in
                 // favor of in-bubble ghost-text rotation (see inputBar).
@@ -184,7 +184,15 @@ struct EditorView: View {
                 // A slightly wider column than the 460pt reading measure: this
                 // is a control surface, not prose, and the composer wants room
                 // for a line of text plus three controls.
-                .conversionColumn(680)
+                //
+                // THE CHAT OBEYS ONE RULE (ruled 2026-09-05): the phone's screen
+                // times k. `.conversionColumn(680)` was the general 88%-with-a-cap
+                // rule, and on a 13-inch iPad it put the composer at 776pt where
+                // the scaled phone puts it at 596 — a different layout, not a
+                // scaled one. The cap below is the phone's own width times k, and
+                // the 12pt padding inside scales with it.
+                .frame(maxWidth: ThreadColumn.width(k))
+                .frame(maxWidth: .infinity)
                 // Same solid black as the content + nav — no fade scrim (it read
                 // as a band above the composer on-device).
                 .background(Color.black)
@@ -706,31 +714,6 @@ struct EditorView: View {
     /// accent-color circles, no marketing copy, no white capsule. Native feel.
     /// The welcome line above the three rows, the whole group centred. The rows
     /// carry the screen; the line is context, not the content.
-    private var iPadWelcomeState: some View {
-        VStack(alignment: .center, spacing: 28 * k) {
-            Spacer(minLength: 0)
-            if let welcome = messages.first(where: { $0.isOnboarding })?.content, !welcome.isEmpty {
-                Text(welcome)
-                    .font(.system(size: 17 * k, weight: .regular))
-                    .foregroundColor(Color(.secondaryLabel))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 20 * k)
-            }
-            emptyState
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: ThreadColumn.maxWidth)
-        .frame(maxWidth: .infinity)
-        // The top bar overlays this branch rather than insetting it, so a plain
-        // Spacer pair centres the block against the whole screen and it lands
-        // high, under the bar. Offsetting by the bar's height centres it in the
-        // area the reader can actually see.
-        .padding(.top, Self.topBarHeight * k)
-    }
-
-    /// Height of `customTopBar`: its 40pt tap targets plus vertical padding.
-    private static let topBarHeight: CGFloat = 43
-
     private var emptyState: some View {
         // The empty-chat hero: the upload-first prompt. (The first-run sample-clip
         // demo was removed — it was a stale pre-render and a poor first impression.)
@@ -812,7 +795,7 @@ struct EditorView: View {
                 // 88% every other surface uses — at 88% of a landscape 13-inch
                 // a message line runs ~1210pt and stops being readable. The
                 // composer and the empty-state rows stay full width.
-                .frame(maxWidth: hSize == .regular ? ThreadColumn.maxWidth : .infinity)
+                .frame(maxWidth: ThreadColumn.width(k))
                 .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)

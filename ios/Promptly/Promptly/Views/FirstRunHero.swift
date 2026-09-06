@@ -40,10 +40,6 @@ enum VibeSuggestions {
 
 struct FirstRunHero: View {
     @Environment(\.conversionScale) private var k
-    // ON iPAD THE ROWS ARE THE HERO (ruled 2026-09-05): large, centred, and
-    // sized to their content so the group centres with one shared left edge.
-    @Environment(\.horizontalSizeClass) private var hSize
-    private var isPad: Bool { hSize == .regular }
     /// Open the picker to upload the user's own clip.
     let onUpload: () -> Void
     /// Put a starting instruction in the composer and focus it.
@@ -60,7 +56,7 @@ struct FirstRunHero: View {
         // gap under them, which reads as an unfinished layout on a tall device
         // and wastes the reachable area on a phone held one-handed.
         VStack(alignment: .leading, spacing: 0 * k) {
-            if !isPad { Spacer(minLength: 0 * k) }
+            Spacer(minLength: 0 * k)
 
             if let name = greetName {
                 Text("Hey \(name),")
@@ -96,9 +92,9 @@ struct FirstRunHero: View {
                 onPrompt(VibeSuggestions.approved[1])
             }
         }
-        .frame(maxWidth: .infinity, alignment: isPad ? .center : .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20 * k)
-        .padding(.bottom, isPad ? 0 : 8 * k)
+        .padding(.bottom, 8 * k)
         .contentShape(Rectangle())
     }
 
@@ -110,19 +106,19 @@ struct FirstRunHero: View {
         Button(action: action) {
             HStack(spacing: 12 * k) {
                 Image(systemName: icon)
-                    .font(.system(size: (isPad ? 21 : 15) * k, weight: .regular))
+                    .font(.system(size: 15 * k, weight: .regular))
                     .foregroundStyle(.secondary)
-                    .frame(width: (isPad ? 30 : 22) * k, alignment: .center)
+                    .frame(width: 22 * k, alignment: .center)
                 Text(title)
-                    .font(.system(size: (isPad ? 23 : 16) * k))
+                    .font(.system(size: 16 * k))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     // Wrap, never clip — the same rule the old subtitle broke at
                     // 375pt.
                     .fixedSize(horizontal: false, vertical: true)
-                if !isPad { Spacer(minLength: 0 * k) }
+                Spacer(minLength: 0 * k)
             }
-            .padding(.vertical, (isPad ? 15 : 11) * k)
+            .padding(.vertical, 11 * k)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

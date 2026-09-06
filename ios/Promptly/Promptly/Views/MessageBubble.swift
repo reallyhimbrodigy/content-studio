@@ -1136,19 +1136,12 @@ final class VideoExporter: ObservableObject {
 // MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
 
 struct VideoActionRow: View {
-    @Environment(\.horizontalSizeClass) private var hSize
 
-    /// THE ACTION ROW IS THREE PILLS ON IPAD (ruled 2026-09-05).
-    /// On a phone each action is a circular icon with its label beneath — right
-    /// at 390pt. In an 820pt column that read as three icons floating in space,
-    /// so on regular width each becomes a real pill (icon AND label on one
-    /// line, capsule behind) and the three share the column equally, matching
-    /// the Share button's width above them.
-    private var pillLayout: AnyLayout {
-        hSize == .regular ? AnyLayout(HStackLayout(spacing: 10 * k))
-                          : AnyLayout(VStackLayout(spacing: 6 * k))
-    }
-    private var pillIconSize: CGFloat { hSize == .regular ? 30 * k : 48 * k }
+    /// ONE ROW, BOTH DEVICES (ruled 2026-09-05). The iPad shows the phone's
+    /// action row scaled by k — a circular icon with its label beneath — not a
+    /// row of capsules, which was a restructure rather than a scaling.
+    private var pillLayout: AnyLayout { AnyLayout(VStackLayout(spacing: 6 * k)) }
+    private var pillIconSize: CGFloat { 48 * k }
     @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
@@ -1224,7 +1217,7 @@ struct VideoActionRow: View {
                 if let onMakeAnother {
                     makeAnotherPill(action: onMakeAnother)
                 }
-                if hSize != .regular { Spacer(minLength: 0 * k) }
+                Spacer(minLength: 0 * k)
             }
             .threadFill(.infinity)
         }
@@ -1302,7 +1295,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
-        .threadPillChrome(hSize == .regular)
+        .threadPillChrome(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Make another video")
     }
@@ -1377,7 +1370,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
-        .threadPillChrome(hSize == .regular)
+        .threadPillChrome(false)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Re-edit this video")
         .accessibilityValue(isPro ? "" : "Pro feature, tap to unlock")
@@ -1413,7 +1406,7 @@ struct VideoActionRow: View {
             }
         }
         .buttonStyle(.plain)
-        .threadPillChrome(hSize == .regular)
+        .threadPillChrome(false)
         .disabled(state == .loading)
         // Combine the icon + text into one VoiceOver element with a
         // dedicated label per action and a value reflecting in-flight
@@ -1555,7 +1548,6 @@ struct PostPackageView: View {
 // buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
-    @Environment(\.horizontalSizeClass) private var hSizeCVV
     @Environment(\.conversionScale) private var k
     let videoUrlStr: String
     let thumbnailUrlStr: String?
@@ -1802,26 +1794,25 @@ struct CompletedVideoView: View {
         if let thumbUrl = effectiveThumbnailUrl, let url = URL(string: thumbUrl) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    if hSizeCVV == .regular {
-                        BlurredFillImage(image: image)
-                    } else {
-                        image.resizable().aspectRatio(contentMode: .fit)
-                    }
+                    // ONE RENDERING, BOTH DEVICES. The blurred fill was an
+                    // iPad-only treatment for an iPad-only box; the box is the
+                    // phone's box scaled now, and 9:16 footage fits it exactly.
+                    image.resizable().aspectRatio(contentMode: .fit)
                 } else if phase.error != nil {
                     // Stored signed URL expired (or otherwise rejected).
                     // Ask the server for a fresh one; on success the
                     // @State change re-renders with the new URL.
                     Color(.tertiarySystemBackground)
-                        .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
+                        .modifier(MediaBoxAspect())
                         .task { await refreshIfNeeded() }
                 } else {
                     Color(.tertiarySystemBackground)
-                        .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
+                        .modifier(MediaBoxAspect())
                 }
             }
         } else {
             Color(.tertiarySystemBackground)
-                .modifier(MediaBoxAspect(regular: hSizeCVV == .regular))
+                .modifier(MediaBoxAspect())
         }
     }
 

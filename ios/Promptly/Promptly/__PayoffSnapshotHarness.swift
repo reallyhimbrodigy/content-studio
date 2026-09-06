@@ -302,7 +302,15 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
-            case 51: bleed("STORE 5 — re-edit in progress") {
+            case 56: bleed("STORE 3 — a re-edit: asked again, answered again") {
+                EditorView()
+                    .task { Self.seedReeditChat() }
+            }
+            case 57: bleed("STORE 5 — a second vibe: clean and professional") {
+                EditorView()
+                    .task { Self.seedSecondVibeChat() }
+            }
+            case 51: bleed("STORE 4 — a render in progress") {
                 EditorView()
                     .task { Self.seedStoreChat(reedit: true) }
             }
@@ -582,6 +590,34 @@ struct PayoffSnapshotHarnessView: View {
         }
         ChatStore.shared.debugSeed(Chat(id: "store-demo", title: "Launch clip",
                                         messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// STORE 3 — the same chat, asked again. Two real renders, the second one
+    /// beneath the instruction that produced it.
+    @MainActor
+    static func seedReeditChat() {
+        var msgs: [SerializedMessage] = []
+        var ask = ChatMessage(role: .user, content: "Fast cuts, big captions")
+        ask.isOnboarding = false
+        msgs.append(SerializedMessage(from: ask))
+        msgs.append(SerializedMessage(from: completedMock))
+        var again = ChatMessage(role: .user, content: "Make the captions bigger")
+        again.isOnboarding = false
+        msgs.append(SerializedMessage(from: again))
+        msgs.append(SerializedMessage(from: reeditResultMock))
+        ChatStore.shared.debugSeed(Chat(id: "store-reedit", title: "Launch clip",
+                                        messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// STORE 5 — a different vibe, so the set shows range rather than one look.
+    @MainActor
+    static func seedSecondVibeChat() {
+        var ask = ChatMessage(role: .user, content: "Clean and professional")
+        ask.isOnboarding = false
+        ChatStore.shared.debugSeed(Chat(id: "store-vibe2", title: "Clean cut",
+                                        messages: [SerializedMessage(from: ask),
+                                                   SerializedMessage(from: secondVibeMock)],
+                                        createdAt: Date(), updatedAt: Date()))
     }
 
     private var resultBubble: some View { MessageBubble(message: Self.completedMock) }
@@ -899,6 +935,45 @@ struct PayoffSnapshotHarnessView: View {
             editRationale: "I tightened the intro and held on your reveal at 0:14 so the punchline lands. For a fuller edit — more B-roll and zooms — a slightly longer take gives me more to work with.",
             postCaption: "Behind every launch is a spreadsheet nobody saw #startup #buildinpublic",
             postHook: "Nobody talks about the spreadsheet."
+        )
+        return m
+    }
+
+    /// STORE 3's second result. The SAME clip run through the live pipeline a
+    /// second time with a different instruction — "Make the captions bigger" —
+    /// so the re-edit frame shows two real renders, not one render twice.
+    static var reeditResultMock: ChatMessage {
+        var m = ChatMessage(role: .assistant, content: "Bigger captions, same pacing. Here's the new cut.")
+        m.jobId = "snapshot-reedit"
+        m.jobStatus = "completed"
+        m.renderedVideoUrl = "https://cdn.usepromptly.app/demo-reedit.mp4"
+        m.thumbnailUrl = Bundle.main.url(forResource: "store-demo3-render", withExtension: "jpg")?.absoluteString
+            ?? "https://cdn.usepromptly.app/demo.jpg"
+        m.originalVibe = "fast cuts, big captions"
+        m.postPackage = PostPackage(
+            editRationale: "Captions are up two sizes and centred, so they still read at arm's length on a phone.",
+            postCaption: nil,
+            postHook: nil
+        )
+        return m
+    }
+
+    /// STORE 5. A second vibe — "Clean and professional" — run through the live
+    /// pipeline, job 81a6a651, completed in 250s. NOTE: the same source clip.
+    /// store-demo.mov is the only footage whose ownership is settled, so this
+    /// frame shows a second RESULT rather than second FOOTAGE.
+    static var secondVibeMock: ChatMessage {
+        var m = ChatMessage(role: .assistant, content: "Cleaner cut — steadier pacing, captions out of the way.")
+        m.jobId = "snapshot-vibe2"
+        m.jobStatus = "completed"
+        m.renderedVideoUrl = "https://cdn.usepromptly.app/demo-clean.mp4"
+        m.thumbnailUrl = Bundle.main.url(forResource: "store-demo2-render", withExtension: "jpg")?.absoluteString
+            ?? "https://cdn.usepromptly.app/demo.jpg"
+        m.originalVibe = "clean and professional"
+        m.postPackage = PostPackage(
+            editRationale: "Held the wide shots longer and dropped the hard cuts, so it reads as considered rather than urgent.",
+            postCaption: nil,
+            postHook: nil
         )
         return m
     }

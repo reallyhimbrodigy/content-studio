@@ -1,66 +1,75 @@
 #!/bin/bash
-# IPAD THREAD GATE — the four rules the thread was ruled to follow, asserted so
-# they cannot regress silently. Each check names the defect it prevents.
+# THE IPAD CHAT IS THE IPHONE CHAT, SCALED (ruled 2026-09-05).
 #
-# The pixel half of this check is scripts/layout_symmetry.py, which reads a
-# capture and fails a torn or off-centre surface. It needs screenshots, so it is
-# run against a capture set rather than from here; this gate holds the rules that
-# CAN be read from source.
+# That is the whole rule, so it is checkable in one line of reasoning: a view in
+# the chat must not ask what size class it is in. Every dimension is written as
+# `X * k`, k is 1 on a phone and windowLongSide/852 on an iPad, and the result is
+# the phone's screen scaled. The moment a chat view branches on
+# horizontalSizeClass it is drawing a DIFFERENT layout, which is the defect Zac
+# rejected twice: plain-text rows against cards, chips duplicated in the
+# composer, an action row of capsules that the phone does not have.
+#
+# The pixel half of this check is scripts/overlay_check.py — the phone's capture
+# scaled by k, laid over the iPad's. It needs screenshots, so it runs against a
+# capture set; this gate holds what can be read from source.
 set -uo pipefail
 cd "$(dirname "$0")/Promptly" || exit 2
 FAIL=0
 say() { printf "  %-52s %s\n" "$1" "$2"; }
 bad() { say "$1" "FAIL — $2"; FAIL=1; }
 
-# 1. The card is gone, the note stays. PostPackageView must render editRationale
-#    and must NOT render the hook headline or the caption block.
-if grep -q "package.editRationale" Views/MessageBubble.swift; then
-  if grep -qE "package\.(postHook|postCaption)" Views/MessageBubble.swift; then
-    bad "1. card gone, note kept" "the hook or caption block is back in the thread"
-  else
-    say "1. card gone, note kept" "PASS"
+# 1. No chat view branches on size class.
+CHAT_VIEWS="Views/MessageBubble.swift Views/RenderProgressRing.swift Views/FirstRunHero.swift"
+OFFENDERS=""
+for f in $CHAT_VIEWS; do
+  CODE=$(grep -vE '^[[:space:]]*(//|///)' "$f")
+  if grep -qE "horizontalSizeClass|hSize == \.regular|isPad" <<<"$CODE"; then
+    OFFENDERS="$OFFENDERS $(basename "$f")"
   fi
-else
-  bad "1. card gone, note kept" "the note (editRationale) is not rendered anywhere"
-fi
-# Comments may still explain what was cut, so only count real code.
-if grep -v '^\s*//' Views/MessageBubble.swift | grep -q "Copy caption"; then
-  bad "1b. no Copy caption in the thread" "the Copy caption button is back"
-else
-  say "1b. no Copy caption in the thread" "PASS"
-fi
+done
+[ -z "$OFFENDERS" ] && say "1. no size-class branch in the chat" "PASS" \
+  || bad "1. no size-class branch in the chat" "branches in:$OFFENDERS"
 
-# 2. The iPad empty state is the vibe rows as the hero, not a black screen.
-grep -q "iPadWelcomeState" Views/EditorView.swift \
-  || bad "2. iPad empty state" "the regular-width welcome branch is gone"
-grep -q "private var isPad" Views/FirstRunHero.swift \
-  || bad "2b. hero is size-class aware" "FirstRunHero no longer distinguishes iPad"
-
-# 3. Thread text scales with k. A bare .body font in the thread is the defect.
-if grep -qE "\.font\(\.system\(\.body" Views/MessageBubble.swift; then
-  bad "3. thread text scales with k" "a non-scaling .body font is back in the thread"
+# 1b. Nor in the thread's own layout modifiers.
+CC=$(sed -n '/^struct ThreadFill/,/^struct BlurredFillImage/p' Views/ConversionColumn.swift)
+if grep -qE "horizontalSizeClass|hSize == \.regular" <<<"$CC"; then
+  bad "1b. no size-class branch in the thread modifiers" "ThreadFill/ThreadVideo branch again"
 else
-  say "3. thread text scales with k" "PASS"
+  say "1b. no size-class branch in the thread modifiers" "PASS"
 fi
 
-# 4. THE MEDIA BOX FOLLOWS THE ORIENTATION.
-if grep -q "func mediaBox(isPortrait" Views/ConversionColumn.swift; then
-  P=$(grep -A3 "func mediaBox(isPortrait" Views/ConversionColumn.swift | grep -oE "width: 394, height: 700" | head -1)
-  L=$(grep -A3 "func mediaBox(isPortrait" Views/ConversionColumn.swift | grep -oE "maxWidth - videoInset, height: 480" | head -1)
-  [ -n "$P" ] && [ -n "$L" ] && say "4. media box follows orientation" "PASS" \
-    || bad "4. media box follows orientation" "the portrait/landscape shapes changed"
+# 2. The chat is held to the phone's width times k — not the 88% rule, not a
+#    column of its own invention.
+EV=$(grep -vE '^[[:space:]]*//' Views/EditorView.swift)
+N=$(grep -c "ThreadColumn.width(k)" <<<"$EV")
+[ "$N" -ge 2 ] && say "2. chat and composer use the scaled-phone column" "PASS" \
+  || bad "2. chat and composer use the scaled-phone column" "found $N of the 2 expected"
+grep -q "conversionColumn(680)" <<<"$EV" \
+  && bad "2b. composer does not use the 88% rule" "conversionColumn(680) is back on the composer" \
+  || say "2b. composer does not use the 88% rule" "PASS"
+
+# 3. Every dimension in the ring scales. A bare font size or frame there is a
+#    phone-sized part on a scaled frame.
+RING=$(grep -vE '^[[:space:]]*(//|///)' Views/RenderProgressRing.swift)
+if grep -qE "\.font\(\.system\(size: [0-9]+[,)]" <<<"$RING"; then
+  bad "3. the ring's dimensions all scale" "a font size in the ring is not multiplied by k"
 else
-  bad "4. media box follows orientation" "mediaBox(isPortrait:) is gone"
+  say "3. the ring's dimensions all scale" "PASS"
 fi
-grep -q "windowIsPortrait" PromptlyApp.swift \
-  || bad "4b. orientation is published" "RootScale no longer publishes windowIsPortrait"
-for f in Views/ThreadVideo Views/ConversionColumn Views/RenderProgressRing; do :; done
-grep -q "windowIsPortrait" Views/RenderProgressRing.swift \
-  || bad "4c. ring consumes orientation" "the ring no longer reads windowIsPortrait"
 
-# The thread keeps its own column.
-grep -q "maxWidth: CGFloat = 820" Views/ConversionColumn.swift \
-  || bad "5. thread column is 820pt" "ThreadColumn.maxWidth changed"
+# 4. The finished-video message is the assistant line, the video, the note,
+#    Share, the action row. The publishing panel stays cut.
+MB=$(grep -vE '^[[:space:]]*(//|///)' Views/MessageBubble.swift)
+if grep -q "package.editRationale" <<<"$MB"; then
+  grep -qE "package\.(postHook|postCaption)" <<<"$MB" \
+    && bad "4. card gone, note kept" "the hook or caption block is back in the thread" \
+    || say "4. card gone, note kept" "PASS"
+else
+  bad "4. card gone, note kept" "the note (editRationale) is not rendered anywhere"
+fi
+grep -q "Copy caption" <<<"$MB" && bad "4b. no Copy caption in the thread" "the button is back" \
+  || say "4b. no Copy caption in the thread" "PASS"
 
-[ $FAIL -eq 0 ] && echo "✓ ipad thread gate: the four ruled thread rules hold" || echo "✗ ipad thread gate FAILED"
+[ $FAIL -eq 0 ] && echo "✓ ipad thread gate: the iPad chat is the iPhone chat, scaled" \
+                || echo "✗ ipad thread gate FAILED"
 exit $FAIL

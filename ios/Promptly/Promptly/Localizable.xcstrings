@@ -22594,6 +22594,10 @@
         }
       }
     },
+    "Reply to Promptly": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Resend code": {
       "localizations": {
         "ar": {
