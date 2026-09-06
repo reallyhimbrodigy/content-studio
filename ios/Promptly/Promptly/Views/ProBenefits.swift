@@ -41,11 +41,40 @@ enum ProBenefits {
         return min(floored, maxClaimedIntroPercent)
     }
 
+    /// THE INTRO STATED AS MONEY, which is the sell — "$145.99 for your first
+    /// year, then $289.99/year". Zac's read is that the amount converts better
+    /// than the percentage, so this replaces the billing sub-line for anyone
+    /// eligible; the percentage stays as a badge beside the price.
+    ///
+    /// Every figure comes from StoreKit — the intro's own
+    /// `localizedPriceString` and the product's — so it is correct per
+    /// territory and never a literal. nil for anyone ineligible, for a free
+    /// trial, and for any product with no intro at all (Max and the week carry
+    /// none), which is what keeps the badge and this line off those rows.
+    @MainActor
+    static func introSubline(for pkg: Package, isAnnual: Bool) -> String? {
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
+        guard let intro = pkg.storeProduct.introductoryDiscount,
+              intro.paymentMode != .freeTrial else { return nil }
+        let first = intro.localizedPriceString
+        let full = pkg.storeProduct.localizedPriceString
+        return isAnnual
+            ? String(localized: "\(first) for your first year, then \(full)/year")
+            : String(localized: "\(first) for your first month, then \(full)/month")
+    }
+
     /// The badge text for a row: "49% OFF FIRST YEAR" / "50% OFF FIRST MONTH".
     @MainActor
     static func introBadge(for pkg: Package, isAnnual: Bool) -> String? {
         guard let pct = introPercentOff(for: pkg) else { return nil }
-        return isAnnual
+        return introBadgeText(pct: pct, isAnnual: isAnnual)
+    }
+
+    /// THE PHRASING LIVES HERE, ONCE. The harness poses a badge from posed
+    /// prices and would otherwise spell this a second time — which is the fork
+    /// benefits-parity exists to catch.
+    static func introBadgeText(pct: Int, isAnnual: Bool) -> String {
+        isAnnual
             ? String(localized: "\(pct)% OFF FIRST YEAR")
             : String(localized: "\(pct)% OFF FIRST MONTH")
     }

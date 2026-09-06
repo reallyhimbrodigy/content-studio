@@ -1127,22 +1127,35 @@ private struct FitProbe<Content: View>: View {
 /// mapping, and only RevenueCat's own object stubbed out.
 private enum HarnessPaywallMock {
     /// US storefront, from App Store Connect (2026-09-01).
+    /// The posed badge is DERIVED from the posed prices, with the same floor the
+    /// real one uses — so the number in a harness screenshot is true to the
+    /// prices beside it, and the literal-percentage gate stays strict rather
+    /// than carrying an exemption for this file.
+    static func posedIntroBadge(first: Double, full: Double, isAnnual: Bool) -> String {
+        let pct = Int(((1.0 - first / full) * 100.0).rounded(.down))
+        return ProBenefits.introBadgeText(pct: pct, isAnnual: isAnnual)
+    }
+
     static let products: [PaywallProduct] = [
         PaywallProduct(id: "promptly_pro_weekly",  localizedPrice: "$10.99",
                        localizedPricePerMonth: nil, price: 10.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .week, introBadge: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .week, introBadge: nil, introSubline: nil),
         PaywallProduct(id: "promptly_pro_monthly", localizedPrice: "$29.99",
                        localizedPricePerMonth: nil, price: 29.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introBadge: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month,
+                       introBadge: Self.posedIntroBadge(first: 14.99, full: 29.99, isAnnual: false),
+                       introSubline: "$14.99 for your first month, then $29.99/month"),
         PaywallProduct(id: "promptly_pro_yearly",  localizedPrice: "$289.99",
                        localizedPricePerMonth: nil, price: 289.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introBadge: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year,
+                       introBadge: Self.posedIntroBadge(first: 145.99, full: 289.99, isAnnual: true),
+                       introSubline: "$145.99 for your first year, then $289.99/year"),
         PaywallProduct(id: "promptly_max_monthly", localizedPrice: "$89.99",
                        localizedPricePerMonth: nil, price: 89.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introBadge: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introBadge: nil, introSubline: nil),
         PaywallProduct(id: "promptly_max_yearly",  localizedPrice: "$799.99",
                        localizedPricePerMonth: nil, price: 799.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introBadge: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introBadge: nil, introSubline: nil),
     ]
 
     /// The shared list, from the same mapping the app uses.

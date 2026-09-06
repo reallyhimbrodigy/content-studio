@@ -72,6 +72,8 @@ struct PaywallDurationOption: Identifiable, Equatable {
     /// label, and it is the row's ONLY badge — the yearly-vs-monthly saving
     /// moved into the billing sub-line rather than competing with it.
     let introBadge: String?
+    /// The intro stated as money; replaces the billing line when present.
+    let introSubline: String?
     let isAnnual: Bool
 }
 
@@ -100,6 +102,8 @@ struct PaywallProduct: Equatable {
     let unit: PaywallPeriodUnit
     /// A PAID introductory offer, already phrased by `PaywallView.introOfferLine`.
     let introBadge: String?
+    /// The intro stated as money; replaces the billing line when present.
+    let introSubline: String?
 }
 
 enum PaywallPeriodUnit { case year, month, week, other }
@@ -295,6 +299,7 @@ enum PaywallMapping {
                 billingLine: billingLine(p),
                 percentOff: isAnnual ? pct : nil,
                 introBadge: p.introBadge,
+                introSubline: p.introSubline,
                 isAnnual: isAnnual)
         }
     }
@@ -328,6 +333,8 @@ enum PaywallMapping {
 /// with the credits flag. None of that survives a template.
 struct PaywallLayout: View {
     @Environment(\.conversionScale) private var k
+    /// The entitlement, so the layout can mark the tier the user already holds.
+    @ObservedObject private var subscription = SubscriptionService.shared
     let title: String
     let tiers: [PaywallTierOption]
     let durations: (Int) -> [PaywallDurationOption]
@@ -524,7 +531,11 @@ struct PaywallLayout: View {
 
     private func applyDefaults() {
         if tierAllowance == nil {
-            tierAllowance = initialTierAllowance ?? recommendedTier?.allowance
+            // A Pro user opens on Max — the tier they can still buy. An explicit
+            // preselection from a caller still wins.
+            let nextUp: Int? = subscription.effectiveIsPro && !subscription.isMax
+                ? CreditAllowance.maxMonthly : nil
+            tierAllowance = initialTierAllowance ?? nextUp ?? recommendedTier?.allowance
         }
         if selectedId == nil, let t = activeTier {
             // APP REVIEW ARTIFACT (DEBUG). Apple wants one capture PER PRODUCT,
@@ -541,6 +552,25 @@ struct PaywallLayout: View {
     }
 
     /// Pro — the lowest allowance, derived. `tiers` is ascending.
+    /// THE PAYWALL KNOWS WHAT THE USER ALREADY HAS (ruled 2026-09-06).
+    ///
+    /// From the entitlement, never from the offering — the offering is what is
+    /// for sale, and reading it to answer "what do they hold" is the same
+    /// mistake that showed Max's allowance to every Pro account. `isMax` and
+    /// `effectiveIsPro` are the one definition; nil means free, and a free user
+    /// can buy both.
+    private var heldTierAllowance: Int? {
+        if subscription.isMax { return CreditAllowance.maxMonthly }
+        if subscription.effectiveIsPro { return CreditAllowance.proMonthly }
+        return nil
+    }
+
+    /// True for every row of the tier the user is already on.
+    private func isHeldTier(_ allowance: Int?) -> Bool {
+        guard let held = heldTierAllowance, let a = allowance else { return false }
+        return held == a
+    }
+
     private var recommendedTier: PaywallTierOption? {
         tiers.first(where: { !$0.isMax }) ?? tiers.first
     }
@@ -736,15 +766,21 @@ struct PaywallLayout: View {
     private func durationRow(_ option: PaywallDurationOption) -> some View {
         let isSelected = selectedId == option.id
         let isRecommended = option.id == recommendedRowId
+        // THE TIER THEY ALREADY HOLD IS NOT FOR SALE. Its rows read "Your plan",
+        // show as selected, and do not respond — selling someone what they are
+        // already paying for is the defect, and a tappable row that silently
+        // does nothing is only half a fix.
+        let isOwned = isHeldTier(tierAllowance)
         return Button {
+            guard !isOwned else { return }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedId = option.id
         } label: {
             HStack(spacing: 10 * k) {
                 ZStack {
-                    Circle().strokeBorder(Color.white.opacity(isSelected ? 1 : 0.35), lineWidth: 2 * k)
+                    Circle().strokeBorder(Color.white.opacity(isSelected || isOwned ? 1 : 0.35), lineWidth: 2 * k)
                         .frame(width: 20 * k, height: 20 * k)
-                    if isSelected { Circle().fill(Color.white).frame(width: 11 * k, height: 11 * k) }
+                    if isSelected || isOwned { Circle().fill(Color.white).frame(width: 11 * k, height: 11 * k) }
                 }
                 VStack(alignment: .leading, spacing: 2 * k) {
                     HStack(spacing: 6 * k) {
@@ -755,9 +791,10 @@ struct PaywallLayout: View {
                     if !option.billingLine.isEmpty {
                         // The yearly-vs-monthly saving reads here now, so the
                         // intro badge is the only badge on the row.
-                        Text(option.percentOff.map {
-                            "\(option.billingLine) · \($0)% cheaper than monthly"
-                        } ?? option.billingLine)
+                        Text(option.introSubline
+                             ?? option.percentOff.map {
+                                 "\(option.billingLine) · \($0)% cheaper than monthly"
+                             } ?? option.billingLine)
                             .cType(10)
                             .foregroundColor(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
@@ -767,7 +804,7 @@ struct PaywallLayout: View {
                 }
                 Spacer(minLength: 6 * k)
                 VStack(alignment: .trailing, spacing: 2 * k) {
-                    if isRecommended {
+                    if isRecommended, !isOwned {
                         Text("RECOMMENDED")
                             .cType(8, .heavy)
                             .foregroundColor(.black)
@@ -775,14 +812,21 @@ struct PaywallLayout: View {
                             .padding(.vertical, 2 * k)
                             .background(Capsule().fill(Color(hex: "F4E4BC")))
                     }
-                    Text(option.rate)
-                        .cType(15, .bold)
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+                    if isOwned {
+                        Text("Your plan")
+                            .cType(13, .semibold)
+                            .foregroundColor(.white.opacity(0.75))
+                            .lineLimit(1)
+                    } else {
+                        Text(option.rate)
+                            .cType(15, .bold)
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+                    }
                     // THE INTRO IS THE ONE THAT SELLS, so it sits beside the
                     // price and is the row's only badge.
-                    if let badge = option.introBadge {
+                    if let badge = option.introBadge, !isOwned {
                         Text(badge)
                             .cType(9, .heavy)
                             .foregroundColor(.black)
@@ -816,6 +860,9 @@ struct PaywallLayout: View {
 
     private var footer: some View {
         VStack(spacing: 6 * k) {
+            // NO CTA ON A TIER THEY ALREADY HOLD. The rows say "Your plan"; a
+            // buy button under them would be selling it again.
+            if !isHeldTier(tierAllowance) {
             Button {
                 if let id = selectedId { onPurchase(id) }
             } label: {
@@ -847,6 +894,7 @@ struct PaywallLayout: View {
             .foregroundColor(.white.opacity(0.45))
             .buttonStyle(.plain)
         }
+            }
         .padding(.horizontal, 20 * k)
         .padding(.bottom, 8 * k)
     }
@@ -975,6 +1023,9 @@ struct TwoStepPaywall: View {
             let intro: String? = (onboarding.offerSurfacingEnabled
                                   && (unit == .year || unit == .month))
                 ? ProBenefits.introBadge(for: pkg, isAnnual: unit == .year) : nil
+            let introSub: String? = (onboarding.offerSurfacingEnabled
+                                     && (unit == .year || unit == .month))
+                ? ProBenefits.introSubline(for: pkg, isAnnual: unit == .year) : nil
             return PaywallProduct(
                 id: sp.productIdentifier,
                 localizedPrice: sp.localizedPriceString,
@@ -982,7 +1033,8 @@ struct TwoStepPaywall: View {
                 price: sp.price,
                 currencyLocale: sp.priceFormatter?.locale,
                 unit: unit,
-                introBadge: intro)
+                introBadge: intro,
+                introSubline: introSub)
         }
     }
 
