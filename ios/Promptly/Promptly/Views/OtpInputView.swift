@@ -220,7 +220,11 @@ struct OtpInputView: View {
 
         Task {
             do {
-                try await AuthService.shared.verifyOtp(email: email, code: code)
+                // The code came from the link flow if the session we started from
+                // was anonymous — that token only verifies as `email_change`.
+                try await AuthService.shared.verifyOtp(
+                    email: email, code: code,
+                    linking: AuthService.shared.currentUser?.isAnonymous == true)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 // AuthService.saveSession() flips isAuthenticated; the
                 // root WindowGroup automatically swaps to AppShell.

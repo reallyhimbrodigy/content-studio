@@ -255,14 +255,25 @@ class AuthService {
     /// both sign-up confirmation and sign-in — Supabase returns a session
     /// in both cases. `type: "email"` is what tells Supabase to treat
     /// the token as an email OTP code (vs. a magic-link nonce or SMS).
-    func verifyOtp(email: String, code: String) async throws {
+    /// THE LINK LEG VERIFIES WITH `email_change`, NOT `email` (measured
+    /// 2026-09-06, not assumed). A real exchange on a throwaway user:
+    ///
+    ///     verify type=magiclink    -> HTTP 403 otp_expired
+    ///     verify type=email_change -> HTTP 200
+    ///
+    /// so a token minted by `linkEmailIdentity` is refused by every other type.
+    /// That is what stops the link path silently regressing into `sendOtp`,
+    /// which looks a user up BY EMAIL and would mint a second user.
+    ///
+    /// `linking` is set by the caller when the code came from the link flow.
+    func verifyOtp(email: String, code: String, linking: Bool = false) async throws {
         let url = URL(string: "\(supabaseUrl)/auth/v1/verify")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
         let body: [String: String] = [
-            "type": "email",
+            "type": linking ? "email_change" : "email",
             "email": email,
             "token": code
         ]
