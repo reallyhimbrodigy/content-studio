@@ -719,6 +719,11 @@ struct PromptlyApp: App {
             .environment(\.locale, onboarding.locale ?? .current)
             .preferredColorScheme(.dark)
             .task {
+                // SIGN IN ANONYMOUSLY BEFORE ANYTHING ASKS FOR A TOKEN.
+                // Every path except purchase runs on this session, so it has to
+                // exist before the first request goes out. Idempotent, and it
+                // fails quietly if the provider is off.
+                await AuthService.shared.signInAnonymouslyIfNeeded()
                 // Ask the server whether it has ever seen this device, before
                 // the funnel decides. Fails open — see InstallHistory.
                 InstallHistory.refresh()

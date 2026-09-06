@@ -505,6 +505,14 @@ struct AuthUser: Codable {
     let email: String?
     let phone: String?
     let user_metadata: UserMetadata?
+    /// GoTrue's own flag. Optional because it is absent on older responses and
+    /// on providers that never set it — absent means "not anonymous".
+    let is_anonymous: Bool?
+
+    /// True only while the user has no identity attached. Once an email is
+    /// linked at the purchase seam this turns false WITHOUT the user_id
+    /// changing, which is the whole point of linking rather than signing in.
+    var isAnonymous: Bool { is_anonymous == true }
 }
 
 struct UserMetadata: Codable {

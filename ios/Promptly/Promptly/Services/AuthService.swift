@@ -23,8 +23,10 @@ class AuthService {
     // MARK: - Session Management
 
     func checkSession() async {
-        guard let token = UserDefaults.standard.string(forKey: tokenKey),
-              let refreshToken = UserDefaults.standard.string(forKey: refreshKey) else {
+        // Keychain first, UserDefaults as the one-release migration fallback.
+        guard let token = Keychain.get(tokenKey) ?? UserDefaults.standard.string(forKey: tokenKey),
+              let refreshToken = Keychain.get(refreshKey)
+                ?? UserDefaults.standard.string(forKey: refreshKey) else {
             isLoading = false
             return
         }
@@ -152,6 +154,80 @@ class AuthService {
     /// generates the code, picks the template (Magic Link), and SMTPs it
     /// out via Resend. Idempotent — safe to retry if the user didn't get
     /// the email.
+    /// SIGN IN ANONYMOUSLY AT LAUNCH (ruled 2026-09-06).
+    ///
+    /// Deferred auth gates exactly one seam — purchase — and everything else
+    /// runs on this session: chat, upload, render, re-edit, share. The user has
+    /// a real `user_id` from first launch, so jobs, credits and history are
+    /// attributable without ever asking for an email.
+    ///
+    /// Idempotent: returns immediately if a session already exists, so it is
+    /// safe to call on every launch. Never creates a second user.
+    @discardableResult
+    func signInAnonymouslyIfNeeded() async -> Bool {
+        if currentUser?.id != nil { return true }
+        if Keychain.get(tokenKey) != nil { return true }
+        do {
+            var req = URLRequest(url: URL(string: "\(supabaseUrl)/auth/v1/signup")!)
+            req.httpMethod = "POST"
+            req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = Data("{}".utf8)
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                // `anonymous_provider_disabled` means the project setting is off.
+                // Fail QUIETLY and leave the app signed out rather than blocking
+                // launch — the seams are already open, so the user still gets in.
+                Analytics.track("anon_signin_failed", props: [
+                    "status": (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                    "body": String(body.prefix(120)),
+                ], durable: true)
+                return false
+            }
+            let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
+            saveSession(session)
+            Analytics.track("anon_signin_ok", props: ["user_id": session.user.id])
+            return true
+        } catch {
+            Analytics.track("anon_signin_failed", props: ["error": "\(error)"], durable: true)
+            return false
+        }
+    }
+
+    /// LINK, DO NOT CREATE (ruled 2026-09-06).
+    ///
+    /// At the purchase seam the anonymous user adds an email identity rather
+    /// than signing in as somebody new. GoTrue keeps the SAME `user_id` when an
+    /// anonymous user is updated with an email, so every job, credit and chat
+    /// already written under it carries over. Signing in fresh here would mint a
+    /// second user and orphan all of it.
+    ///
+    /// Returns false when there is no anonymous session to link, in which case
+    /// the caller falls back to the ordinary OTP path.
+    func linkEmailIdentity(email: String) async throws -> Bool {
+        guard let token = await getValidToken(), currentUser?.isAnonymous == true else {
+            return false
+        }
+        var req = URLRequest(url: URL(string: "\(supabaseUrl)/auth/v1/user")!)
+        req.httpMethod = "PUT"
+        req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            Analytics.track("identity_link_failed", props: [
+                "status": (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                "body": String(body.prefix(120)),
+            ], durable: true)
+            throw AuthError.signInFailed(String(body.prefix(200)))
+        }
+        Analytics.track("identity_link_sent", props: ["user_id": currentUser?.id ?? ""])
+        return true
+    }
+
     func sendOtp(email: String) async throws {
         let url = URL(string: "\(supabaseUrl)/auth/v1/otp")!
         var request = URLRequest(url: url)
@@ -419,6 +495,15 @@ class AuthService {
         accessToken = session.access_token
         currentUser = session.user
         isAuthenticated = true
+        // THE SESSION LIVES IN THE KEYCHAIN (ruled 2026-09-06). UserDefaults is
+        // wiped by a delete-and-reinstall, which for an ANONYMOUS user means
+        // their identity — and every job under it — is gone with no way back,
+        // because there is no email to sign in with. The Keychain survives, so
+        // the same device keeps the same user_id. Mirrored to UserDefaults for
+        // one release so an existing signed-in install is not logged out by the
+        // move; the read below prefers the Keychain.
+        _ = Keychain.set(session.access_token, for: tokenKey)
+        _ = Keychain.set(session.refresh_token, for: refreshKey)
         UserDefaults.standard.set(session.access_token, forKey: tokenKey)
         UserDefaults.standard.set(session.refresh_token, forKey: refreshKey)
 

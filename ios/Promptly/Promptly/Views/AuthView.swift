@@ -396,7 +396,18 @@ struct AuthView: View {
 
         Task {
             do {
-                try await AuthService.shared.sendOtp(email: trimmed)
+                // LINK, DO NOT CREATE (ruled 2026-09-06). An anonymous user
+                // reaching the purchase seam adds an email to the account they
+                // already have, so the user_id — and every job, credit and chat
+                // written under it — carries over. `sendOtp` looks a user up by
+                // email and would mint a SECOND one, orphaning all of it.
+                //
+                // Falls back to the ordinary OTP path when there is nothing to
+                // link (no anonymous session, or the provider is off).
+                let linked = (try? await AuthService.shared.linkEmailIdentity(email: trimmed)) ?? false
+                if !linked {
+                    try await AuthService.shared.sendOtp(email: trimmed)
+                }
                 otpEmail = trimmed
             } catch {
                 errorMessage = "Couldn't send code. Check your email and try again."
