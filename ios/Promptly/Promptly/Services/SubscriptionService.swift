@@ -59,19 +59,13 @@ final class SubscriptionService: ObservableObject {
     /// is the same rule the credit balance follows, for the same reason.
     @Published private(set) var hasResolvedCustomerInfo = false
 
-    #if DEBUG
-    /// Sim-proof harness only: pose the Max entitlement so a capture can show
-    /// what a Max subscriber actually sees. DEBUG, and never called from app
-    /// code — the real value comes from RevenueCat in `applyCustomerInfo`.
-    /// Idempotent, and that is not a nicety. `@Published` fires on every
-    /// assignment, equal or not, and SwiftUI re-runs a View's `init` on each
-    /// update — so an unconditional set here became set -> publish -> update ->
-    /// set, a render loop that never settled. The harness caught it by refusing
-    /// to screenshot an unsettled screen; the production path has always
-    /// guarded the same way in `applyCustomerInfo`.
-    /// Sticky, like `debugPosedEntitled`: `applyCustomerInfo` writes `isMax`
-    /// from the receipt and would otherwise clobber the pose a capture depends on.
+    /// ALWAYS COMPILED, deliberately. `applyCustomerInfo` reads this on every
+    /// build, so fencing it behind #if DEBUG compiles in Debug and breaks the
+    /// Release archive — exactly what release-build-gate caught. Only the
+    /// SETTER is DEBUG; nothing in app code ever writes it.
     nonisolated(unsafe) static var debugPosedMax: Bool? = nil
+
+    #if DEBUG
     func debugSetMax(_ v: Bool) {
         Self.debugPosedMax = v
         if isMax != v { isMax = v }
