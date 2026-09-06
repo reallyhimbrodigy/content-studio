@@ -293,13 +293,11 @@ extension View {
 /// ruled column; content is sized `phoneCap * k` and never filled it, so all
 /// 820 did was sit the thread somewhere the scaled phone does not put it.
 enum ThreadColumn {
-    /// The reference phone's content width, the partner of
-    /// `ConversionColumn.phoneReferenceHeight`. k is derived from the height, so
-    /// this times k is exactly the scaled phone's screen width.
-    static let phoneReferenceWidth: CGFloat = 393
-
-    /// The thread's column at a given scale.
-    static func width(_ k: CGFloat) -> CGFloat { phoneReferenceWidth * k }
+    /// The conversation column's cap on a regular-width screen. The thread FILLS
+    /// (88% of the container, via `conversionColumn`); this is only the backstop
+    /// that keeps a line of message text from running the width of a 13-inch
+    /// landscape display, where it stops being readable.
+    static let cap: CGFloat = 820
 }
 
 
@@ -359,15 +357,24 @@ extension View {
     func threadPillChrome(_ active: Bool) -> some View { modifier(ThreadPillChrome(active: active)) }
 }
 
-/// THE IPAD CHAT IS THE IPHONE CHAT, SCALED (ruled 2026-09-05).
-/// Every cap here arrives as `X * k`, so one branch-free rule gives the phone X
-/// and the iPad X·k. The size-class branch this replaced stretched the iPad to
-/// the full column, which is a different layout rather than a scaled one.
+/// THE WIDTH RULE (ruled 2026-09-05, restated).
+///
+///   Anything full-width on the phone is full-width on the iPad — 88% of the
+///   container. Anything FIXED-width on the phone is that fixed width times k.
+///   Heights, type, padding, radii and icons are always times k.
+///
+/// So width is the one dimension that does not simply scale, and this modifier
+/// is where that lives: on a phone the caller's cap applies as written, and on
+/// an iPad the element fills the conversation column, which is itself 88% of
+/// the container. A 393·k column was the wrong answer to this — it made the
+/// chat a scaled phone screen floating in the middle of a 13-inch display.
 struct ThreadFill: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
     let phoneCap: CGFloat
     let alignment: Alignment
     func body(content: Content) -> some View {
-        content.frame(maxWidth: phoneCap, alignment: alignment)
+        content.frame(maxWidth: hSize == .regular ? .infinity : phoneCap,
+                      alignment: alignment)
     }
 }
 
@@ -382,10 +389,13 @@ extension View {
     }
 }
 
+/// The finished video and the render container fill too — the width rule names
+/// them explicitly. On a phone they keep the caller's cap.
 struct ThreadVideo: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var hSize
     let phoneCap: CGFloat
     func body(content: Content) -> some View {
-        content.frame(maxWidth: phoneCap)
+        content.frame(maxWidth: hSize == .regular ? .infinity : phoneCap)
     }
 }
 

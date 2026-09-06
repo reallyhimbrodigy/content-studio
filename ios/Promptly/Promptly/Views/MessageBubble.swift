@@ -102,8 +102,17 @@ struct MessageBubble: View {
             } else {
                 // 225 item 2: assistant messages are FULL-WIDTH (bubbles stay for
                 // the user side only). No trailing 48pt gutter.
-                assistantContent
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                //
+                // THE LLM TREATMENT (ruled 2026-08-03, shipped 2026-09-05): the
+                // reply carries a small Promptly mark in a leading gutter, the
+                // way every assistant surface marks whose voice is speaking.
+                // Without it an assistant line is bare text dropped into the
+                // thread, indistinguishable from a caption or a system notice.
+                HStack(alignment: .top, spacing: PromptlyMark.gutterSpacing * k) {
+                    PromptlyMark()
+                    assistantContent
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -2103,5 +2112,33 @@ enum VideoPlayerPresenter {
             current = presented
         }
         return current
+    }
+}
+
+
+/// THE MARK ON AN ASSISTANT MESSAGE.
+///
+/// Small, quiet, and aligned to the first line of the reply rather than centred
+/// on the whole block — a message that runs to a video and an action row should
+/// keep its mark up at the top where the voice starts, not floating halfway down
+/// beside a thumbnail.
+struct PromptlyMark: View {
+    @Environment(\.conversionScale) private var k
+
+    /// The mark's own size, and the gap to the reply beside it. Both scale.
+    static let size: CGFloat = 22
+    static let gutterSpacing: CGFloat = 10
+
+    var body: some View {
+        Image("PromptlyLogo")
+            .resizable()
+            .renderingMode(.template)
+            .aspectRatio(contentMode: .fit)
+            .foregroundStyle(Color(hex: "F4E4BC").opacity(0.85))
+            .frame(width: Self.size * k, height: Self.size * k)
+            // The cap height of the 17pt line beside it, so the mark reads as
+            // sitting ON the first line rather than above it.
+            .padding(.top, 2 * k)
+            .accessibilityHidden(true)
     }
 }

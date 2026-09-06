@@ -117,11 +117,6 @@ struct EditorView: View {
                     messagesList
                 }
             }
-            // THE CHAT IS THE PHONE'S CHAT, SCALED. Held to the reference
-            // phone's width times k and centred, so every element inside lands
-            // where the scaled phone puts it. Left to fill a 13-inch screen the
-            // empty state spanned 1032pt against the phone's 393 — 2.6x, not k.
-            .frame(maxWidth: ThreadColumn.width(k))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(luxuryBackdrop)
             .safeAreaInset(edge: .bottom, spacing: 0 * k) {
@@ -184,15 +179,9 @@ struct EditorView: View {
                 // A slightly wider column than the 460pt reading measure: this
                 // is a control surface, not prose, and the composer wants room
                 // for a line of text plus three controls.
-                //
-                // THE CHAT OBEYS ONE RULE (ruled 2026-09-05): the phone's screen
-                // times k. `.conversionColumn(680)` was the general 88%-with-a-cap
-                // rule, and on a 13-inch iPad it put the composer at 776pt where
-                // the scaled phone puts it at 596 — a different layout, not a
-                // scaled one. The cap below is the phone's own width times k, and
-                // the 12pt padding inside scales with it.
-                .frame(maxWidth: ThreadColumn.width(k))
-                .frame(maxWidth: .infinity)
+                // The composer FILLS — 88% of the container, capped so the send
+                // loop does not stretch across a 13-inch landscape screen.
+                .conversionColumn(680)
                 // Same solid black as the content + nav — no fade scrim (it read
                 // as a band above the composer on-device).
                 .background(Color.black)
@@ -795,7 +784,7 @@ struct EditorView: View {
                 // 88% every other surface uses — at 88% of a landscape 13-inch
                 // a message line runs ~1210pt and stops being readable. The
                 // composer and the empty-state rows stay full width.
-                .frame(maxWidth: ThreadColumn.width(k))
+                .conversionColumn(ThreadColumn.cap)
                 .frame(maxWidth: .infinity)
             }
             .defaultScrollAnchor(.bottom)
@@ -993,7 +982,11 @@ struct EditorView: View {
                     // now carries the "here are some vibes" message.
                     if inputText.isEmpty && reeditSession == nil {
                         Text("Tell me the vibe…")
-                            .font(.system(.body, design: .default).weight(.regular))
+                            // K-SCALED, NOT `.body`. A Dynamic Type style is the
+                            // same size on a 13-inch iPad as on a phone, which is
+                            // how a tablet composer ended up with phone-sized
+                            // placeholder text. 17pt is `.body`'s own default.
+                            .font(.system(size: 17 * k, weight: .regular))
                             .tracking(0.3 * k)
                             .foregroundColor(Color.white.opacity(0.35))
                             .padding(.vertical, 9 * k)
@@ -1004,7 +997,7 @@ struct EditorView: View {
                         .focused($isInputFocused)
                         .lineLimit(1...6)
                         .foregroundColor(.white)
-                        .font(.system(.body, design: .default))
+                        .font(.system(size: 17 * k))
                         .tracking(0.3 * k)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .tint(.white)
@@ -1038,7 +1031,16 @@ struct EditorView: View {
                             // its hit test, which is why the existing
                             // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44 * k, height: 44 * k)
+                            // BOTTOM OF THE INPUT ROW, level with the "+".
+                            // A 30pt circle centred in a 44pt tap target floats
+                            // 7pt above the row's bottom edge — 11pt on an iPad —
+                            // so it read as centred across the chips and the
+                            // input together rather than sitting on the input.
+                            // The 5pt bottom padding matches the "+" exactly, and
+                            // bottom alignment keeps it there when the field
+                            // grows to several lines.
+                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1062,7 +1064,16 @@ struct EditorView: View {
                             // its hit test, which is why the existing
                             // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44 * k, height: 44 * k)
+                            // BOTTOM OF THE INPUT ROW, level with the "+".
+                            // A 30pt circle centred in a 44pt tap target floats
+                            // 7pt above the row's bottom edge — 11pt on an iPad —
+                            // so it read as centred across the chips and the
+                            // input together rather than sitting on the input.
+                            // The 5pt bottom padding matches the "+" exactly, and
+                            // bottom alignment keeps it there when the field
+                            // grows to several lines.
+                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1095,7 +1106,16 @@ struct EditorView: View {
                             // its hit test, which is why the existing
                             // .padding(.trailing, 5 * k) on the enclosing ZStack
                             // added nothing.
-                            .frame(width: 44 * k, height: 44 * k)
+                            // BOTTOM OF THE INPUT ROW, level with the "+".
+                            // A 30pt circle centred in a 44pt tap target floats
+                            // 7pt above the row's bottom edge — 11pt on an iPad —
+                            // so it read as centred across the chips and the
+                            // input together rather than sitting on the input.
+                            // The 5pt bottom padding matches the "+" exactly, and
+                            // bottom alignment keeps it there when the field
+                            // grows to several lines.
+                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1560,7 +1580,27 @@ struct EditorView: View {
     /// builds, 2026-09-05). The badge mounts once per editor, so this runs once.
     private func registerEditorHooks() {
         debugAttachClipIfRequested()
+        debugSendChatIfRequested()
         AuthGate.shared.onSendResume = { send() }
+    }
+
+    /// PROVES THE STREAM RENDERS AS IT LANDS, rather than leaving it to reading.
+    /// `-sendChat "<message>"` puts the message in the composer and sends it, so
+    /// a capture taken mid-reply shows however much text has arrived by then.
+    /// Two captures a second apart, with the second longer than the first, is
+    /// the proof that tokens render progressively and not in one block at the
+    /// end. DEBUG only, like every other hook here.
+    private func debugSendChatIfRequested() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-sendChat"), i + 1 < args.count else { return }
+        let text = args[i + 1]
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            inputText = text
+            send()
+        }
+        #endif
     }
 
     private func debugAttachClipIfRequested() {

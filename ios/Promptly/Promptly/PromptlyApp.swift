@@ -469,7 +469,25 @@ struct PromptlyApp: App {
         // keeping it would re-admit exactly the anonymous window being closed.
         guard onboarding.onboardingV2Enabled,
               !onboarding.hasCompletedOnboarding,
-              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated),
+              // A FIRST-TIME USER HAS NOTHING (ruled 2026-09-06). No session,
+              // no FirstRun marker, no device the server has ever seen. Any ONE
+              // of those present means they have used the app before and they
+              // land in chat.
+              //
+              // `!FirstRun.seen` ALONE WAS NOT ENOUGH. The Keychain marker
+              // arrived with deferred auth — 1.3.25 (b86212c) contains no
+              // `enum FirstRun` at all — so on update from 1.3.25 it is absent
+              // for every existing user, and anyone who had not completed the
+              // old funnel was shown it again. UserDefaults survives an update,
+              // so a restored session is the signal that marker cannot be.
+              //
+              // Only on the deferred-auth path. With deferred auth OFF the flow
+              // runs AFTER signup, so being authenticated is what a new user
+              // looks like there, not what a returning one looks like.
+              (onboarding.deferredAuthEnabled
+                 ? (!FirstRun.seen && !auth.isAuthenticated
+                    && !InstallHistory.deviceKnownToServer)
+                 : auth.isAuthenticated),
               // NEVER THE FUNNEL FOR SOMEONE WHO IS PAYING (2026-09-05).
               //
               // Zac hit this on a TestFlight 1.3.28 install: signed in via the
@@ -496,6 +514,11 @@ struct PromptlyApp: App {
               // Nothing counts down on screen and no time is shown to the user;
               // it only stops the funnel being decided on an unread entitlement.
               (!auth.isAuthenticated || subscription.hasResolvedCustomerInfo
+               || resolveDeadlinePassed),  // countdown-ok: internal wait, not UI
+              // And on the device answer, the same way. Deciding the funnel
+              // before the lookup returns is the identical race the entitlement
+              // clause above describes.
+              (InstallHistory.hasResolved
                || resolveDeadlinePassed)   // countdown-ok: internal wait, not UI
         else { return false }
         return true
@@ -683,7 +706,16 @@ struct PromptlyApp: App {
             .environment(\.locale, onboarding.locale ?? .current)
             .preferredColorScheme(.dark)
             .task {
+                // Ask the server whether it has ever seen this device, before
+                // the funnel decides. Fails open — see InstallHistory.
+                InstallHistory.refresh()
                 #if DEBUG
+                // `-poseDeviceSeen` / `-poseDeviceNew`: stand in for the server's
+                // answer so the three first-install proofs can be run on a
+                // simulator, which has no device the server would know.
+                let a = ProcessInfo.processInfo.arguments
+                if a.contains("-poseDeviceSeen") { InstallHistory.debugPose(seen: true) }
+                if a.contains("-poseDeviceNew") { InstallHistory.debugPose(seen: false) }
                 // Applied before anything reads a flag, and re-applied is free
                 // (every setter is guarded).
                 for f in Self.forcedFlags { OnboardingState.shared.debugForceFlag(f) }
