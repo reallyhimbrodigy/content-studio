@@ -1507,7 +1507,46 @@ struct EditorView: View {
     /// Hooks that must not live on the body's main modifier chain: one more
     /// statement in that `.onAppear` and the type-checker gives up (three
     /// builds, 2026-09-05). The badge mounts once per editor, so this runs once.
+    /// LAUNCH RECONCILE (ruled 2026-09-06). An upload that died with the app is
+    /// either retried from its staged file or failed and refunded — never left
+    /// hanging, which is the state the sweep used to leave every one of them in.
+    private func reconcileStaleUploads() {
+        let stale = UploadOutcomeReporter.shared.sweepOnLaunch()
+        guard !stale.isEmpty else { return }
+        let anyRetryable = stale.contains { $0.isRetryable }
+
+        // A message that is still in flight with NO job row is an upload that
+        // died with the app: the bytes never got far enough to create one. That
+        // is the definition of UPLOAD_NEVER_STARTED, and it is the state the old
+        // sweep left every one of them in.
+        let stuck = messages.indices.filter { i in
+            messages[i].jobId == nil
+                && (messages[i].jobStatus == "processing" || messages[i].jobStatus == "uploading")
+        }
+        guard !stuck.isEmpty else { return }
+
+        for i in stuck {
+            if anyRetryable, let retry = retryClosure(for: messages[i]) {
+                Analytics.track("upload_reconcile_retry", props: [:], durable: true)
+                messages[i].error = nil
+                messages[i].jobStatus = "processing"
+                retry()
+            } else {
+                // Terminal: the staged bytes are gone and no retry can find
+                // them. Say so in words, leave the Retry button on screen, and
+                // do not hold a credit against a job that cannot run.
+                Analytics.track("upload_reconcile_failed", props: [:], durable: true)
+                messages[i].jobStatus = "failed"
+                messages[i].isRetryable = true
+                messages[i].error = String(localized:
+                    "That upload didn't finish. Nothing was charged — pick the clip again and I'll run it.")
+            }
+        }
+        persistMessages()
+    }
+
     private func registerEditorHooks() {
+        reconcileStaleUploads()
         debugAttachClipIfRequested()
         debugSendChatIfRequested()
         AuthGate.shared.onSendResume = { send() }
@@ -1684,7 +1723,11 @@ struct EditorView: View {
               let samplePubUrl = sampleResp.publicUrl else {
             throw APIError.uploadFailed
         }
-        try await APIService.shared.uploadFileToS3Foreground(
+        // EVERY UPLOAD IS A BACKGROUND UPLOAD (ruled 2026-09-06). This was the
+                                // last foreground one — a small validation proxy. It is
+                                // short, but "short" is not a lifecycle guarantee: suspend
+                                // during it and URLSession drops it on the floor.
+                                try await APIService.shared.uploadFileToS3(
             url: samplePutUrl,
             fileUrl: sampleFile,
             mimeType: "video/mp4",
@@ -1760,7 +1803,10 @@ struct EditorView: View {
         // Open this pick's outcome record. Without it, a pick that never
         // becomes a job row leaves no trace anywhere — which is exactly how
         // 473 of 593 stuck users came to emit nothing at all.
-        UploadOutcomeReporter.shared.recordPick(id: pending.id, sizeMB: nil)
+        // The staged file goes in the record too: a reconcile on the next launch
+        // can only retry from something that is still on disk.
+        UploadOutcomeReporter.shared.recordPick(id: pending.id, sizeMB: nil,
+                                                sourcePath: pending.fileUrl?.path)
 
         // Thumbnail comes from the Photos cache immediately — local, no
         // iCloud bytes needed. Tile shows up the instant the picker
@@ -2002,7 +2048,11 @@ struct EditorView: View {
                             }
                             guard let proxyFile else { return }
                             do {
-                                try await APIService.shared.uploadFileToS3Foreground(
+                                // EVERY UPLOAD IS A BACKGROUND UPLOAD (ruled 2026-09-06). This was the
+                                // last foreground one — a small validation proxy. It is
+                                // short, but "short" is not a lifecycle guarantee: suspend
+                                // during it and URLSession drops it on the floor.
+                                try await APIService.shared.uploadFileToS3(
                                     url: proxyPutUrl,
                                     fileUrl: proxyFile,
                                     mimeType: "video/mp4",

@@ -24950,6 +24950,10 @@
         }
       }
     },
+    "Something went wrong. Nothing was lost.": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Something went wrong. Please try again.": {
       "extractionState": "manual",
       "localizations": {
@@ -26405,6 +26409,77 @@
           "stringUnit": {
             "state": "translated",
             "value": "یہ کوڈ درست نہیں لگتا۔ حروف دیکھ کر دوبارہ کوشش کریں۔"
+          }
+        }
+      }
+    },
+    "That upload didn't finish. Nothing was charged — pick the clip again and I'll run it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يكتمل الرفع. لم يتم خصم أي شيء — اختر المقطع مرة أخرى وسأعالجه."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপলোড শেষ হয়নি। কিছু চার্জ করা হয়নি — ক্লিপটি আবার বাছুন, আমি চালিয়ে দেব।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Upload wurde nicht fertig. Es wurde nichts berechnet — wähle den Clip erneut, dann lege ich los."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La subida no terminó. No se cobró nada: vuelve a elegir el clip y lo edito."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'envoi n'a pas abouti. Rien n'a été facturé — choisis à nouveau le clip et je m'en occupe."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अपलोड पूरा नहीं हुआ। कुछ भी चार्ज नहीं हुआ — क्लिप दोबारा चुनें, मैं इसे बना दूंगा।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unggahan tidak selesai. Tidak ada biaya — pilih klipnya lagi dan saya kerjakan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アップロードが完了しませんでした。料金は発生していません。もう一度クリップを選んでください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अपलोड पूरा भएन। केही शुल्क लागेको छैन — क्लिप फेरि छान्नुहोस्, म बनाइदिन्छु।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O upload não terminou. Nada foi cobrado — escolha o clipe de novo que eu edito."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپ لوڈ مکمل نہیں ہوا۔ کوئی رقم نہیں لی گئی — کلپ دوبارہ منتخب کریں، میں بنا دوں گا۔"
           }
         }
       }

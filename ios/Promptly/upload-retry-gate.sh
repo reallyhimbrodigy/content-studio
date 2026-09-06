@@ -55,3 +55,56 @@ if fails:
 print("upload-retry-gate: PASS — a vanished source is terminal (give up + clear), "
       "never rescheduled; both retry paths guard before re-uploading; task sites fenced")
 PYEOF
+
+# ── UNS 2-6 (ruled 2026-09-06) ───────────────────────────────────────────────
+# 316 users in 14 days, split `picked` 246 / `uploaded` 133. These assert the
+# four mechanisms that close it, in source, so none can quietly come back.
+UNS_FAIL=0
+API=Promptly/Services/APIService.swift
+EV=Promptly/Views/EditorView.swift
+REP=Promptly/Services/UploadOutcomeReporter.swift
+# NO PIPE INTO grep -q. Under `set -o pipefail` the -q exits on first match and
+# the upstream takes SIGPIPE, so the pipeline reports failure on a SUCCESSFUL
+# match — which silently inverts every check. Read once, match against the text.
+API_CODE=$(grep -vE '^[[:space:]]*(//|///)' "$API")
+EV_CODE=$(grep -vE '^[[:space:]]*(//|///)' "$EV")
+REP_CODE=$(grep -vE '^[[:space:]]*(//|///)' "$REP")
+
+# 2. EVERY upload is a background upload. A foreground session drops the task
+#    the moment the app suspends, which is the whole `picked` class.
+if grep -q "uploadFileToS3Foreground" <<<"$EV_CODE"; then
+  echo "  a foreground upload is back — it will die on suspend"; UNS_FAIL=1
+fi
+grep -q "BackgroundUploadManager.shared.upload" <<<"$API_CODE" || {
+  echo "  uploads no longer route through the background session"; UNS_FAIL=1; }
+
+# 3. No job row until the bytes are in. The coordinator must wait for the upload
+#    to complete before it calls createVideoJob — a job row with nothing behind
+#    it IS UploadNeverStarted.
+if ! awk '/func dispatch\(/,/createVideoJob/' Promptly/Services/JobDispatchCoordinator.swift \
+     | grep -q "waitForUpload"; then
+  echo "  createVideoJob no longer waits for the upload"; UNS_FAIL=1
+fi
+
+# 4. Retries with backoff before any message reaches the user.
+grep -q "static let backoff: \[TimeInterval\]" Promptly/Services/JobDispatchCoordinator.swift || {
+  echo "  the dispatch backoff schedule is gone"; UNS_FAIL=1; }
+
+# 5. The launch reconcile. Reporting a dead upload is not recovering it: the old
+#    sweep emitted an obituary and deleted the record, leaving the job hanging.
+grep -q "reconcileStaleUploads" <<<"$EV_CODE" || {
+  echo "  the launch reconcile is gone"; UNS_FAIL=1; }
+grep -qF "func sweepOnLaunch() -> [StaleUpload]" <<<"$REP_CODE" || {
+  echo "  sweepOnLaunch no longer classifies stale uploads"; UNS_FAIL=1; }
+grep -q "isRetryable" <<<"$REP_CODE" || {
+  echo "  stale uploads are no longer split into retryable and terminal"; UNS_FAIL=1; }
+grep -q "upload_reconcile_failed" <<<"$EV_CODE" || {
+  echo "  a terminal upload is no longer failed-and-refunded"; UNS_FAIL=1; }
+
+if [ "$UNS_FAIL" -ne 0 ]; then
+  echo "upload-retry-gate: FAIL — UNS 2-6"
+  exit 1
+fi
+echo "upload-retry-gate: UNS 2-6 — background everywhere, job after bytes, backoff, reconcile."
+
+

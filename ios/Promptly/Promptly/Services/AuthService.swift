@@ -172,7 +172,15 @@ class AuthService {
             req.httpMethod = "POST"
             req.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = Data("{}".utf8)
+            // THE DEVICE ID RIDES THE SIGNUP (ruled 2026-09-06). GoTrue puts
+            // `data` into raw_user_meta_data, which is what the per-device rate
+            // limit keys on — without it the limit has nothing to count and
+            // throttles nothing, so one simulator could mint users forever.
+            // Analytics.deviceIdForJoin is Keychain-backed, so it is the same id
+            // across reinstalls and the same one the funnel joins on.
+            req.httpBody = try JSONSerialization.data(withJSONObject: [
+                "data": ["device_id": Analytics.deviceIdForJoin]
+            ])
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? ""

@@ -59,6 +59,10 @@ final class UploadOutcomeReporter {
         let startedAt: Date
         var sizeMB: Double?
         var srcKey: String?
+        /// The staged file the upload was reading. A reconcile can only retry
+        /// from something that is still on disk, so the path has to survive the
+        /// launch that lost the upload.
+        var sourcePath: String?
         /// Set when the source bytes actually landed in the bucket.
         var uploadSettledAt: Date?
         /// Last phase the pipeline reported, for records that never settled.
@@ -74,7 +78,7 @@ final class UploadOutcomeReporter {
 
     /// A user picked a clip and the pipeline started. Called where
     /// `upload_started` is emitted, so the ledger and that event always agree.
-    func recordPick(id: UUID, sizeMB: Double?) {
+    func recordPick(id: UUID, sizeMB: Double?, sourcePath: String? = nil) {
         var r = PickRecord(pickID: id.uuidString,
                            sessionID: sessionID,
                            startedAt: Date(),
@@ -84,6 +88,7 @@ final class UploadOutcomeReporter {
                            lastPhase: "picked",
                            appVersion: Self.appVersion)
         r.lastPhase = "picked"
+        r.sourcePath = sourcePath
         records.append(r)
         if records.count > Self.maxRecords { records.removeFirst(records.count - Self.maxRecords) }
         persist()
@@ -119,9 +124,27 @@ final class UploadOutcomeReporter {
 
     /// Call once per launch. Emits one terminal per pick that a previous session
     /// left unresolved, then forgets it so it can never be double-counted.
-    func sweepOnLaunch() {
+    /// One stale upload, classified so the caller can act on it.
+    struct StaleUpload {
+        let id: UUID
+        /// The staged file, if it is still readable. nil means nothing to retry
+        /// from — the upload is terminal and the job must be failed, not left
+        /// hanging.
+        let sourcePath: String?
+        var isRetryable: Bool { sourcePath != nil }
+    }
+
+    /// REPORTING IS NOT RECONCILING (ruled 2026-09-06).
+    ///
+    /// This used to emit `upload_never_started` for every stale pick and then
+    /// DELETE the record — an obituary, with the upload left exactly as dead as
+    /// it found it. That is the state 316 users are in. It now classifies each
+    /// one and hands it back: retry from the staged file if it is still there,
+    /// otherwise the caller fails the job and refunds. Never left hanging.
+    @discardableResult
+    func sweepOnLaunch() -> [StaleUpload] {
         let stale = records.filter { $0.sessionID != sessionID }
-        guard !stale.isEmpty else { return }
+        guard !stale.isEmpty else { return [] }
         for r in stale {
             let sub = Self.subcode(for: r)
             #if DEBUG
@@ -139,10 +162,24 @@ final class UploadOutcomeReporter {
                 "size_mb": r.sizeMB ?? -1,
                 "src_key": r.srcKey ?? "",
                 "app_version_at_pick": r.appVersion,
+                "recovery": r.sourcePath.map {
+                    FileManager.default.isReadableFile(atPath: $0) ? "retryable" : "source_gone"
+                } ?? "no_source_path",
             ])
+        }
+        let out: [StaleUpload] = stale.map { r in
+            let path = r.sourcePath.flatMap {
+                FileManager.default.isReadableFile(atPath: $0) ? $0 : nil
+            }
+            return StaleUpload(id: UUID(uuidString: r.pickID) ?? UUID(), sourcePath: path)
         }
         records.removeAll { $0.sessionID != sessionID }
         persist()
+        Analytics.track("upload_reconcile_swept", props: [
+            "stale": out.count,
+            "retryable": out.filter { $0.isRetryable }.count,
+        ], durable: true)
+        return out
     }
 
     /// The mechanism under the label.
