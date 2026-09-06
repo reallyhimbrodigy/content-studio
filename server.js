@@ -4275,6 +4275,18 @@ const server = http.createServer((req, res) => {
           // picker asset is a pick that never becomes a job.
           'device_id_keychain_write_failed', 'first_run_keychain_write_failed',
           'picker_asset_unrecoverable',
+          // ANONYMOUS AUTH FUNNEL (2026-09-06). Allowlisted the day the client
+          // started emitting them, which is the whole lesson of the 25 that were
+          // dropped for a full release: the allowlist trailing the client is
+          // indistinguishable from the client not emitting.
+          // identity_link_* are the instrument for the one leg of linking that
+          // cannot be tested server-side — whether the client calls linkIdentity
+          // (same user_id, history preserved) or a fresh sign-in (new id, a
+          // month of jobs orphaned).
+          'anon_signin_ok', 'anon_signin_failed', 'auth_gate_suppressed',
+          'identity_link_sent', 'identity_link_failed',
+          // Reply quality signal from the chat surface.
+          'reply_rated',
           // The RECOVERY half of the two above: the keychain lost the identity
           // and the device_id was recovered anyway. Emitted by shipped iOS and
           // dropped silently until 2026-09-06 — without it the keychain-failure
@@ -5164,10 +5176,16 @@ const server = http.createServer((req, res) => {
         }
         console.log('[account] will delete', s3Keys.length, 'S3 objects after DB rows');
 
-        // 2. Delete DB rows explicitly. Order matters only for the
-        //    profiles row (its FK has CASCADE so it would go automatically
-        //    on auth user delete, but we delete it first to keep the
-        //    state machine readable).
+        // 2. Delete DB rows explicitly.
+        //
+        // THE COMMENT HERE USED TO SAY profiles CASCADES. IT DOES NOT.
+        // Measured from pg_constraint 2026-09-06: profiles_id_fkey is
+        // ON DELETE **NO ACTION**. (video_jobs and chats are SET NULL;
+        // usage_events and device_tokens are the only real CASCADEs.) So the
+        // profiles delete is not tidiness — it is LOAD-BEARING. Without it,
+        // step 3 fails with a foreign-key violation and the user is left with
+        // an account they cannot delete, which is an App Store review problem
+        // as much as a product one.
         const deleteResults = await Promise.allSettled([
           supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
           supabaseAdmin.from('chats').delete().eq('user_id', userId),
@@ -5177,6 +5195,32 @@ const server = http.createServer((req, res) => {
         for (const r of deleteResults) {
           if (r.status === 'rejected' || r.value?.error) {
             console.error('[account] DB row delete failure (continuing):', r.value?.error || r.reason);
+          }
+        }
+
+        // 2b. PROVE the blocking row is gone before trying step 3.
+        // The loop above logs failures and CONTINUES, which is right for the
+        // SET NULL / CASCADE tables — an orphaned job row is cheap. It is wrong
+        // for profiles: continuing past that failure guarantees a 500 from
+        // deleteUser, reported as a generic auth_delete_failed that names
+        // neither the table nor the constraint. One retry, then an honest error.
+        {
+          const { data: stillThere } = await supabaseAdmin
+            .from('profiles').select('id').eq('id', userId).limit(1);
+          if (Array.isArray(stillThere) && stillThere.length) {
+            console.warn('[account] profiles row survived the batch — retrying before auth delete');
+            const { error: retryErr } = await supabaseAdmin
+              .from('profiles').delete().eq('id', userId);
+            const { data: afterRetry } = await supabaseAdmin
+              .from('profiles').select('id').eq('id', userId).limit(1);
+            if (Array.isArray(afterRetry) && afterRetry.length) {
+              console.error('[account] CANNOT delete profiles row; aborting before auth delete', retryErr);
+              return sendJson(res, 500, {
+                error: 'profile_delete_failed',
+                detail: 'profiles row must be removed before the auth user '
+                      + '(profiles_id_fkey is ON DELETE NO ACTION)',
+              });
+            }
           }
         }
 
