@@ -94,6 +94,7 @@ struct RenderProgressRing: View {
     /// footage people actually bring, so a vertical clip fills it rather than
     /// being cropped to fit a frame of some other proportion.
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.windowIsPortrait) private var isPortrait
 
     /// THE RENDER CONTAINER IS THE COLUMN, NOT A PHONE OUTLINE (ruled
     /// 2026-09-05). 208pt is a phone frame; in an 820pt conversation column it
@@ -102,10 +103,11 @@ struct RenderProgressRing: View {
     /// filling it and the trace drawn around it — the same box the finished
     /// video lands in, so in-progress → finished does not jump.
     private var frameWidth: CGFloat {
-        hSize == .regular ? ThreadColumn.maxWidth - ThreadColumn.videoInset : 208
+        hSize == .regular ? ThreadColumn.mediaBox(isPortrait: isPortrait).width : 208
     }
     private var frameHeight: CGFloat {
-        hSize == .regular ? ThreadColumn.videoHeight : frameWidth * 16 / 9
+        hSize == .regular ? ThreadColumn.mediaBox(isPortrait: isPortrait).height
+                          : frameWidth * 16 / 9
     }
     private let corner: CGFloat = 26
 

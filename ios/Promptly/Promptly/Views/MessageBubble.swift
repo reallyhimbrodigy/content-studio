@@ -214,7 +214,7 @@ struct MessageBubble: View {
 
             if !message.content.isEmpty {
                 bubbleText(message.content)
-                    .font(.system(.body, design: .default).weight(.regular))
+                    .font(.system(size: 17 * k, weight: .regular))
                     .tracking(0.2 * k)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
@@ -436,7 +436,7 @@ struct MessageBubble: View {
                 // blinking caret at the tail while the reply streams (caretOn is
                 // toggled by the .task below only while message.isStreaming).
                 bubbleText(message.isStreaming && caretOn ? message.content + "\u{258C}" : message.content)
-                    .font(.system(.body, design: .default).weight(.regular))
+                    .font(.system(size: 17 * k, weight: .regular))
                     .tracking(0.2 * k)
                     .textSelection(.enabled)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
@@ -1525,51 +1525,9 @@ struct PostPackageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12 * k) {
-            if let hook = package.postHook {
-                Text(hook)
-                    .font(.system(size: 17 * k, weight: .semibold))
-                    .foregroundColor(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-            }
-
-            if let caption = package.postCaption {
-                VStack(alignment: .leading, spacing: 9 * k) {
-                    Text(caption)
-                        .font(.system(size: 14 * k))
-                        .foregroundColor(Color(.label))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                    Button {
-                        UIPasteboard.general.string = caption
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.easeInOut(duration: 0.2)) { copied = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                            withAnimation(.easeInOut(duration: 0.2)) { copied = false }
-                        }
-                    } label: {
-                        HStack(spacing: 5 * k) {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 12 * k, weight: .semibold))
-                            Text(copied ? "Copied" : "Copy caption")
-                                .font(.system(size: 13 * k, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12 * k)
-                        .padding(.vertical, 7 * k)
-                        .background(Capsule().fill(Color.white.opacity(0.14)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(copied ? "Caption copied" : "Copy caption")
-                }
-                .padding(12 * k)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-            }
-
+            // The hook headline and the caption block with its Copy caption
+            // button were cut 2026-09-05. They are a publishing panel, not part
+            // of the message that says "here is your edit".
             if let why = package.editRationale {
                 HStack(alignment: .top, spacing: 7 * k) {
                     Image(systemName: "sparkles")
@@ -1752,9 +1710,12 @@ struct CompletedVideoView: View {
             // §6 payoff: posting-ready copy under the video — the hook, the
             // paste-ready caption, and the "why this edit" note. Renders only
             // the fields that survived; absent package → nothing (no empty box).
+            // THE CARD IS GONE, THE NOTE STAYS (ruled twice). The finished-video
+            // message is: the assistant line, the video, the note, Share, the
+            // action row. PostPackageView now renders only the note — the
+            // headline, the caption block and Copy caption are cut below.
             if let pkg = postPackage, pkg.hasContent {
                 PostPackageView(package: pkg)
-                    .padding(.top, 10 * k)
             }
 
             VideoActionRow(

@@ -298,9 +298,19 @@ enum ThreadColumn {
     /// The bubble's own horizontal padding, so the media box lines up with the
     /// text above it rather than overhanging.
     static let videoInset: CGFloat = 48
-    /// One media height for BOTH states — the render container and the finished
-    /// video — so the transition from in-progress to result does not jump.
-    static let videoHeight: CGFloat = 480
+
+    /// THE MEDIA BOX FOLLOWS THE ORIENTATION (amended 2026-09-05).
+    /// A column-width x 480 box is right in LANDSCAPE. In portrait it is a
+    /// landscape box holding a portrait video, so the blur fill became most of
+    /// the frame and the video a strip down the middle. In portrait the box is
+    /// portrait too — 9:16, tall enough to show the video at real size, centred
+    /// in the column — so the blur only appears where the aspect genuinely
+    /// differs. Both states share whichever box applies, so the in-progress →
+    /// finished transition still does not jump.
+    static func mediaBox(isPortrait: Bool) -> CGSize {
+        isPortrait ? CGSize(width: 394, height: 700)
+                   : CGSize(width: maxWidth - videoInset, height: 480)
+    }
 }
 
 /// An action pill on iPad: capsule behind it, an equal share of the row.
@@ -388,6 +398,7 @@ extension View {
 
 struct ThreadVideo: ViewModifier {
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.windowIsPortrait) private var isPortrait
     let phoneCap: CGFloat
     func body(content: Content) -> some View {
         if hSize == .regular {
@@ -400,9 +411,10 @@ struct ThreadVideo: ViewModifier {
             // fitted frame over its own blurred fill, and forcing the whole
             // stack to fill would crop the fitted layer straight back off.
             content
-                .frame(width: ThreadColumn.maxWidth - ThreadColumn.videoInset,
-                       height: ThreadColumn.videoHeight)
+                .frame(width: ThreadColumn.mediaBox(isPortrait: isPortrait).width,
+                       height: ThreadColumn.mediaBox(isPortrait: isPortrait).height)
                 .clipped()
+                .frame(maxWidth: .infinity)
         } else { content.frame(maxWidth: phoneCap) }
     }
 }
@@ -423,6 +435,21 @@ struct ThreadVideo: ViewModifier {
 /// that does not respond to Dynamic Type at all. Bumping the environment's
 /// size category — the obvious lever — would move nothing on this codebase. I
 /// checked before building this rather than after.
+/// Is the window taller than it is wide? The media box is portrait in portrait
+/// and wide in landscape, and on iPad the size class is `.regular` in BOTH
+/// orientations, so the size class cannot answer this. Published from the same
+/// root measurement that sets the scale.
+private struct WindowIsPortraitKey: EnvironmentKey {
+    static let defaultValue: Bool = true
+}
+
+extension EnvironmentValues {
+    var windowIsPortrait: Bool {
+        get { self[WindowIsPortraitKey.self] }
+        set { self[WindowIsPortraitKey.self] = newValue }
+    }
+}
+
 private struct ConversionScaleKey: EnvironmentKey {
     static let defaultValue: CGFloat = 1.0
 }

@@ -1099,6 +1099,7 @@ extension Color {
 struct RootScale: ViewModifier {
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var long: CGFloat = 0
+    @State private var isPortrait: Bool = true
     func body(content: Content) -> some View {
         // MEASURED FROM BEHIND, NEVER WRAPPED. The first version wrapped the
         // content in a GeometryReader that ignored the safe area and re-framed
@@ -1111,11 +1112,18 @@ struct RootScale: ViewModifier {
             .environment(\.conversionScale,
                          hSize == .regular && long > 0
                             ? long / ConversionColumn.phoneReferenceHeight : 1.0)
+            .environment(\.windowIsPortrait, isPortrait)
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { long = max(geo.size.width, geo.size.height) }
-                        .onChange(of: geo.size) { _, s in long = max(s.width, s.height) }
+                        .onAppear {
+                            long = max(geo.size.width, geo.size.height)
+                            isPortrait = geo.size.height >= geo.size.width
+                        }
+                        .onChange(of: geo.size) { _, s in
+                            long = max(s.width, s.height)
+                            isPortrait = s.height >= s.width
+                        }
                 }
                 .ignoresSafeArea()
             )

@@ -110,6 +110,15 @@ struct EditorView: View {
             Group {
                 if messages.isEmpty {
                     emptyState
+                } else if hSize == .regular && messages.allSatisfy({ $0.isOnboarding }) {
+                    // THE IPAD EMPTY STATE IS THE THREE ROWS (ruled 2026-09-05).
+                    // A chat holding only the injected welcome is still empty in
+                    // every sense that matters, but it took the messages list —
+                    // so on a 13-inch screen the welcome sat small near the
+                    // bottom with 90% of the screen black above it. On regular
+                    // width the rows are the hero, centred, with the welcome
+                    // line above them at k-scale.
+                    iPadWelcomeState
                 } else {
                     messagesList
                 }
@@ -695,6 +704,33 @@ struct EditorView: View {
     /// borderless prominent button — upload-first, no brand-name title (the
     /// nav title already carries it). Avoids the "AI startup hero" feel — no
     /// accent-color circles, no marketing copy, no white capsule. Native feel.
+    /// The welcome line above the three rows, the whole group centred. The rows
+    /// carry the screen; the line is context, not the content.
+    private var iPadWelcomeState: some View {
+        VStack(alignment: .center, spacing: 28 * k) {
+            Spacer(minLength: 0)
+            if let welcome = messages.first(where: { $0.isOnboarding })?.content, !welcome.isEmpty {
+                Text(welcome)
+                    .font(.system(size: 17 * k, weight: .regular))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20 * k)
+            }
+            emptyState
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: ThreadColumn.maxWidth)
+        .frame(maxWidth: .infinity)
+        // The top bar overlays this branch rather than insetting it, so a plain
+        // Spacer pair centres the block against the whole screen and it lands
+        // high, under the bar. Offsetting by the bar's height centres it in the
+        // area the reader can actually see.
+        .padding(.top, Self.topBarHeight * k)
+    }
+
+    /// Height of `customTopBar`: its 40pt tap targets plus vertical padding.
+    private static let topBarHeight: CGFloat = 43
+
     private var emptyState: some View {
         // The empty-chat hero: the upload-first prompt. (The first-run sample-clip
         // demo was removed — it was a stale pre-render and a poor first impression.)
