@@ -62,7 +62,6 @@ final class OnboardingState: ObservableObject {
     func debugSetCreditsAllowance(_ v: Int?) { if creditsMonthlyAllowance != v { creditsMonthlyAllowance = v } }
     #endif
     /// The render-progress rebuild: framed source + ring, no bullet list.
-    @Published private(set) var progressRingEnabled = false
     /// Before/after compare in the delivered-video bubble.
     @Published private(set) var beforeAfterEnabled = false
     /// One or two conversational questions rendered on the send run loop.
@@ -245,7 +244,6 @@ final class OnboardingState: ObservableObject {
             #if DEBUG
             debugReapplyForcedFlags()   // the refresh must not undo a forced flag
             #endif
-            progressRingEnabled = (obj?["progress_ring"] as? String) == "on"
             beforeAfterEnabled = (obj?["before_after"] as? String) == "on"
             instantQuestionsEnabled = (obj?["instant_questions"] as? String) == "on"
             reverseTrialEnabled = (obj?["reverse_trial"] as? String) == "on"
@@ -270,7 +268,6 @@ final class OnboardingState: ObservableObject {
             // their neighbours held. A surface that vanishes on a network blip
             // reads as a bug to the user and as a flapping denominator to us.
             UserDefaults.standard.set(creditsEnabled, forKey: "credits_enabled")
-            UserDefaults.standard.set(progressRingEnabled, forKey: "progress_ring_enabled")
             UserDefaults.standard.set(beforeAfterEnabled, forKey: "before_after_enabled")
             UserDefaults.standard.set(instantQuestionsEnabled, forKey: "instant_questions_enabled")
             UserDefaults.standard.set(reverseTrialEnabled, forKey: "reverse_trial_enabled")
@@ -301,7 +298,6 @@ final class OnboardingState: ObservableObject {
             pushPrimerEnabled = UserDefaults.standard.bool(forKey: "push_primer_enabled")
             exportGateTwoPageEnabled = UserDefaults.standard.bool(forKey: "exportgate_two_page_enabled")
             creditsEnabled = UserDefaults.standard.bool(forKey: "credits_enabled")
-            progressRingEnabled = UserDefaults.standard.bool(forKey: "progress_ring_enabled")
             beforeAfterEnabled = UserDefaults.standard.bool(forKey: "before_after_enabled")
             instantQuestionsEnabled = UserDefaults.standard.bool(forKey: "instant_questions_enabled")
             reverseTrialEnabled = UserDefaults.standard.bool(forKey: "reverse_trial_enabled")
@@ -358,7 +354,6 @@ final class OnboardingState: ObservableObject {
         // shipping. A surface that cannot be seen before it ships is reviewed
         // by its users.
         case "credits": if !creditsEnabled { creditsEnabled = true }
-        case "progress_ring": if !progressRingEnabled { progressRingEnabled = true }
         case "before_after": if !beforeAfterEnabled { beforeAfterEnabled = true }
         case "instant_questions": if !instantQuestionsEnabled { instantQuestionsEnabled = true }
         case "reverse_trial": if !reverseTrialEnabled { reverseTrialEnabled = true }

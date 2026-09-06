@@ -22,6 +22,15 @@ struct EditorView: View {
     /// Pre-permission explainer for push notifications, shown once on the first
     /// upload (see handlePickedVideos) — never cold at app open.
     @State private var showPushExplainer = false
+
+    /// True under `-snapshotPayoff`, so a capture never carries the push primer.
+    static var suppressPrimerForCapture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-snapshotPayoff")
+        #else
+        return false
+        #endif
+    }
     @State private var showVoiceInput = false
     @State private var pendingVideos: [PendingVideo] = []
     /// Multimodal boundary (§1, iOS half): images staged for the NEXT chat
@@ -234,7 +243,12 @@ struct EditorView: View {
             // recovers the completions currently lost to never-granted permission.
             // Extracted into a ViewModifier so its closures type-check in isolation
             // (the body's modifier chain is already at the compiler's complexity limit).
-            .modifier(PushExplainerAlert(isPresented: $showPushExplainer))
+            // The capture harness must not shoot a permission primer over the
+            // thread — a store frame with a system-shaped dialog on it is not
+            // the product. DEBUG-only suppression; production is untouched.
+            .modifier(PushExplainerAlert(isPresented: Binding(
+                get: { showPushExplainer && !Self.suppressPrimerForCapture },
+                set: { showPushExplainer = $0 })))
             .fullScreenCover(isPresented: $showVoiceInput) {
                 VoiceInputSheet(isPresented: $showVoiceInput) { transcript in
                     // Append (not replace) so a user dictating a second

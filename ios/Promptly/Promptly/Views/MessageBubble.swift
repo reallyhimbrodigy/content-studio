@@ -342,11 +342,6 @@ struct MessageBubble: View {
                     // truncated, which looks like the product misquoting the
                     // user. The rebuilt ring is meant to be the whole message:
                     // footage, trace, one line, nothing else.
-                    if let vibe = message.originalVibe, status != "needs_input",
-                       !OnboardingState.shared.progressRingEnabled {
-                        PlanPreviewCard(vibe: vibe)
-                            .padding(.bottom, 10 * k)
-                    }
                     // Instant question — asked while the render is in flight, so
                     // the wait does something. Zero network: the spec is a
                     // compile-time constant and `spec(forComposerText:)` returns
@@ -398,38 +393,36 @@ struct MessageBubble: View {
                     // server feed, TrickleProgress) is identical, so flipping
                     // the flag changes only the presentation and never the
                     // progress semantics.
-                    if OnboardingState.shared.progressRingEnabled {
-                        RenderProgressRing(
-                            timeline: timeline,
-                            progress: message.jobProgress ?? 0,
-                            // The SOURCE clip's own frame — the thing being edited. Comes
-                            // from the attachment, not from thumbnailUrl (which is
-                            // the RESULT's poster and does not exist yet mid-render).
-                            thumbnail: message.videoAttachment?.thumbnail,
-                            // The PERSISTED frame, so the container is not empty
-                            // on every reload. The UIImage above lives only as
-                            // long as the process; this is what SerializedMessage
-                            // actually writes to storage.
-                            // The PERSISTED frame. Verified round-trip:
-                            // SerializedMessage writes it from
-                            // videoAttachment.remoteThumbnailUrl (Models:347)
-                            // and restores it back into the same field on load
-                            // (Models:441) — so this is populated after a
-                            // relaunch, where the UIImage above is not.
-                            thumbnailUrl: message.videoAttachment?.remoteThumbnailUrl,
-                            subMessage: message.stepMessage,
-                            finishing: message.isFinishing,
-                            onCancel: onCancel
-                        )
-                    } else {
-                        PipelineProgressView(
-                            timeline: timeline,
-                            progress: message.jobProgress ?? 0,
-                            subMessage: message.stepMessage,
-                            finishing: message.isFinishing,
-                            onCancel: onCancel
-                        )
-                    }
+                    // ONE LOADER, EVERY RENDER PATH (ruled 2026-09-05).
+                    // `progress_ring` was never emitted by /api/health, so the
+                    // client default (false) stood and EVERY REAL USER saw the
+                    // legacy stack — the "Making your edit" card, the "Starting"
+                    // percentage bar and the family chips — while the ring this
+                    // replaced it with shipped dark. The flag is gone: the ring,
+                    // with the source thumbnail and one personality line, is the
+                    // only in-progress UI there is.
+                    RenderProgressRing(
+                        timeline: timeline,
+                        progress: message.jobProgress ?? 0,
+                        // The SOURCE clip's own frame — the thing being edited. Comes
+                        // from the attachment, not from thumbnailUrl (which is
+                        // the RESULT's poster and does not exist yet mid-render).
+                        thumbnail: message.videoAttachment?.thumbnail,
+                        // The PERSISTED frame, so the container is not empty
+                        // on every reload. The UIImage above lives only as
+                        // long as the process; this is what SerializedMessage
+                        // actually writes to storage.
+                        // The PERSISTED frame. Verified round-trip:
+                        // SerializedMessage writes it from
+                        // videoAttachment.remoteThumbnailUrl (Models:347)
+                        // and restores it back into the same field on load
+                        // (Models:441) — so this is populated after a
+                        // relaunch, where the UIImage above is not.
+                        thumbnailUrl: message.videoAttachment?.remoteThumbnailUrl,
+                        subMessage: message.stepMessage,
+                        finishing: message.isFinishing,
+                        onCancel: onCancel
+                    )
                 } else {
                     ProcessingIndicator(
                         stepMessage: message.stepMessage ?? "Getting started...",
@@ -894,429 +887,7 @@ struct ProcessingIndicator: View {
 // skip inference happens inside the timeline; this view is purely
 // presentational.
 
-/// §5 plan preview — a compact "here's what we're making" card shown atop the
-/// progress bar during a render. Reflects the user's own vibe back to them and
-/// lists what every Promptly edit delivers, so the wait feels like a craft in
-/// progress. Purely honest reassurance — no fabricated per-clip specifics.
-struct PlanPreviewCard: View {
-    @Environment(\.conversionScale) private var k
-    let vibe: String
-    private static let gold = Color(red: 1, green: 0.82, blue: 0.5)
-    private static let deliverables: [(icon: String, label: String)] = [
-        ("captions.bubble", "Captions"),
-        ("scissors", "Cuts"),
-        ("paintpalette", "Color"),
-        ("waveform", "Pacing"),
-    ]
-    private var trimmedVibe: String { vibe.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9 * k) {
-            HStack(spacing: 6 * k) {
-                Image(systemName: "wand.and.sparkles")
-                    .font(.system(size: 12 * k, weight: .semibold))
-                    .foregroundStyle(Self.gold)
-                Text("Making your edit")
-                    .font(.system(size: 13 * k, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-            }
-            if !trimmedVibe.isEmpty {
-                Text("“\(trimmedVibe)”")
-                    .font(.system(size: 13 * k))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(spacing: 12 * k) {
-                ForEach(Self.deliverables, id: \.label) { d in
-                    HStack(spacing: 4 * k) {
-                        Image(systemName: d.icon).font(.system(size: 10 * k, weight: .semibold))
-                        Text(d.label).font(.system(size: 11 * k, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.7))
-                }
-            }
-        }
-        .padding(12 * k)
-        .frame(maxWidth: 300 * k, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14 * k, style: .continuous).fill(Color.white.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 14 * k, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5 * k))
-    }
-}
-
-struct PipelineProgressView: View {
-    @Environment(\.conversionScale) private var k
-    @ObservedObject var timeline: StageTimeline
-    let progress: Int
-    /// Optional finer-grained SSE message (e.g. "Reading the speaker's
-    /// energy" while the stage stays on `analyze`). Surfaced as a
-    /// subtitle below the stage title so backend rotations within a
-    /// single catalog stage are visible to the user — without this
-    /// the stage label can sit on "Analyzing your video" for 30-60s
-    /// while the backend cycles through more detailed copy, and the
-    /// progress UI reads as frozen even though work is happening.
-    var subMessage: String? = nil
-    /// True on real completion → release the bar's cap and sweep to 100.
-    var finishing: Bool = false
-    /// Cancel action, provided only while the render is still cancellable
-    /// (before the edit recipe). When set AND `timeline.isCancellable`, a small
-    /// red Cancel button shows on the steps row; tapping it confirms, then runs
-    /// this. Nil → no button (e.g. re-edits or past the cutoff).
-    var onCancel: (() -> Void)? = nil
-    // Self-driving bar position: TrickleProgress glides continuously at
-    // ~30fps toward the backend target and never freezes or snaps. See
-    // its definition above for why the old "mirror the backend pct"
-    // model produced the stuck-at-90/99 and jumpy behavior.
-    @StateObject private var trickle = TrickleProgress()
-    @State private var lastUpdateAt: Date = Date()
-    // Rotating fallback message shown when no SSE event has arrived
-    // for several seconds. Nil when a real subMessage is available
-    // (or recent activity exists).
-    @State private var fallbackMessage: String? = nil
-    @State private var fallbackIndex: Int = 0
-    @State private var expanded: Bool = false
-    @State private var showCancelConfirm: Bool = false
-
-    private func relativeQuiet(_ s: TimeInterval) -> String {
-        if s < 90 { return "\(Int(s))s" }
-        return "\(Int(s / 60))m"
-    }
-
-    /// Rotated through when SSE goes quiet for 3.5s+. Keeps the user
-    /// reassured that work is still happening even when the bar can't
-    /// move (typical: bar sits at the cap of plan / render / upload
-    /// heartbeats while the backend is heads-down for 30-90s).
-    private static let stuckMessages = [
-        "Hang tight\u{2026}",
-        "Just a moment more\u{2026}",
-        "Almost there\u{2026}"
-    ]
-    /// Swapped in after 60+ seconds of silence. Different copy so the
-    /// user clocks that this particular render is on the long side
-    /// without us declaring failure.
-    private static let veryStuckMessages = [
-        "This is taking a little longer than usual",
-        "Still working on it\u{2026}",
-        "Hanging in there\u{2026}"
-    ]
-
-    private var activeStage: PipelineStage? {
-        if let did = timeline.currentDerivedId, let s = timeline.stages.first(where: { $0.id == did }) {
-            return s
-        }
-        if let cid = timeline.currentStageId, let s = timeline.stages.first(where: { $0.id == cid }) {
-            return s
-        }
-        // No stage has fired yet — show a neutral starting state instead of
-        // pre-rendering the first catalog entry. The first server event lands
-        // within a few hundred ms; during that window we don't want to
-        // mislead the user about which specific stage is in progress.
-        return nil
-    }
-
-    /// Last two completed stages, in order of completion.
-    private var completedTrail: [PipelineStage] {
-        let completedIds = Set(timeline.states.filter { $0.value == .completed }.map { $0.key })
-        let completed = timeline.stages.filter { completedIds.contains($0.id) }
-        return Array(completed.suffix(2))
-    }
-
-    /// What actually renders in the subtitle slot. Preference order:
-    ///   1. The backend's SSE message if non-empty and not a duplicate
-    ///      of the stage title.
-    ///   2. The rotating fallback when SSE has gone quiet long enough
-    ///      to set one.
-    ///   3. Nothing.
-    private var effectiveSubMessage: String? {
-        if let sub = subMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !sub.isEmpty,
-           sub != (activeStage?.title ?? "") {
-            return sub
-        }
-        return fallbackMessage
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12 * k) {
-            // Active stage header
-            VStack(alignment: .leading, spacing: 4 * k) {
-                HStack(alignment: .center, spacing: 10 * k) {
-                    stageIcon
-                    Text(activeStage?.title ?? "Starting")
-                        .font(.system(size: 15 * k))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .transition(.opacity)
-                    Spacer(minLength: 8 * k)
-                    Text("\(max(Int(trickle.displayed), 1))%")
-                        .font(.system(size: 13 * k, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                }
-                .animation(.easeInOut(duration: 0.25), value: activeStage?.id)
-
-                // SSE subtitle — finer-grained backend message that
-                // rotates within a stage. Slides + fades on every
-                // rotation so the user sees real motion even when
-                // the headline stage label is unchanged.
-                if let sub = effectiveSubMessage {
-                    Text(sub)
-                        .font(.system(size: 12 * k))
-                        .foregroundColor(Color.white.opacity(0.6))
-                        .lineLimit(2)
-                        .padding(.leading, 28 * k)  // align past the stageIcon
-                        .id(sub)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        .animation(.easeInOut(duration: 0.28), value: sub)
-                }
-
-                // Honest liveness (stuck-jobs directive): when events go
-                // quiet for 20s+, say exactly HOW stale we are instead of
-                // only rotating reassurance copy. Slow-and-alive must look
-                // different from dead — that's what makes the failure card
-                // trustworthy when it does appear.
-                TimelineView(.periodic(from: .now, by: 5)) { context in
-                    let quiet = context.date.timeIntervalSince(lastUpdateAt)
-                    if quiet >= 20 {
-                        Text("still working — last update \(relativeQuiet(quiet)) ago")
-                            .font(.system(size: 11 * k))
-                            .foregroundColor(Color.white.opacity(0.45))
-                            .padding(.leading, 28 * k)
-                            .transition(.opacity)
-                    }
-                }
-            }
-
-            // Progress bar. Width follows `trickle.displayed`, which the
-            // animator advances continuously at ~30fps — no implicit
-            // tween needed (or wanted: it would re-introduce the snap).
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color(.separator).opacity(0.5))
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, trickle.displayed / 100.0))))
-                }
-            }
-            .frame(height: 3 * k)
-
-            // Completed trail — last two finished stages, compact
-            if !completedTrail.isEmpty {
-                HStack(spacing: 10 * k) {
-                    ForEach(completedTrail) { stage in
-                        HStack(spacing: 4 * k) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9 * k, weight: .semibold))
-                            Text(stage.title)
-                                .font(.system(size: 11 * k))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        .foregroundColor(Color(.secondaryLabel))
-                    }
-                    Spacer(minLength: 0 * k)
-                }
-                .transition(.opacity)
-            }
-
-            // Steps disclosure (leading) + a red Cancel button (trailing), the
-            // latter only while the render is still cancellable — before the
-            // edit recipe. It fades/scales out the instant the pipeline reaches
-            // `plan`, so the affordance disappears exactly when cancelling can no
-            // longer save the GPU work.
-            HStack(spacing: 12 * k) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() }
-                } label: {
-                    HStack(spacing: 4 * k) {
-                        Text(expanded ? "Hide steps" : "View all steps")
-                            .font(.system(size: 12 * k, weight: .medium))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10 * k, weight: .semibold))
-                            .rotationEffect(.degrees(expanded ? 180 : 0))
-                    }
-                    .foregroundColor(Color(.secondaryLabel))
-                }
-                .buttonStyle(.plain)
-
-                Spacer(minLength: 8 * k)
-
-                if let onCancel, timeline.isCancellable {
-                    Button(role: .destructive) {
-                        showCancelConfirm = true
-                    } label: {
-                        HStack(spacing: 4 * k) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12 * k, weight: .semibold))
-                            Text("Cancel")
-                                .font(.system(size: 12 * k, weight: .semibold))
-                        }
-                        .foregroundColor(.red)
-                        .padding(.vertical, 4 * k)
-                        .padding(.horizontal, 10 * k)
-                        .background(
-                            Capsule().fill(Color.red.opacity(0.12))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    .confirmationDialog(
-                        "Cancel this render?",
-                        isPresented: $showCancelConfirm,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Cancel render", role: .destructive) { onCancel() }
-                        Button("Keep rendering", role: .cancel) {}
-                    } message: {
-                        Text("This stops your video before it starts. It won't count against today's free one.")
-                    }
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: timeline.isCancellable)
-
-            if expanded {
-                // Only reveal stages that have actually begun (in_progress /
-                // completed / skipped). Upcoming ones stay hidden until the
-                // server fires their event — the list grows as the pipeline
-                // progresses instead of dumping the whole roadmap on the
-                // user at once.
-                VStack(alignment: .leading, spacing: 8 * k) {
-                    ForEach(timeline.stages.filter { (timeline.states[$0.id] ?? .upcoming) != .upcoming }) { stage in
-                        stageRow(stage)
-                            .transition(.opacity.combined(with: .move(edge: .leading)))
-                    }
-                }
-                .padding(.top, 2 * k)
-                .animation(.easeOut(duration: 0.25), value: timeline.currentStageId)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .frame(maxWidth: 340 * k, alignment: .leading)
-        // Rehydrate from the persisted/polled progress so a view recreated on
-        // relaunch (or scrolled back on) resumes at TRUE progress instead of
-        // re-ramping from 0 — the 50%→1% snap-back fix.
-        // Clamp below 100 unless actually finishing, so a completed-but-
-        // videoless row (progress=100, still in-flight) never shows 100%.
-        .onAppear { trickle.rehydrate(to: finishing ? progress : min(progress, 99)) }
-        .onDisappear { trickle.stop() }
-        // Feed the backend value in as a target ceiling. TrickleProgress
-        // owns monotonicity (a lower pct is ignored for positioning) and
-        // all visual motion — it glides continuously rather than snapping.
-        // Every event also counts as activity so the stale-watcher resets.
-        .onChange(of: progress, initial: true) { _, new in
-            lastUpdateAt = Date()
-            fallbackMessage = nil
-            fallbackIndex = 0
-            trickle.update(target: finishing ? new : min(new, 99))
-        }
-        // Any backend message change is also activity — reset stale.
-        .onChange(of: subMessage) { _, _ in
-            lastUpdateAt = Date()
-            fallbackMessage = nil
-            fallbackIndex = 0
-        }
-        // Real completion → release the cap and sweep to 100. initial: true so a
-        // bubble restored mid-finish still releases on appear.
-        .onChange(of: finishing, initial: true) { _, done in
-            if done { trickle.complete() }
-        }
-        .task {
-            // Stale-progress watcher. Does NOT touch the bar position.
-            // Rotates a reassuring fallback message into the subtitle
-            // slot whenever no SSE event has landed for 3.5s+. After
-            // 60s, the copy shifts to "taking longer than usual"
-            // variants so the user knows the render is on the long
-            // side — without ever claiming failure.
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_500_000_000)
-                if Task.isCancelled { break }
-                let silentSec = Date().timeIntervalSince(lastUpdateAt)
-                guard silentSec >= 3.0 else { continue }
-                let pool = silentSec > 60
-                    ? Self.veryStuckMessages
-                    : Self.stuckMessages
-                fallbackMessage = pool[fallbackIndex % pool.count]
-                fallbackIndex += 1
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var stageIcon: some View {
-        if let stage = activeStage {
-            Image(systemName: stage.icon)
-                .font(.system(size: 15 * k, weight: .medium))
-                .foregroundColor(.white)
-                .symbolEffect(.pulse.byLayer, options: .repeating)
-                .frame(width: 20 * k, height: 20 * k)
-                .transition(.scale.combined(with: .opacity))
-        } else {
-            // Neutral "Starting…" glyph shown during the brief window between
-            // user tapping Send and the first stage event arriving. Avoids
-            // leading with a specific stage label before the worker confirms it.
-            Image(systemName: "sparkles")
-                .font(.system(size: 15 * k, weight: .medium))
-                .foregroundColor(.white)
-                .symbolEffect(.pulse.byLayer, options: .repeating)
-                .frame(width: 20 * k, height: 20 * k)
-        }
-    }
-
-    @ViewBuilder
-    private func stageRow(_ stage: PipelineStage) -> some View {
-        let state = timeline.states[stage.id] ?? .upcoming
-        HStack(spacing: 10 * k) {
-            Group {
-                switch state {
-                case .completed:
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.white)
-                case .inProgress:
-                    Image(systemName: stage.icon)
-                        .foregroundColor(.white)
-                        .symbolEffect(.pulse.byLayer, options: .repeating)
-                case .upcoming:
-                    Image(systemName: "circle")
-                        .foregroundColor(Color(.tertiaryLabel))
-                case .skipped:
-                    Image(systemName: "minus.circle")
-                        .foregroundColor(Color(.tertiaryLabel))
-                }
-            }
-            .font(.system(size: 14 * k))
-            .frame(width: 18 * k, height: 18 * k)
-
-            Text(stage.title)
-                .font(.system(size: 13 * k))
-                .foregroundColor(rowTextColor(state))
-                .strikethrough(state == .skipped, color: Color(.tertiaryLabel))
-                .lineLimit(1)
-
-            if state == .skipped {
-                Text("not needed")
-                    .font(.system(size: 10 * k, weight: .medium))
-                    .foregroundColor(Color(.tertiaryLabel))
-                    .padding(.horizontal, 6 * k)
-                    .padding(.vertical, 2 * k)
-                    .background(Color(.tertiarySystemBackground).opacity(0.6))
-                    .clipShape(Capsule())
-            }
-
-            Spacer(minLength: 0 * k)
-        }
-        .padding(.leading, stage.parent != nil ? 20 * k : 0)
-    }
-
-    private func rowTextColor(_ state: StageState) -> Color {
-        switch state {
-        case .completed, .inProgress: return .white
-        case .upcoming:               return Color(.secondaryLabel)
-        case .skipped:                return Color(.tertiaryLabel)
-        }
-    }
-}
 
 // MARK: - Video Exporter (Save to Photos)
 //

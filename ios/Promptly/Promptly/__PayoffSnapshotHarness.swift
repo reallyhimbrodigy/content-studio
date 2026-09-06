@@ -294,6 +294,14 @@ struct PayoffSnapshotHarnessView: View {
                 TwoStepPaywall(isPresented: .constant(true), reason: .manual)
                     .onAppear { OnboardingState.shared.debugSetKnobsResolved(true) }
             }
+            case 55: bleed("STORE 2 — the empty chat: three ways in") {
+                // The REAL EditorView over an EMPTY thread, so the frame carries
+                // the shipping empty state (FirstRunHero's three rows) and the
+                // shipping composer — not a mock of them.
+                EditorView()
+                    .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
+                                                            messages: [], createdAt: Date(), updatedAt: Date())) }
+            }
             case 51: bleed("STORE 5 — re-edit in progress") {
                 EditorView()
                     .task { Self.seedStoreChat(reedit: true) }
