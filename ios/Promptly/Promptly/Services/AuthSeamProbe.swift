@@ -35,17 +35,20 @@ enum AuthSeamProbe {
 
         // 2. CHAT SEND. The same guard send() runs, before anything is accepted.
         AuthGate.shared.cancel()
+        // INVERTED 2026-09-06. Deferred auth gates ONE seam: purchase. Chat send
+        // must be ALLOWED signed out and must NOT raise the gate.
         let sendAllowed = AuthGate.shared.allow(.profileWrite("chat_send"))
         let sendRaised = AuthGate.shared.pending != nil
-        print("SEAMPROBE chatSend refused=\(!sendAllowed) gateRaised=\(sendRaised) "
-              + "verdict=\(!sendAllowed && sendRaised ? "PASS" : "FAIL")")
+        print("SEAMPROBE chatSend allowed=\(sendAllowed) gateRaised=\(sendRaised) "
+              + "verdict=\(sendAllowed && !sendRaised ? "PASS" : "FAIL")")
 
         // 3. EXPORT. The guard prepareGatedLocalFile runs before the gate probe.
         AuthGate.shared.cancel()
+        // Same for save and share: the render is the user's signed out.
         let exportAllowed = AuthGate.shared.allow(.export(jobId: nil))
         let exportRaised = AuthGate.shared.pending != nil
-        print("SEAMPROBE export refused=\(!exportAllowed) gateRaised=\(exportRaised) "
-              + "verdict=\(!exportAllowed && exportRaised ? "PASS" : "FAIL")")
+        print("SEAMPROBE export allowed=\(exportAllowed) gateRaised=\(exportRaised) "
+              + "verdict=\(exportAllowed && !exportRaised ? "PASS" : "FAIL")")
 
         // 4. RESUME — cannot be run here. Replaying after sign-in needs a real
         //    account; anything simulated would be testing the simulation.

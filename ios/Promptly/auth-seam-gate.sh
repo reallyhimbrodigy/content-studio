@@ -42,8 +42,41 @@ check() { # file, function-regex, description, window
   fi
 }
 
-check "Views/EditorView.swift"    "private func send\(\)"             "chat send"
-check "Views/MessageBubble.swift" "private func prepareGatedLocalFile" "export/share"
+# DEFERRED AUTH GATES ONE SEAM: PURCHASE (ruled 2026-09-06). INVERTED from what
+# this gate used to assert. Chat send, upload, render, re-edit and share all work
+# on the anonymous session — so these two must NOT raise the gate, and the check
+# is that the call is gone rather than that it is present.
+absent() { # file, function-regex, description, window
+  local f="$1" fn="$2" desc="$3" win="${4:-40}"
+  [ -f "$f" ] || { echo "  MISSING FILE $f"; FAIL=1; return; }
+  local line
+  line=$(grep -nE "$fn" "$f" | head -1 | cut -d: -f1)
+  if [ -z "$line" ]; then echo "  $desc: function not found ($fn)"; FAIL=1; return; fi
+  if sed -n "${line},$((line + win))p" "$f" | grep -qE "AuthGate\.shared\.(require|allow)"; then
+    echo "  $desc RAISES the auth gate — purchase is the only seam"
+    FAIL=1
+  fi
+}
+absent "Views/EditorView.swift"    "private func send\(\)"             "chat send"
+absent "Views/MessageBubble.swift" "private func prepareGatedLocalFile" "export/share"
+
+# And the gate itself must refuse to raise for anything but a purchase, so a new
+# call site cannot reintroduce a seam by accident.
+if ! grep -q "guard intent.isPurchase else { return true }" Services/AuthGate.swift; then
+  echo "  AuthGate.allow no longer short-circuits non-purchase intents"
+  FAIL=1
+fi
+if ! grep -q "guard intent.isPurchase else {" Services/AuthGate.swift; then
+  echo "  AuthGate.require no longer drops non-purchase intents"
+  FAIL=1
+fi
+
+# The purchase seam MUST still be there — removing it would let an anonymous
+# device buy, which is the one thing deferred auth cannot allow.
+if ! grep -q "AuthGate.shared.require" Services/SubscriptionService.swift; then
+  echo "  the PURCHASE seam is gone — that is the one seam that must remain"
+  FAIL=1
+fi
 
 # The autopicker must not fire for a signed-out user at all.
 if ! awk '/func maybeAutoOpenPickerOnFirstSession/,/^    }$/' Views/EditorView.swift \
@@ -59,5 +92,5 @@ grep -rq "authGate.isPresenting" --include="*.swift" . || { echo "  AuthGate is 
 grep -rq "authGate.takePending()" --include="*.swift" . || { echo "  pending intent is never resumed"; FAIL=1; }
 
 if [ "$FAIL" -ne 0 ]; then echo "auth-seam-gate: FAIL"; exit 1; fi
-echo "auth-seam-gate: PASS — send, export and the autopicker all require an account"
+echo "auth-seam-gate: PASS — purchase is the only seam; send and export do not raise"
 exit 0

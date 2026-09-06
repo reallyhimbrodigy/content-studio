@@ -393,9 +393,24 @@ extension View {
 /// them explicitly. On a phone they keep the caller's cap.
 struct ThreadVideo: ViewModifier {
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.conversionScale) private var k
     let phoneCap: CGFloat
+
+    /// THE VIDEO IS AN ATTACHMENT IN THE THREAD, NOT THE THREAD (ruled
+    /// 2026-09-06). Uncapped at 88% of a 13-inch column a 9:16 render is taller
+    /// than the screen, so the user's message above it and the assistant line
+    /// below are both pushed out and the conversation disappears behind one
+    /// image. 55% of the viewport leaves both visible, the way an image in the
+    /// reference does.
+    ///
+    /// The window's long side is 852 * k by the definition of k, so this is 55%
+    /// of the viewport on every device and scales without a second measurement.
+    private var heightCap: CGFloat { 0.55 * ConversionColumn.phoneReferenceHeight * k }
+
     func body(content: Content) -> some View {
-        content.frame(maxWidth: hSize == .regular ? .infinity : phoneCap)
+        content
+            .frame(maxWidth: hSize == .regular ? .infinity : phoneCap)
+            .frame(maxHeight: heightCap)
     }
 }
 

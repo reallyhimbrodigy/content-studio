@@ -3,6 +3,10 @@ import AVKit
 import Photos
 
 struct MessageBubble: View {
+    /// The app's accent — the same 6C5CE7 the paywall, the credits surfaces and
+    /// the onboarding flow already use.
+    static let userAccent = Color(hex: "6C5CE7")
+
     @Environment(\.conversionScale) private var k
     /// render_transparency: one `render_transparency_viewed` per job, not per
     /// SwiftUI body pass (the bubble re-renders on every progress tick).
@@ -108,11 +112,11 @@ struct MessageBubble: View {
                 // way every assistant surface marks whose voice is speaking.
                 // Without it an assistant line is bare text dropped into the
                 // thread, indistinguishable from a caption or a system notice.
-                HStack(alignment: .top, spacing: PromptlyMark.gutterSpacing * k) {
-                    PromptlyMark()
-                    assistantContent
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // NO MARK (ruled 2026-09-06). Assistant messages are plain
+                // text, left-aligned, full column width — the reference has no
+                // avatar and neither do we.
+                assistantContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -230,28 +234,13 @@ struct MessageBubble: View {
                     .foregroundColor(.white)
                     .padding(.horizontal, 16 * k)
                     .padding(.vertical, 11 * k)
+                    // THE ACCENT, NOT GREY (ruled 2026-09-06). ChatGPT's user
+                    // bubble is its blue; ours is the purple the paywall, the
+                    // credits surfaces and onboarding already use. A grey bubble
+                    // on a grey ground does not read as "this one is mine".
                     .background(
-                        // User bubble: brighter glass — vision-pro feel,
-                        // distinct from the assistant's softer treatment
-                        // below so the conversation flow is legible.
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                            RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.white.opacity(0.14),
-                                            Color.white.opacity(0.04)
-                                        ],
-                                        startPoint: .top, endPoint: .bottom
-                                    )
-                                )
-                        }
-                    )
-                    .overlay(
                         RoundedRectangle(cornerRadius: 20 * k, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5 * k)
+                            .fill(MessageBubble.userAccent)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 20 * k, style: .continuous))
                     .contextMenu {
@@ -276,9 +265,70 @@ struct MessageBubble: View {
 
     // MARK: - Assistant (left-aligned bubble, iMessage-style)
 
+    /// Copy, thumbs up, thumbs down, share — the reference's row, under every
+    /// assistant reply that has text and is not still streaming.
     @ViewBuilder
+    private var assistantActionRow: some View {
+        if !message.content.isEmpty, !message.isStreaming, message.error == nil {
+            HStack(spacing: 18 * k) {
+                actionGlyph("doc.on.doc", "Copy") {
+                    UIPasteboard.general.string = message.content
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                actionGlyph("hand.thumbsup", "Good response") {
+                    Analytics.track("reply_rated", props: ["rating": "up"])
+                }
+                actionGlyph("hand.thumbsdown", "Bad response") {
+                    Analytics.track("reply_rated", props: ["rating": "down"])
+                }
+                actionGlyph("square.and.arrow.up", "Share") {
+                    Self.presentShare(text: message.content)
+                }
+                Spacer(minLength: 0 * k)
+            }
+            .padding(.horizontal, 16 * k)
+            .padding(.top, 2 * k)
+        }
+    }
+
+    /// Shares the reply's text. Same top-view walk the file already uses to
+    /// share a rendered file, so an iPad popover gets its anchor.
+    static func presentShare(text: String) {
+        let scenes = UIApplication.shared.connectedScenes
+        guard let windowScene = (scenes.first(where: { $0.activationState == .foregroundActive })
+                                 ?? scenes.first) as? UIWindowScene,
+              let root = (windowScene.windows.first(where: { $0.isKeyWindow })
+                          ?? windowScene.windows.first)?.rootViewController else { return }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let pop = activity.popoverPresentationController {
+            pop.sourceView = top.view
+            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY,
+                                    width: 0, height: 0)
+            pop.permittedArrowDirections = []
+        }
+        top.present(activity, animated: true)
+    }
+
+    private func actionGlyph(_ icon: String, _ label: String,
+                             _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 15 * k, weight: .regular))
+                .foregroundColor(.white.opacity(0.45))
+                .frame(width: 30 * k, height: 30 * k)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
     private var assistantContent: some View {
         VStack(alignment: .leading, spacing: 12 * k) {
+            // THE REFERENCE'S PER-MESSAGE ACTION ROW: copy, thumbs, share.
+            // Rendered AFTER the text below, so it reads as belonging to the
+            // reply rather than introducing it.
             if message.isThinking {
                 // Typing indicator wrapped in the same bubble shape as a
                 // real reply, so the transition from "thinking" to "answer"
@@ -486,6 +536,28 @@ struct MessageBubble: View {
                 chatAttachmentsRow(atts)
             }
 
+            // A RETRY BUTTON, NOT A LONG-PRESS (ruled 2026-09-06). Nobody
+            // long-presses to retry, and an instruction to do so is an
+            // instruction to give up. The action is on screen.
+            if message.error != nil, let onRegenerate {
+                Button(action: onRegenerate) {
+                    HStack(spacing: 6 * k) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13 * k, weight: .semibold))
+                        Text("Retry")
+                            .font(.system(size: 15 * k, weight: .semibold))
+                    }
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.horizontal, 14 * k)
+                    .padding(.vertical, 8 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5 * k))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16 * k)
+                .padding(.top, 2 * k)
+            }
+
             if let videoUrlStr = message.renderedVideoUrl {
                 CompletedVideoView(
                     videoUrlStr: videoUrlStr,
@@ -614,6 +686,7 @@ struct MessageBubble: View {
                 .background(Color.red.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 18 * k, style: .continuous))
             }
+            assistantActionRow
         }
     }
 
@@ -1016,8 +1089,9 @@ final class VideoExporter: ObservableObject {
         // probe below would go out without an Authorization header and be
         // refused server-side, surfacing as a network-ish failure rather than
         // "you need an account".
-        let allowed = await MainActor.run { AuthGate.shared.allow(.export(jobId: nil)) }
-        guard allowed else { throw ExportError.notSignedIn }
+        // NO SEAM HERE (ruled 2026-09-06). Save and share work on the anonymous
+        // session — the render is the user's whether or not they have an
+        // account, and the only seam is purchase.
         let sourceUrl = try await resolveSaveSourceUrl()
         return try await ensureLocalFile(from: sourceUrl)
     }
@@ -1211,6 +1285,12 @@ struct VideoActionRow: View {
             // 390pt. In a 1200pt conversation column that left them huddled in
             // the corner under a full-width Share, so on regular width the
             // spacing goes BETWEEN them instead of all at the end.
+            // THE ROW FILLS, SO ITS THREE ACTIONS SHARE IT (ruled 2026-09-06).
+            // Left-clustered icons under a full-width Share read as three
+            // buttons that lost their row — fine at 390pt, wrong the moment the
+            // row is 869pt. Each takes an equal share and centres in it, so the
+            // spacing is a consequence of the width rather than a constant that
+            // stopped matching it.
             HStack(spacing: 14 * k) {
                 pill(
                     icon: "square.and.arrow.down",
@@ -1226,7 +1306,6 @@ struct VideoActionRow: View {
                 if let onMakeAnother {
                     makeAnotherPill(action: onMakeAnother)
                 }
-                Spacer(minLength: 0 * k)
             }
             .threadFill(.infinity)
         }
@@ -2116,35 +2195,4 @@ enum VideoPlayerPresenter {
 }
 
 
-/// THE MARK ON AN ASSISTANT MESSAGE.
-///
-/// Small, quiet, and aligned to the first line of the reply rather than centred
-/// on the whole block — a message that runs to a video and an action row should
-/// keep its mark up at the top where the voice starts, not floating halfway down
-/// beside a thumbnail.
-struct PromptlyMark: View {
-    @Environment(\.conversionScale) private var k
 
-    /// The mark's own size, and the gap to the reply beside it. Both scale.
-    static let size: CGFloat = 22
-    static let gutterSpacing: CGFloat = 10
-
-    var body: some View {
-        Image("PromptlyLogo")
-            .resizable()
-            .renderingMode(.template)
-            .aspectRatio(contentMode: .fit)
-            .foregroundStyle(Color(hex: "F4E4BC").opacity(0.85))
-            .frame(width: Self.size * k, height: Self.size * k)
-            // THE ASSET CARRIES ITS OWN PADDING. The artwork occupies 636x588 of
-            // a 1024x1024 canvas — 62% — so at a 22pt frame the runner rendered
-            // ~14pt and read as a sliver rather than a mark. Scaling by the
-            // inverse fills the frame without changing the view's bounds, so the
-            // gutter stays 22pt and only the glyph grows.
-            .scaleEffect(1 / 0.62)
-            // The cap height of the 17pt line beside it, so the mark reads as
-            // sitting ON the first line rather than above it.
-            .padding(.top, 2 * k)
-            .accessibilityHidden(true)
-    }
-}

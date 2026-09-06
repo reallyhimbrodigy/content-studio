@@ -70,9 +70,23 @@ final class AuthGate: ObservableObject {
     ///
     /// Returns true when the caller may proceed. When it returns false the
     /// sign-in sheet is already rising and the intent is recorded.
+    /// DEFERRED AUTH GATES ONE SEAM: PURCHASE (ruled 2026-09-06).
+    ///
+    /// The anonymous Supabase session already exists and the free credit grant
+    /// is keyed on device_id, so nothing in the render path needs a real
+    /// account: chat send, upload, render, re-edit and share all work signed
+    /// out. Sign-in appears exactly once — tapping a plan on the paywall or a
+    /// pack on the top-up screen — and the resume path lands them back in
+    /// checkout. Account creation stays available in the account page for
+    /// anyone who wants their history synced; optional, never required.
+    ///
+    /// A non-purchase intent is therefore ALLOWED rather than gated. The cases
+    /// are kept so the probe and the gate can assert they never raise, which is
+    /// a stronger guarantee than deleting them and trusting no one adds a call.
     @discardableResult
     func allow(_ intent: Intent) -> Bool {
         if AuthService.shared.currentUser?.id != nil { return true }
+        guard intent.isPurchase else { return true }
         require(intent)
         return false
     }
@@ -80,6 +94,12 @@ final class AuthGate: ObservableObject {
     /// Stop, ask for an account, and remember why.
     func require(_ intent: Intent) {
         guard AuthService.shared.currentUser?.id == nil else { return }
+        // The one seam. Anything else asking to gate is a regression, not a
+        // request — it is dropped here rather than reaching the presenter.
+        guard intent.isPurchase else {
+            Analytics.track("auth_gate_suppressed", props: ["intent": intent.analyticsName])
+            return
+        }
         pending = intent
         isPresenting = true
         Analytics.track("auth_gate_shown", props: ["intent": intent.analyticsName])

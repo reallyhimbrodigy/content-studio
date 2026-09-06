@@ -302,6 +302,10 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
+            case 59: bleed("CHAT — a real thread: two turns each, plus a video") {
+                EditorView()
+                    .task { Self.seedConversationChat() }
+            }
             case 58: bleed("CHAT SHAPE — user right, assistant left with the mark") {
                 EditorView()
                     .task { Self.seedShapeChat() }
@@ -604,6 +608,29 @@ struct PayoffSnapshotHarnessView: View {
     /// reads as an LLM chat. This one is text only and fits, so the arrangement
     /// is the whole frame: user right in a bubble, assistant left, full width,
     /// no bubble, mark in the gutter.
+    /// A REAL THREAD: two user turns, two assistant turns, and a video.
+    /// The layout has to be judged on this rather than on a single message —
+    /// bubble against plain text, the video as an attachment rather than the
+    /// whole screen, and the per-message action row under each reply.
+    @MainActor
+    static func seedConversationChat() {
+        var q1 = ChatMessage(role: .user, content: "What makes a good hook for a short video?")
+        q1.isOnboarding = false
+        var a1 = ChatMessage(role: .assistant, content:
+            "A good hook earns the next two seconds. Open on the most surprising "
+            + "frame you have, say the promise out loud, and cut the throat-clear "
+            + "before it.")
+        a1.isOnboarding = false
+        var q2 = ChatMessage(role: .user, content: "Fast cuts, big captions")
+        q2.isOnboarding = false
+        ChatStore.shared.debugSeed(Chat(id: "chat-convo", title: "Launch clip",
+                                        messages: [SerializedMessage(from: q1),
+                                                   SerializedMessage(from: a1),
+                                                   SerializedMessage(from: q2),
+                                                   SerializedMessage(from: completedMock)],
+                                        createdAt: Date(), updatedAt: Date()))
+    }
+
     @MainActor
     static func seedShapeChat() {
         var ask = ChatMessage(role: .user, content: "What makes a good hook for a short video?")

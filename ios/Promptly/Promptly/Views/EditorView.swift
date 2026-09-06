@@ -932,7 +932,11 @@ struct EditorView: View {
             // the previous hidden swipe-right gesture. Horizontally
             // scrollable since 3 chips don't fit on smaller iPhones.
             // Hides cleanly the moment the user starts typing.
-            vibeChipRow
+            // NO CHIPS IN THE COMPOSER (ruled 2026-09-06). The suggestion rows
+            // above it are the suggestions; two chips inside the composer are
+            // the same thing twice on one screen. Their removal is also what
+            // collapses this from a two-row block to the single row the
+            // reference has.
 
             HStack(alignment: .bottom, spacing: 0 * k) {
                 Button { tapAddVideo() } label: {
@@ -1135,6 +1139,10 @@ struct EditorView: View {
             // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
             .padding(.bottom, 6 * k)
         }
+        // ONE ROW, THE HEIGHT OF THE REFERENCE'S. 50pt on a phone and 50 * k on
+        // an iPad, as a MINIMUM rather than a fixed height, so the field still
+        // grows when the user types past a line.
+        .frame(minHeight: 50 * k)
         .background(
             ZStack {
                 // Vision-pro glass: ultra-thin material over a subtle
@@ -1156,7 +1164,12 @@ struct EditorView: View {
                     .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5 * k)
             }
         )
-        .padding(.horizontal, Theme.Space.sm * k)
+        // 88% OF THE CONTAINER MEANS THE SCREEN (ruled 2026-09-06). This
+        // padding sits OUTSIDE conversionColumn, so the proportional width
+        // measured a container already inset by it and the composer landed at
+        // 84% of the screen instead of 88% — the margin the rule does not
+        // allow. On a phone the padding IS the margin, so it stays there.
+        .padding(.horizontal, hSize == .regular ? 0 : Theme.Space.sm * k)
         .padding(.top, Theme.Space.xxs * k)
         .padding(.bottom, Theme.Space.xs * k)
         .animation(.spring(response: 0.45, dampingFraction: 0.78), value: pendingVideos.count)
@@ -2825,7 +2838,7 @@ struct EditorView: View {
                 // typewriter too, so even the failure mode feels alive
                 // instead of slamming in an error string.
                 messages[i].error = "chat_failed"
-                await typewriteReveal(String(localized: "Couldn't respond. Long-press to try again."), intoMessageId: messageId)
+                await typewriteReveal(String(localized: "Something went wrong. Nothing was lost."), intoMessageId: messageId)
             } else {
                 messages[i].content = buffer.text
                 messages[i].error = nil
@@ -3075,10 +3088,8 @@ struct EditorView: View {
         // The guard is here, at the TOP, so the composer keeps the text and the
         // transcript gains nothing. Returning after the bubble is appended would
         // show the user a message that is about to disappear.
-        guard AuthGate.shared.allow(.profileWrite("chat_send")) else {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            return
-        }
+        // NO SEAM HERE (ruled 2026-09-06). Chat send works on the anonymous
+        // session; the only seam is purchase.
 
         // ── requires_vibe_change re-dispatch path ─────────────────────
         // Backend told us the source was fine but the vibe was the
