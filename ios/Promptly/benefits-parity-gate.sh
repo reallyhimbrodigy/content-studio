@@ -103,7 +103,7 @@ while IFS= read -r f; do
   done <<< "$CLAIMS"
 done < <(find "$SRC" -name '*.swift')
 
-GOVERNED="Views/FirstLaunchPaywallView.swift Views/Onboarding/OfferRevealView.swift Views/PaywallView.swift"
+GOVERNED="Views/FirstLaunchPaywallView.swift Views/PaywallView.swift"
 
 # ── 4. and they must actually RENDER the shared list ────────────────────────
 # Without this, a surface could pass rule 3 by simply showing no benefits.

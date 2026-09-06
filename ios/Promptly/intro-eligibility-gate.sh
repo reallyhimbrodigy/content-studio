@@ -18,7 +18,10 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$DIR/Promptly"
 SVC="$SRC/Services/SubscriptionService.swift"
-REVEAL="$SRC/Views/Onboarding/OfferRevealView.swift"
+# The offer reveal was DELETED 2026-09-06; its intro arithmetic moved to
+# ProBenefits and now feeds a badge on the paywall rows. Same claim, same
+# eligibility requirement, one fewer screen.
+BENEFITS="$SRC/Views/ProBenefits.swift"
 fail=0
 
 # ── 1. eligibility is actually fetched from RevenueCat ──────────────────────
@@ -58,7 +61,7 @@ fi
 # 74c5597 surfaced it on EVERY entry point, so it now reaches every paywall a
 # returning subscriber sees.
 PAYWALL="$SRC/Views/PaywallView.swift"
-for pair in "$REVEAL:isRealOffer" "$REVEAL:percentOff" "$PAYWALL:introOfferLine"; do
+for pair in "$BENEFITS:introPercentOff" "$BENEFITS:introBadge" "$PAYWALL:introOfferLine"; do
   file="${pair%%:*}"; fn="${pair##*:}"
   if [ ! -f "$file" ]; then
     echo "MISSING         $(basename "$file") not found"; fail=1; continue
@@ -67,7 +70,16 @@ for pair in "$REVEAL:isRealOffer" "$REVEAL:percentOff" "$PAYWALL:introOfferLine"
   if [ -z "$block" ]; then
     echo "MISSING         $fn not found in $(basename "$file")"; fail=1; continue
   fi
-  if ! printf '%s' "$block" | grep -q "isEligibleForIntro"; then
+  # A claim may check eligibility ITSELF, or delegate to `introPercentOff`,
+  # which this same loop verifies does check — transitive, with the base case
+  # asserted in the same pass.
+  #
+  # THE DECLARATION LINE IS DROPPED FIRST. Matching the whole block let
+  # `introPercentOff` satisfy the delegation test with its OWN name, so deleting
+  # its eligibility guard still passed — the relaxation silently disarmed the
+  # check it was meant to widen. Only the BODY counts.
+  body=$(printf '%s' "$block" | tail -n +2)
+  if ! printf '%s' "$body" | grep -qE "isEligibleForIntro|introPercentOff\(for:"; then
     echo "UNCHECKED CLAIM $fn builds a discount claim without checking eligibility"
     fail=1
   fi

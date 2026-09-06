@@ -1130,19 +1130,19 @@ private enum HarnessPaywallMock {
     static let products: [PaywallProduct] = [
         PaywallProduct(id: "promptly_pro_weekly",  localizedPrice: "$10.99",
                        localizedPricePerMonth: nil, price: 10.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .week, introLine: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .week, introBadge: nil),
         PaywallProduct(id: "promptly_pro_monthly", localizedPrice: "$29.99",
                        localizedPricePerMonth: nil, price: 29.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introLine: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introBadge: nil),
         PaywallProduct(id: "promptly_pro_yearly",  localizedPrice: "$289.99",
                        localizedPricePerMonth: nil, price: 289.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introLine: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introBadge: nil),
         PaywallProduct(id: "promptly_max_monthly", localizedPrice: "$89.99",
                        localizedPricePerMonth: nil, price: 89.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introLine: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .month, introBadge: nil),
         PaywallProduct(id: "promptly_max_yearly",  localizedPrice: "$799.99",
                        localizedPricePerMonth: nil, price: 799.99,
-                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introLine: nil),
+                       currencyLocale: Locale(identifier: "en_US"), unit: .year, introBadge: nil),
     ]
 
     /// The shared list, from the same mapping the app uses.

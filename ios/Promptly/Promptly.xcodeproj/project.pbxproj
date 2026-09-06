@@ -98,7 +98,6 @@
 		AA00000A /* ReverseTrialService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00000A; };
 		AA000073 /* OnboardingQuestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000073; };
 		AA0000C1 /* OnboardingV2Flow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000C1; };
-		AA0000C3 /* OfferRevealView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000C3; };
 		AA000074 /* PHAssetResourceIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000074; };
 		AA000069 /* TrialWallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000069; };
 		AA0000A0 /* AnimatedPromptlyMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000A0; };
@@ -201,7 +200,6 @@
 		AB00000A /* ReverseTrialService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverseTrialService.swift; sourceTree = "<group>"; };
 		AB000073 /* OnboardingQuestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingQuestionView.swift; sourceTree = "<group>"; };
 		AB0000C1 /* OnboardingV2Flow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingV2Flow.swift; sourceTree = "<group>"; };
-		AB0000C3 /* OfferRevealView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferRevealView.swift; sourceTree = "<group>"; };
 		AB000074 /* PHAssetResourceIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PHAssetResourceIO.swift; sourceTree = "<group>"; };
 		AB000069 /* TrialWallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrialWallView.swift; sourceTree = "<group>"; };
 		AB0000A0 /* AnimatedPromptlyMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedPromptlyMark.swift; sourceTree = "<group>"; };

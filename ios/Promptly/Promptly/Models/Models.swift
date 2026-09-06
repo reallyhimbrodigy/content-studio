@@ -565,7 +565,10 @@ final class AppState: ObservableObject {
     /// The credit wall never constructs `UpgradePaywall` — it goes in-thread
     /// bubble -> `showCredits` -> CreditsTopUpView — so the catch that lives in
     /// UpgradePaywall cannot reach it. This is the independent trigger.
-    @Published var showExitOffer: Bool = false
+    /// The invite rung, shown when someone dismisses the paywall. Was
+    /// Renamed from the old exit-offer flag when the reveal rung was deleted;
+    /// this presents the invite directly.
+    @Published var showInviteRung: Bool = false
     /// Bumped by `landOnChat()` on every authenticated landing. EditorView
     /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
     /// keyboard up, ready to type a vibe (build 217).

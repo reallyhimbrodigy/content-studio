@@ -67,8 +67,11 @@ struct PaywallDurationOption: Identifiable, Equatable {
     let billingLine: String
     /// Computed from live per-territory prices by `PlanSavings`, never a literal.
     let percentOff: Int?
-    /// A PAID introductory offer, already phrased. Never a free-trial phrasing.
-    let introLine: String?
+    /// THE INTRO IS A BADGE NOW, not a subtitle line (ruled 2026-09-06). It is
+    /// the thing that sells, so it sits beside the price rather than under the
+    /// label, and it is the row's ONLY badge — the yearly-vs-monthly saving
+    /// moved into the billing sub-line rather than competing with it.
+    let introBadge: String?
     let isAnnual: Bool
 }
 
@@ -96,7 +99,7 @@ struct PaywallProduct: Equatable {
     let currencyLocale: Locale?
     let unit: PaywallPeriodUnit
     /// A PAID introductory offer, already phrased by `PaywallView.introOfferLine`.
-    let introLine: String?
+    let introBadge: String?
 }
 
 enum PaywallPeriodUnit { case year, month, week, other }
@@ -291,7 +294,7 @@ enum PaywallMapping {
                 rate: rateLine(p),
                 billingLine: billingLine(p),
                 percentOff: isAnnual ? pct : nil,
-                introLine: p.introLine,
+                introBadge: p.introBadge,
                 isAnnual: isAnnual)
         }
     }
@@ -748,29 +751,19 @@ struct PaywallLayout: View {
                         Text(option.label)
                             .cType(15, .semibold)
                             .foregroundColor(.white)
-                        if let pct = option.percentOff {
-                            Text("\(pct)% OFF")
-                                .cType(9, .heavy)
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 5 * k)
-                                .padding(.vertical, 2 * k)
-                                .background(Capsule().fill(Color.white))
-                        }
                     }
                     if !option.billingLine.isEmpty {
-                        Text(option.billingLine)
+                        // The yearly-vs-monthly saving reads here now, so the
+                        // intro badge is the only badge on the row.
+                        Text(option.percentOff.map {
+                            "\(option.billingLine) · \($0)% cheaper than monthly"
+                        } ?? option.billingLine)
                             .cType(10)
                             .foregroundColor(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     // The store's own intro terms, stated rather than applied
                     // silently.
-                    if let intro = option.introLine {
-                        Text(intro)
-                            .cType(10, .semibold)
-                            .foregroundColor(Color(hex: "F4E4BC").opacity(0.9))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
                 Spacer(minLength: 6 * k)
                 VStack(alignment: .trailing, spacing: 2 * k) {
@@ -787,6 +780,17 @@ struct PaywallLayout: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
+                    // THE INTRO IS THE ONE THAT SELLS, so it sits beside the
+                    // price and is the row's only badge.
+                    if let badge = option.introBadge {
+                        Text(badge)
+                            .cType(9, .heavy)
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 5 * k)
+                            .padding(.vertical, 2 * k)
+                            .background(Capsule().fill(Color(hex: "F4E4BC")))
+                            .fixedSize()
+                    }
                 }
             }
             .padding(.horizontal, 11 * k)
@@ -970,7 +974,7 @@ struct TwoStepPaywall: View {
             // offers, so the no-trial ruling still holds by construction).
             let intro: String? = (onboarding.offerSurfacingEnabled
                                   && (unit == .year || unit == .month))
-                ? PaywallView.introOfferLine(for: pkg) : nil
+                ? ProBenefits.introBadge(for: pkg, isAnnual: unit == .year) : nil
             return PaywallProduct(
                 id: sp.productIdentifier,
                 localizedPrice: sp.localizedPriceString,
@@ -978,7 +982,7 @@ struct TwoStepPaywall: View {
                 price: sp.price,
                 currencyLocale: sp.priceFormatter?.locale,
                 unit: unit,
-                introLine: intro)
+                introBadge: intro)
         }
     }
 

@@ -130,7 +130,7 @@ struct OnboardingV2Flow: View {
                 // OfferRevealView → (decline) ReferralCatchBeat → complete, the
                 // exact sequence the credit wall used to own. onPurchased and
                 // the final skip both land in chat.
-                ExitOfferLadder(onFinish: { complete() })
+                ReferralCatchBeat(onSkip: { complete() })
 
             case .done:
                 Color.black.ignoresSafeArea()

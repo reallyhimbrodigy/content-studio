@@ -93,4 +93,40 @@ if [ "$checked" -eq 0 ]; then
   exit 2
 fi
 
+
+# ── THE OFFER REVEAL IS GONE, NOT DARK (ruled 2026-09-06) ────────────────────
+# The funnel is paywall -> dismiss -> invite. A view that still compiles behind a
+# flag is a screen someone can turn back on, and the monthly downsell it carried
+# now lives on the Month row — two places quoting the same offer is how they
+# drift apart.
+REVEAL_FAIL=0
+for sym in OfferRevealView ExitOfferLadder exit_offer_shown ExitOffer; do
+  # CODE, not prose. A comment recording that something was deleted is not the
+  # thing coming back, and failing on it teaches people to delete the history.
+  hits=$(grep -rl --include='*.swift' "$sym" Promptly/ 2>/dev/null \
+         | while read -r f; do grep -vE '^[[:space:]]*(//|///|\*)' "$f" \
+             | grep -q "$sym" && echo "$f"; done | tr '\n' ' ')
+  if [ -n "$hits" ]; then
+    echo "  $sym is still referenced: $hits"; REVEAL_FAIL=1
+  fi
+done
+if [ -f Promptly/Views/Onboarding/OfferRevealView.swift ]; then
+  echo "  OfferRevealView.swift still exists"; REVEAL_FAIL=1
+fi
+if grep -q "OfferRevealView" Promptly.xcodeproj/project.pbxproj 2>/dev/null; then
+  echo "  OfferRevealView is still in the Xcode project"; REVEAL_FAIL=1
+fi
+# and the intro survives as a badge, with the arithmetic intact
+if ! grep -q "static func introPercentOff" Promptly/Views/ProBenefits.swift; then
+  echo "  the intro percentage arithmetic did not survive the delete"; REVEAL_FAIL=1
+fi
+if ! grep -q "introBadge" Promptly/Views/TwoStepPaywall.swift; then
+  echo "  the paywall rows lost the intro badge"; REVEAL_FAIL=1
+fi
+if [ "$REVEAL_FAIL" -ne 0 ]; then
+  echo "reachability-gate: FAIL — offer reveal"
+  exit 1
+fi
+echo "reachability-gate: offer reveal deleted; the intro rides the rows as a badge."
+
 echo "reachability-gate: PASS — every View under $VIEWS_DIR has at least one caller."

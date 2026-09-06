@@ -135,7 +135,7 @@ struct CreditsTopUpView: View {
                                   price: sp.price,
                                   currencyLocale: sp.priceFormatter?.locale,
                                   unit: pkg.planPeriod == .other ? .other : .month,
-                                  introLine: nil)
+                                  introBadge: nil)
         }
     }
 

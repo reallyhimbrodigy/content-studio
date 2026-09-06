@@ -28,10 +28,11 @@ import RevenueCat
 /// The two legitimate firings keep their OWN triggers, neither of which routes
 /// through here:
 ///   • the credit wall — `CreditsTopUpView`'s close in `AppShell` records
-///     `credit_wall` and raises `ExitOfferLadder` itself;
-///   • the funnel — its own beat, in its own flow.
+///     `credit_wall` and raises the invite rung itself.
 ///
-/// Both still spend from `ExitOffer`'s shared budget, so the cap holds across
+/// The reveal rung and its firing budget were deleted 2026-09-06: the funnel is
+/// paywall -> dismiss -> invite, and the monthly downsell it carried lives on
+/// the Month row.
 /// them.
 struct UpgradePaywall: View {
     @Binding var isPresented: Bool
@@ -44,80 +45,6 @@ struct UpgradePaywall: View {
             TwoStepPaywall(isPresented: $isPresented, reason: reason)
         } else {
             PaywallView(isPresented: $isPresented, reason: reason)
-        }
-    }
-}
-
-
-/// THE EXIT OFFER'S BUDGET, in one place because two surfaces spend it.
-///
-/// It was a boolean — shown once, ever. Once is too few for a discount that is
-/// the only thing standing between a declining user and nothing, and unlimited
-/// is a toll gate that teaches dismissing is cheaper than deciding. Three, then
-/// stop.
-///
-/// THE SEQUENCE IS DELIBERATE, not just a cap: the first two firings may share a
-/// session (dismiss the paywall, then hit the credit wall an hour later), but
-/// the THIRD requires a new launch. Without that, a user who dismissed twice in
-/// one sitting would be shown it a third time in the same sitting, which is the
-/// nagging the cap exists to prevent.
-///
-/// Shared rather than duplicated: the paywall exit and the credit wall are
-/// different code paths, and two copies of "have we spent it" drift the moment
-/// one of them is edited.
-enum ExitOffer {
-    private static let countKey = "exit_offer_count"
-    private static let lastLaunchKey = "exit_offer_last_launch"
-    static let limit = 3
-
-    /// Stable for the lifetime of the process; changes on relaunch. Cheap, and
-    /// it does not need to survive termination — "a later session" only has to
-    /// mean "not this one".
-    private static let launchId = UUID().uuidString
-
-    static var spent: Int { UserDefaults.standard.integer(forKey: countKey) }
-
-    /// Never for a subscriber, never past the cap, and the third only in a new
-    /// session. Callers add their own reason to offer.
-    @MainActor
-    static func shouldOffer() -> Bool {
-        guard !SubscriptionService.shared.effectiveIsPro else { return false }
-        let n = spent
-        guard n < limit else { return false }
-        if n >= limit - 1 {
-            let last = UserDefaults.standard.string(forKey: lastLaunchKey)
-            guard last != launchId else { return false }
-        }
-        return true
-    }
-
-    static func record(_ trigger: String) {
-        let n = spent + 1
-        UserDefaults.standard.set(n, forKey: countKey)
-        UserDefaults.standard.set(launchId, forKey: lastLaunchKey)
-        Analytics.track("exit_offer_shown", props: ["trigger": trigger, "shown_count": n])
-    }
-}
-
-
-/// THE LADDER, as a view, so both surfaces walk the same rungs.
-///
-/// The paywall exit builds these stages inline in `UpgradePaywall`; the credit
-/// wall needs the identical sequence from a `fullScreenCover` with no paywall
-/// above it. Extracted rather than copied — a second inline copy is how the
-/// credit wall lost the invite rung in the first place.
-struct ExitOfferLadder: View {
-    let onFinish: () -> Void
-    @State private var showInvite = false
-
-    var body: some View {
-        Group {
-            if showInvite {
-                ReferralCatchBeat(onSkip: onFinish)
-            } else {
-                OfferRevealView(onDecline: { showInvite = true },
-                                onPurchased: onFinish)
-            }
         }
     }
 }

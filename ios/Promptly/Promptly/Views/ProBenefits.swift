@@ -1,4 +1,5 @@
 import SwiftUI
+import RevenueCat
 
 /// THE single source of what Pro is worth. Every surface that lists Pro
 /// benefits reads from here — none of them owns a list.
@@ -17,6 +18,38 @@ import SwiftUI
 /// claim added to `core` appears on every surface, personalised or not, and it
 /// is not possible to add one to a single screen.
 enum ProBenefits {
+    /// THE INTRO DISCOUNT, AS A WHOLE NUMBER — moved here from the offer reveal
+    /// when that screen was deleted, unchanged, so the figure the badge shows is
+    /// the one the reveal showed.
+    ///
+    /// StoreKit's intro against the product's own base price, per territory,
+    /// FLOORED so the claim is never rounded up, and capped. Ineligible users
+    /// get nil and therefore no badge; a free trial is not a discount and also
+    /// returns nil.
+    static let maxClaimedIntroPercent = 90
+
+    @MainActor
+    static func introPercentOff(for pkg: Package) -> Int? {
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
+        guard let intro = pkg.storeProduct.introductoryDiscount,
+              intro.paymentMode != .freeTrial else { return nil }
+        let std = (pkg.storeProduct.price as NSDecimalNumber).doubleValue
+        let off = (intro.price as NSDecimalNumber).doubleValue
+        guard std > 0, off < std else { return nil }
+        let floored = Int(((1.0 - off / std) * 100.0).rounded(.down))
+        guard floored >= 1 else { return nil }
+        return min(floored, maxClaimedIntroPercent)
+    }
+
+    /// The badge text for a row: "49% OFF FIRST YEAR" / "50% OFF FIRST MONTH".
+    @MainActor
+    static func introBadge(for pkg: Package, isAnnual: Bool) -> String? {
+        guard let pct = introPercentOff(for: pkg) else { return nil }
+        return isAnnual
+            ? String(localized: "\(pct)% OFF FIRST YEAR")
+            : String(localized: "\(pct)% OFF FIRST MONTH")
+    }
+
 
     struct Benefit: Hashable, Identifiable {
         let icon: String
