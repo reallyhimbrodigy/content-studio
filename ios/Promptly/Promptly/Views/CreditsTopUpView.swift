@@ -179,6 +179,13 @@ struct CreditsTopUpView: View {
         VStack(spacing: 0 * k) {
             header
 
+            // DISTRIBUTE, DON'T CENTRE (ruled 2026-09-05). The purchase bar
+            // stays pinned — that is the thumb zone and it is right. The slack
+            // between the content and the bar is filled by the CONTENT: the
+            // sections spread into it instead of one dead gap at the end. The
+            // balance header stays first, directly under the close button, so
+            // nothing floats. Compact is untouched.
+            GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 18 * k) {
                     balanceBlock
@@ -194,6 +201,7 @@ struct CreditsTopUpView: View {
                     // again; the one-time pack is the fallback, and it now
                     // reads as one.
                     upgradeHero
+                    if hSize == .regular { Spacer(minLength: 0) }
 
                     VStack(alignment: .leading, spacing: 10 * k) {
                         Text("Or top up once")
@@ -217,9 +225,13 @@ struct CreditsTopUpView: View {
                         }
                     }
 
+                    if hSize == .regular { Spacer(minLength: 0) }
                     if showsMaxUpsell { maxUpsell }
                     allowanceFooter
                 }
+                .frame(minHeight: hSize == .regular
+                       ? geo.size.height - (selectedPack != nil ? 96 * k : 24 * k)
+                       : 0)
                 .padding(.horizontal, 20 * k)
                 .padding(.top, 8 * k)
                 // Clears the pinned CTA. Without it the scroll content runs
@@ -227,6 +239,7 @@ struct CreditsTopUpView: View {
                 // screen that is supposed to change the decision — sat behind
                 // it, half legible.
                 .padding(.bottom, selectedPack != nil ? 96 * k : 24 * k)
+            }
             }
 
             if selectedPack != nil { buyButton }

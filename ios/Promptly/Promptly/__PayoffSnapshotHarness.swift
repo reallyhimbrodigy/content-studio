@@ -311,11 +311,18 @@ struct PayoffSnapshotHarnessView: View {
                 ReferralCatchBeat(onSkip: {})
             }
             case 42: bleed("CREDIT WALL — the in-thread exhausted bubble") {
-                VStack(alignment: .leading, spacing: 12) {
-                    CreditsExhaustedMessage(refreshDate: nil, onSeePlans: {})
-                    Spacer(minLength: 0)
+                // A MESSAGE IN A SCROLL, composed the way the product composes
+                // it (ruled 2026-09-05). The old harness put the bubble in a
+                // VStack with a trailing Spacer, which pinned it to the top and
+                // made the symmetry checker report a 1170pt bottom band — a
+                // failure invented by the harness, not present in the product.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CreditsExhaustedMessage(refreshDate: nil, onSeePlans: {})
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
                 }
-                .padding(16)
             }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
                 // NOT TwoStepPaywall directly. This renders the switch every
