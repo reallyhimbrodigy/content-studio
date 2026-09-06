@@ -258,7 +258,20 @@ struct PromptlyApp: App {
         phConfig.captureScreenViews = false
         phConfig.captureApplicationLifecycleEvents = false
         phConfig.sessionReplay = true
-        phConfig.sessionReplayConfig.sampleRate = NSNumber(value: 0.1)
+        // REPLAY SAMPLING, SET EXPLICITLY (ruled 2026-09-06). 5%.
+        //
+        // Was 0.1 (10%), set in f0d76a3 when replay was cut from the SDK default
+        // of 1.0 — August ran unsampled, which is what the cost line was.
+        //
+        // FORCE-RECORDING ERROR SESSIONS IS NOT AVAILABLE HERE. posthog-ios
+        // 3.66.1 documents `startSessionRecording()` as NOT overriding ingestion
+        // controls: "The recording will not start if: the session is not
+        // sampled". Event triggers exist (`sessionRecording.eventTriggers`,
+        // remote config) but they NARROW rather than promote — replay waits for
+        // a trigger, and sampling still applies on top. So 5% of every session,
+        // error or not, is what this line buys; see the report for the two ways
+        // to get 100% of error sessions and which one costs the baseline.
+        phConfig.sessionReplayConfig.sampleRate = NSNumber(value: 0.05)
         phConfig.sessionReplayConfig.maskAllTextInputs = true
         phConfig.sessionReplayConfig.maskAllImages = true
         // SwiftUI renders as one layer to the replay wireframe recorder —
