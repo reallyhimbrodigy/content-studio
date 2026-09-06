@@ -1531,7 +1531,16 @@ struct EditorView: View {
         Self.debugChatSent = true
         let text = args[i + 1]
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            // CHAINED TO THE ATTACH, not to a guessed delay. A fixed sleep fired
+            // before `-attachClip` finished staging, so `send()` saw no pending
+            // video and routed to the text chat — the proof then covered chat
+            // but not the render. Wait for the clip to actually be there.
+            let deadline = Date().addingTimeInterval(30)
+            let wantsClip = ProcessInfo.processInfo.arguments.contains("-attachClip")
+            while wantsClip, pendingVideos.isEmpty, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
             inputText = text
             send()
         }

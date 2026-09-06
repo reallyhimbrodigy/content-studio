@@ -535,3 +535,21 @@ private struct ConversionSeam: ViewModifier {
         content.frame(maxHeight: (base * scale).rounded())
     }
 }
+
+
+/// THE TOP INSET, READ FROM THE WINDOW.
+///
+/// Every paywall route puts a backdrop with `.ignoresSafeArea()` behind itself,
+/// and that zeroes the insets a GeometryReader inside it would report — so a
+/// close button positioned from the reader lands at y=0, under the status bar.
+/// The window's own inset is the one that is always true, on every size class
+/// and in both orientations.
+enum PaywallSafeArea {
+    static var top: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+        let window = (scenes.first(where: { $0.activationState == .foregroundActive })
+                      as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow })
+            ?? (scenes.compactMap { $0 as? UIWindowScene }.first)?.windows.first
+        return window?.safeAreaInsets.top ?? 20
+    }
+}

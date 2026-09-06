@@ -55,5 +55,44 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
+
+# ── TWO LAYOUT DEFECTS THAT SHIPPED IN 1.3.27 ────────────────────────────────
+# Both were invisible AT REST and appeared only once the paywall scrolled, which
+# is exactly why a check of the resting state passed them. These assert the
+# mechanism rather than the appearance, so they hold on every device.
+LAYOUT_FAIL=0
+PW=Promptly/Views/TwoStepPaywall.swift
+
+# 1. The close button is pinned OUTSIDE the ScrollView and offset by the window's
+#    own top inset. Inside the ScrollView it scrolled up under the status bar; a
+#    GeometryReader reports a zero inset here because every paywall route puts an
+#    .ignoresSafeArea() backdrop behind itself.
+grep -q "PaywallSafeArea.top" "$PW" || {
+  echo "  close button no longer offset by the window's top inset"; LAYOUT_FAIL=1; }
+awk '/\.overlay\(alignment: \.topLeading\)/,/\.background\(Color\.black/' "$PW" | grep -q "header" || {
+  echo "  close button is not pinned outside the ScrollView"; LAYOUT_FAIL=1; }
+awk '/ScrollView\(showsIndicators: false\)/,/PromptlyLogo/' "$PW" | grep -qE '^ +header$' && {
+  echo "  close button is back INSIDE the ScrollView — it will scroll under the status bar"; LAYOUT_FAIL=1; }
+
+# 2. The tier column takes its natural height. `.frame(maxHeight: .infinity)`
+#    made it flexible, and in a ScrollView whose content already exceeds the
+#    viewport SwiftUI compressed it below its ideal — so its last row, "Cancel
+#    anytime", overflowed and drew ON TOP of the social-proof line beneath it.
+awk '/if let tier = activeTier/,/Spacer\(minLength: 0 \* k\)/' "$PW" \
+  | grep -v '^[[:space:]]*//' | grep -q "frame(maxHeight: .infinity)" && {
+  echo "  tier column is compressible again — Cancel anytime will overlap the social proof"; LAYOUT_FAIL=1; }
+awk '/if let tier = activeTier/,/Spacer\(minLength: 0 \* k\)/' "$PW" | grep -q "fixedSize(horizontal: false, vertical: true)" || {
+  echo "  tier column no longer takes its natural height"; LAYOUT_FAIL=1; }
+
+# 3. The seam above the cancel line keeps a floor, not only a cap.
+grep -q "Spacer(minLength: PaywallLayout.proofSeam \* k)" "$PW" || {
+  echo "  the cancel/social-proof seam lost its minimum"; LAYOUT_FAIL=1; }
+
+if [ "$LAYOUT_FAIL" -ne 0 ]; then
+  echo "paywall-ink-gate: FAIL — paywall layout"
+  exit 1
+fi
+echo "paywall-ink-gate: layout — close button pinned below the inset, tier column not compressible."
+
 echo "paywall-ink-gate: PASS — all $checked selling surfaces use white ink."
 exit 0

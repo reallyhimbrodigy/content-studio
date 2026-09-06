@@ -372,13 +372,25 @@ struct PaywallLayout: View {
     /// as neutral or dismiss on iOS, which is the wrong signal for the one
     /// control the screen exists for. The recommended badge is gold, so this is
     /// deliberately not gold.
+    /// Height the pinned header occupies in the scroll content, so the first
+    /// row does not start underneath it.
+    static let headerReserve: CGFloat = 44
+    /// The floor under the seam that separates the cancel line from the social
+    /// proof line. Both rows keep breathing room however tight the screen is.
+    static let proofSeam: CGFloat = 16
+
     private static let accent = Color(hex: "6C5CE7")
 
     var body: some View {
         GeometryReader { geo in
             ScrollView(showsIndicators: false) {
         VStack(spacing: 0 * k) {
-            header
+            // The close button is NOT here any more — see `.overlay` below. It
+            // used to scroll with the content, which carried the X up under the
+            // status bar the moment the paywall was scrolled at all. It reads
+            // fine at rest, which is why a check that only looked at the resting
+            // state passed it.
+            Color.clear.frame(height: PaywallLayout.headerReserve * k)
 
             Image("PromptlyLogo")
                 .renderingMode(.original)
@@ -446,7 +458,14 @@ struct PaywallLayout: View {
                 tierBody(tier)
                     .padding(.horizontal, 20 * k)
                     .padding(.top, 10 * k)
-                    .frame(maxHeight: .infinity)
+                    // NOT FLEXIBLE. `.frame(maxHeight: .infinity)` made this
+                    // column compressible, and inside a ScrollView whose content
+                    // already exceeds the viewport SwiftUI compressed it BELOW
+                    // its ideal height — so its last row, "Cancel anytime",
+                    // overflowed the frame and drew on top of the social-proof
+                    // line that follows it. That is the collision: two views in
+                    // the same space, not a spacing constant at zero.
+                    .fixedSize(horizontal: false, vertical: true)
                     .transition(reduceMotion ? .opacity : .opacity)
             }
 
@@ -471,6 +490,13 @@ struct PaywallLayout: View {
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88),
                    value: tierAllowance)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedId)
+        // PINNED, AND BELOW THE STATUS BAR ON EVERY SIZE CLASS. The backdrop
+        // ignores the safe area, so the inset is read from the window rather
+        // than from a GeometryReader whose insets that zeroes.
+        .overlay(alignment: .topLeading) {
+            header
+                .padding(.top, PaywallSafeArea.top)
+        }
         .background(Color.black.ignoresSafeArea())
         .onAppear { applyDefaults() }
         // The offering loads AFTER first render, so a one-shot default resolved
@@ -680,7 +706,13 @@ struct PaywallLayout: View {
             }
             .padding(.top, 10 * k)
 
-            Spacer(minLength: 0 * k).cSeam(46)
+            // A REAL MINIMUM, NOT JUST A CAP. `cSeam` resolves to
+            // `.frame(maxHeight:)`, so this seam collapsed to ZERO under scroll
+            // pressure while the 8pt one below it survived — which is how
+            // "Cancel anytime" and the social-proof line ended up jammed
+            // together above the CTA. The floor scales with k like everything
+            // else; the cap still lets it breathe on a tablet.
+            Spacer(minLength: PaywallLayout.proofSeam * k).cSeam(46)
 
             Text("Cancel anytime · no commitment")
                 .cType(10)
