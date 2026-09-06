@@ -1574,9 +1574,9 @@ struct EditorView: View {
             // before `-attachClip` finished staging, so `send()` saw no pending
             // video and routed to the text chat — the proof then covered chat
             // but not the render. Wait for the clip to actually be there.
-            let deadline = Date().addingTimeInterval(30)
+            let deadline = Date().addingTimeInterval(30)  // countdown-ok: DEBUG test hook, nothing on screen
             let wantsClip = ProcessInfo.processInfo.arguments.contains("-attachClip")
-            while wantsClip, pendingVideos.isEmpty, Date() < deadline {
+            while wantsClip, pendingVideos.isEmpty, Date() < deadline {  // countdown-ok: waits for the attach, no UI
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             try? await Task.sleep(nanoseconds: 400_000_000)
