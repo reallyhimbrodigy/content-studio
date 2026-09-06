@@ -601,6 +601,12 @@ struct PayoffSnapshotHarnessView: View {
         let t = StageTimeline(mode: "full", startWith: "analyze")
         t.receive(stepToken: "render")
         m.stageTimeline = t
+        // The SOURCE frame — the thing being edited — under the ring.
+        if let u = Bundle.main.url(forResource: "store-demo-thumb", withExtension: "jpg"),
+           let img = UIImage(contentsOfFile: u.path) {
+            m.videoAttachment = VideoAttachment(localUrl: u, fileName: "store-demo.mov",
+                                                thumbnail: img, remoteThumbnailUrl: u.absoluteString)
+        }
         return m
     }
 
@@ -882,7 +888,12 @@ struct PayoffSnapshotHarnessView: View {
         // A non-amazonaws/supabase host reads as CDN-ready (isStreamingReadyUrl),
         // so the video tile + Share hero render at full opacity, not dimmed.
         m.renderedVideoUrl = "https://cdn.usepromptly.app/demo.mp4"
-        m.thumbnailUrl = "https://cdn.usepromptly.app/demo.jpg"
+        // THE REAL RENDER. store-demo.mov (Zac's footage, ownership settled) run
+        // through the live pipeline with the shipping vibe "Fast cuts, big
+        // captions" — job 48c6c1d4, completed in 210s. This is its poster
+        // frame, bundled so the capture never depends on a signed URL.
+        m.thumbnailUrl = Bundle.main.url(forResource: "store-demo-render", withExtension: "jpg")?.absoluteString
+            ?? "https://cdn.usepromptly.app/demo.jpg"
         m.originalVibe = "clean and engaging"
         m.postPackage = PostPackage(
             editRationale: "I tightened the intro and held on your reveal at 0:14 so the punchline lands. For a fuller edit — more B-roll and zooms — a slightly longer take gives me more to work with.",

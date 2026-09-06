@@ -21,3 +21,5 @@ out/
 # Python bytecode — scripts/ now carries the delivery-gate instruments
 __pycache__/
 *.pyc
+ios/Promptly/Fixtures/store-demo.mov
+ios/Promptly/Fixtures/store-demo-render.mp4

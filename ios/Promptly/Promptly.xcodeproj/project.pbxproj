@@ -41,6 +41,8 @@
 		AA00002A /* ProfileAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00002A; };
 		AA00002B /* VoiceInputSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00002B; };
 		AA00002C /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00002C; };
+		AAF10001 /* store-demo-thumb.jpg in Resources */ = {isa = PBXBuildFile; fileRef = ABF10001; };
+		AAF10002 /* store-demo-render.jpg in Resources */ = {isa = PBXBuildFile; fileRef = ABF10002; };
 		AAF00001 /* CheckoutSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF00001; };
 		AAF00002 /* StorefrontService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF00002; };
 		AA0000A2 /* ReferralService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000A2; };
@@ -149,6 +151,8 @@
 		AB00002A /* ProfileAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAvatar.swift; sourceTree = "<group>"; };
 		AB00002B /* VoiceInputSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputSheet.swift; sourceTree = "<group>"; };
 		AB00002C /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionService.swift; sourceTree = "<group>"; };
+		ABF10001 /* store-demo-thumb.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = store-demo-thumb.jpg; path = Fixtures/store-demo-thumb.jpg; sourceTree = SOURCE_ROOT; };
+		ABF10002 /* store-demo-render.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = store-demo-render.jpg; path = Fixtures/store-demo-render.jpg; sourceTree = SOURCE_ROOT; };
 		ABF00001 /* CheckoutSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutSheet.swift; sourceTree = "<group>"; };
 		ABF00002 /* StorefrontService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorefrontService.swift; sourceTree = "<group>"; };
 		AB0000A2 /* ReferralService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferralService.swift; sourceTree = "<group>"; };
@@ -204,7 +208,7 @@
 
 		AD000001 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (AA000023 /* Sentry in Frameworks */, AA000030 /* RevenueCat in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 
-		AE000001 = {isa = PBXGroup; children = (AE000002, AE000006); sourceTree = "<group>"; };
+		AE000001 = {isa = PBXGroup; children = (ABF10001, ABF10002, AE000002, AE000006); sourceTree = "<group>"; };
 		AE000002 = {isa = PBXGroup; children = (AB000001, AB000072, AE000003, AE000004, AE000005, AB000013, AB000014, AB00006B, AB0000A8, AB0000A9, AB0000AA); path = Promptly; sourceTree = "<group>"; };
 		AE000003 = {isa = PBXGroup; children = (AB000002, AB000054, AB000057, AB000071); path = Models; sourceTree = "<group>"; };
 		AE000004 = {isa = PBXGroup; children = (ABF00002, AB000003, AB000004, AB000005, AB000006, AB000015, AB000016, AB000017, AB000018, AB000021, AB000022, AB000024, AB000025, AB000026, AB000027, AB000029, AB000030, AB000031, AB00002C, AB00002D, AB000032, AB000033, AB0000F3, AB000055, AB000059, AB000060, AB000061, AB000062, AB000063, AB0000D1, AB0000E5, AB0000E7, AB000011, CC000001, BC000001, AB00000A, AB00006A, AB000074, AB000075, AB000076, AB000077, AB0000A2, AB0000A6, AB0000A7); path = Services; sourceTree = "<group>"; };
@@ -214,7 +218,7 @@
 
 		AF000001 = {isa = PBXNativeTarget; buildConfigurationList = AG000003; buildPhases = (AF000002, AD000001, AF000003, AF000004, AA0000B0); buildRules = (); dependencies = (); name = Promptly; packageProductDependencies = (AJ000001 /* Sentry */, AJ000002 /* RevenueCat */, AJ000003 /* PostHog */); productName = Promptly; productReference = AC000001; productType = "com.apple.product-type.application"; };
 		AH000001 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1540; LastUpgradeCheck = 1540; }; buildConfigurationList = AG000001; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, es, "pt-BR", hi, ar, id, fr, de, ja, ur, ne, bn); mainGroup = AE000001; packageReferences = (AI000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */, AI000002 /* XCRemoteSwiftPackageReference "purchases-ios" */, AI000003 /* XCRemoteSwiftPackageReference "posthog-ios" */); productRefGroup = AE000006; projectDirPath = ""; projectRoot = ""; targets = (AF000001); };
-		AF000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (AA000013, AA00006B); runOnlyForDeploymentPostprocessing = 0; };
+		AF000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (AAF10001, AAF10002, AA000013, AA00006B); runOnlyForDeploymentPostprocessing = 0; };
 		AF000004 = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputFileListPaths = (); inputPaths = (); name = "Upload dSYMs to Sentry"; outputFileListPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "\"${SRCROOT}/Scripts/upload-sentry-dsyms.sh\"\n"; };
 		AA0000B0 /* Upload dSYMs to Sentry */ = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Upload dSYMs to Sentry"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  if [ -n \"$SENTRY_AUTH_TOKEN\" ] || [ -f \"$HOME/.sentryclirc\" ]; then\n    if command -v sentry-cli >/dev/null 2>&1; then\n      sentry-cli upload-dif --org promptly-s9 --project promptly-ios \"$DWARF_DSYM_FOLDER_PATH\" || echo \"warning: sentry-cli upload-dif failed (non-fatal)\"\n    else\n      echo \"warning: sentry-cli not installed; dSYMs NOT uploaded — crashes stay <redacted>\"\n    fi\n  else\n    echo \"warning: SENTRY_AUTH_TOKEN missing; dSYMs NOT uploaded — crashes stay <redacted>\"\n  fi\nfi\n"; };
 		AF000002 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AAF00001, AAF00002, AA000001, AA000002, AA000003, AA000004, AA000005, AA000006, AA000015, AA000016, AA000007, AA000008, AA000009, AA000010, AA000012, AA000017, AA000018, AA000019, AA000020, AA000021, AA000022, AA000024, AA000025, AA000026, AA000027, AA000028, AA000029, AA000040, AA000031, AA00002A, AA00002B, AA00002C, AA00002D, AA00002E, AA00002F, AA000041, AA000042, AA0000F3, AA000050, AA000051, AA000052, AA000053, AA000054, AA000055, AA000057, AA000058, AA000059, AA000060, AA000061, AA000062, AA000063, AA0000D1, AA0000E1, AA00000C, AA00000D, AA00000E, AA00000F, AA00000B, AA0000E2, AA0000E3, AA0000E4, AA0000E5, AA0000E6, AA0000E7, AA000011, DB000001, CB000001, BB000001, AA00000A, AA000069, AA00006A, AA00006E, AA000070, AA000071, AA000072, AA000073, AA000074, AA000075, AA000076, AA000077, AA0000A0, AA0000A1, AA0000F1, AA0000F5, AA0000A2, AA0000A5, AA0000A6, AA0000A7, AA0000A8, AA0000B9, AA0000C1, AA0000C3); runOnlyForDeploymentPostprocessing = 0; };
