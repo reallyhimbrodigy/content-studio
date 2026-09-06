@@ -7,6 +7,9 @@ struct AuthView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var otpEmail: String?  // non-nil → present the OTP sheet for this email
+    /// True when the code came from an ordinary sign-in rather than a link, so
+    /// the verify leg uses the ordinary type.
+    @State private var isRecoveringExistingAccount = false
     @FocusState private var focusedField: Field?
 
     /// Raw nonce stashed between Apple's `onRequest` and `onCompletion`.
@@ -404,10 +407,18 @@ struct AuthView: View {
                 //
                 // Falls back to the ordinary OTP path when there is nothing to
                 // link (no anonymous session, or the provider is off).
-                let linked = (try? await AuthService.shared.linkEmailIdentity(email: trimmed)) ?? false
-                if !linked {
+                let outcome = (try? await AuthService.shared.linkEmailIdentity(email: trimmed))
+                    ?? .notAnonymous
+                switch outcome {
+                case .linked:
+                    break                       // the code goes to the new address
+                case .existingAccount, .notAnonymous:
+                    // RECOVERY. The email already has an account — sign in to it
+                    // and let the anonymous user go, rather than failing the way
+                    // a strict link would.
                     try await AuthService.shared.sendOtp(email: trimmed)
                 }
+                isRecoveringExistingAccount = (outcome != .linked)
                 otpEmail = trimmed
             } catch {
                 errorMessage = "Couldn't send code. Check your email and try again."

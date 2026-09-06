@@ -33,6 +33,23 @@ struct AccountView: View {
     /// inputs `SubscriptionService.effectiveIsPro` composes. The account page
     /// reasoning about tier differently from every other surface is how it came
     /// to show the wrong allowance in the first place.
+    /// AN ANONYMOUS USER HAS NOTHING TO LOG OUT OF. They have a session, but no
+    /// account behind it — the row's job there is to offer them one. Signed-in
+    /// users get Log out, which clears the Keychain and leaves them anonymous.
+    private var sessionRowTitle: LocalizedStringKey {
+        isAnonymousSession ? "Sign in or create account" : "Log out"
+    }
+
+    private func sessionRowAction() {
+        if isAnonymousSession { AuthGate.shared.presentForSignIn() }
+        else { AuthService.shared.signOut() }
+    }
+
+    /// A session with no identity attached: signed in to nothing.
+    private var isAnonymousSession: Bool {
+        AuthService.shared.currentUser?.isAnonymous == true
+    }
+
     private var effectiveIsPro: Bool {
         subscription.effectiveIsPro
     }
@@ -82,8 +99,12 @@ struct AccountView: View {
                     accountPrefsSections
 
                     // ── LOG OUT ──
-                    Button { AuthService.shared.signOut() } label: {
-                        Text("Log out")
+                    // AN ANONYMOUS USER HAS NOTHING TO LOG OUT OF. They have a
+                    // session, but no account behind it — the row's job there is
+                    // to offer them one. Signed-in users get Log out, which now
+                    // actually clears the Keychain and leaves them anonymous.
+                    Button(action: sessionRowAction) {
+                        Text(sessionRowTitle)
                             .font(.system(size: 17 * k, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)

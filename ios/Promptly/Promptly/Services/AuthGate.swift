@@ -92,6 +92,17 @@ final class AuthGate: ObservableObject {
     }
 
     /// Stop, ask for an account, and remember why.
+    /// THE USER ASKING IS NOT THE APP GATING. `require` refuses every
+    /// non-purchase intent by design — deferred auth gates one seam. But the
+    /// account page's "Sign in or create account" is the user choosing to get an
+    /// account, so it opens the same sheet without going through the gate.
+    func presentForSignIn() {
+        guard AuthService.shared.currentUser?.isAnonymous != false else { return }
+        pending = .profileWrite("account_signin")
+        isPresenting = true
+        Analytics.track("auth_sheet_opened", props: ["source": "account"])
+    }
+
     func require(_ intent: Intent) {
         guard AuthService.shared.currentUser?.id == nil else { return }
         // The one seam. Anything else asking to gate is a regression, not a

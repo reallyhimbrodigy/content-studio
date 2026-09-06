@@ -993,7 +993,7 @@ struct EditorView: View {
                             .font(.system(size: 17 * k, weight: .regular))
                             .tracking(0.3 * k)
                             .foregroundColor(Color.white.opacity(0.35))
-                            .padding(.vertical, 9 * k)
+                            .padding(.vertical, 6 * k)
                             .allowsHitTesting(false)
                     }
 
@@ -1007,7 +1007,7 @@ struct EditorView: View {
                         .tint(.white)
                         .submitLabel(.send)
                         .onSubmit { send() }
-                        .padding(.vertical, 9 * k)
+                        .padding(.vertical, 6 * k)
                         .padding(.trailing, 4 * k)
                         .accessibilityLabel("Describe your edit")
                 }
@@ -1043,7 +1043,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
                             .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
@@ -1076,7 +1076,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
                             .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
@@ -1118,7 +1118,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 44 * k, height: 44 * k, alignment: .bottom)
+                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
                             .padding(.bottom, 5 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
@@ -1137,12 +1137,17 @@ struct EditorView: View {
             // the composer — users never pick a model. The render tier now follows
             // their PLAN silently (Pro → premium pipeline, free → standard); see
             // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
-            .padding(.bottom, 6 * k)
+            .padding(.bottom, 4 * k)
         }
-        // ONE ROW, THE HEIGHT OF THE REFERENCE'S. 50pt on a phone and 50 * k on
-        // an iPad, as a MINIMUM rather than a fixed height, so the field still
-        // grows when the user types past a line.
-        .frame(minHeight: 50 * k)
+        // ONE ROW, THE HEIGHT OF THE REFERENCE'S: ~44pt at rest on a phone,
+        // 44 * k on an iPad. A MINIMUM, not a fixed height, so it still grows
+        // when the text wraps.
+        .frame(minHeight: 44 * k)
+        // THE WHOLE PILL IS THE TARGET. Only the text region responded, so a tap
+        // on the padding, the empty right side or the top edge did nothing —
+        // the field looks like one control and has to behave like one.
+        .contentShape(Rectangle())
+        .onTapGesture { isInputFocused = true }
         .background(
             ZStack {
                 // Vision-pro glass: ultra-thin material over a subtle

@@ -166,6 +166,14 @@ class AuthService {
     @discardableResult
     func signInAnonymouslyIfNeeded() async -> Bool {
         if currentUser?.id != nil { return true }
+
+        // THE MIGRATION WINS (blocker on 249). This checked only the Keychain,
+        // so a user updating FROM a build that stored the session in
+        // UserDefaults had no Keychain entry, looked brand new, and was handed a
+        // fresh anonymous user — losing their account, their Pro entitlement and
+        // their history on the update. An anonymous user is created only when
+        // NEITHER store has a session.
+        if migrateSessionToKeychainIfNeeded() { return true }
         if Keychain.get(tokenKey) != nil { return true }
         do {
             var req = URLRequest(url: URL(string: "\(supabaseUrl)/auth/v1/signup")!)
@@ -213,9 +221,43 @@ class AuthService {
     ///
     /// Returns false when there is no anonymous session to link, in which case
     /// the caller falls back to the ordinary OTP path.
-    func linkEmailIdentity(email: String) async throws -> Bool {
+    /// Moves a UserDefaults-era session into the Keychain and adopts it.
+    ///
+    /// Returns true when a session exists in EITHER store, which is the caller's
+    /// signal not to create an anonymous user. The Keychain is written first so
+    /// a crash mid-migration cannot lose the only copy; UserDefaults is left in
+    /// place for one release, exactly as `saveSession` mirrors it.
+    @discardableResult
+    func migrateSessionToKeychainIfNeeded() -> Bool {
+        if Keychain.get(tokenKey) != nil { return true }
+        let d = UserDefaults.standard
+        guard let token = d.string(forKey: tokenKey),
+              let refresh = d.string(forKey: refreshKey),
+              !token.isEmpty, !refresh.isEmpty else { return false }
+        _ = Keychain.set(token, for: tokenKey)
+        _ = Keychain.set(refresh, for: refreshKey)
+        Analytics.track("session_migrated_to_keychain", props: [:], durable: true)
+        return true
+    }
+
+    /// What the purchase seam should do with the email it was given.
+    enum LinkOutcome {
+        /// A new identity was attached to the anonymous user; same user_id, and
+        /// the code that follows verifies as `email_change`.
+        case linked
+        /// The email already belongs to an account. This is a RECOVERY, not a
+        /// link: sign in to that account the ordinary way and let the anonymous
+        /// user go. GoTrue refuses the link with 422 `email_exists`, and
+        /// treating that as a failure is what stranded a returning user on a
+        /// device that had gone anonymous.
+        case existingAccount
+        /// Nothing to link — no anonymous session. Ordinary sign-in.
+        case notAnonymous
+    }
+
+    func linkEmailIdentity(email: String) async throws -> LinkOutcome {
         guard let token = await getValidToken(), currentUser?.isAnonymous == true else {
-            return false
+            return .notAnonymous
         }
         var req = URLRequest(url: URL(string: "\(supabaseUrl)/auth/v1/user")!)
         req.httpMethod = "PUT"
@@ -226,6 +268,10 @@ class AuthService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            if body.contains("email_exists") {
+                Analytics.track("identity_link_existing_account", props: [:], durable: true)
+                return .existingAccount
+            }
             Analytics.track("identity_link_failed", props: [
                 "status": (resp as? HTTPURLResponse)?.statusCode ?? -1,
                 "body": String(body.prefix(120)),
@@ -233,7 +279,7 @@ class AuthService {
             throw AuthError.signInFailed(String(body.prefix(200)))
         }
         Analytics.track("identity_link_sent", props: ["user_id": currentUser?.id ?? ""])
-        return true
+        return .linked
     }
 
     func sendOtp(email: String) async throws {
@@ -395,9 +441,18 @@ class AuthService {
         Analytics.reset()
         refreshTask?.cancel()
         refreshTask = nil
+        // THE KEYCHAIN TOO. The session moved there, so clearing only
+        // UserDefaults left the user signed in — log out, relaunch, and they are
+        // back. Then a fresh anonymous session, because signed out is not the
+        // same as no session: every path except purchase runs on one.
+        _ = Keychain.delete(tokenKey)
+        _ = Keychain.delete(refreshKey)
         UserDefaults.standard.removeObject(forKey: tokenKey)
         UserDefaults.standard.removeObject(forKey: refreshKey)
         UserDefaults.standard.removeObject(forKey: tokenExpiryKey)
+        Task { @MainActor in
+            _ = await self.signInAnonymouslyIfNeeded()
+        }
         accessToken = nil
         currentUser = nil
         // Return the app to its initial route. AppState is a process-lifetime
