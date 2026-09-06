@@ -1521,7 +1521,6 @@ struct VideoActionRow: View {
 struct PostPackageView: View {
     @Environment(\.conversionScale) private var k
     let package: PostPackage
-    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12 * k) {
