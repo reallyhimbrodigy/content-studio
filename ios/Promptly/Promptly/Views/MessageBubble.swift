@@ -2136,6 +2136,12 @@ struct PromptlyMark: View {
             .aspectRatio(contentMode: .fit)
             .foregroundStyle(Color(hex: "F4E4BC").opacity(0.85))
             .frame(width: Self.size * k, height: Self.size * k)
+            // THE ASSET CARRIES ITS OWN PADDING. The artwork occupies 636x588 of
+            // a 1024x1024 canvas — 62% — so at a 22pt frame the runner rendered
+            // ~14pt and read as a sliver rather than a mark. Scaling by the
+            // inverse fills the frame without changing the view's bounds, so the
+            // gutter stays 22pt and only the glyph grows.
+            .scaleEffect(1 / 0.62)
             // The cap height of the 17pt line beside it, so the mark reads as
             // sitting ON the first line rather than above it.
             .padding(.top, 2 * k)

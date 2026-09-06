@@ -1590,10 +1590,16 @@ struct EditorView: View {
     /// Two captures a second apart, with the second longer than the first, is
     /// the proof that tokens render progressively and not in one block at the
     /// end. DEBUG only, like every other hook here.
+    private static var debugChatSent = false
+
     private func debugSendChatIfRequested() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-sendChat"), i + 1 < args.count else { return }
+        // registerEditorHooks() runs from an .onAppear that can fire more than
+        // once, which sent the message twice in the streaming proof.
+        guard !Self.debugChatSent else { return }
+        Self.debugChatSent = true
         let text = args[i + 1]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)

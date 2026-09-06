@@ -1,47 +1,45 @@
 #!/usr/bin/env python3
-"""THE IPAD CHAT IS THE IPHONE CHAT, SCALED — checked, not asserted.
+"""THE WIDTH RULE, CHECKED.
 
-The rule (ruled 2026-09-05): every element of the iPad chat sits in the same
-relative position at the same relative size as the iPhone's, scaled by k.
+  Full-width on the phone  -> 88% of the iPad container.
+  Fixed-width on the phone -> that width times k.
+  Heights, type, padding, radii, icons -> times k.
 
-k is the app's own scale: the window's long side over the 852pt reference phone.
-So the check is exact rather than approximate — take the reference phone's
-capture (393x852pt), scale it by k, and it must land on the iPad's chat column.
+So the two axes are checked differently, and that is the whole point:
+
+  VERTICAL is a pure scale. Divide the iPad's geometry by k and every band must
+  land on the phone's, up to one rigid offset (the system's own insets do not
+  scale — 59/34pt of phone chrome against 24/20 on iPad — so the whole chat
+  sits a constant distance off; every band must SHARE that offset).
+
+  HORIZONTAL is not. A filling element is 88% of the iPad's container, which is
+  a different fraction of the screen than the phone's full width. So width is
+  checked against the RULE, not against the phone times k.
 
   usage: overlay_check.py <phone.png> <ipad.png> [--out diff.png]
-
-Chrome is excluded the way symmetry.py excludes it: the status bar and the home
-indicator are the system's, not the layout's.
 """
 import sys, os
 from PIL import Image
 import numpy as np
 
-REF_H_PT   = 852.0     # ConversionColumn.phoneReferenceHeight
-REF_W_PT   = 393.0     # ThreadColumn.phoneReferenceWidth
-# The system status bar is NOT a scaled quantity — 59pt of Dynamic Island on the
-# phone against 24pt on the iPad — so the nav bar that sits directly beneath it
-# lands at a different height on each and can never overlay. Everything from the
-# nav bar up is excluded and reported separately; the chat below it is the check.
-CHROME_TOP = 105       # pt — status bar + the nav bar under it
-CHROME_BOT = 24        # pt — home indicator
-INK        = 26        # luminance above this is ink
-TOL_PT     = 6.0       # a band may sit this far off and still count as aligned
-# TEXT LAYOUT IS NOT SCALE-INVARIANT. A 15pt font in a 300pt box and a 24.2pt
-# font in a 484pt box do not break lines at the same word — hinting, kerning and
-# rounding see to that — so a wrapped paragraph can be 2 lines on one device and
-# 2 lines broken elsewhere on the other. Rows closer together than this are one
-# block, so the check compares layout blocks rather than glyph rows.
-MERGE_PT   = 9.0
-
-
-def load(path):
-    im = Image.open(path).convert("L")
-    return im, np.array(im).astype(int)
+REF_H_PT   = 852.0     # ConversionColumn.phoneReferenceHeight — k is defined against this
+PAD_FILL   = 0.88      # ConversionColumn.padFill
+CHROME_TOP = 105       # status bar + the nav bar under it (neither scales)
+CHROME_BOT = 24
+INK        = 26
+TOL_PT     = 6.0
+MERGE_PT   = 9.0       # rows closer than this are one layout block, not glyph rows
+# ProportionalWidth takes 88% of the CONTAINER the element sits in, and that
+# container is the screen minus the thread's own horizontal padding — so as a
+# fraction of the SCREEN a filling element lands a little under 88%. The screen
+# is what a screenshot can measure, so the band below is 88% of a container
+# between 92% and 100% of the screen. It still fails the two regressions that
+# matter: a fixed column (the 635pt one measured 61%) and a full-bleed row.
+FILL_MIN   = 0.808
+FILL_MAX   = 0.895
 
 
 def bands(mask, scale, lo, hi):
-    """Contiguous rows carrying ink, in points, within [lo, hi]."""
     rows = mask.sum(1)
     out, run = [], None
     for y in range(int(lo * scale), int(hi * scale)):
@@ -53,69 +51,72 @@ def bands(mask, scale, lo, hi):
     out = [b for b in out if b[1] - b[0] >= 2]
     merged = []
     for b in out:
-        if merged and b[0] - merged[-1][1] < MERGE_PT:
-            merged[-1] = (merged[-1][0], b[1])
-        else:
-            merged.append(b)
+        if merged and b[0] - merged[-1][1] < MERGE_PT: merged[-1] = (merged[-1][0], b[1])
+        else: merged.append(b)
     return merged
+
+
+def widest_run(mask, scale, lo, hi):
+    """The widest ink run in the region, in points — the filling elements."""
+    best = 0
+    for y in range(int(lo * scale), int(hi * scale)):
+        row = mask[y]
+        idx = np.flatnonzero(np.diff(np.concatenate(([0], row.view(np.int8), [0]))))
+        if len(idx) < 2: continue
+        runs = idx[1::2] - idx[::2]
+        best = max(best, int(runs.max()))
+    return best / scale
 
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    out = None
-    if "--out" in sys.argv: out = sys.argv[sys.argv.index("--out") + 1]
+    out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else None
     phone_p, ipad_p = args[0], args[1]
 
-    pim, pa = load(phone_p)
-    iim, ia = load(ipad_p)
-    ps = pa.shape[0] / REF_H_PT                     # phone px per pt
-    ipt_h = max(ia.shape) / 2.0                     # iPad @2x
-    isc = 2.0
-    k = ipt_h / REF_H_PT
+    pim = Image.open(phone_p).convert("L"); pa = np.array(pim).astype(int)
+    iim = Image.open(ipad_p).convert("L");  ia = np.array(iim).astype(int)
 
-    if abs(pa.shape[1] / ps - REF_W_PT) > 1:
-        print(f"  !! phone capture is {pa.shape[1]/ps:.0f}pt wide, not the {REF_W_PT:.0f}pt "
-              f"reference — the overlay is only exact on a 393x852 device")
+    ps = pa.shape[0] / (pa.shape[0] / 3.0)      # phone @3x
+    ps = 3.0
+    isc = 2.0                                    # iPad @2x
+    ipad_h_pt = ia.shape[0] / isc
+    ipad_w_pt = ia.shape[1] / isc
+    phone_h_pt = pa.shape[0] / ps
+    k = ipad_h_pt / REF_H_PT
 
-    col_pt = REF_W_PT * k                            # the chat column on iPad
-    x0 = (ia.shape[1] / isc - col_pt) / 2.0
-    crop = iim.crop((int(x0 * isc), 0,
-                     int((x0 + col_pt) * isc), ia.shape[0]))
-    crop = crop.resize((pa.shape[1], pa.shape[0]), Image.LANCZOS)
-    ca = np.array(crop).astype(int)
-
-    pm, cm = pa > INK, ca > INK
-    lo, hi = CHROME_TOP, REF_H_PT - CHROME_BOT
-    pb, cb = bands(pm, ps, lo, hi), bands(cm, ps, lo, hi)
-
-    band = int(lo * ps), int(hi * ps)
-    inter = (pm[band[0]:band[1]] & cm[band[0]:band[1]]).sum()
-    union = (pm[band[0]:band[1]] | cm[band[0]:band[1]]).sum()
-    iou = inter / union if union else 1.0
-
-    # THE SYSTEM'S INSETS DO NOT SCALE, AND THE THREAD IS BOTTOM-ANCHORED.
-    #
-    # The phone carries 59pt of Dynamic Island and a 34pt home indicator; the
-    # iPad carries 24 and 20. Nothing the layout does makes those equal times k,
-    # so the iPad's usable height is ~66 phone-pt MORE than the phone's even
-    # though its screen is exactly 852·k. A chat scrolled to its newest message
-    # therefore reveals a little more history at the top — that is the system's
-    # chrome, not the layout.
-    #
-    # So the bands are paired from the BOTTOM, where both are anchored. Any band
-    # the iPad reveals above the phone's first is reported as revealed, not as a
-    # fault. Within the paired set, the rigid offset is removed and every band
-    # must share it.
+    pm, cm = pa > INK, ia > INK
     faults, notes = [], []
+
+    # ---- HORIZONTAL: the rule, not the phone times k ----
+    lo_i, hi_i = CHROME_TOP * k, ipad_h_pt - CHROME_BOT * k
+    fill_pt = widest_run(cm, isc, lo_i, hi_i)
+    frac = fill_pt / ipad_w_pt
+    if FILL_MIN <= frac <= FILL_MAX:
+        notes.append(f"filling elements span {fill_pt:.0f}pt = {frac*100:.0f}% of the "
+                     f"{ipad_w_pt:.0f}pt screen — {PAD_FILL*100:.0f}% of their container")
+    else:
+        faults.append(f"filling elements span {frac*100:.0f}% of the screen "
+                      f"({fill_pt:.0f}pt of {ipad_w_pt:.0f}pt) — the rule is "
+                      f"{PAD_FILL*100:.0f}% of the container")
+
+    # ---- VERTICAL: a pure scale ----
+    # Put the iPad into phone points by dividing by k, then compare bands.
+    ih = int(round(ipad_h_pt / k * ps))
+    iw = int(round(ipad_w_pt / k * ps))
+    shrunk = np.array(iim.resize((iw, ih), Image.LANCZOS)).astype(int) > INK
+
+    lo, hi = CHROME_TOP, min(phone_h_pt, ih / ps) - CHROME_BOT
+    pb = bands(pm, ps, lo, hi)
+    cb = bands(shrunk, ps, lo, hi)
+
     n_pair = min(len(pb), len(cb))
     pp, cc = pb[len(pb) - n_pair:], cb[len(cb) - n_pair:]
     extra = len(cb) - len(pb)
     if extra > 0:
-        notes.append(f"iPad reveals {extra} more band(s) at the top — its usable height "
-                     f"is larger than the phone's times k (system chrome)")
+        notes.append(f"iPad shows {extra} more block(s) at the top — its usable height "
+                     f"exceeds the phone's times k (system chrome does not scale)")
     elif extra < 0:
-        faults.append(f"phone shows {-extra} band(s) the iPad does not — the iPad has the "
-                      f"greater usable height, so it should never show less")
+        faults.append(f"phone shows {-extra} block(s) the iPad does not")
 
     measurable = [(p, c) for p, c in zip(pp, cc)
                   if p[0] > lo + 1 and p[1] < hi - 1 and c[0] > lo + 1 and c[1] < hi - 1]
@@ -124,36 +125,27 @@ def main():
     for n, (p, c) in enumerate(measurable, 1):
         dtop = (c[0] - p[0]) - shift
         dh = (c[1] - c[0]) - (p[1] - p[0])
-        if abs(dtop) > TOL_PT or abs(dh) > TOL_PT:
-            faults.append(f"band {n} at y={p[0]:.0f}pt: offset {dtop:+.0f}pt from the "
-                          f"common {shift:+.0f}pt, height {dh:+.0f}pt")
-
-    # Overlap is measured with the rigid shift taken out, over the span the two
-    # actually share.
-    sh = int(round(shift * ps))
-    if sh:
-        cm2 = np.zeros_like(cm)
-        if sh > 0: cm2[:cm.shape[0]-sh] = cm[sh:]
-        else:      cm2[-sh:] = cm[:cm.shape[0]+sh]
-        cm = cm2
-    top = int((pp[0][0] if pp else lo) * ps)
-    bot = int(hi * ps)
-    inter2 = (pm[top:bot] & cm[top:bot]).sum()
-    union2 = (pm[top:bot] | cm[top:bot]).sum()
-    iou = inter2 / union2 if union2 else 1.0
-    if iou < 0.80:
-        faults.append(f"ink overlap {iou*100:.0f}% (want 80%+)")
+        if abs(dtop) > TOL_PT:
+            faults.append(f"block {n} at y={p[0]:.0f}pt sits {dtop:+.0f}pt off the common "
+                          f"{shift:+.0f}pt offset")
+        elif abs(dh) > TOL_PT:
+            # A block that FILLS gets wider relative to its type on the iPad, so
+            # a paragraph inside it wraps into fewer lines and the block is
+            # shorter. That is the width rule working, not a defect — the rule
+            # only promises the same VERTICAL POSITION, not the same height, for
+            # anything that fills.
+            notes.append(f"block {n} at y={p[0]:.0f}pt is {dh:+.0f}pt shorter/taller — a "
+                         f"filling text block rewraps at the wider column")
 
     if out:
-        rgb = Image.merge("RGB", [Image.fromarray((pm * 255).astype("uint8")),
-                                  Image.fromarray((cm * 255).astype("uint8")),
-                                  Image.fromarray(np.zeros_like(pa, dtype="uint8"))])
-        rgb.save(out)
+        h = min(pm.shape[0], shrunk.shape[0]); w = min(pm.shape[1], shrunk.shape[1])
+        z = np.zeros((h, w), dtype="uint8")
+        Image.merge("RGB", [Image.fromarray((pm[:h, :w] * 255).astype("uint8")),
+                            Image.fromarray((shrunk[:h, :w] * 255).astype("uint8")),
+                            Image.fromarray(z)]).save(out)
 
-    name = os.path.basename(ipad_p)
-    print(f"  {'PASS' if not faults else 'FAIL'}  {name}   k={k:.3f}  column={col_pt:.0f}pt  "
-          f"overlap={iou*100:.0f}%  bands {len(pb)}/{len(cb)}  "
-          f"system-inset shift {shift:+.0f}pt")
+    print(f"  {'PASS' if not faults else 'FAIL'}  {os.path.basename(ipad_p)}   k={k:.3f}  "
+          f"blocks {len(pb)}/{len(cb)}  vertical shift {shift:+.0f}pt")
     for f in faults: print(f"          · {f}")
     for n in notes: print(f"          · {n}")
     return 1 if faults else 0
