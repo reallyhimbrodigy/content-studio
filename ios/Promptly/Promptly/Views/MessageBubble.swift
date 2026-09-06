@@ -58,14 +58,38 @@ struct MessageBubble: View {
     /// the way Gemini emitted them. If markdown parsing fails (rare —
     /// only on malformed input mid-stream), we fall back to plain text
     /// so we never show a blank message.
-    @ViewBuilder
-    private func bubbleText(_ content: String) -> some View {
-        if let attr = try? AttributedString(
+    /// PARSED ONCE PER STRING, NOT ONCE PER RENDER (PROMPTLY-IOS-3P).
+    ///
+    /// The hang's own frames name the cost: AG::LayoutDescriptor::Compare ->
+    /// AGDispatchEquatable -> AttributedStringTextStorage.isEqual ->
+    /// AttributedString.Guts.characterwiseIsEqual. SwiftUI compares the
+    /// AttributedString on every view-graph update, and a freshly parsed one is
+    /// a NEW object every time, so the compare walks the whole reply
+    /// character by character on the main thread. While a reply streams, that
+    /// happens on every token.
+    ///
+    /// Memoising by content makes the repeat renders return the SAME value, so
+    /// the comparison is a pointer check and the parse happens once.
+    private static let markdownCache = NSCache<NSString, MarkdownBox>()
+    final class MarkdownBox: NSObject { let value: AttributedString
+        init(_ v: AttributedString) { value = v } }
+
+    static func parsedMarkdown(_ content: String) -> AttributedString? {
+        let key = content as NSString
+        if let hit = markdownCache.object(forKey: key) { return hit.value }
+        guard let attr = try? AttributedString(
             markdown: content,
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .inlineOnlyPreservingWhitespace
             )
-        ) {
+        ) else { return nil }
+        markdownCache.setObject(MarkdownBox(attr), forKey: key)
+        return attr
+    }
+
+    @ViewBuilder
+    private func bubbleText(_ content: String) -> some View {
+        if let attr = Self.parsedMarkdown(content) {
             Text(attr)
         } else {
             Text(content)
