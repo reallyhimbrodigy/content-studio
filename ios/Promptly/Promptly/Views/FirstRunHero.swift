@@ -129,5 +129,6 @@ struct FirstRunHero: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("hero.row")
     }
 }

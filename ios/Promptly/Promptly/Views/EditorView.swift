@@ -974,6 +974,7 @@ struct EditorView: View {
                         .accessibilityHidden(true)
                 }
                 .accessibilityLabel("Add video")
+                .accessibilityIdentifier("composer.add")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
                 .padding(.leading, 5 * k)
 
@@ -1074,6 +1075,7 @@ struct EditorView: View {
                     .opacity(canSend || isChatStreaming ? 0 : 1)
                     .scaleEffect(canSend || isChatStreaming ? 0.5 : 1)
                     .accessibilityLabel("Voice input")
+                .accessibilityIdentifier("composer.mic")
                     .allowsHitTesting(!canSend && !isChatStreaming)
 
                     // Send — surfaces the moment there's something to send.
