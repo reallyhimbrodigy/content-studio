@@ -279,9 +279,13 @@ struct EditorView: View {
                     reeditSession = pending
                     appState.pendingReedit = nil
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    focusInput()
-                }
+                // NOTHING CLAIMS FOCUS ON APPEAR. This raised the keyboard
+                // 0.3s after the editor appeared — on launch, and again every
+                // time the user came back from a sheet — so returning from the
+                // account page or the paywall was met with a keyboard nobody
+                // asked for, covering half the screen. Focus now follows a tap:
+                // the field itself, a suggestion row, a dictated transcript, or
+                // a new chat the user created.
             }
             .task {
                 // Pull chat history once per session so the sidebar populates
