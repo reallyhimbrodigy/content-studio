@@ -3921,15 +3921,22 @@ const server = http.createServer((req, res) => {
           const j = JSON.parse(raw);
           if (!j || typeof j !== 'object' || !j.products || typeof j.products !== 'object') return null;
 
-          // SUBSCRIPTIONS ONLY. A top-up bought on the web grants NOTHING
-          // today: RevenueCat emits VIRTUAL_CURRENCY_TRANSACTION for a credit
-          // purchase and that event reaches the webhook's UNHANDLED branch —
-          // logged, acked 200, no write, no balance touched. Taking money for
-          // credits that never arrive is worse than not selling them, so the
-          // allowlist is structural rather than a promise that the blob will
-          // only ever contain subscriptions.
+          // KEYED BY PACKAGE ID, not product id. The Web Billing offering uses
+          // RevenueCat's package identifiers ($rc_weekly, $rc_monthly,
+          // $rc_annual) plus the custom Max packages — NOT the App Store
+          // product ids (promptly_pro_*). An allowlist written against product
+          // ids drops every real entry and returns null, which is the whole
+          // feature dark with nothing in the logs but a blob that "did not
+          // parse".
+          //
+          // SUBSCRIPTIONS ONLY. A credit top-up bought on the web grants
+          // NOTHING: RevenueCat emits VIRTUAL_CURRENCY_TRANSACTION and that
+          // event reaches the webhook's UNHANDLED branch — logged, acked 200,
+          // no write, no balance touched. Taking money for credits that never
+          // arrive is worse than not selling them.
           const SUBSCRIPTIONS = new Set([
-            'promptly_pro_weekly', 'promptly_pro_monthly', 'promptly_pro_yearly',
+            '$rc_weekly', '$rc_monthly', '$rc_annual',
+            'max_monthly', 'max_yearly',
           ]);
           const products = {};
           const dropped = [];
@@ -3938,42 +3945,92 @@ const server = http.createServer((req, res) => {
             products[id] = p;
           }
           if (dropped.length) {
-            console.warn('[web_checkout] DROPPED non-subscription product(s) — a web '
+            console.warn('[web_checkout] DROPPED non-subscription package(s) — a web '
               + 'top-up grants no credits (VIRTUAL_CURRENCY_TRANSACTION is unhandled): '
               + dropped.join(', '));
           }
           if (!Object.keys(products).length) return null;
 
-          // THE SAVINGS CLAIM IS DERIVED, NOT ASSERTED. saved_pct was a
-          // hardcoded 15 that rendered whatever the prices actually were — so
-          // a web price EQUAL TO or HIGHER than Apple's still advertised
-          // "save 15%". That is a false claim about money, and it survives
-          // exactly as long as nobody compares the two numbers.
+          // APPLE'S US PRICES — the thing the saving is measured AGAINST.
           //
-          // Computed per product from the App Store price the app charges, and
-          // only when the web price is genuinely lower. Equal prices yield 0
-          // and the client shows no badge.
-          const APPLE_MICROS = {
-            promptly_pro_weekly: 12990000,
-            promptly_pro_monthly: 39990000,
-            promptly_pro_yearly: 399990000,
+          // Overridable by env so the App Store Connect gross-up flips the
+          // claim WITHOUT a code deploy: the moment ASC approves the new US
+          // prices, set APP_STORE_US_MICROS and the badge lights up on its own.
+          // The defaults are TODAY's live Apple prices, which are IDENTICAL to
+          // the web prices — so the derivation correctly yields 0 and the step
+          // stays dark until there is a real saving to claim.
+          const APPLE_DEFAULT = {
+            '$rc_weekly':  10990000,   // $10.99   -> $12.99 after gross-up
+            '$rc_monthly': 29990000,   // $29.99   -> $34.99
+            '$rc_annual':  289990000,  // $289.99  -> $339.99
+            'max_monthly': 89990000,   // $89.99   -> $105.99
+            'max_yearly':  799990000,  // $799.99  -> $939.99
+          };
+          // INTRO PRICES ARE THE COMPARISON THAT CONVERTS. A first-time buyer
+          // is not choosing between $289.99 and $289.99 — they are choosing
+          // between Apple's intro and the web intro. Compared separately
+          // because eligibility is per-customer and only the client knows it.
+          const APPLE_INTRO_DEFAULT = {
+            '$rc_annual':  145990000,  // $145.99  -> $171.75 after gross-up
+            '$rc_monthly': 14990000,   // $14.99   -> $17.99
+          };
+          const parseMicros = (envName, fallback) => {
+            try {
+              const o = JSON.parse(process.env[envName] || 'null');
+              if (!o || typeof o !== 'object') return fallback;
+              const out = { ...fallback };
+              for (const [k, v] of Object.entries(o)) {
+                const n = Number(v);
+                if (Number.isFinite(n) && n > 0) out[k] = n;
+              }
+              return out;
+            } catch (_) { return fallback; }
+          };
+          const APPLE = parseMicros('APP_STORE_US_MICROS', APPLE_DEFAULT);
+          const APPLE_INTRO = parseMicros('APP_STORE_US_INTRO_MICROS', APPLE_INTRO_DEFAULT);
+
+          // DERIVED, NEVER ASSERTED. saved_pct was a hardcoded 15 that rendered
+          // whatever the prices actually were, so a web price EQUAL to Apple's
+          // still advertised "save 15%" — a false claim about money that
+          // survives exactly as long as nobody compares the two numbers.
+          //
+          // A TRUE SAVING TOO SMALL TO CLAIM IS STILL NOT A CLAIM. Today's web
+          // intro on the annual is $144.99 against Apple's $145.99 — a real
+          // 0.68%, which rounds to "save 1%". That is honest and commercially
+          // worse than silence: a 1% badge reads as a gimmick and invites the
+          // comparison it loses. Below the floor the step stays dark, which is
+          // also the state the pricing change was planned around. After the
+          // App Store gross-up the same comparison is $171.75 against $144.99 —
+          // 16% — and it lights up on its own.
+          const MIN_CLAIM_PCT = 5;
+          const pctOf = (apple, web) => {
+            if (!Number.isFinite(apple) || !Number.isFinite(web)) return 0;
+            if (apple <= 0 || web <= 0 || web >= apple) return 0;
+            const pct = Math.round(((apple - web) / apple) * 100);
+            return pct >= MIN_CLAIM_PCT ? pct : 0;
           };
           let best = 0;
+          let bestIntro = 0;
           for (const [id, p] of Object.entries(products)) {
             const web = Number(p && p.web_price_micros);
-            const apple = APPLE_MICROS[id];
-            if (!Number.isFinite(web) || web <= 0 || !apple) continue;
-            const pct = Math.round(((apple - web) / apple) * 100);
-            p.saved_pct = pct > 0 ? pct : 0;      // per product, for the client
-            if (pct > best) best = pct;
+            const webIntro = Number(p && p.web_intro_price_micros);
+            p.saved_pct = pctOf(APPLE[id], web);
+            // Intro saving is reported only when BOTH sides have an intro —
+            // comparing an Apple intro against a full web price would invent a
+            // discount out of a billing-period mismatch.
+            p.intro_saved_pct = (Number.isFinite(webIntro) && APPLE_INTRO[id])
+              ? pctOf(APPLE_INTRO[id], webIntro) : 0;
+            if (p.saved_pct > best) best = p.saved_pct;
+            if (p.intro_saved_pct > bestIntro) bestIntro = p.intro_saved_pct;
           }
-          if (!best) {
+          if (!best && !bestIntro) {
             console.warn('[web_checkout] no savings claim: no web price is below its '
-              + 'App Store price. Badge suppressed rather than asserted.');
+              + 'App Store price (base or intro). Badge suppressed rather than asserted.');
           }
           return {
             storefronts: Array.isArray(j.storefronts) && j.storefronts.length ? j.storefronts : ['USA'],
             saved_pct: best,
+            intro_saved_pct: bestIntro,
             products,
           };
         } catch (_) { return null; }
