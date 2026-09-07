@@ -4342,6 +4342,12 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // A render whose jobId never reached the client is now RECOVERED
+          // from the dispatch timestamp (2026-09-07). `job_recovery` is the
+          // only record of whether that works — outcome splits recovered /
+          // no_candidate / ambiguous. Dropped silently, a recovered render and
+          // a missed one look identical, which defeats the instrument.
+          'job_recovery',
           // A vanished staged source is now RECOVERABLE (2026-09-07): the
           // client re-materialises the video from the photo library instead of
           // failing the pick. `upload_restage` is the only record of whether
