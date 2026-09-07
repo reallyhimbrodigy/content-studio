@@ -4234,6 +4234,30 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // ── THE 250 CLIENT COHORT (2026-09-06) ────────────────────────────
+          // Six events build 250 already emits and this set did not know. Same
+          // shape as the 244 cohort below: dropped silently by the SQL mirror,
+          // fine in PostHog, so every read of them on the server side would
+          // have been a confident zero. Allowlisted BEFORE 250 is released.
+          //
+          // AUTH — deferred auth now gates ONE seam, purchase. `auth_sheet_opened`
+          // is the denominator for that seam; without it "reached the seam" and
+          // "never reached it" are the same empty result.
+          'auth_sheet_opened',
+          // Anonymous -> real identity. `identity_link_existing_account` is the
+          // branch where the email already belongs to another account, which is
+          // the only case that can strand a user's jobs on the anonymous id.
+          'identity_link_existing_account',
+          // The 249 blocker: sessions did not survive an app update. Fires when
+          // the UserDefaults session is moved into the Keychain, so the fix's
+          // reach across the installed base is measurable rather than asserted.
+          'session_migrated_to_keychain',
+          // UNS launch reconcile (items 2-6). `_swept` is the denominator (picks
+          // found stale at launch), `_retry` and `_failed` split it into
+          // recovered vs terminal — the split is the whole point, since a sweep
+          // count alone cannot say whether the reconcile works.
+          'upload_reconcile_swept', 'upload_reconcile_retry', 'upload_reconcile_failed',
+
           // ── THE 244 CLIENT COHORT (2026-09-02) ────────────────────────────
           // 25 events the client on app-conversion-surface already emits and
           // this set did not know. Every one of them was being DROPPED by the
