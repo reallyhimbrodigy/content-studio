@@ -8574,13 +8574,28 @@ if (require.main === module) {
     // No tail logic can fix that — the recovery has to be external and stateless.
     // Same 2-min cadence as the reaper; loud on every occurrence, because a
     // silent self-heal is exactly how this stayed invisible for six days.
-    const { reconcileCompletions } = require('./lib/completion-reconcile');
+    const { reconcileCompletions, reconcileHandover } = require('./lib/completion-reconcile');
     let reconcileBusy = false;
     const runCompletionReconcile = async () => {
       if (reconcileBusy) return;
       reconcileBusy = true;
       try {
         await reconcileCompletions(supabaseAdmin);
+        // THE SECOND HANDOVER, same sweep. A completed job that never reaches a
+        // chat is invisible to the user no matter how complete the row is — 19
+        // of them across 8 users, newest from today on 1.3.27. It detects and
+        // pages; it does NOT repair, because the missing artifact is a chat the
+        // client writes.
+        //
+        // SEPARATE try/catch: this detector is newer, and a crash in it must not
+        // stop the projection repair that has been running since 08-02. The
+        // older sweep self-heals real user-visible damage; the newer one only
+        // reports.
+        try {
+          await reconcileHandover(supabaseAdmin);
+        } catch (hErr) {
+          console.error('[handover-reconcile] sweep crashed:', hErr?.message || hErr);
+        }
       } catch (err) {
         console.error('[completion-reconcile] sweep crashed:', err?.message || err);
       } finally {
