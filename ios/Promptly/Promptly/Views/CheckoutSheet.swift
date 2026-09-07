@@ -15,6 +15,10 @@ import RevenueCat
 /// though only the US storefront ever renders the sheet (StorefrontService).
 struct CheckoutItem: Identifiable {
     let productId: String
+    /// The RevenueCat PACKAGE identifier, e.g. `$rc_annual`. Sent as the
+    /// `package_id` QUERY parameter — the checkout page needs to be told what
+    /// it is selling, and the path segment is spoken for by the app_user_id.
+    let packageId: String
     let tierNoun: String            // "Pro" / "Max" / "credits" (localized by the caller)
     let applePrice: Decimal
     let applePriceText: String
@@ -76,7 +80,13 @@ struct CheckoutSheet: View {
 
             HStack(spacing: 10 * k) {
                 Image(systemName: "tag.fill").foregroundColor(Self.accent)
-                Text("Save \(item.savedPct)% when you pay on promptly.com.")
+                // NOT A DOMAIN. This said "promptly.com" — a host this product
+                // does not own, on the one line that tells a customer where
+                // their money is going. The link opens the checkout URL from
+                // the config (pay.rev.cat today), so naming usepromptly.app
+                // would be wrong in the same way. "on the web" is what is true
+                // and matches the row above it.
+                Text("Save \(item.savedPct)% when you pay on the web.")
                     .font(.system(size: 14 * k, weight: .semibold)).foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -167,10 +177,33 @@ struct CheckoutSheet: View {
         }
     }
 
+    /// The checkout URL for this item, composed the one way that works.
+    ///
+    /// THE APP_USER_ID GOES IN THE PATH, substituted into the template's
+    /// `{app_user_id}`. Appending it as a query parameter instead leaves the
+    /// path segment empty, so RevenueCat mints a NEW anonymous customer for the
+    /// checkout and the purchase it completes is granted to nobody the app can
+    /// see — the user pays and stays free.
+    ///
+    /// THE PACKAGE GOES IN THE QUERY, because the path is already spoken for.
+    /// Without it the page cannot know which package it is selling.
+    static func checkoutURL(template: String, appUserId: String, packageId: String) -> URL? {
+        let path = template.replacingOccurrences(
+            of: "{app_user_id}",
+            with: appUserId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? appUserId)
+        guard var c = URLComponents(string: path) else { return nil }
+        var items = c.queryItems ?? []
+        items.removeAll { $0.name == "package_id" }
+        items.append(URLQueryItem(name: "package_id", value: packageId))
+        c.queryItems = items
+        return c.url
+    }
+
     private func openWeb() {
         let appUserId = Purchases.shared.appUserID
-        let urlString = item.web.url.replacingOccurrences(of: "{app_user_id}", with: appUserId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? appUserId)
-        guard let url = URL(string: urlString) else { return }
+        guard let url = Self.checkoutURL(template: item.web.url,
+                                         appUserId: appUserId,
+                                         packageId: item.packageId) else { return }
         Analytics.track("external_link_tap", props: ["surface": item.surface, "product": item.productId], durable: true)
         UIApplication.shared.open(url)   // Safari, the full browser — never SFSafariViewController
         onDismiss()
@@ -182,12 +215,30 @@ struct CheckoutSheet: View {
 /// Routes a purchase tap through the checkout step when the web option
 /// applies to this storefront and product; straight to Apple otherwise.
 enum CheckoutRouter {
+    /// Whether the configured web price is genuinely below the App Store price.
+    /// Shared with the harness so the capture exercises the shipping decision
+    /// rather than a copy of it. A missing `web_price_micros` is NOT cheaper:
+    /// without a number there is nothing to compare, and the surface's whole
+    /// claim is that the number is lower.
+    static func webIsCheaper(_ web: WebCheckoutConfig.Product, than applePrice: Decimal) -> Bool {
+        guard let micros = web.webPriceMicros else { return false }
+        return Decimal(micros) / 1_000_000 < applePrice
+    }
+
     @MainActor
     static func item(for pkg: Package, tierNoun: String, surface: String) -> CheckoutItem? {
         guard let cfg = OnboardingState.shared.webCheckout,
               let web = cfg.product(for: pkg.storeProduct.productIdentifier) else { return nil }
         let sp = pkg.storeProduct
-        return CheckoutItem(productId: sp.productIdentifier, tierNoun: tierNoun,
+        // WEB HAS TO BE CHEAPER, or there is no step. The whole surface argues
+        // "no in-app purchase fees" and preselects web; routing someone there
+        // to pay MORE is the one outcome it must not produce. The live config
+        // did exactly that — $399.99 web against $289.99 on the App Store —
+        // and the sheet showed it, because nothing compared the two numbers.
+        // Fails closed: a config we cannot verify as cheaper is Apple only.
+        guard webIsCheaper(web, than: sp.price) else { return nil }
+        return CheckoutItem(productId: sp.productIdentifier, packageId: pkg.identifier,
+                            tierNoun: tierNoun,
                             applePrice: sp.price, applePriceText: sp.localizedPriceString,
                             priceLocale: sp.priceFormatter?.locale ?? .current,
                             web: web, savedPct: cfg.savedPct, surface: surface)

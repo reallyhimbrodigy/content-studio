@@ -215,7 +215,12 @@ final class OnboardingState: ObservableObject {
             // first one armed from the client.
             var _wc = WebCheckoutConfig(json: obj?["web_checkout"])
             #if DEBUG
-            if _wc == nil, let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-webCheckoutJSON"),
+            // THE POSE WINS. Gated on `_wc == nil`, it silently did nothing the
+            // moment the server started sending a config — so a run posing a
+            // corrected config was actually re-testing the live one, and read
+            // as a failure of the posed case. A pose that only applies when
+            // there is nothing to override cannot test an override.
+            if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-webCheckoutJSON"),
                i + 1 < ProcessInfo.processInfo.arguments.count,
                let data = ProcessInfo.processInfo.arguments[i + 1].data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) {

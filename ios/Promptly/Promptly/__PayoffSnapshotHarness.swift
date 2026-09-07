@@ -1,5 +1,6 @@
 #if DEBUG
 import SwiftUI
+import RevenueCat
 
 /// DEBUG-only snapshot harness for the §6 payoff + paywall-copy review.
 ///
@@ -278,13 +279,19 @@ struct PayoffSnapshotHarnessView: View {
                 EditorView()
                     .task { Self.seedStoreChat(reedit: false) }
             }
-            case 54: bleed("CHECKOUT STEP — US storefront, web preselected") {
-                CheckoutSheet(item: CheckoutItem(
-                    productId: "promptly_pro_yearly", tierNoun: "Pro",
-                    applePrice: 289.99, applePriceText: "$289.99", priceLocale: Locale(identifier: "en_US"),
-                    web: WebCheckoutConfig.Product(webPrice: "$246.99", webPriceMicros: 246_990_000, currency: "USD",
-                                                   url: "https://pay.rev.cat/example/{app_user_id}"),
-                    savedPct: 15, surface: "harness"), onApple: {}, onDismiss: {})
+            case 54: bleed("CHECKOUT STEP — the real gate, not a posed sheet") {
+                // THIS CASE USED TO HARD-CODE ITS OWN WebCheckoutConfig.Product,
+                // so it proved the sheet renders and nothing about whether the
+                // sheet is ever REACHED. The two things that decide that are
+                // `WebCheckoutConfig(json:)` and `product(for:)`, and both were
+                // bypassed. Driven from the posed config and the resolved
+                // storefront instead, this case answers the question actually
+                // being asked: does a US storefront get the step, and does a
+                // non-US one get Apple only.
+                //
+                //   -webCheckoutJSON '<the /api/health.web_checkout object>'
+                //   -storefront USA | GBR | ...
+                HarnessCheckoutGate()
             }
             case 52: bleed("PAYWALL HOLD — knobs unresolved: must NOT show tiers") {
                 TwoStepPaywall(isPresented: .constant(true), reason: .manual)
@@ -1199,6 +1206,73 @@ private enum HarnessPaywallMock {
 
     static func durations(_ allowance: Int) -> [PaywallDurationOption] {
         PaywallMapping.durationOptions(products, allowance: allowance)
+    }
+}
+
+/// Renders whatever the REAL gate decides for the posed config and storefront:
+/// the checkout step when a web product applies, and an explicit Apple-only
+/// marker when it does not. The marker matters — an empty frame cannot be told
+/// apart from a render that failed, and "no step" is half the proof.
+struct HarnessCheckoutGate: View {
+    @ObservedObject private var onboarding = OnboardingState.shared
+    @ObservedObject private var storefront = StorefrontService.shared
+    @State private var resolved = false
+
+
+    /// COMPUTED, not captured in `.task`. The one-shot task runs before the
+    /// app's launch task has published `countryCode`, so it read nil and the
+    /// frame carried no link at all.
+    private var composedURL: String? {
+        guard let cfg = onboarding.webCheckout,
+              let web = cfg.product(for: "promptly_pro_yearly") else { return nil }
+        return CheckoutSheet.checkoutURL(template: web.url,
+                                         appUserId: Purchases.shared.appUserID,
+                                         packageId: "$rc_annual")?.absoluteString
+    }
+
+    var body: some View {
+        Group {
+            if !resolved {
+                Color(white: 0.07)
+            } else if let cfg = onboarding.webCheckout,
+                      let web = cfg.product(for: "promptly_pro_yearly"),
+                      CheckoutRouter.webIsCheaper(web, than: 289.99) {
+                CheckoutSheet(item: CheckoutItem(
+                    productId: "promptly_pro_yearly", packageId: "$rc_annual", tierNoun: "Pro",
+                    applePrice: 289.99, applePriceText: "$289.99",
+                    priceLocale: Locale(identifier: "en_US"),
+                    web: web, savedPct: cfg.savedPct, surface: "harness"),
+                    onApple: {}, onDismiss: {})
+            } else {
+                VStack(spacing: 10) {
+                    Text("APPLE ONLY")
+                        .font(.system(size: 30, weight: .heavy)).foregroundColor(.white)
+                    Text("storefront \(storefront.countryCode ?? "unresolved") · " +
+                         (onboarding.webCheckout == nil ? "no config"
+                          : onboarding.webCheckout?.product(for: "promptly_pro_yearly") == nil
+                            ? "not offered here" : "web not cheaper than $289.99"))
+                        .font(.system(size: 14)).foregroundColor(.white.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(white: 0.07))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let link = composedURL {
+                Text(link)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white).multilineTextAlignment(.center)
+                    .padding(8).background(Color.black.opacity(0.85))
+                    .padding(.bottom, 40)
+            }
+        }
+        .task {
+            // NO resolve() HERE ON PURPOSE: if the step still renders, the
+            // app's own launch task did the resolving. That is the assertion —
+            // `StorefrontService.resolve()` had no caller at all, so a harness
+            // that resolved for itself would have hidden the defect.
+            resolved = true
+        }
     }
 }
 
