@@ -65,6 +65,11 @@ struct ChatMessage: Identifiable {
         return ""
     }
     var jobId: String?
+    /// WHEN THE RENDER WAS DISPATCHED. Without it a message that never
+    /// received its jobId cannot be matched to the job the server DID create:
+    /// `video_jobs` carries no message or chat id, so time is the only key
+    /// available. Set the moment dispatch begins, not when the id comes back.
+    var dispatchedAt: Date?
     var jobStatus: String?
     var jobProgress: Int?
     var stepMessage: String?

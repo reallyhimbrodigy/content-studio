@@ -951,13 +951,20 @@ struct EditorView: View {
                         // both buttons sit at exactly the same y-position
                         // in the composer, which is what "centered" reads
                         // as to the eye.
-                        .frame(width: 30 * k, height: 30 * k)
+                        // 36×36 TO MATCH THE MIC AND SEND. The comment above is
+                        // right that these have to be the same size — the row is
+                        // `HStack(alignment: .bottom)`, so two controls of
+                        // different heights put their centres on different
+                        // lines however each one is aligned internally. The
+                        // right-hand pair became 36 when they were centred; this
+                        // stayed 30, which measured the "+" 1.67pt above the
+                        // pill's centre while the mic sat exactly on it.
+                        .frame(width: 36 * k, height: 36 * k)
                         .accessibilityHidden(true)
                 }
                 .accessibilityLabel("Add video")
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
                 .padding(.leading, 5 * k)
-                .padding(.bottom, 5 * k)
 
                 // §1 attach button: images ride the TEXT chat path only, so the
                 // button hides while a video is staged or a re-edit is active
@@ -1128,13 +1135,22 @@ struct EditorView: View {
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isChatStreaming)
                 .padding(.trailing, 5 * k)
-                .padding(.bottom, 5 * k)
+                // NO BOTTOM PADDING. This lifted the whole mic/send cluster off
+                // the row's centre line — measured 4.50pt high against the
+                // pill's vertical centre, which is what reads as "not centred"
+                // even though each control's own frame is centred inside itself.
+                // Centring the frames was not enough while the container that
+                // holds them was still being pushed up.
             }
             // §7 (looks-like-a-product): the Flare/Lumen model picker was removed from
             // the composer — users never pick a model. The render tier now follows
             // their PLAN silently (Pro → premium pipeline, free → standard); see
-            // ModelService.premiumPipelineFlag. Bottom padding folds into the input row.
-            .padding(.bottom, 4 * k)
+            // ModelService.premiumPipelineFlag.
+            // NO BOTTOM PADDING ON THE ROW EITHER. Any asymmetric padding here
+            // lifts everything the row contains off the pill's centre line, so
+            // the controls read as high however carefully their own frames are
+            // centred. The pill's height comes from `minHeight` below, not from
+            // padding, which is what keeps the two independent.
         }
         // ONE ROW, THE HEIGHT OF THE REFERENCE'S: ~44pt at rest on a phone,
         // 44 * k on an iPad. A MINIMUM, not a fixed height, so it still grows
@@ -3341,6 +3357,14 @@ struct EditorView: View {
                     // after a chat switch, disabling idempotency exactly when
                     // it matters most.
                     let mintedJobId = messages.first(where: { $0.id == msgId })?.jobId
+                    // Stamp the dispatch BEFORE the request goes out. If the
+                    // response never lands — the app suspends, the socket
+                    // drops — this is the only thing that can find the job the
+                    // server created anyway. See recoverLostJobIds().
+                    if let i = messages.firstIndex(where: { $0.id == msgId }),
+                       messages[i].dispatchedAt == nil {
+                        messages[i].dispatchedAt = Date()
+                    }
                     Task { @MainActor in
                         // Stagger fan-out: clip 0 dispatches immediately,
                         // clip 1 at +200ms, clip 2 at +400ms, etc. The
@@ -4317,6 +4341,61 @@ struct EditorView: View {
     /// messages persisted as failed, used on chat load to heal "Connection
     /// lost"-style poison written by older buggy builds: if Supabase says
     /// the row is actually completed, we recover the success state.
+    /// Adopt a render whose jobId never reached the client.
+    ///
+    /// THE HOLE: `reconcileInProgressJobs` can only see messages that already
+    /// carry a jobId. If the dispatch response is lost — the app suspends, the
+    /// socket drops — the server still creates the job and renders it, but the
+    /// client has no id to ask about, so that row never resolves. Not once, not
+    /// on relaunch, never. `video_jobs` carries no message or chat id, so the
+    /// dispatch timestamp is the only key available.
+    ///
+    /// DELIBERATELY CONSERVATIVE. It adopts only when exactly ONE unclaimed job
+    /// falls in the window, because adopting the wrong one shows this person
+    /// somebody else's render — worse than the stuck row it is fixing. An
+    /// ambiguous case is recorded and left alone.
+    @MainActor
+    private func recoverLostJobIds() async {
+        let now = Date()
+        let orphans: [(Int, Date)] = messages.indices.compactMap { i in
+            let m = messages[i]
+            guard m.jobId == nil, let at = m.dispatchedAt else { return nil }
+            let inFlight = m.jobStatus == nil || m.jobStatus == "processing" || m.jobStatus == "queued"
+            guard inFlight else { return nil }
+            // Give a live dispatch time to answer before assuming it was lost.
+            guard now.timeIntervalSince(at) > 20 else { return nil }
+            return (i, at)
+        }
+        guard !orphans.isEmpty else { return }
+
+        let jobs = await APIService.shared.listRecentJobs()
+        guard !jobs.isEmpty else { return }
+        var claimed = Set(messages.compactMap { $0.jobId })
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+
+        for (i, at) in orphans {
+            let candidates = jobs.filter { j in
+                guard !claimed.contains(j.id), let cs = j.created_at,
+                      let d = withFraction.date(from: cs) ?? plain.date(from: cs) else { return false }
+                let delta = d.timeIntervalSince(at)
+                return delta >= -10 && delta <= 180
+            }
+            guard candidates.count == 1, let job = candidates.first else {
+                Analytics.track("job_recovery", props: [
+                    "outcome": candidates.isEmpty ? "no_candidate" : "ambiguous",
+                    "candidates": candidates.count,
+                ], durable: true)
+                continue
+            }
+            claimed.insert(job.id)
+            messages[i].jobId = job.id
+            Analytics.track("job_recovery", props: ["outcome": "recovered"], durable: true)
+            await reconcileJobStatus(jobId: job.id)
+        }
+    }
+
     func reconcileInProgressJobs(includeFailed: Bool = false) async {
         let jobIds: [String] = messages.compactMap { msg in
             guard let jobId = msg.jobId else { return nil }
@@ -4330,6 +4409,7 @@ struct EditorView: View {
         for jobId in jobIds {
             await reconcileJobStatus(jobId: jobId)
         }
+        await recoverLostJobIds()
     }
 }
 

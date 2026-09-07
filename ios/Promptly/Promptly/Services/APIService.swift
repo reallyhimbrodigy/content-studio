@@ -936,6 +936,23 @@ class APIService {
         return singlePutPublicUrl
     }
 
+    /// The user's recent jobs, newest first. Used to recover a render whose
+    /// jobId never reached the client — the server still created it.
+    struct RecentJob: Decodable {
+        let id: String
+        let status: String?
+        let created_at: String?
+    }
+    func listRecentJobs() async -> [RecentJob] {
+        var request = await authorizedRequest("/api/video-jobs", method: "GET")
+        request.timeoutInterval = 20
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+        struct Envelope: Decodable { let jobs: [RecentJob]? ; let data: [RecentJob]? }
+        let env = try? JSONDecoder().decode(Envelope.self, from: data)
+        return env?.jobs ?? env?.data ?? []
+    }
+
     /// Foreground single-PUT for SMALL files (proxy uploads). The
     /// background path's lifecycle overhead isn't worth it for files
     /// that finish in 5-10s before the user even types their vibe.
