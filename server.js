@@ -4342,6 +4342,13 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // A vanished staged source is now RECOVERABLE (2026-09-07): the
+          // client re-materialises the video from the photo library instead of
+          // failing the pick. `upload_restage` is the only record of whether
+          // that recovery works — outcome splits restaged / no_identifier /
+          // asset_gone / no_resource / write_failed, which is the difference
+          // between "the fix works" and "the video really was gone".
+          'upload_restage',
           // ── THE 250 CLIENT COHORT (2026-09-06) ────────────────────────────
           // Six events build 250 already emits and this set did not know. Same
           // shape as the 244 cohort below: dropped silently by the SQL mirror,
