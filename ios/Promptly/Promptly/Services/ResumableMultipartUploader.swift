@@ -331,6 +331,7 @@ final class ResumableMultipartUploader: NSObject {
         if let t = UploadDiagnostics.lastTransportError {
             mpFailProps["transport_domain"] = t.domain
             mpFailProps["transport_code"] = t.code
+            mpFailProps["transport_desc"] = t.desc
             UploadDiagnostics.lastTransportError = nil
         }
         Analytics.track("upload_failed", props: mpFailProps, durable: true)
@@ -401,10 +402,17 @@ final class ResumableMultipartUploader: NSObject {
             // captures these 5xx invisibly; this puts the SAME signal where our
             // reads run. FIRST retry per part only — bounded, never a spam loop.
             if n == 1 {
+                let ns = error as NSError?
                 Analytics.track("upload_http_error", props: [
                     "path": "multipart",
                     "status": http?.statusCode ?? 0,
                     "part": ctx.partNumber,
+                    // 99% of these carry status 0 — no HTTP response at all.
+                    // Without the NSError there is nothing to tell cancelled,
+                    // timed-out and connection-lost apart.
+                    "err_domain": ns?.domain ?? "",
+                    "err_code": ns?.code ?? 0,
+                    "err_desc": String((ns?.localizedDescription ?? "").prefix(120)),
                     "conn": ReachabilityMonitor.currentConnectionType,
                 ])
             }
@@ -481,7 +489,8 @@ private final class MultipartUploadDelegate: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
             let ns = error as NSError
-            UploadDiagnostics.lastTransportError = (ns.domain, ns.code)
+            UploadDiagnostics.lastTransportError = (ns.domain, ns.code,
+                                                    String(ns.localizedDescription.prefix(120)))
         }
         let taskId = task.taskIdentifier
         let response = task.response

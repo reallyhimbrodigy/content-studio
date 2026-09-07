@@ -1793,6 +1793,50 @@ struct EditorView: View {
         }
     }
 
+    /// Re-materialise a staged source that has gone missing mid-upload.
+    ///
+    /// A vanished staged copy used to be terminal: `uploadSourceNeverWorse`
+    /// found nothing readable, fired `upload_source_missing` and threw. But the
+    /// bytes were never really gone — the user's video is still in their photo
+    /// library, and we simply had no way back to it. With the asset identifier
+    /// kept on the pending item there is: fetch the asset, write a fresh
+    /// durable copy, and let the upload proceed.
+    ///
+    /// Returns nil when the video genuinely cannot be recovered (identifier
+    /// missing, asset deleted from the library, no resource) — then failing is
+    /// honest rather than a guess.
+    @MainActor
+    private static func restageSource(for pending: PendingVideo) async -> URL? {
+        guard let localId = pending.assetLocalIdentifier else {
+            Analytics.track("upload_restage", props: ["outcome": "no_identifier"], durable: true)
+            return nil
+        }
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [localId], options: nil)
+        guard let asset = assets.firstObject else {
+            Analytics.track("upload_restage", props: ["outcome": "asset_gone"], durable: true)
+            return nil
+        }
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let resource = resources.first(where: { $0.type == .video })
+                ?? resources.first(where: { $0.type == .fullSizeVideo })
+                ?? resources.first else {
+            Analytics.track("upload_restage", props: ["outcome": "no_resource"], durable: true)
+            return nil
+        }
+        let dest = UploadStorage.newFile()
+        do {
+            try await PHAssetResourceIO.write(resource: resource, to: dest) { _ in }
+            Analytics.track("upload_restage", props: ["outcome": "restaged"], durable: true)
+            return dest
+        } catch {
+            Analytics.track("upload_restage", props: [
+                "outcome": "write_failed",
+                "err_desc": String(error.localizedDescription.prefix(120)),
+            ], durable: true)
+            return nil
+        }
+    }
+
     /// Original per-video upload-pipeline starter, factored out of
     /// handlePickedVideos so the precheck can gate it without
     /// duplicating logic.
@@ -1804,6 +1848,9 @@ struct EditorView: View {
 
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
+        // Carry the library identity, not just the staged path — see
+        // PendingVideo.assetLocalIdentifier.
+        pending.assetLocalIdentifier = video.asset?.localIdentifier
         pending.isLoading = false
         // Open this pick's outcome record. Without it, a pick that never
         // becomes a job row leaves no trace anywhere — which is exactly how
@@ -2098,7 +2145,8 @@ struct EditorView: View {
                                 },
                                 onProgress: { p in
                                     Task { @MainActor in pending.uploadProgress = p }
-                                }
+                                },
+                                restageSource: { await Self.restageSource(for: pending) }
                             )
                             try? FileManager.default.removeItem(at: materializedSourceUrl)
                             await MainActor.run {
@@ -2163,7 +2211,8 @@ struct EditorView: View {
                             },
                             onProgress: { p in
                                 Task { @MainActor in pending.uploadProgress = 0.5 + p * 0.5 }
-                            }
+                            },
+                            restageSource: { await Self.restageSource(for: pending) }
                         )
                         try? FileManager.default.removeItem(at: durableSource)
                         await MainActor.run {
@@ -2272,6 +2321,7 @@ struct EditorView: View {
                     if let t = UploadDiagnostics.lastTransportError {
                         failProps["transport_domain"] = t.domain
                         failProps["transport_code"] = t.code
+                        failProps["transport_desc"] = t.desc
                         UploadDiagnostics.lastTransportError = nil
                     }
                     Analytics.track("upload_failed", props: failProps, durable: true)

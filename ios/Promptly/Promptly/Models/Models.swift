@@ -201,6 +201,12 @@ class PendingVideo: Identifiable, ObservableObject {
     /// red error overlay; otherwise the tile is clean.
     @Published var uploadFailed = false
     var fileName: String = "video.mp4"
+    /// THE USER'S VIDEO IS STILL IN THEIR LIBRARY. Keeping the Photos
+    /// identifier means a staged copy that goes missing mid-upload can be
+    /// re-materialised instead of failing the pick outright — without it the
+    /// app holds a path and no way to find the video that path came from,
+    /// which is why a vanished staged file was terminal.
+    var assetLocalIdentifier: String?
     var uploadTask: Task<Void, Never>?
     /// Instrumentation (224): where the source came from ("local" | "icloud") and
     /// its duration in seconds, stamped on the job so the iCloud reliability fix

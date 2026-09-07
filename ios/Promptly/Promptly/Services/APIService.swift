@@ -869,7 +869,12 @@ class APIService {
         messageId: String,
         chatId: String?,
         onPublicUrlResolved: @escaping (String) -> Void,
-        onProgress: @escaping (Double) -> Void
+        onProgress: @escaping (Double) -> Void,
+        /// Called when the staged source has gone missing. Returns a freshly
+        /// materialised copy, or nil when the video is genuinely unrecoverable.
+        /// Optional so callers that have no library asset behind them (a temp
+        /// export, a proxy) keep the old fail-fast behaviour.
+        restageSource: (() async -> URL?)? = nil
     ) async throws -> String {
         let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
 
@@ -906,14 +911,26 @@ class APIService {
         // re-upload a path that is gone. No source, no retry — fail honestly so
         // the caller shows its recovery instead of the fence catching a task
         // that should never have been created.
-        guard FileManager.default.isReadableFile(atPath: fileUrl.path) else {
-            Analytics.track("upload_source_missing", props: ["path": "never-worse-fallthrough"], durable: true)
-            throw APIError.uploadFailed
+        // A MISSING SOURCE IS NOT THE END OF THE ROAD. The staged copy can
+        // vanish between the first attempt and the retry, but the user's video
+        // is still in their library — so ask for a fresh copy before giving up.
+        // Only when that comes back nil is failing honest.
+        var sourceUrl = fileUrl
+        if !FileManager.default.isReadableFile(atPath: sourceUrl.path) {
+            Analytics.track("upload_source_missing", props: [
+                "path": "never-worse-fallthrough",
+                "restage": restageSource != nil,
+            ], durable: true)
+            guard let restaged = await restageSource?(),
+                  FileManager.default.isReadableFile(atPath: restaged.path) else {
+                throw APIError.uploadFailed
+            }
+            sourceUrl = restaged
         }
 
         onPublicUrlResolved(singlePutPublicUrl)
         try await uploadFileToS3(
-            url: singlePutUrl, fileUrl: fileUrl, mimeType: "video/mp4",
+            url: singlePutUrl, fileUrl: sourceUrl, mimeType: "video/mp4",
             messageId: messageId, chatId: chatId, publicUrl: singlePutPublicUrl,
             onProgress: onProgress)
         return singlePutPublicUrl

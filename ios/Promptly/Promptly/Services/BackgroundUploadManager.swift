@@ -34,7 +34,12 @@ import UIKit
 /// at every resume(throwing:) site in both upload managers; read+cleared at
 /// emit. Racy by design: a telemetry tag, one active upload per message.
 enum UploadDiagnostics {
-    nonisolated(unsafe) static var lastTransportError: (domain: String, code: Int)?
+    /// DESC IS THE HALF THAT NAMES THE CAUSE. domain+code alone still reads as
+    /// a number in a dashboard; `desc` is what separates "cancelled" from
+    /// "timed out" from "network connection lost" without a lookup table, and
+    /// 3,703 status-0 events across 103 installs could not be told apart
+    /// without it.
+    nonisolated(unsafe) static var lastTransportError: (domain: String, code: Int, desc: String)?
 }
 
 final class BackgroundUploadManager: NSObject {
@@ -210,18 +215,25 @@ final class BackgroundUploadManager: NSObject {
             // mirror it first (the HTTPClientError class Sentry captures
             // invisibly — same signal, queryable side).
             if !success {
+                let ns = error as NSError?
                 Analytics.track("upload_http_error", props: [
                     "path": "bg-single",
                     "status": httpStatus,
+                    // status 0 means NO HTTP RESPONSE — the interesting case,
+                    // and the one the status alone cannot describe.
+                    "err_domain": ns?.domain ?? "",
+                    "err_code": ns?.code ?? 0,
+                    "err_desc": String((ns?.localizedDescription ?? "").prefix(120)),
                     "conn": ReachabilityMonitor.currentConnectionType,
                 ])
             }
             if let error {
                 let ns = error as NSError
-                UploadDiagnostics.lastTransportError = (ns.domain, ns.code)
+                UploadDiagnostics.lastTransportError = (ns.domain, ns.code,
+                                                        String(ns.localizedDescription.prefix(120)))
                 cont.resume(throwing: error)
             } else if !success {
-                UploadDiagnostics.lastTransportError = ("HTTP", httpStatus)
+                UploadDiagnostics.lastTransportError = ("HTTP", httpStatus, "HTTP \(httpStatus)")
                 cont.resume(throwing: APIError.uploadFailed)
             } else if let ctx {
                 cont.resume(returning: ctx.publicUrl)

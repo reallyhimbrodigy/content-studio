@@ -35,10 +35,19 @@ if "isReadableFile(atPath: manifest.sourcePath)" in sched and "MultipartChunker.
 api = open("Promptly/Services/APIService.swift").read()
 nw = api[api.index("func uploadSourceNeverWorse"):]
 nw = nw[:nw.index("func uploadFileToS3Foreground")]
-if "isReadableFile(atPath: fileUrl.path)" not in nw:
+if "isReadableFile(atPath: sourceUrl.path)" not in nw:
     fails.append("the never-worse fall-through re-uploads without checking the source exists")
+# The check may now RECOVER instead of throwing, but it must still gate: a
+# re-stage that returns nil, or no re-stage at all, still has to fail.
+if "guard let restaged = await restageSource?()" not in nw:
+    fails.append("the missing-source guard no longer requires a usable re-staged file")
+if "restageSource: (() async -> URL?)?" not in nw:
+    fails.append("uploadSourceNeverWorse cannot be handed a fresh source")
+# And the fresh copy must be what is uploaded — not the path already proven gone.
+if "fileUrl: sourceUrl" not in nw:
+    fails.append("the upload still sends the original path after re-staging")
 else:
-    if nw.index("isReadableFile(atPath: fileUrl.path)") > nw.index("try await uploadFileToS3("):
+    if nw.index("isReadableFile(atPath: sourceUrl.path)") > nw.index("try await uploadFileToS3("):
         fails.append("the never-worse guard sits after the fall-through upload — it guards nothing")
 
 # Every background upload-task creation stays fenced (the crash fence itself).
@@ -55,6 +64,15 @@ if fails:
 print("upload-retry-gate: PASS — a vanished source is terminal (give up + clear), "
       "never rescheduled; both retry paths guard before re-uploading; task sites fenced")
 PYEOF
+# THE HEREDOC'S EXIT CODE WAS BEING DISCARDED. `sys.exit(1)` inside it printed
+# "upload-retry-gate: FAIL" and the script carried on to `exit 0`, so every
+# assertion in that block was advisory — it could fail loudly and still pass.
+# Found by RED-proving four new assertions and watching all four stay green.
+PY_RC=$?
+if [ "$PY_RC" -ne 0 ]; then
+  echo "upload-retry-gate: FAIL — source-guard assertions"
+  exit 1
+fi
 
 # ── UNS 2-6 (ruled 2026-09-06) ───────────────────────────────────────────────
 # 316 users in 14 days, split `picked` 246 / `uploaded` 133. These assert the
