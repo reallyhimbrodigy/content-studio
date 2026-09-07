@@ -1,125 +1,408 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy Policy — Promptly</title>
-  <meta name="description" content="How Promptly collects, uses, and protects your data. iOS-only AI video editor — no AI training on user content, no ad tracking, no selling data." />
-  <link rel="canonical" href="https://usepromptly.app/privacy.html" />
-  <meta name="robots" content="index, follow" />
-  <link rel="stylesheet" href="/css/landing.css" />
-    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-<link rel="stylesheet" href="/css/theme.css" />
-  <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
-</head>
-<body>
-  <div class="content-page">
-    <header class="content-page__header">
-      <a href="/" class="content-page__logo">
-        <img src="assets/promptly-mark-white.png" alt="Promptly logo" />
-      </a>
-      <div>
-        <h1>Privacy Policy</h1>
-        <p>Last updated: June 2, 2026</p>
-      </div>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — Promptly</title>
+    <meta
+      name="description"
+      content="What Promptly collects, who processes it, how long it is kept, and how to delete it."
+    />
+    <link rel="canonical" href="https://usepromptly.app/privacy" />
+    <link rel="icon" href="/assets/promptly-mark-white.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#0B0B10" />
+    <meta property="og:title" content="Privacy Policy — Promptly" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://usepromptly.app/privacy" />
+    <meta property="og:image" content="https://usepromptly.app/assets/promptly-logo-white-on-black.png" />
 
-    <section>
-      <h2>1. What This Policy Covers</h2>
-      <p>This policy describes how Promptly ("we," "us") collects, uses, and protects information when you use the Promptly iOS app and the usepromptly.app website. Promptly is operated by an individual developer; questions can be sent to support@usepromptly.app.</p>
-    </section>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="/css/legal.css" />
+  </head>
 
-    <section>
-      <h2>2. Information We Collect</h2>
-      <p><strong>Account information:</strong> When you sign up, we collect your email address. If you use Sign in with Apple or Google, we receive the email and (optionally) name they share. Authentication is handled by Supabase.</p>
-      <p><strong>Profile information:</strong> Display name and profile photo if you add them yourself in the Account tab.</p>
-      <p><strong>Video content:</strong> When you upload a clip for editing, we store the original video and the rendered output in our secure cloud storage so you can re-play or re-edit later. Only you can access your own uploads and renders.</p>
-      <p><strong>Voice input:</strong> When you use the microphone to dictate a vibe prompt, on-device speech recognition (Apple Speech framework) transcribes the audio. The audio itself is not transmitted to our servers — only the resulting text.</p>
-      <p><strong>Chat messages:</strong> The text prompts you send to the in-app assistant are sent to our server and to our AI provider (Google Gemini) to generate a reply. Conversations are saved to your account so you can reload chats across sessions.</p>
-      <p><strong>Usage data:</strong> We log when you dispatch a render or send a chat message so we can enforce the daily limits on the free tier (3 renders/day, 50 chats/day). We do not track which other apps you use or any cross-app behavior.</p>
-      <p><strong>Subscription data:</strong> Purchase transactions and entitlement status are handled by Apple's StoreKit and RevenueCat. We receive your subscription status (Pro vs. free, trial end date) but not your payment details.</p>
-      <p><strong>Diagnostic data:</strong> If the app crashes or hits an error, we collect anonymized crash reports through Sentry to fix bugs. No video content or personal messages are included in crash reports.</p>
-      <p><strong>Push tokens:</strong> If you allow notifications, we store an Apple Push Notification Service token so we can notify you when a render is finished.</p>
-    </section>
+  <body>
+    <div class="wrap">
+      <header class="masthead">
+        <a class="brand" href="/">
+          <img src="/assets/promptly-mark-white.png" alt="" width="30" height="30" />
+          <span>Promptly</span>
+        </a>
+        <nav>
+          <a href="/terms">Terms</a>
+          <a href="/privacy" aria-current="page">Privacy</a>
+          <a href="/help">Help</a>
+        </nav>
+      </header>
 
-    <section>
-      <h2>3. How We Use Your Information</h2>
-      <ul>
-        <li>Process your video uploads and generate edited renders</li>
-        <li>Save your chat history and Library so they persist across sessions and devices</li>
-        <li>Enforce daily limits on the free tier and verify Pro entitlement</li>
-        <li>Send transactional push notifications (render complete, etc.)</li>
-        <li>Fix crashes and bugs via aggregated, anonymized diagnostic data</li>
-        <li>Respond when you email support</li>
-      </ul>
-    </section>
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated 6 September 2026</p>
+      <p class="standfirst">
+        What Promptly collects, who else touches it, how long it is kept, and how to get rid of it.
+      </p>
 
-    <section>
-      <h2>4. What We Do Not Do</h2>
-      <ul>
-        <li>We do not sell your data to advertisers or anyone else.</li>
-        <li>We do not use your video content to train AI models.</li>
-        <li>We do not track you across other apps or websites.</li>
-        <li>We do not show third-party ads inside the app.</li>
-      </ul>
-    </section>
+      <nav class="toc" aria-label="Contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#short">1. The short version</a></li>
+          <li><a href="#anonymous">2. Your anonymous account</a></li>
+          <li><a href="#collect">3. What we collect</a></li>
+          <li><a href="#video">4. What happens to your video</a></li>
+          <li><a href="#processors">5. Who processes it</a></li>
+          <li><a href="#analytics">6. Analytics and diagnostics</a></li>
+          <li><a href="#replay">7. Session replay</a></li>
+          <li><a href="#payments">8. Payments</a></li>
+          <li><a href="#retention">9. How long we keep it</a></li>
+          <li><a href="#deletion">10. Deleting your data</a></li>
+          <li><a href="#rights">11. Your rights</a></li>
+          <li><a href="#children">12. Children</a></li>
+          <li><a href="#changes">13. Changes</a></li>
+          <li><a href="#contact">14. Contact</a></li>
+        </ol>
+      </nav>
 
-    <section>
-      <h2>5. Third Parties We Use</h2>
-      <ul>
-        <li><strong>Supabase</strong> — authentication, database, and storage</li>
-        <li><strong>Amazon Web Services (S3 + CloudFront)</strong> — video storage and delivery</li>
-        <li><strong>Modal</strong> — GPU compute for the render pipeline</li>
-        <li><strong>Google Gemini</strong> — AI model for chat replies and edit planning</li>
-        <li><strong>RevenueCat</strong> — subscription management on top of Apple's StoreKit</li>
-        <li><strong>Sentry</strong> — anonymized crash and error reporting</li>
-        <li><strong>Apple Push Notification Service</strong> — push delivery</li>
-      </ul>
-      <p>Each is bound by their own privacy and data-processing terms and is contractually limited to processing data on Promptly's behalf for the purposes above.</p>
-    </section>
+      <section id="short">
+        <h2><span class="n">1.</span>The short version</h2>
+        <p>
+          You can use Promptly without giving us your name or your email. Your footage is uploaded so it
+          can be edited, and it is sent to the transcription and AI services that do the editing. We do
+          not sell your data, we do not use your videos to train AI models, and we do not run advertising
+          on you. You can delete everything from the account screen.
+        </p>
+      </section>
 
-    <section>
-      <h2>6. Data Retention</h2>
-      <p>We retain your account, uploaded videos, finished renders, and chat history for as long as your account is active. Delete an edit from the Library tab and it's removed from storage. Delete your account by emailing support@usepromptly.app and we'll permanently erase your data within 30 days.</p>
-    </section>
+      <section id="anonymous">
+        <h2><span class="n">2.</span>Your anonymous account</h2>
+        <p>
+          The first time you open Promptly, the app creates an anonymous account for you. It has no name
+          and no email — just an identifier held on your device and on our server, so your videos and
+          your plan have somewhere to live.
+        </p>
+        <p>
+          If you later add an email address, it is linked to that same account. You do not get a second
+          account, and adding an email does not retroactively attach your identity to anything you made
+          before — it attaches it to the account those things were always on.
+        </p>
+      </section>
 
-    <section>
-      <h2>7. Children</h2>
-      <p>Promptly is not directed at children under 13. We do not knowingly collect data from anyone under 13. If you believe we have, email support@usepromptly.app and we'll delete the data.</p>
-    </section>
+      <section id="collect">
+        <h2><span class="n">3.</span>What we collect</h2>
+        <div class="table-scroll">
+          <table>
+            <caption>Everything Promptly records about you</caption>
+            <thead>
+              <tr>
+                <th scope="col">Data</th>
+                <th scope="col">Why</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Account identifier</td>
+                <td>To keep your videos, chats and plan together. Created anonymously at first launch.</td>
+              </tr>
+              <tr>
+                <td>Email address</td>
+                <td>
+                  Only if you add one — to sign you in on another device and to restore a purchase.
+                </td>
+              </tr>
+              <tr>
+                <td>Device identifier</td>
+                <td>
+                  A random id generated by the app. Used to stop one device creating unlimited accounts
+                  and to stop referral rewards being farmed. It is not Apple's advertising identifier and
+                  we do not use it for advertising.
+                </td>
+              </tr>
+              <tr>
+                <td>Video uploads</td>
+                <td>The footage you choose. Uploaded so it can be edited.</td>
+              </tr>
+              <tr>
+                <td>Transcripts</td>
+                <td>Generated from your footage's audio. Used to place cuts and captions.</td>
+              </tr>
+              <tr>
+                <td>Prompts and chat</td>
+                <td>What you type to describe an edit, and the replies.</td>
+              </tr>
+              <tr>
+                <td>Rendered videos</td>
+                <td>The finished result, kept in your library so you can watch and share it.</td>
+              </tr>
+              <tr>
+                <td>Usage events</td>
+                <td>
+                  Which screens you open and which actions you take, so we can see where the app fails
+                  people.
+                </td>
+              </tr>
+              <tr>
+                <td>Crash and error diagnostics</td>
+                <td>Stack traces and device model when something breaks.</td>
+              </tr>
+              <tr>
+                <td>Subscription state</td>
+                <td>Which plan you hold and whether it is active. We never see your card details.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          We do not collect your contacts, your photo library beyond the clips you pick, your precise
+          location, or your health data.
+        </p>
+      </section>
 
-    <section>
-      <h2>8. Your Rights</h2>
-      <p>You can access, update, or delete your personal data at any time:</p>
-      <ul>
-        <li>Edit your name, email, or photo in the Account tab inside the app.</li>
-        <li>Delete a finished edit (and its underlying source video) from the Library tab.</li>
-        <li>Email support@usepromptly.app to request a copy of your data or to delete your account entirely.</li>
-      </ul>
-      <p>If you live in a region with specific privacy rights (EEA, UK, California, etc.), you have all rights granted by your local law — same email address, no questions asked.</p>
-    </section>
+      <section id="video">
+        <h2><span class="n">4.</span>What happens to your video</h2>
+        <p>When you render a video, it takes this path:</p>
+        <ul>
+          <li>the clip is uploaded from your device to our storage on Amazon S3;</li>
+          <li>its audio is transcribed by <strong>Deepgram</strong>;</li>
+          <li>
+            the transcript — <em>not</em> the video — is sent to <strong>Anthropic</strong>, which decides
+            the cuts and writes the captions;
+          </li>
+          <li>
+            the render itself runs on <strong>Modal</strong>, which has access to the clip while it is
+            working on it;
+          </li>
+          <li>the finished video is stored and served back to you over Amazon CloudFront.</li>
+        </ul>
+        <p>
+          Your footage is not published anywhere by us, is not shown to other users, and is not used to
+          train any model. Links to a finished render are unguessable but not secret — anyone you send one
+          to can open it.
+        </p>
+      </section>
 
-    <section>
-      <h2>9. Changes to This Policy</h2>
-      <p>If we make material changes we'll update the "Last updated" date at the top and, where appropriate, notify you in the app or by email before the changes take effect.</p>
-    </section>
+      <section id="processors">
+        <h2><span class="n">5.</span>Who processes it</h2>
+        <p>
+          These are the companies that handle Promptly data on our behalf. Each is bound by its own
+          agreement with us and may only use the data to provide its service.
+        </p>
+        <div class="table-scroll">
+          <table>
+            <caption>Sub-processors</caption>
+            <thead>
+              <tr>
+                <th scope="col">Processor</th>
+                <th scope="col">What it handles</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Supabase</td>
+                <td>Accounts, sign-in, and the database holding your jobs, chats and profile.</td>
+              </tr>
+              <tr>
+                <td>Amazon Web Services</td>
+                <td>Storage of uploads and renders (S3) and delivery of finished videos (CloudFront).</td>
+              </tr>
+              <tr>
+                <td>Modal</td>
+                <td>The GPU workers that render your video.</td>
+              </tr>
+              <tr>
+                <td>Deepgram</td>
+                <td>Speech-to-text on your footage's audio.</td>
+              </tr>
+              <tr>
+                <td>Anthropic</td>
+                <td>The AI that reads the transcript, plans the edit and writes captions and chat replies.</td>
+              </tr>
+              <tr>
+                <td>RevenueCat</td>
+                <td>Subscription state, and web checkout.</td>
+              </tr>
+              <tr>
+                <td>Stripe</td>
+                <td>Card processing for web purchases, through RevenueCat.</td>
+              </tr>
+              <tr>
+                <td>Apple</td>
+                <td>In-app purchases and their receipts.</td>
+              </tr>
+              <tr>
+                <td>PostHog</td>
+                <td>Product analytics and session replay.</td>
+              </tr>
+              <tr>
+                <td>Sentry</td>
+                <td>Crash and error diagnostics.</td>
+              </tr>
+              <tr>
+                <td>Render</td>
+                <td>Hosting for our API and this website.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          These providers operate in the United States and elsewhere, so using Promptly involves
+          transferring your data internationally.
+        </p>
+      </section>
 
-    <section>
-      <h2>10. Contact</h2>
-      <p>Questions, complaints, or data requests: <a href="mailto:support@usepromptly.app">support@usepromptly.app</a></p>
-    </section>
-    
-    <div class="content-page__footer">
-      <a href="/">← Back to Home</a>
+      <section id="analytics">
+        <h2><span class="n">6.</span>Analytics and diagnostics</h2>
+        <p>
+          We record which screens you open and which actions you take — a render started, a paywall shown,
+          an upload that failed — against your account identifier. We use it to find where the app is
+          losing or failing people. Automatic screen-view capture is switched off; the app sends only the
+          specific events it means to send.
+        </p>
+        <p>
+          Crash reports include a stack trace, the app version and the device model. They do not include
+          your footage.
+        </p>
+      </section>
+
+      <section id="replay">
+        <h2><span class="n">7.</span>Session replay</h2>
+        <div class="callout">
+          <p>
+            <strong>A small random sample of app sessions is recorded as a replay</strong> — currently
+            <strong>5%</strong> — so we can watch where the interface goes wrong. Text you type is masked,
+            and images and video frames are masked, so a replay shows the shape of the screen rather than
+            its content.
+          </p>
+        </div>
+        <p>
+          Whether a given session is recorded is decided at random on your device when the session starts.
+          If you would rather never be recorded, write to us and we will exclude your account.
+        </p>
+      </section>
+
+      <section id="payments">
+        <h2><span class="n">8.</span>Payments</h2>
+        <p>
+          We never see or store your card number. Purchases made in the app are handled by Apple; web
+          purchases are handled by RevenueCat and processed by Stripe. What reaches us is the fact of a
+          purchase, which plan it is for, and whether it is still active.
+        </p>
+      </section>
+
+      <section id="retention">
+        <h2><span class="n">9.</span>How long we keep it</h2>
+        <div class="table-scroll">
+          <table>
+            <caption>Retention</caption>
+            <thead>
+              <tr>
+                <th scope="col">Data</th>
+                <th scope="col">Kept</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Uploads and renders</td>
+                <td>Until you delete the video, or delete your account.</td>
+              </tr>
+              <tr>
+                <td>Chats and transcripts</td>
+                <td>Until you delete your account.</td>
+              </tr>
+              <tr>
+                <td>Account record</td>
+                <td>Until you delete your account.</td>
+              </tr>
+              <tr>
+                <td>Usage events</td>
+                <td>Until you delete your account, and in PostHog under its own retention period.</td>
+              </tr>
+              <tr>
+                <td>Crash diagnostics</td>
+                <td>Under Sentry's retention period. Not deleted by account deletion.</td>
+              </tr>
+              <tr>
+                <td>Purchase records</td>
+                <td>
+                  Kept by Apple, RevenueCat and Stripe as long as their own tax and accounting rules
+                  require.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="deletion">
+        <h2><span class="n">10.</span>Deleting your data</h2>
+        <p>
+          <strong>Delete account</strong> on the account screen removes, in one go:
+        </p>
+        <ul>
+          <li>every video job on your account, and the stored files behind them;</li>
+          <li>your chats;</li>
+          <li>your usage events;</li>
+          <li>your profile;</li>
+          <li>the sign-in account itself.</li>
+        </ul>
+        <p>
+          It is immediate and cannot be undone. Save anything you want to keep first. Crash diagnostics
+          already sent to Sentry, and purchase records held by Apple, RevenueCat or Stripe, are outside
+          that deletion — write to us if you need those removed too and we will pass the request on.
+        </p>
+        <p>
+          Deleting your account does not cancel a subscription. Cancel it first, as described in the
+          <a href="/terms#cancel">Terms</a>.
+        </p>
+      </section>
+
+      <section id="rights">
+        <h2><span class="n">11.</span>Your rights</h2>
+        <p>
+          Depending on where you live, you may have the right to see the data we hold about you, correct
+          it, have it deleted, or object to some of the ways we use it. Write to
+          <a href="mailto:support@usepromptly.app">support@usepromptly.app</a> and we will act on it.
+        </p>
+        <p>
+          If you use Promptly anonymously and have never added an email, we cannot verify that an account
+          is yours, so we may be unable to act on a request about it from outside the app. Deletion from
+          inside the app always works.
+        </p>
+        <p>We do not sell personal information, and we do not share it for cross-context advertising.</p>
+      </section>
+
+      <section id="children">
+        <h2><span class="n">12.</span>Children</h2>
+        <p>
+          Promptly is not for children under 13, and we do not knowingly collect their data. If you
+          believe a child has used Promptly, write to us and we will delete the account.
+        </p>
+      </section>
+
+      <section id="changes">
+        <h2><span class="n">13.</span>Changes</h2>
+        <p>
+          We will update this page when what we collect or who processes it changes, and update the date
+          at the top. Material changes are announced in the app before they take effect.
+        </p>
+      </section>
+
+      <section id="contact">
+        <h2><span class="n">14.</span>Contact</h2>
+        <p>
+          Privacy questions, data requests, or a request to be excluded from session replay:
+          <a href="mailto:support@usepromptly.app">support@usepromptly.app</a>.
+        </p>
+      </section>
+
+      <footer>
+        <a href="/">Promptly</a>
+        <a href="/terms">Terms</a>
+        <a href="/help">Help</a>
+        <span class="spacer">Last updated 6 September 2026</span>
+      </footer>
     </div>
-  </div>
-  <script type="module">
-    initTheme();
-  </script>
-<script type="module" src="./footer.js"></script>
-</body>
+  </body>
 </html>
-
-
-
