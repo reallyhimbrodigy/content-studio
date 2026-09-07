@@ -392,6 +392,79 @@ class AuthService {
         print("[auth] signInWithIdToken \(provider) success")
     }
 
+    // MARK: - Linking a provider to the live anonymous session
+
+    /// True when the session we hold belongs to an anonymous user — the case
+    /// where signing in must LINK rather than sign in.
+    var hasAnonymousSession: Bool {
+        isAuthenticated && (currentUser?.isAnonymous ?? false)
+    }
+
+    enum OAuthLinkError: LocalizedError {
+        /// GOTRUE_SECURITY_MANUAL_LINKING_ENABLED is off on the project. Not a
+        /// client bug and not recoverable in the client: every link call 404s
+        /// until it is turned on.
+        case linkingDisabled
+        /// This provider identity already belongs to another account. The only
+        /// correct move is a plain sign-in to THAT account — see the caller.
+        case identityAlreadyExists
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .linkingDisabled: return "Linking is turned off for this project."
+            case .identityAlreadyExists: return "That account already exists."
+            case .failed(let m): return m
+            }
+        }
+    }
+
+    /// The provider URL that links `provider` to the CURRENT session.
+    ///
+    /// WHY THIS EXISTS. Both providers previously went to a SIGN-IN endpoint —
+    /// Apple to `token?grant_type=id_token`, Google to `authorize?provider=` —
+    /// and both of those MINT A NEW USER. With an anonymous session already
+    /// holding the person's videos and chats, that is the whole defect: the
+    /// sign-in "worked", against an empty account, and their work stayed on a
+    /// user nothing could reach again.
+    ///
+    /// `skip_http_redirect` is what makes this usable from an app: without it
+    /// GoTrue 302s to the provider, and ASWebAuthenticationSession cannot carry
+    /// the Authorization header that identifies the session being linked. With
+    /// it we get the URL back as JSON and hand THAT to the browser, with the
+    /// linking context already baked into its state parameter.
+    func oauthLinkURL(provider: String, redirectTo: String) async throws -> URL {
+        guard let token = await getValidToken() else {
+            throw OAuthLinkError.failed("No session to link to")
+        }
+        var comps = URLComponents(string: "\(supabaseUrl)/auth/v1/user/identities/authorize")!
+        comps.queryItems = [
+            URLQueryItem(name: "provider", value: provider),
+            URLQueryItem(name: "redirect_to", value: redirectTo),
+            URLQueryItem(name: "skip_http_redirect", value: "true"),
+        ]
+        var request = URLRequest(url: comps.url!)
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let body = String(data: data, encoding: .utf8) ?? ""
+        guard status == 200 else {
+            print("[auth] link authorize \(provider) HTTP \(status): \(body.prefix(300))")
+            if body.contains("manual_linking_disabled") { throw OAuthLinkError.linkingDisabled }
+            if body.contains("identity_already_exists") { throw OAuthLinkError.identityAlreadyExists }
+            throw OAuthLinkError.failed(body)
+        }
+        struct LinkAuthorize: Decodable { let url: String }
+        guard let decoded = try? JSONDecoder().decode(LinkAuthorize.self, from: data),
+              let url = URL(string: decoded.url) else {
+            throw OAuthLinkError.failed("Link URL missing from response")
+        }
+        print("[auth] link authorize \(provider) -> \(url.host ?? "?")")
+        return url
+    }
+
     /// Adopt an OAuth session built from a redirect-URL fragment
     /// (Google / GitHub / etc. via Supabase implicit OAuth). The caller
     /// extracts `access_token` + `refresh_token` from the URL fragment;

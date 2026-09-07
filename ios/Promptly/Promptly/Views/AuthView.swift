@@ -288,6 +288,23 @@ struct AuthView: View {
             .signInWithAppleButtonStyle(.white)
             .frame(height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // WITH AN ANONYMOUS SESSION, APPLE MUST LINK, NOT SIGN IN.
+            // The native sheet hands back an id_token, and the only thing to do
+            // with an id_token is `token?grant_type=id_token` — which mints a
+            // NEW user and leaves this person's videos on an account nothing
+            // can reach. Apple's own button stays (it is the button Apple
+            // requires); the tap goes to the link flow instead, which is the
+            // same web sheet Apple shows for Sign in with Apple on the web.
+            // Not anonymous: the native path below is untouched.
+            .overlay {
+                if AuthService.shared.hasAnonymousSession {
+                    Button { startOAuth(provider: "apple") } label: {
+                        Color.clear.contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Sign in with Apple"))
+                }
+            }
 
             Button(action: signInWithGoogle) {
                 HStack(spacing: 10) {
@@ -455,6 +472,15 @@ struct AuthView: View {
             print("[apple] identityToken length=\(tokenString.count)")
             let nonce = appleRawNonce
 
+            // BELT AND BRACES. The overlay above should mean this handler
+            // never runs with an anonymous session, but if it ever does, minting
+            // a second user is the one outcome worth spending a branch to stop.
+            if AuthService.shared.hasAnonymousSession {
+                print("[apple] anonymous session present — linking instead of signing in")
+                startOAuth(provider: "apple")
+                return
+            }
+
             isLoading = true
             Task {
                 do {
@@ -522,6 +548,87 @@ struct AuthView: View {
 
     // MARK: - Google Sign In
 
+    /// One entry point for both providers, because the decision is the same
+    /// for both: an anonymous session must be LINKED to, never signed away
+    /// from. `identity_already_exists` is the case where this person already
+    /// has an account under that provider — then the only correct move is a
+    /// plain sign-in to it, and the anonymous session's work is genuinely not
+    /// mergeable here (the account it would merge into already exists).
+    private func startOAuth(provider: String) {
+        let scheme = "app.usepromptly.ios"
+        let redirectUrl = "\(scheme)://auth-callback"
+        isLoading = true
+
+        func run(_ url: URL, linking: Bool) {
+            oauthCoordinator.start(url: url, callbackScheme: scheme) { result in
+                Task { @MainActor in
+                    switch result {
+                    case .success(let callbackUrl):
+                        do {
+                            try await Self.completeOAuth(callbackUrl: callbackUrl)
+                            Analytics.track(linking ? "identity_linked" : "signup_complete",
+                                            props: ["method": provider])
+                        } catch {
+                            // The provider bounced us back saying this identity
+                            // is already an account. Not an error to show — it
+                            // is the second half of the flow.
+                            if linking, "\(error)".contains("identity_already_exists") {
+                                Analytics.track("identity_link_existing_account",
+                                                props: ["method": provider])
+                                if let plain = Self.plainSignInURL(provider: provider,
+                                                                   redirectTo: redirectUrl) {
+                                    run(plain, linking: false)
+                                    return
+                                }
+                            }
+                            errorMessage = error.localizedDescription
+                        }
+                    case .failure(let error):
+                        if (error as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                    isLoading = false
+                }
+            }
+        }
+
+        Task { @MainActor in
+            if AuthService.shared.hasAnonymousSession {
+                do {
+                    let url = try await AuthService.shared.oauthLinkURL(provider: provider,
+                                                                        redirectTo: redirectUrl)
+                    run(url, linking: true)
+                    return
+                } catch AuthService.OAuthLinkError.identityAlreadyExists {
+                    // Fall through to plain sign-in below.
+                } catch {
+                    // Linking turned off, or the call failed. Signing in still
+                    // beats a dead button, and the log names which it was.
+                    print("[auth] link unavailable for \(provider): \(error.localizedDescription)")
+                }
+            }
+            guard let plain = Self.plainSignInURL(provider: provider, redirectTo: redirectUrl) else {
+                errorMessage = "Couldn't build sign-in URL"
+                isLoading = false
+                return
+            }
+            run(plain, linking: false)
+        }
+    }
+
+    /// The ordinary sign-in URL — mints a user when none matches, which is
+    /// correct only when there is no anonymous session to preserve.
+    private static func plainSignInURL(provider: String, redirectTo: String) -> URL? {
+        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
+        var comps = URLComponents(string: "\(supabaseUrl)/auth/v1/authorize")!
+        comps.queryItems = [
+            URLQueryItem(name: "provider", value: provider),
+            URLQueryItem(name: "redirect_to", value: redirectTo),
+        ]
+        return comps.url
+    }
+
     private func signInWithGoogle() {
         // ASWebAuthenticationSession is iOS's purpose-built OAuth runner.
         // It handles the auth UI in-app, intercepts the redirect by
@@ -529,40 +636,13 @@ struct AuthView: View {
         // to us via completion — NO "Open in Promptly" system prompt,
         // no UIApplication.shared.open. This is the pattern Spotify,
         // Discord, every production iOS app uses.
-        let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
-        let scheme = "app.usepromptly.ios"
-        let redirectUrl = "\(scheme)://auth-callback"
-        let urlString = "\(supabaseUrl)/auth/v1/authorize?provider=google&redirect_to=\(redirectUrl)"
-        guard let url = URL(string: urlString) else {
-            errorMessage = "Couldn't build sign-in URL"
-            return
-        }
-
-        isLoading = true
-        oauthCoordinator.start(url: url, callbackScheme: scheme) { result in
-            Task { @MainActor in
-                switch result {
-                case .success(let callbackUrl):
-                    do {
-                        try await Self.completeGoogleSignIn(callbackUrl: callbackUrl)
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
-                case .failure(let error):
-                    // User cancellation is silent; everything else surfaces.
-                    if (error as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue {
-                        errorMessage = error.localizedDescription
-                    }
-                }
-                isLoading = false
-            }
-        }
+        startOAuth(provider: "google")
     }
 
     /// Parse `access_token` + `refresh_token` out of the callback URL
     /// fragment (Supabase implicit OAuth returns them after `#`) and
     /// adopt the session.
-    private static func completeGoogleSignIn(callbackUrl: URL) async throws {
+    private static func completeOAuth(callbackUrl: URL) async throws {
         // Supabase puts tokens in the URL FRAGMENT, not the query.
         // URLComponents.fragment is a raw string we have to parse
         // ourselves — it has the same `key=value&...` shape as a query.
