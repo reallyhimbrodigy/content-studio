@@ -91,6 +91,26 @@ grep -q "func allow(" Services/AuthGate.swift || { echo "  AuthGate.allow is gon
 grep -rq "authGate.isPresenting" --include="*.swift" . || { echo "  AuthGate is never presented"; FAIL=1; }
 grep -rq "authGate.takePending()" --include="*.swift" . || { echo "  pending intent is never resumed"; FAIL=1; }
 
+# ── THE LINK FALLBACK MUST MATCH A CASE, NOT A SENTENCE ──────────────────────
+# GoTrue returns error_code=identity_already_exists in ONE parameter and a prose
+# error_description ("Identity is already linked to another user") in another.
+# The fallback matched the code against the description, so it never fired: a
+# user with an existing Google identity saw the raw provider message instead of
+# being signed in — the exact case the fallback exists for.
+AV=Views/AuthView.swift
+grep -q 'dict\["error_code"\]' "$AV" || {
+  echo "  the OAuth callback no longer reads error_code"; FAIL=1; }
+grep -q 'throw AuthService.OAuthLinkError.identityAlreadyExists' "$AV" || {
+  echo "  an already-linked identity is no longer raised as a typed case"; FAIL=1; }
+grep -q 'case AuthService.OAuthLinkError.identityAlreadyExists = error' "$AV" || {
+  echo "  the link fallback matches on a string again, not the case"; FAIL=1; }
+# CODE ONLY. The first version of this grepped the whole file, and the comment
+# above the branch — which quotes GoTrue's message — satisfied it on its own.
+# An assertion a comment can pass is not an assertion.
+AV_CODE=$(grep -v '^[[:space:]]*//' "$AV")
+grep -q 'desc.lowercased().contains("already linked")' <<< "$AV_CODE" || {
+  echo "  the prose fallback for the same condition is gone"; FAIL=1; }
+
 if [ "$FAIL" -ne 0 ]; then echo "auth-seam-gate: FAIL"; exit 1; fi
 echo "auth-seam-gate: PASS — purchase is the only seam; send and export do not raise"
 exit 0

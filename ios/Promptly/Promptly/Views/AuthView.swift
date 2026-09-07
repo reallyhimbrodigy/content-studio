@@ -572,7 +572,8 @@ struct AuthView: View {
                             // The provider bounced us back saying this identity
                             // is already an account. Not an error to show — it
                             // is the second half of the flow.
-                            if linking, "\(error)".contains("identity_already_exists") {
+                            if linking, error is AuthService.OAuthLinkError,
+                               case AuthService.OAuthLinkError.identityAlreadyExists = error {
                                 Analytics.track("identity_link_existing_account",
                                                 props: ["method": provider])
                                 if let plain = Self.plainSignInURL(provider: provider,
@@ -657,6 +658,20 @@ struct AuthView: View {
         // the whole OAuth path (EXC_BREAKPOINT class). Keep the first value.
         let dict = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
 
+        // THE CODE LIVES IN ITS OWN PARAMETER. GoTrue returns
+        // `error_code=identity_already_exists` alongside a PROSE
+        // `error_description` ("Identity is already linked to another user").
+        // The link fallback matched the code against the description, so it
+        // never fired and the user saw the raw provider message instead of
+        // being signed in — which is the whole case the fallback exists for.
+        // Typed, so the caller matches on a case rather than on a string that
+        // is free to be reworded.
+        let code = (dict["error_code"] ?? "").lowercased()
+        let desc = (dict["error_description"] ?? dict["error"] ?? "")
+            .replacingOccurrences(of: "+", with: " ")
+        if code == "identity_already_exists" || desc.lowercased().contains("already linked") {
+            throw AuthService.OAuthLinkError.identityAlreadyExists
+        }
         if let providerError = dict["error_description"] ?? dict["error"] {
             throw AuthError.signInFailed(providerError)
         }
