@@ -3920,10 +3920,61 @@ const server = http.createServer((req, res) => {
           if (!raw) return null;
           const j = JSON.parse(raw);
           if (!j || typeof j !== 'object' || !j.products || typeof j.products !== 'object') return null;
+
+          // SUBSCRIPTIONS ONLY. A top-up bought on the web grants NOTHING
+          // today: RevenueCat emits VIRTUAL_CURRENCY_TRANSACTION for a credit
+          // purchase and that event reaches the webhook's UNHANDLED branch —
+          // logged, acked 200, no write, no balance touched. Taking money for
+          // credits that never arrive is worse than not selling them, so the
+          // allowlist is structural rather than a promise that the blob will
+          // only ever contain subscriptions.
+          const SUBSCRIPTIONS = new Set([
+            'promptly_pro_weekly', 'promptly_pro_monthly', 'promptly_pro_yearly',
+          ]);
+          const products = {};
+          const dropped = [];
+          for (const [id, p] of Object.entries(j.products)) {
+            if (!SUBSCRIPTIONS.has(id)) { dropped.push(id); continue; }
+            products[id] = p;
+          }
+          if (dropped.length) {
+            console.warn('[web_checkout] DROPPED non-subscription product(s) — a web '
+              + 'top-up grants no credits (VIRTUAL_CURRENCY_TRANSACTION is unhandled): '
+              + dropped.join(', '));
+          }
+          if (!Object.keys(products).length) return null;
+
+          // THE SAVINGS CLAIM IS DERIVED, NOT ASSERTED. saved_pct was a
+          // hardcoded 15 that rendered whatever the prices actually were — so
+          // a web price EQUAL TO or HIGHER than Apple's still advertised
+          // "save 15%". That is a false claim about money, and it survives
+          // exactly as long as nobody compares the two numbers.
+          //
+          // Computed per product from the App Store price the app charges, and
+          // only when the web price is genuinely lower. Equal prices yield 0
+          // and the client shows no badge.
+          const APPLE_MICROS = {
+            promptly_pro_weekly: 12990000,
+            promptly_pro_monthly: 39990000,
+            promptly_pro_yearly: 399990000,
+          };
+          let best = 0;
+          for (const [id, p] of Object.entries(products)) {
+            const web = Number(p && p.web_price_micros);
+            const apple = APPLE_MICROS[id];
+            if (!Number.isFinite(web) || web <= 0 || !apple) continue;
+            const pct = Math.round(((apple - web) / apple) * 100);
+            p.saved_pct = pct > 0 ? pct : 0;      // per product, for the client
+            if (pct > best) best = pct;
+          }
+          if (!best) {
+            console.warn('[web_checkout] no savings claim: no web price is below its '
+              + 'App Store price. Badge suppressed rather than asserted.');
+          }
           return {
             storefronts: Array.isArray(j.storefronts) && j.storefronts.length ? j.storefronts : ['USA'],
-            saved_pct: Number.isFinite(Number(j.saved_pct)) ? Number(j.saved_pct) : 15,
-            products: j.products,
+            saved_pct: best,
+            products,
           };
         } catch (_) { return null; }
       })(),
