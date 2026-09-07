@@ -4342,6 +4342,12 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // Upload STAGE timings (2026-09-07). One row per upload carrying
+          // t_staged / t_first_byte / t_last_byte / t_ack / t_dispatch against
+          // a single t0. Dropped, the only thing left is a total — and a total
+          // cannot say whether the time went on staging a copy nobody needed or
+          // on the transfer, which are opposite fixes.
+          'upload_timing',
           // A render whose jobId never reached the client is now RECOVERED
           // from the dispatch timestamp (2026-09-07). `job_recovery` is the
           // only record of whether that works — outcome splits recovered /
