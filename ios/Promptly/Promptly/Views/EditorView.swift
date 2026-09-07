@@ -1256,6 +1256,7 @@ struct EditorView: View {
                     .font(.system(size: 13 * k, weight: .medium))
                     .foregroundColor(.white.opacity(0.88))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 6 * k)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()

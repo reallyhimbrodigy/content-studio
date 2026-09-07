@@ -1479,6 +1479,7 @@ struct VideoActionRow: View {
                     .font(.system(size: 11 * k, weight: .medium))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
         .buttonStyle(.plain)
@@ -1514,6 +1515,7 @@ struct VideoActionRow: View {
                     .font(.system(size: 11 * k, weight: .medium))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .contentTransition(.identity)
             }
         }

@@ -65,7 +65,7 @@ ENTRY_POINTS = [
     # V1 (`OnboardingFlow`) and `SecondPaywallView` were DELETED 2026-09-04 with
     # the retired funnel. Leaving them here makes the gate print a "not found"
     # warning on every run, which is how a real drift warning gets ignored.
-    "FirstLaunchPaywallView", "PaywallView", "OfferRevealView",
+    "FirstLaunchPaywallView", "PaywallView",
     "TrialWallView", "OnboardingV2Flow",
     # The top-up screen sells three consumables and hosts the upgrade hero — it
     # asks for money as directly as any paywall. It was outside this set because

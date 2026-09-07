@@ -691,6 +691,7 @@ struct AccountView: View {
                         .font(.system(size: 15 * k))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 switch trailing {
                 case .chevron: chevron

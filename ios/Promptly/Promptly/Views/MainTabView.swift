@@ -292,6 +292,7 @@ private struct UpdateBanner: View {
                     .font(.system(size: 12 * k))
                     .foregroundColor(Color(.secondaryLabel))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             Spacer(minLength: 4 * k)
             Button(action: onUpdate) {
@@ -350,6 +351,7 @@ private struct ReadyVideoBanner: View {
                         .font(.system(size: 15 * k, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
                     Text(subtitle)
                         .font(.system(size: 12.5 * k))

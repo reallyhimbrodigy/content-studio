@@ -835,6 +835,7 @@ struct PaywallLayout: View {
                             .cType(13, .semibold)
                             .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     } else {
                         Text(option.rate)
                             .cType(15, .bold)
