@@ -33,8 +33,14 @@ final class StorefrontService: ObservableObject {
 /// What the server says about paying on the web: dark unless it parses.
 struct WebCheckoutConfig: Equatable {
     struct Product: Equatable {
-        let webPrice: String          // display string from the web offering, e.g. "$246.99"
+        let webPrice: String          // display string from the web offering, e.g. "$289.99"
         let webPriceMicros: Int?      // for arithmetic; nil → no savings math, badge omitted
+        /// The web offering's FIRST-PERIOD price, when it has one. A first-time
+        /// buyer is not choosing between two standard prices; they are choosing
+        /// between two intros. Absent → this package has no web intro, and the
+        /// comparison falls back to standard against standard.
+        let webIntroPrice: String?
+        let webIntroPriceMicros: Int?
         let currency: String?
         let url: String               // "{app_user_id}" is substituted at tap time
     }
@@ -49,7 +55,12 @@ struct WebCheckoutConfig: Equatable {
             guard let d = v as? [String: Any], let price = d["web_price"] as? String, let url = d["url"] as? String,
                   !price.isEmpty, !url.isEmpty else { continue }
             let micros = (d["web_price_micros"] as? Int) ?? (d["web_price_micros"] as? Double).map { Int($0) }
-            map[id] = Product(webPrice: price, webPriceMicros: micros, currency: d["currency"] as? String, url: url)
+            let intro = (d["web_intro_price"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let introMicros = (d["web_intro_price_micros"] as? Int)
+                ?? (d["web_intro_price_micros"] as? Double).map { Int($0) }
+            map[id] = Product(webPrice: price, webPriceMicros: micros,
+                              webIntroPrice: intro, webIntroPriceMicros: introMicros,
+                              currency: d["currency"] as? String, url: url)
         }
         guard !map.isEmpty else { return nil }
         storefronts = (o["storefronts"] as? [String])?.map { $0.uppercased() } ?? ["USA"]
@@ -57,12 +68,18 @@ struct WebCheckoutConfig: Equatable {
         products = map
     }
 
-    /// The web product for `productId` on the CURRENT storefront, or nil.
+    /// The web product for a PACKAGE id on the CURRENT storefront, or nil.
+    ///
+    /// KEYED BY PACKAGE, NOT PRODUCT. The offering's keys are `$rc_annual`,
+    /// `$rc_monthly`, `max_yearly` and so on — never `promptly_pro_yearly`.
+    /// Looked up by product identifier this returns nil for every real entry,
+    /// and the feature goes dark with nothing in the logs to say why.
+    ///
     /// nil means: Apple only, exactly as before this feature existed.
     /// Main-actor: it reads StorefrontService, and every caller is a view.
     @MainActor
-    func product(for productId: String) -> Product? {
+    func product(forPackage packageId: String) -> Product? {
         guard let sf = StorefrontService.shared.countryCode, storefronts.contains(sf) else { return nil }
-        return products[productId]
+        return products[packageId]
     }
 }

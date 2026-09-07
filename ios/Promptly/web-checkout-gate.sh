@@ -53,20 +53,63 @@ grep -q "let packageId: String" "$CS" || {
 grep -q "packageId: pkg.identifier" "$CS" || {
   echo "  CheckoutRouter does not take the package id from the package"; FAIL=1; }
 
-# 4. CHEAPER, OR APPLE ONLY. Fails closed on a missing number.
-ROUTER=$(awk '/^enum CheckoutRouter/,0' "$CS")
-grep -q "guard webIsCheaper(web, than: sp.price) else { return nil }" <<< "$ROUTER" || {
-  echo "  the router no longer requires the web price to be below the App Store price"; FAIL=1; }
-CHEAP=$(awk '/static func webIsCheaper/,/^    }$/' "$CS")
-grep -q "guard let micros = web.webPriceMicros else { return false }" <<< "$CHEAP" || {
-  echo "  webIsCheaper no longer fails closed when there is no price to compare"; FAIL=1; }
-grep -q "< applePrice" <<< "$CHEAP" || {
-  echo "  webIsCheaper is not a strict comparison against the App Store price"; FAIL=1; }
+# 4. CHEAPER BY ENOUGH, OR APPLE ONLY. Fails closed on a missing number.
+CHEAP=$(awk '/static func savingIsWorthClaiming/,/^    }$/' "$CS")
+grep -q "guard applePrice > 0, webPrice < applePrice else { return false }" <<< "$CHEAP" || {
+  echo "  savingIsWorthClaiming no longer fails closed on a price it cannot compare"; FAIL=1; }
+grep -q ">= minimumClaimablePct" <<< "$CHEAP" || {
+  echo "  the saving is no longer measured against the claim floor"; FAIL=1; }
 
 # 5. NO BARE DOMAIN in the copy. The link goes wherever the config points.
 BODY=$(grep -v '^\s*//' "$CS")
 grep -qE '"[^"]*promptly\.com' <<< "$BODY" && {
   echo "  the checkout copy names promptly.com — not a domain this product owns"; FAIL=1; }
+
+# 6. KEYED BY PACKAGE. The offering's keys are $rc_annual / max_yearly, never
+#    promptly_pro_*. Looked up by product id every real entry misses and the
+#    feature goes dark with nothing in the logs.
+grep -q "func product(forPackage packageId: String)" "$SF" || {
+  echo "  the web offering is no longer looked up by package id"; FAIL=1; }
+grep -q "cfg.product(forPackage: pkg.identifier)" "$CS" || {
+  echo "  the router does not look the package up by its package id"; FAIL=1; }
+grep -qE "product\(forPackage: [a-z]*\.?storeProduct" "$CS" && {
+  echo "  the router is looking up a PRODUCT id again"; FAIL=1; }
+
+# 7. INTRO AGAINST INTRO, OR BASE AGAINST BASE. Never one of each.
+ROUTER2=$(awk '/^enum CheckoutRouter/,0' "$CS")
+grep -q "let useIntro = appleIntro != nil && web.webIntroPriceMicros != nil" <<< "$ROUTER2" || {
+  echo "  intro pricing no longer requires BOTH sides to have one"; FAIL=1; }
+grep -q "isEligibleForIntro(sp)" <<< "$ROUTER2" || {
+  echo "  the Apple intro is not gated on this customer's eligibility"; FAIL=1; }
+
+# 8. THE FLOOR. A true saving too small to claim is still not a claim.
+grep -q "static let minimumClaimablePct = 5" "$CS" || {
+  echo "  the 5% claim floor is gone"; FAIL=1; }
+grep -q "guard savingIsWorthClaiming(applePrice: applyPrice, webPrice: webValue) else { return nil }" <<< "$ROUTER2" || {
+  echo "  the router no longer applies the claim floor"; FAIL=1; }
+
+# 9. EVERY FIGURE DERIVED. The percentage comes from the two quotes, never from
+#    a configured saved_pct — the configured one read 15% over a HIGHER price,
+#    then 0%, because nothing tied it to the numbers above it.
+grep -q "var savedPct: Int {" "$CS" || {
+  echo "  savedPct is no longer derived on the item"; FAIL=1; }
+grep -qE "cfg\.savedPct|savedPct: cfg\." "$CS" && {
+  echo "  the sheet is reading the CONFIGURED saved_pct again"; FAIL=1; }
+grep -q "var appleFee: Decimal { max(applePrice - webPrice, 0) }" "$CS" || {
+  echo "  the Apple fee is no longer derived from the two quotes"; FAIL=1; }
+
+# 10. THE FEE LINE. Struck through with $0.00 beside it on web; live on Apple.
+FEE=$(awk '/private var feeLine: some View/,/^    }$/' "$CS")
+grep -q "strikethrough(true" <<< "$FEE" || {
+  echo "  the web fee line no longer strikes the Apple amount through"; FAIL=1; }
+grep -q "Text(money(0))" <<< "$FEE" || {
+  echo "  the web fee line no longer shows \$0.00 beside it"; FAIL=1; }
+grep -q "Apple service fees" <<< "$FEE" || {
+  echo "  the fee line lost its neutral label"; FAIL=1; }
+
+# 11. THE CTA names the tier AND the duration being bought.
+grep -q 'Text("Get \\(item.tierNoun) · \\(item.durationNoun)")' "$CS" || {
+  echo "  the CTA no longer names the tier and duration"; FAIL=1; }
 
 if [ "$FAIL" -ne 0 ]; then
   echo "web-checkout-gate: FAIL"

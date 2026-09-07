@@ -1218,13 +1218,42 @@ struct HarnessCheckoutGate: View {
     @ObservedObject private var storefront = StorefrontService.shared
     @State private var resolved = false
 
+    /// StoreKit is not available here, so the App Store side is posed:
+    ///   -poseApplePrice 342.99   the price StoreKit would report
+    ///   -poseIntro               compare first-period prices on both sides
+    /// Everything else — the web figures, the storefront gate, the floor, the
+    /// arithmetic on the sheet — is the shipping code.
+    private var posedApple: Decimal {
+        let a = ProcessInfo.processInfo.arguments
+        if let i = a.firstIndex(of: "-poseApplePrice"), i + 1 < a.count,
+           let d = Decimal(string: a[i + 1]) { return d }
+        return 289.99
+    }
+    private var posedIntro: Bool { ProcessInfo.processInfo.arguments.contains("-poseIntro") }
+    /// BOTH SIDES OR NEITHER, same rule the router applies. Without this the
+    /// harness happily compared the web's intro against Apple's STANDARD price
+    /// and rendered "Save 50%" — the manufactured discount the pairing rule
+    /// exists to prevent, produced by the very capture meant to prove it does
+    /// not happen. `-poseIntro` therefore requires an explicit Apple intro.
+    private var introPosedOnBothSides: Bool {
+        posedIntro && ProcessInfo.processInfo.arguments.contains("-poseApplePrice")
+    }
 
-    /// COMPUTED, not captured in `.task`. The one-shot task runs before the
-    /// app's launch task has published `countryCode`, so it read nil and the
-    /// frame carried no link at all.
+    private var webValue: Decimal? {
+        guard let cfg = onboarding.webCheckout,
+              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
+        let micros = posedIntro ? web.webIntroPriceMicros : web.webPriceMicros
+        return micros.map { Decimal($0) / 1_000_000 }
+    }
+    private var webText: String? {
+        guard let cfg = onboarding.webCheckout,
+              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
+        return posedIntro ? web.webIntroPrice : web.webPrice
+    }
+
     private var composedURL: String? {
         guard let cfg = onboarding.webCheckout,
-              let web = cfg.product(for: "promptly_pro_yearly") else { return nil }
+              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
         return CheckoutSheet.checkoutURL(template: web.url,
                                          appUserId: Purchases.shared.appUserID,
                                          packageId: "$rc_annual")?.absoluteString
@@ -1235,23 +1264,25 @@ struct HarnessCheckoutGate: View {
             if !resolved {
                 Color(white: 0.07)
             } else if let cfg = onboarding.webCheckout,
-                      let web = cfg.product(for: "promptly_pro_yearly"),
-                      CheckoutRouter.webIsCheaper(web, than: 289.99) {
+                      let web = cfg.product(forPackage: "$rc_annual"),
+                      let value = webValue, let text = webText,
+                      !posedIntro || introPosedOnBothSides,
+                      CheckoutRouter.savingIsWorthClaiming(applePrice: posedApple, webPrice: value) {
                 CheckoutSheet(item: CheckoutItem(
-                    productId: "promptly_pro_yearly", packageId: "$rc_annual", tierNoun: "Pro",
-                    applePrice: 289.99, applePriceText: "$289.99",
+                    productId: "promptly_pro_yearly", packageId: "$rc_annual",
+                    tierNoun: "Pro", durationNoun: "Year",
+                    applePrice: posedApple, applePriceText: money(posedApple),
+                    webPrice: value, webPriceText: text, isIntro: posedIntro,
                     priceLocale: Locale(identifier: "en_US"),
-                    web: web, savedPct: cfg.savedPct, surface: "harness"),
+                    web: web, surface: "harness"),
                     onApple: {}, onDismiss: {})
             } else {
                 VStack(spacing: 10) {
                     Text("APPLE ONLY")
                         .font(.system(size: 30, weight: .heavy)).foregroundColor(.white)
-                    Text("storefront \(storefront.countryCode ?? "unresolved") · " +
-                         (onboarding.webCheckout == nil ? "no config"
-                          : onboarding.webCheckout?.product(for: "promptly_pro_yearly") == nil
-                            ? "not offered here" : "web not cheaper than $289.99"))
+                    Text(reason)
                         .font(.system(size: 14)).foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center).padding(.horizontal, 24)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(white: 0.07))
@@ -1267,12 +1298,33 @@ struct HarnessCheckoutGate: View {
             }
         }
         .task {
-            // NO resolve() HERE ON PURPOSE: if the step still renders, the
-            // app's own launch task did the resolving. That is the assertion —
-            // `StorefrontService.resolve()` had no caller at all, so a harness
-            // that resolved for itself would have hidden the defect.
+            // NO resolve() HERE ON PURPOSE: if the step renders, the app's own
+            // launch task did the resolving. `StorefrontService.resolve()` had
+            // no caller at all, so a harness that resolved for itself would
+            // have hidden that.
             resolved = true
         }
+    }
+
+    private func money(_ d: Decimal) -> String {
+        let f = NumberFormatter(); f.numberStyle = .currency
+        f.locale = Locale(identifier: "en_US")
+        return f.string(from: d as NSDecimalNumber) ?? "\(d)"
+    }
+
+    private var reason: String {
+        let sf = storefront.countryCode ?? "unresolved"
+        guard let cfg = onboarding.webCheckout else { return "storefront \(sf) · no config" }
+        guard cfg.product(forPackage: "$rc_annual") != nil else {
+            return "storefront \(sf) · not offered here"
+        }
+        guard let v = webValue else {
+            return "storefront \(sf) · no \(posedIntro ? "intro " : "")price to compare"
+        }
+        guard !posedIntro || introPosedOnBothSides else {
+            return "storefront \(sf) · web intro posed with no Apple intro — unpaired"
+        }
+        return "storefront \(sf) · \(money(v)) vs \(money(posedApple)) is under the 5% floor"
     }
 }
 
