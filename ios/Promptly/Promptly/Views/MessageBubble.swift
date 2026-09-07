@@ -381,12 +381,23 @@ struct MessageBubble: View {
                     finalUrl: message.renderedVideoUrl,
                     posterUrl: message.thumbnailUrl,
                     onTapFullscreen: {
+                        // THE FULLSCREEN TAP RE-SIGNS TOO. Rendered URLs are
+                        // CloudFront-signed for SEVEN DAYS, so a video opened
+                        // from a chat older than that plays a dead link. The
+                        // play button below already passes a refresh; this
+                        // entry point did not, and used the STORED url — so the
+                        // same video worked from one control and failed from
+                        // the other, depending only on how the user reached it.
                         VideoPlayerPresenter.present(
                             urlString: message.renderedVideoUrl ?? message.hlsManifestUrl ?? "",
                             hlsManifestUrl: message.hlsManifestUrl,
                             thumbnailUrl: message.thumbnailUrl,
                             jobId: message.jobId,
-                            title: message.originalVibe
+                            title: message.originalVibe,
+                            onRefreshNeeded: {
+                                guard let jid = message.jobId else { return nil }
+                                return await APIService.shared.refreshUrls(jobId: jid)?.videoUrl
+                            }
                         )
                     }
                 )
