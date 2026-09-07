@@ -4348,6 +4348,13 @@ const server = http.createServer((req, res) => {
           // cannot say whether the time went on staging a copy nobody needed or
           // on the transfer, which are opposite fixes.
           'upload_timing',
+          // The presign now REFUSES to fire without a session (2026-09-07).
+          // 86% of upload failures on 1.3.27 came from installs with no user_id
+          // at all — the client sent an unauthenticated presign and the server
+          // returned 401 with nobody to attribute it to. This is the count of
+          // times that refusal fires, which is the only way to tell "anonymous
+          // sign-in is covering it" from "it is still happening, silently".
+          'upload_no_session',
           // A render whose jobId never reached the client is now RECOVERED
           // from the dispatch timestamp (2026-09-07). `job_recovery` is the
           // only record of whether that works — outcome splits recovered /
@@ -7336,7 +7343,7 @@ const server = http.createServer((req, res) => {
         }
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at, client_message_id')
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
           .limit(100);
@@ -7345,6 +7352,10 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, {
           jobs: (data || []).map((job) => ({
             id: job.id,
+            // The client matches a lost dispatch against this. Selected but not
+            // projected, it would read as null on every row — the same
+            // wrong-field shape that made result_url look like 100% failure.
+            client_message_id: job.client_message_id || null,
             status: job.status,
             progress: Number(job.progress || 0),
             current_step: job.current_step || job.status,
