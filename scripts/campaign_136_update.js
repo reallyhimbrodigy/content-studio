@@ -44,13 +44,28 @@ async function main() {
 
   // THE COHORT. Newest token per user, and only where that newest token is the
   // target build — "their latest build is exactly 1.3.6", not "they ever ran it".
-  const { data: rows, error } = await supabaseAdmin
-    .from('device_tokens')
-    .select('user_id, token, app_version, last_seen_at, platform')
-    .eq('platform', 'ios')
-    .not('token', 'is', null)
-    .order('last_seen_at', { ascending: false, nullsFirst: false });
-  if (error) { console.error('cohort query failed:', error.message); process.exit(1); }
+  // PAGINATED, because PostgREST caps a response at 1000 rows and says nothing
+  // about it. Unpaginated this returned exactly 1000 of 3763 token rows, and
+  // because the order is last_seen_at DESC the truncation landed almost
+  // entirely on THIS cohort — 1.3.6 users are the stalest people in the table,
+  // so only 62 of their 1115 tokens survived the page. The dry run read 61
+  // recipients instead of 1102, and a live run would have notified 5% of the
+  // cohort, printed COMPLETE, and written those 61 into the ledger so the
+  // re-run skipped them too.
+  const rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from('device_tokens')
+      .select('user_id, token, app_version, last_seen_at, platform')
+      .eq('platform', 'ios')
+      .not('token', 'is', null)
+      .order('last_seen_at', { ascending: false, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('cohort query failed:', error.message); process.exit(1); }
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
 
   const newestByUser = new Map();
   for (const r of rows || []) {
@@ -58,6 +73,26 @@ async function main() {
     if (!newestByUser.has(r.user_id)) newestByUser.set(r.user_id, r);
   }
   let cohort = [...newestByUser.values()].filter((r) => r.app_version === TARGET_VERSION);
+
+  // THE COHORT IS ASSERTED, NOT TRUSTED. This is the general fix: a read that
+  // silently returns less than the whole set must never present itself as a
+  // complete campaign. Checked BEFORE the ledger filter and before --limit, so
+  // a partial re-run does not trip it and a truncated read cannot hide behind
+  // one. Override with --expect N when the cohort has legitimately moved.
+  const EXPECTED = (() => {
+    const i = process.argv.indexOf('--expect');
+    return i > 0 ? Number(process.argv[i + 1]) : 1102;
+  })();
+  if (cohort.length !== EXPECTED) {
+    console.error(`\nCOHORT MISMATCH — refusing to run.`);
+    console.error(`  expected : ${EXPECTED}`);
+    console.error(`  measured : ${cohort.length}`);
+    console.error(`  token rows scanned: ${rows.length}`);
+    console.error(`\nA short read looks exactly like a small cohort. Confirm which this is`);
+    console.error(`before sending; pass --expect ${cohort.length} once you know it is real.`);
+    process.exit(1);
+  }
+  console.log(`cohort assert   : ${cohort.length} == ${EXPECTED} (from ${rows.length} token rows)`);
 
   // Already attempted?
   const { data: done } = await supabaseAdmin
