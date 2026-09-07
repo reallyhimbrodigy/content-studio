@@ -3637,7 +3637,12 @@ struct EditorView: View {
             // running on this path, so mirror client upload progress into the bar
             // until the bytes land and SSE owns it. Monotonic, capped at 30%.
             Task { @MainActor in
-                while !video.sourceUploadCompleted && !Task.isCancelled {
+                // A FAILED UPLOAD IS TERMINAL FOR THIS LOOP. Exiting only on
+                // `sourceUploadCompleted` meant a failed upload — which sets
+                // `uploadFailed` and never sets `sourceUploadCompleted` — span
+                // this at 200ms forever, mirroring a progress value that could
+                // no longer move. The row sat there looking dispatched.
+                while !video.sourceUploadCompleted && !video.uploadFailed && !Task.isCancelled {
                     if let i = messages.firstIndex(where: { $0.id == msgId }) {
                         let mapped = Int(video.uploadProgress * 30)
                         if mapped > (messages[i].jobProgress ?? 0) { messages[i].jobProgress = mapped }

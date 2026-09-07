@@ -242,6 +242,19 @@ final class JobDispatchCoordinator {
             if pendingVideo.sourceUploadCompleted && pendingVideo.proxyUploadFinished {
                 return .uploadComplete
             }
+            // AND A FAILED UPLOAD IS TERMINAL HERE TOO. Waiting on a flag that
+            // can no longer be set leaves the message dispatched-looking until
+            // the stall timer eventually fires — minutes of a row that is never
+            // going to become a render. Fail it now, with the reason the upload
+            // gave, so the surface can offer a retry instead of a spinner.
+            if pendingVideo.uploadFailed {
+                // STALLED, not a hard failure: the retry re-enters the upload,
+                // and a missing staged source now re-materialises from the
+                // photo library rather than failing again. Exhausting the
+                // backoff still ends in a hard failure — this just stops the
+                // wait sitting on a flag that can no longer be set.
+                return .uploadStalled(reason: "upload_failed")
+            }
 
             let now = pendingVideo.uploadProgress + pendingVideo.proxyUploadProgress
             if now > lastProgressSnapshot + 0.001 {
