@@ -94,5 +94,70 @@ if [ "$LAYOUT_FAIL" -ne 0 ]; then
 fi
 echo "paywall-ink-gate: layout — close button pinned below the inset, tier column not compressible."
 
+# ── 4. THE TIER THEY HOLD IS NOT FOR SALE ────────────────────────────────────
+# Static half of the "Your plan" proof. The render half is the six-pose matrix
+# captured with -poseTier; this makes the wiring itself unremovable.
+HELD_FAIL=0
+
+# Derived from the entitlement, never from the offering. Reading the held tier
+# off the products on sale is how a paywall marks the wrong row.
+awk '/private var heldTierAllowance/,/^    }$/' "$PW" | grep -q "subscription.isMax" || {
+  echo "  heldTierAllowance no longer reads subscription.isMax"; HELD_FAIL=1; }
+awk '/private var heldTierAllowance/,/^    }$/' "$PW" | grep -q "subscription.effectiveIsPro" || {
+  echo "  heldTierAllowance no longer reads subscription.effectiveIsPro"; HELD_FAIL=1; }
+awk '/private var heldTierAllowance/,/^    }$/' "$PW" | grep -qE "offering|availablePackages" && {
+  echo "  heldTierAllowance reads the OFFERING — it must come from the entitlement"; HELD_FAIL=1; }
+
+# The row tests the column it is drawn in. Testing the `tierAllowance` @State
+# instead evaluates against nil on the first pass, and the mark never appears.
+ROW=$(awk '/private func durationRow/,/^    }$/' "$PW")
+grep -q "let shownAllowance = activeTier?.allowance" <<< "$ROW" || {
+  echo "  durationRow no longer reads the column it is drawn in"; HELD_FAIL=1; }
+grep -q "isHeldTier(shownAllowance)" <<< "$ROW" || {
+  echo "  the owned test is not on the shown column"; HELD_FAIL=1; }
+grep -q 'Text("Your plan")' <<< "$ROW" || {
+  echo "  the held tier no longer says Your plan"; HELD_FAIL=1; }
+grep -q "guard !isOwned else { return }" <<< "$ROW" || {
+  echo "  the held tier's rows are tappable again"; HELD_FAIL=1; }
+
+# The caller's tier wins on the first pass, so the column shown is the column asked for.
+awk '/private var activeTier/,/^    }$/' "$PW" | grep -q "tierAllowance ?? initialTierAllowance" || {
+  echo "  activeTier ignores the caller until applyDefaults runs"; HELD_FAIL=1; }
+
+# The CTA goes, the legal links stay. Wrapping the whole footer took Terms and
+# Privacy with it, on a screen that still sells the other tier.
+FOOT=$(awk '/private var footer: some View/,/^    }$/' "$PW")
+grep -q "if !isHeldTier(activeTier?.allowance) {" <<< "$FOOT" || {
+  echo "  the CTA is back on a tier the user already holds"; HELD_FAIL=1; }
+grep -q "Terms of Use" <<< "$FOOT" || {
+  echo "  the footer lost Terms of Use"; HELD_FAIL=1; }
+grep -q "Privacy Policy" <<< "$FOOT" || {
+  echo "  the footer lost Privacy Policy"; HELD_FAIL=1; }
+# Both links must sit OUTSIDE the CTA's `if`, or a Pro user sees no legal links.
+python3 - "$PW" <<'PYEOF' || HELD_FAIL=1
+import re, sys
+src = open(sys.argv[1]).read()
+m = re.search(r"private var footer: some View \{.*?\n    \}\n", src, re.S)
+body = m.group(0)
+i = body.index("if !isHeldTier(activeTier?.allowance) {")
+depth, end = 0, None
+for j in range(i, len(body)):
+    if body[j] == "{": depth += 1
+    elif body[j] == "}":
+        depth -= 1
+        if depth == 0: end = j; break
+inside = body[i:end]
+bad = [n for n in ("Terms of Use", "Privacy Policy") if n in inside]
+if bad:
+    print("  legal links are inside the CTA gate: " + ", ".join(bad))
+    sys.exit(1)
+PYEOF
+
+if [ "$HELD_FAIL" -ne 0 ]; then
+  echo "paywall-ink-gate: FAIL — held-tier marking"
+  exit 1
+fi
+echo "paywall-ink-gate: held tier — Your plan from the entitlement, no CTA, legal links kept."
+
 echo "paywall-ink-gate: PASS — all $checked selling surfaces use white ink."
 exit 0

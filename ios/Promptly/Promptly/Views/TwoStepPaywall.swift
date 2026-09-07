@@ -533,7 +533,13 @@ struct PaywallLayout: View {
         if tierAllowance == nil {
             // A Pro user opens on Max — the tier they can still buy. An explicit
             // preselection from a caller still wins.
-            let nextUp: Int? = subscription.effectiveIsPro && !subscription.isMax
+            // ONLY IF THAT TIER IS ACTUALLY ON SALE. Pointing a Pro user at Max
+            // on a build where Max is not in `tiers` left `tierAllowance` at a
+            // value no tier matched, so `activeTier` was nil and the paywall
+            // rendered nothing to buy. Found by the "Your plan" RED-proof
+            // failing on all three tiers at once.
+            let maxOnSale = tiers.contains { $0.allowance == CreditAllowance.maxMonthly }
+            let nextUp: Int? = (subscription.effectiveIsPro && !subscription.isMax && maxOnSale)
                 ? CreditAllowance.maxMonthly : nil
             tierAllowance = initialTierAllowance ?? nextUp ?? recommendedTier?.allowance
         }
@@ -585,7 +591,13 @@ struct PaywallLayout: View {
     }
 
     private var activeTier: PaywallTierOption? {
-        tiers.first(where: { $0.allowance == tierAllowance }) ?? tiers.first
+        // THE CALLER'S TIER COUNTS ON THE FIRST PASS. `applyDefaults` fills
+        // `tierAllowance` from `.onAppear`, one pass late, so a paywall opened
+        // ON Max drew the Pro column first — and in the harness never left it.
+        // Reading the caller's value while the state is still nil makes the
+        // column shown equal the column asked for from the first frame.
+        let want = tierAllowance ?? initialTierAllowance
+        return tiers.first(where: { $0.allowance == want }) ?? tiers.first
     }
 
     private var selectedRow: PaywallDurationOption? {
@@ -766,11 +778,17 @@ struct PaywallLayout: View {
     private func durationRow(_ option: PaywallDurationOption) -> some View {
         let isSelected = selectedId == option.id
         let isRecommended = option.id == recommendedRowId
+        // THE COLUMN THIS ROW IS DRAWN IN, not the `tierAllowance` @State.
+        // `applyDefaults` fills that state in `.onAppear`, one pass AFTER the
+        // rows first render, while `activeTier` falls back to `tiers.first` —
+        // so the rows drew a tier the state did not yet name, and "Your plan"
+        // evaluated against nil and never appeared on any tier.
+        let shownAllowance = activeTier?.allowance
         // THE TIER THEY ALREADY HOLD IS NOT FOR SALE. Its rows read "Your plan",
         // show as selected, and do not respond — selling someone what they are
         // already paying for is the defect, and a tappable row that silently
         // does nothing is only half a fix.
-        let isOwned = isHeldTier(tierAllowance)
+        let isOwned = isHeldTier(shownAllowance)
         return Button {
             guard !isOwned else { return }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -862,7 +880,7 @@ struct PaywallLayout: View {
         VStack(spacing: 6 * k) {
             // NO CTA ON A TIER THEY ALREADY HOLD. The rows say "Your plan"; a
             // buy button under them would be selling it again.
-            if !isHeldTier(tierAllowance) {
+            if !isHeldTier(activeTier?.allowance) {
             Button {
                 if let id = selectedId { onPurchase(id) }
             } label: {
@@ -878,6 +896,7 @@ struct PaywallLayout: View {
             .buttonStyle(.plain)
             .disabled(selectedId == nil)
             .opacity(selectedId == nil ? 0.5 : 1)
+            }
 
             Text(TrialCopy.fineprint)
                 .cType(9)
@@ -893,7 +912,6 @@ struct PaywallLayout: View {
             .cType(9)
             .foregroundColor(.white.opacity(0.45))
             .buttonStyle(.plain)
-        }
             }
         .padding(.horizontal, 20 * k)
         .padding(.bottom, 8 * k)

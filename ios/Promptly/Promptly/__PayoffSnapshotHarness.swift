@@ -362,16 +362,23 @@ struct PayoffSnapshotHarnessView: View {
                     durations: { HarnessPaywallMock.durations($0) },)
             }
             case 23: bleed("Max selected") {
+                // PIN THE TIER THE CASE IS NAMED FOR. Without this the case
+                // took whatever `applyDefaults` chose — which opens a Pro user
+                // on Max and a Max user on Pro — so the column under test was
+                // never the one on screen, and the "Your plan" proof captured
+                // three identical frames.
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },)
+                    durations: { HarnessPaywallMock.durations($0) },
+                    initialTierAllowance: CreditAllowance.maxMonthly)
             }
             case 24: bleed("Pro selected") {
                 PaywallLayout(
                     title: String(localized: "Unlock Promptly Pro"),
                     tiers: HarnessPaywallMock.tiers,
-                    durations: { HarnessPaywallMock.durations($0) },)
+                    durations: { HarnessPaywallMock.durations($0) },
+                    initialTierAllowance: CreditAllowance.proMonthly)
             }
             case 25: bleed("PRO selected, viewer holds MAX — no referral") {
                 // showsReferral stays TRUE. The row must disappear on its own,

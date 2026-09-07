@@ -173,6 +173,11 @@ struct PromptlyApp: App {
         // header. Same shape as the flag clobber: the value was right and the
         // timing was wrong.
         MainActor.assumeIsolated {
+            // THE TIER POSE BELONGS HERE, in init, for the reason the comment
+            // above gives. Applied from `.onAppear` it lands AFTER the first body
+            // evaluation, and `debugPosedEntitled` is not @Published — so nothing
+            // re-rendered and all three tiers captured byte-identical.
+            Self.applyTierPose()
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-forceFlags"), i + 1 < args.count {
                 for f in args[i + 1].split(separator: ",").map(String.init) {
