@@ -149,6 +149,7 @@ final class BackgroundUploadManager: NSObject {
             ], durable: true)
             throw APIError.uploadFailed
         }
+        UploadTiming.mark(messageId, "request_built")
         var createdTask: URLSessionUploadTask?
         let exception = ObjCExceptionCatcher.catchException {
             createdTask = self.session.uploadTask(with: req, fromFile: fileUrl)
@@ -190,6 +191,12 @@ final class BackgroundUploadManager: NSObject {
         if let handler {
             DispatchQueue.main.async { handler(progress) }
         }
+    }
+
+    /// The message a task belongs to, for the stage timings.
+    @MainActor
+    func messageId(forTask taskId: Int) -> String? {
+        contexts[taskId]?.messageId
     }
 
     fileprivate func didComplete(taskId: Int, response: URLResponse?, error: Error?) {
@@ -342,6 +349,15 @@ private final class BackgroundUploadDelegate: NSObject, URLSessionTaskDelegate {
             : 0
         let taskId = task.taskIdentifier
         Task { @MainActor in
+            // FIRST BYTE ON THE WIRE, which is the number that separates "we
+            // spent the time staging" from "we spent it transferring". Only the
+            // first callback records; `mark` keeps the first write.
+            if let mid = BackgroundUploadManager.shared.messageId(forTask: taskId) {
+                UploadTiming.mark(mid, "first_byte")
+                if totalBytesExpectedToSend > 0, totalBytesSent >= totalBytesExpectedToSend {
+                    UploadTiming.mark(mid, "last_byte")
+                }
+            }
             BackgroundUploadManager.shared.didReceiveProgress(taskId: taskId, progress: progress)
         }
     }

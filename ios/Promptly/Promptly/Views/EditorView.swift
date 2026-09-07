@@ -1867,6 +1867,9 @@ struct EditorView: View {
 
         let pending = PendingVideo()
         pending.fileName = "\(video.id).mp4"
+        // t0 for the stage breakdown. A total says an upload took twenty
+        // seconds; only the breakdown says which second to go after.
+        UploadTiming.begin(pending.id.uuidString)
         // Carry the library identity, not just the staged path — see
         // PendingVideo.assetLocalIdentifier.
         pending.assetLocalIdentifier = video.asset?.localIdentifier
@@ -2173,7 +2176,8 @@ struct EditorView: View {
                                 // Bytes are in S3 now — release the job dispatcher. The
                                 // dispatcher gates on `sourceUploadCompleted` so a slow
                                 // upload can't trigger a job that 404s the worker.
-                                pending.sourceUploadCompleted = true
+                                UploadTiming.mark(pending.id.uuidString, "ack")
+                            pending.sourceUploadCompleted = true
                             UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
                                 UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
                             }
@@ -2208,6 +2212,7 @@ struct EditorView: View {
                             Task { @MainActor in pending.uploadProgress = p * 0.5 }
                         }
                         // 2. Presign + prewarm, then BACKGROUND-upload the file.
+                        UploadTiming.mark(pending.id.uuidString, "staged")
                         let streamResp = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
                         guard let streamPutUrl = streamResp.uploadUrl,
                               let streamPub = streamResp.publicUrl else {
@@ -2235,6 +2240,7 @@ struct EditorView: View {
                         )
                         try? FileManager.default.removeItem(at: durableSource)
                         await MainActor.run {
+                            UploadTiming.mark(pending.id.uuidString, "ack")
                             pending.sourceUploadCompleted = true
                             UploadOutcomeReporter.shared.recordUploadSettled(id: pending.id, srcKey: pending.uploadedUrl)
                         }
@@ -2255,6 +2261,7 @@ struct EditorView: View {
                             // only reaches here after the upload has
                             // returned — so the bytes are confirmed in S3
                             // and the dispatcher can fire immediately.
+                            UploadTiming.mark(pending.id.uuidString, "ack")
                             pending.sourceUploadCompleted = true
                             // No proxy path on .stream / single-PUT —
                             // worker encodes its own. Flip the proxy-
@@ -3677,6 +3684,15 @@ struct EditorView: View {
                     try? await Task.sleep(for: .milliseconds(200))
                 }
             }
+            // The last stage: the job exists server-side. Emitting here rather
+            // than at render completion keeps the breakdown about the UPLOAD,
+            // which is what the twenty seconds were spent on.
+            UploadTiming.mark(video.id.uuidString, "dispatch")
+            UploadTiming.meta(video.id.uuidString, "size_mb", (video.fileUrl.flatMap {
+                (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.size] as? Int64
+            }).map { (Double($0) / 1_048_576.0 * 10).rounded() / 10 } ?? 0)
+            UploadTiming.meta(video.id.uuidString, "conn", ReachabilityMonitor.currentConnectionType)
+            UploadTiming.finish(video.id.uuidString, outcome: "dispatched")
             return .success(jobId: jobId)
         case .converse, .status, .clarify, .refusal, .notFound:
             return nil
