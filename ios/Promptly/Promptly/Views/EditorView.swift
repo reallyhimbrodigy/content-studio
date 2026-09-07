@@ -650,13 +650,13 @@ struct EditorView: View {
                             Color(.tertiarySystemBackground)
                         }
                     }
-                    .frame(width: 36 * k, height: 36 * k)
+                    .frame(width: 32 * k, height: 32 * k)
                     .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
                 } else {
                     Image(systemName: "wand.and.stars")
                         .font(.system(size: 15 * k, weight: .medium))
                         .foregroundColor(.white)
-                        .frame(width: 36 * k, height: 36 * k)
+                        .frame(width: 32 * k, height: 32 * k)
                         .background(Color(.tertiarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
                 }
@@ -803,7 +803,7 @@ struct EditorView: View {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14 * k, weight: .bold))
                             .foregroundColor(.white)
-                            .frame(width: 36 * k, height: 36 * k)
+                            .frame(width: 32 * k, height: 32 * k)
                             .background(.ultraThinMaterial, in: Circle())
                             .overlay(
                                 Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5 * k)
@@ -959,7 +959,7 @@ struct EditorView: View {
                         // right-hand pair became 36 when they were centred; this
                         // stayed 30, which measured the "+" 1.67pt above the
                         // pill's centre while the mic sat exactly on it.
-                        .frame(width: 36 * k, height: 36 * k)
+                        .frame(width: 32 * k, height: 32 * k)
                         .accessibilityHidden(true)
                 }
                 .accessibilityLabel("Add video")
@@ -996,8 +996,11 @@ struct EditorView: View {
                             // K-SCALED, NOT `.body`. A Dynamic Type style is the
                             // same size on a 13-inch iPad as on a phone, which is
                             // how a tablet composer ended up with phone-sized
-                            // placeholder text. 17pt is `.body`'s own default.
-                            .font(.system(size: 17 * k, weight: .regular))
+                            // 18pt, MATCHING THE FIELD. The placeholder is a
+                            // separate view from the TextField, so raising the
+                            // field alone left this at 17 — the two would have
+                            // shifted by a point the moment the user typed.
+                            .font(.system(size: 18 * k, weight: .regular))
                             .tracking(0.3 * k)
                             .foregroundColor(Color.white.opacity(0.35))
                             .padding(.vertical, 4 * k)
@@ -1008,7 +1011,7 @@ struct EditorView: View {
                         .focused($isInputFocused)
                         .lineLimit(1...6)
                         .foregroundColor(.white)
-                        .font(.system(size: 17 * k))
+                        .font(.system(size: 18 * k))
                         .tracking(0.3 * k)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .tint(.white)
@@ -1029,12 +1032,15 @@ struct EditorView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showVoiceInput = true
                     } label: {
+                        // A PLAIN GLYPH AT REST. The mic wore a filled white
+                        // disc, which made it the heaviest thing in the pill —
+                        // heavier than the text it sits beside — and is most of
+                        // what read as "chunky". The filled treatment belongs to
+                        // SEND, where it marks the primary action; at rest the
+                        // mic is a secondary control and should look like one.
                         Image(systemName: "mic.fill")
-                            .font(.system(size: 15 * k, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 30 * k, height: 30 * k)
-                            .background(Color.white)
-                            .clipShape(Circle())
+                            .font(.system(size: 18 * k, weight: .regular))
+                            .foregroundColor(.white.opacity(0.55))
                             // VISUAL 30, TOUCH 44. The glyph stays the size it
                             // was designed at; only the hit region grows to the
                             // HIG minimum. Applied INSIDE the Button label —
@@ -1050,7 +1056,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k)
+                            .frame(width: 32 * k, height: 32 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1082,7 +1088,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k)
+                            .frame(width: 32 * k, height: 32 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1123,7 +1129,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k)
+                            .frame(width: 32 * k, height: 32 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1166,9 +1172,9 @@ struct EditorView: View {
                 // Vision-pro glass: ultra-thin material over a subtle
                 // top-to-bottom gradient. Replaces the flat
                 // tertiarySystemBackground fill that was reading "cheap."
-                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -1178,7 +1184,7 @@ struct EditorView: View {
                             startPoint: .top, endPoint: .bottom
                         )
                     )
-                RoundedRectangle(cornerRadius: 24 * k, style: .continuous)
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5 * k)
             }
         )
