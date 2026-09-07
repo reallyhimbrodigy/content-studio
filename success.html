@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>You're all set — Promptly</title>
+    <meta name="description" content="Your Promptly subscription is active. Open the app to start editing." />
+    <meta name="robots" content="noindex, follow" />
+    <link rel="canonical" href="https://usepromptly.app/success" />
+    <link rel="icon" href="/assets/promptly-mark-white.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-itunes-app" content="app-id=6762497454" />
+    <meta name="theme-color" content="#0B0B10" />
+
+    <meta property="og:title" content="You're all set — Promptly" />
+    <meta property="og:description" content="Your Promptly subscription is active." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://usepromptly.app/success" />
+    <meta property="og:image" content="https://usepromptly.app/assets/promptly-logo-white-on-black.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+
+    <style>
+      /* The app's own surface, not the landing page's blue. Promptly is dark
+         and purple everywhere a paying customer sees it, and this page is the
+         first thing they see after paying. */
+      :root {
+        --ground: #0b0b10;
+        --panel: #15151e;
+        --hairline: rgba(255, 255, 255, 0.09);
+        --hairline-strong: rgba(255, 255, 255, 0.16);
+        --ink: #f6f5fa;
+        --ink-dim: #9a98a8;
+        --ink-faint: #6e6c7c;
+        --accent: #6c5ce7;
+        --accent-lift: #7d6ff0;
+        --accent-far: #c86dd7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--ground);
+        color: var(--ink);
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px 40px;
+        /* One soft purple wash behind the seal — the page's only flourish. */
+        background-image: radial-gradient(
+          62rem 34rem at 50% -6rem,
+          rgba(108, 92, 231, 0.22),
+          transparent 70%
+        );
+        background-repeat: no-repeat;
+      }
+
+      main {
+        width: 100%;
+        max-width: 27rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        text-align: center;
+      }
+
+      /* The runner, ringed. */
+      .seal {
+        position: relative;
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(160deg, rgba(108, 92, 231, 0.28), rgba(200, 109, 215, 0.14));
+        border: 1px solid var(--hairline-strong);
+        box-shadow: 0 0 0 8px rgba(108, 92, 231, 0.07), 0 18px 44px rgba(0, 0, 0, 0.5);
+      }
+
+      .seal img {
+        width: 52px;
+        height: 52px;
+        display: block;
+      }
+
+      .seal__tick {
+        position: absolute;
+        right: -3px;
+        bottom: -3px;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 3px solid var(--ground);
+        display: grid;
+        place-items: center;
+      }
+
+      .seal__tick svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.85rem, 7vw, 2.35rem);
+        line-height: 1.1;
+        letter-spacing: -0.028em;
+        font-weight: 700;
+        text-wrap: balance;
+      }
+
+      .lede {
+        margin: -8px 0 0;
+        font-size: 1.0625rem;
+        line-height: 1.5;
+        color: var(--ink-dim);
+        max-width: 22rem;
+        text-wrap: pretty;
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+      }
+
+      .open {
+        display: block;
+        width: 100%;
+        padding: 17px 24px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #ffffff;
+        font-size: 1.0625rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-decoration: none;
+        transition: background 0.18s ease, transform 0.18s ease;
+      }
+
+      .open:hover {
+        background: var(--accent-lift);
+      }
+
+      .open:active {
+        transform: translateY(1px);
+      }
+
+      .open:focus-visible,
+      .store:focus-visible {
+        outline: 2px solid var(--accent-lift);
+        outline-offset: 3px;
+      }
+
+      /* Apple's own badge, with a styled button standing in if it can't load. */
+      .store {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        min-height: 44px;
+        padding: 10px 20px;
+        border-radius: 12px;
+        border: 1px solid var(--hairline-strong);
+        background: transparent;
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        transition: background 0.18s ease, border-color 0.18s ease;
+      }
+
+      .store:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      .store img {
+        height: 44px;
+        width: auto;
+        display: block;
+      }
+
+      /* When the badge image loads, the link is just the badge — no border,
+         no padding, no duplicated label. */
+      .store.has-badge {
+        border: 0;
+        padding: 0;
+        min-height: 0;
+        gap: 0;
+      }
+
+      .store.has-badge .store__fallback {
+        display: none;
+      }
+
+      .store__fallback {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .store__fallback svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+
+      .note {
+        margin: 0;
+        font-size: 0.8125rem;
+        line-height: 1.55;
+        color: var(--ink-faint);
+        max-width: 21rem;
+      }
+
+      footer {
+        margin-top: 34px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px 18px;
+        font-size: 0.8125rem;
+      }
+
+      footer a {
+        color: var(--ink-faint);
+        text-decoration: none;
+      }
+
+      footer a:hover {
+        color: var(--ink-dim);
+        text-decoration: underline;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <div class="seal">
+        <img src="/assets/promptly-mark-white.png" alt="" width="52" height="52" />
+        <span class="seal__tick" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M3.2 8.4 6.3 11.5 12.8 5"
+              stroke="#ffffff"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
+
+      <h1>You're all set</h1>
+      <p class="lede">Your subscription is active. Open Promptly to start editing.</p>
+
+      <div class="actions">
+        <a class="open" id="openApp" href="app.usepromptly.ios://">Open Promptly</a>
+
+        <a
+          class="store"
+          id="storeLink"
+          href="https://apps.apple.com/app/promptly-ai-video-editor/id6762497454"
+        >
+          <img
+            id="storeBadge"
+            src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+            alt="Download on the App Store"
+            hidden
+          />
+          <span class="store__fallback">
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path
+                d="M16.4 12.7c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8-.7 0-1.6-.8-2.6-.7-1.4 0-2.6.8-3.3 2-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.5 2 1 0 1.4-.6 2.6-.6s1.5.6 2.6.6c1.1 0 1.8-1 2.4-2 .8-1.1 1.1-2.2 1.1-2.3 0 0-2-.8-2-3zM14.5 6.3c.5-.7.9-1.6.8-2.5-.8 0-1.8.5-2.4 1.2-.5.6-1 1.6-.8 2.5.9.1 1.8-.4 2.4-1.2z"
+              />
+            </svg>
+            Get it on the App Store
+          </span>
+        </a>
+      </div>
+
+      <p class="note">
+        Don't have Promptly on this device yet? Install it above, then sign in with the same account —
+        your subscription is already on it.
+      </p>
+
+      <footer>
+        <a href="/">Home</a>
+        <a href="/help">Help</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </footer>
+    </main>
+
+    <script>
+      (function () {
+        // Show Apple's badge only once it has actually loaded. If it 404s or is
+        // blocked, the styled fallback button is what was there all along —
+        // the page never shows a broken image or an empty link.
+        var badge = document.getElementById("storeBadge");
+        var link = document.getElementById("storeLink");
+        if (badge && link) {
+          badge.addEventListener("load", function () {
+            badge.hidden = false;
+            link.classList.add("has-badge");
+          });
+          badge.addEventListener("error", function () {
+            badge.remove();
+          });
+          // A cached image can finish before the listener is attached.
+          if (badge.complete && badge.naturalWidth > 0) {
+            badge.hidden = false;
+            link.classList.add("has-badge");
+          }
+        }
+
+      })();
+    </script>
+  </body>
+</html>
