@@ -111,6 +111,20 @@ AV_CODE=$(grep -v '^[[:space:]]*//' "$AV")
 grep -q 'desc.lowercased().contains("already linked")' <<< "$AV_CODE" || {
   echo "  the prose fallback for the same condition is gone"; FAIL=1; }
 
+# ── A COMPLETED SIGN-IN CLOSES THE SHEET ─────────────────────────────────────
+# The handler was `guard authed, let intent = takePending() else { return }` —
+# so the ORDINARY sign-in, the one with nothing pending, returned and left the
+# sheet up for the user to dismiss by hand. Purchase worked only because it
+# always has an intent to replay.
+SHELL_SRC=Views/AppShell.swift
+grep -q "authGate.finish()" "$SHELL_SRC" || {
+  echo "  a plain sign-in no longer closes the auth sheet"; FAIL=1; }
+grep -q "func finish()" Services/AuthGate.swift || {
+  echo "  AuthGate.finish is gone — cancel() would report a success as abandonment"; FAIL=1; }
+AS_CODE=$(grep -v '^[[:space:]]*//' "$SHELL_SRC")
+grep -q "guard authed, let intent = authGate.takePending() else { return }" <<< "$AS_CODE" && {
+  echo "  the guard that swallowed the no-intent case is back"; FAIL=1; }
+
 if [ "$FAIL" -ne 0 ]; then echo "auth-seam-gate: FAIL"; exit 1; fi
 echo "auth-seam-gate: PASS — purchase is the only seam; send and export do not raise"
 exit 0

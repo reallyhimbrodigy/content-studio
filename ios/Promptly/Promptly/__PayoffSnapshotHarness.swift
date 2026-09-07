@@ -1230,6 +1230,18 @@ struct HarnessCheckoutGate: View {
         return 289.99
     }
     private var posedIntro: Bool { ProcessInfo.processInfo.arguments.contains("-poseIntro") }
+    /// Which package the sheet is selling. The offering is keyed by package id,
+    /// so this is what the capture set varies to show Pro Year, Pro Month and
+    /// Max Year rather than three copies of the same row.
+    private var posedPackage: String {
+        let a = ProcessInfo.processInfo.arguments
+        if let i = a.firstIndex(of: "-posePackage"), i + 1 < a.count { return a[i + 1] }
+        return "$rc_annual"
+    }
+    private var posedTier: String { posedPackage.contains("max") ? "Max" : "Pro" }
+    private var posedDuration: String {
+        posedPackage.contains("month") ? "Month" : (posedPackage.contains("week") ? "Week" : "Year")
+    }
     /// BOTH SIDES OR NEITHER, same rule the router applies. Without this the
     /// harness happily compared the web's intro against Apple's STANDARD price
     /// and rendered "Save 50%" — the manufactured discount the pairing rule
@@ -1241,22 +1253,22 @@ struct HarnessCheckoutGate: View {
 
     private var webValue: Decimal? {
         guard let cfg = onboarding.webCheckout,
-              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
+              let web = cfg.product(forPackage: posedPackage) else { return nil }
         let micros = posedIntro ? web.webIntroPriceMicros : web.webPriceMicros
         return micros.map { Decimal($0) / 1_000_000 }
     }
     private var webText: String? {
         guard let cfg = onboarding.webCheckout,
-              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
+              let web = cfg.product(forPackage: posedPackage) else { return nil }
         return posedIntro ? web.webIntroPrice : web.webPrice
     }
 
     private var composedURL: String? {
         guard let cfg = onboarding.webCheckout,
-              let web = cfg.product(forPackage: "$rc_annual") else { return nil }
+              let web = cfg.product(forPackage: posedPackage) else { return nil }
         return CheckoutSheet.checkoutURL(template: web.url,
                                          appUserId: Purchases.shared.appUserID,
-                                         packageId: "$rc_annual")?.absoluteString
+                                         packageId: posedPackage)?.absoluteString
     }
 
     var body: some View {
@@ -1264,13 +1276,13 @@ struct HarnessCheckoutGate: View {
             if !resolved {
                 Color(white: 0.07)
             } else if let cfg = onboarding.webCheckout,
-                      let web = cfg.product(forPackage: "$rc_annual"),
+                      let web = cfg.product(forPackage: posedPackage),
                       let value = webValue, let text = webText,
                       !posedIntro || introPosedOnBothSides,
                       CheckoutRouter.savingIsWorthClaiming(applePrice: posedApple, webPrice: value) {
                 CheckoutSheet(item: CheckoutItem(
-                    productId: "promptly_pro_yearly", packageId: "$rc_annual",
-                    tierNoun: "Pro", durationNoun: "Year",
+                    productId: "promptly_pro_yearly", packageId: posedPackage,
+                    tierNoun: posedTier, durationNoun: posedDuration,
                     applePrice: posedApple, applePriceText: money(posedApple),
                     webPrice: value, webPriceText: text, isIntro: posedIntro,
                     priceLocale: Locale(identifier: "en_US"),
@@ -1289,7 +1301,12 @@ struct HarnessCheckoutGate: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let link = composedURL {
+            // BEHIND A FLAG. The composed link is the proof that app_user_id
+            // rides the path and package_id the query — but printed over the
+            // CTA it obscures the thing a reviewer is looking at. `-showLink`
+            // when proving the link, absent from every review capture.
+            if let link = composedURL,
+               ProcessInfo.processInfo.arguments.contains("-showLink") {
                 Text(link)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(.white).multilineTextAlignment(.center)
@@ -1315,7 +1332,7 @@ struct HarnessCheckoutGate: View {
     private var reason: String {
         let sf = storefront.countryCode ?? "unresolved"
         guard let cfg = onboarding.webCheckout else { return "storefront \(sf) · no config" }
-        guard cfg.product(forPackage: "$rc_annual") != nil else {
+        guard cfg.product(forPackage: posedPackage) != nil else {
             return "storefront \(sf) · not offered here"
         }
         guard let v = webValue else {

@@ -179,8 +179,17 @@ struct AppShell: View {
                 }
         }
         .onChange(of: auth.isAuthenticated) { _, authed in
-            guard authed, let intent = authGate.takePending() else { return }
-            authGate.resume(intent)
+            // THE PLAIN CASE HAD NO BRANCH. `guard let intent = takePending()`
+            // returned when there was nothing pending — which is exactly the
+            // ordinary sign-in — so the session landed, the user was signed in,
+            // and the sheet just sat there for them to close by hand. Purchase
+            // worked only because it always has an intent to replay.
+            guard authed else { return }
+            if let intent = authGate.takePending() {
+                authGate.resume(intent)
+            } else {
+                authGate.finish()
+            }
         }
         .sheet(
             isPresented: Binding(

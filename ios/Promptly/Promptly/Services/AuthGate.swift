@@ -141,6 +141,16 @@ final class AuthGate: ObservableObject {
         isPresenting = false
     }
 
+    /// Signed in with nothing to replay. The sheet still has to close.
+    ///
+    /// `cancel()` would do it, but it means abandonment and reports it that
+    /// way; a completed sign-in is the opposite outcome and must not be
+    /// counted as one.
+    func finish() {
+        pending = nil
+        isPresenting = false
+    }
+
     /// Replay. Purchase is re-resolved against the current offering, so a
     /// refresh during sign-in cannot make this act on a stale product.
     func resume(_ intent: Intent) {
