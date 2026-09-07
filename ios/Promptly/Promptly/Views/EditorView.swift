@@ -993,7 +993,7 @@ struct EditorView: View {
                             .font(.system(size: 17 * k, weight: .regular))
                             .tracking(0.3 * k)
                             .foregroundColor(Color.white.opacity(0.35))
-                            .padding(.vertical, 6 * k)
+                            .padding(.vertical, 4 * k)
                             .allowsHitTesting(false)
                     }
 
@@ -1043,8 +1043,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
-                            .padding(.bottom, 5 * k)
+                            .frame(width: 36 * k, height: 36 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1076,8 +1075,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
-                            .padding(.bottom, 5 * k)
+                            .frame(width: 36 * k, height: 36 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -1118,8 +1116,7 @@ struct EditorView: View {
                             // The 5pt bottom padding matches the "+" exactly, and
                             // bottom alignment keeps it there when the field
                             // grows to several lines.
-                            .frame(width: 36 * k, height: 36 * k, alignment: .bottom)
-                            .padding(.bottom, 5 * k)
+                            .frame(width: 36 * k, height: 36 * k)
                             .contentShape(Circle())
                             .accessibilityHidden(true)
                     }
@@ -4387,6 +4384,29 @@ struct PendingVideoThumb: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 56 * k, height: 56 * k)
                         .clipShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
+                        // THE RING GOES OVER THE FRAME, not instead of it. The
+                        // tile used to show the thumbnail "cleanly" with no
+                        // progress at all, so an upload in flight looked
+                        // identical to one that had finished. Dimmed behind the
+                        // ring while it runs, clear the moment it lands.
+                        .overlay {
+                            if !video.sourceUploadCompleted && !video.uploadFailed {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
+                                        .fill(Color.black.opacity(0.35))
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.25), lineWidth: 2.5 * k)
+                                        .frame(width: 26 * k, height: 26 * k)
+                                    Circle()
+                                        .trim(from: 0, to: max(0.03, video.uploadProgress))
+                                        .stroke(Color.white,
+                                                style: StrokeStyle(lineWidth: 2.5 * k, lineCap: .round))
+                                        .frame(width: 26 * k, height: 26 * k)
+                                        .rotationEffect(.degrees(-90))
+                                        .animation(.easeOut(duration: 0.2), value: video.uploadProgress)
+                                }
+                            }
+                        }
                 } else {
                     // No thumbnail yet — neutral surface, no spinner. The
                     // PHAsset thumbnail loads in milliseconds for cached

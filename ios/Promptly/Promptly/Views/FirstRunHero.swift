@@ -116,10 +116,17 @@ struct FirstRunHero: View {
                     // Wrap, never clip — the same rule the old subtitle broke at
                     // 375pt.
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0 * k)
             }
             .padding(.vertical, 11 * k)
+            // THE CARD'S BOUNDS, NOT THE CONTAINER'S. A `Spacer` stretched this
+            // HStack across the full width and `contentShape` then made all of
+            // that empty space tappable, so a tap well to the right of the text
+            // still fired the row. With the spacer gone the shape hugs the
+            // content, and the stretching frame is applied AFTER it — so the
+            // row still left-aligns without donating its whole width to the
+            // hit test.
             .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
     }

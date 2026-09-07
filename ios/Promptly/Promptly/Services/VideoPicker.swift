@@ -266,8 +266,18 @@ enum PHAssetResolver {
         let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 400, height: 400)
+        // NOT .zero, AND NOT ZERO TOLERANCE. Asking for exactly time zero with
+        // the default (zero) tolerance makes the generator find an exact frame
+        // at that instant, and for a great many real encodings there isn't one —
+        // it returns nil and the tile falls back to its empty state. A tenth of
+        // a second in, with a half-second of tolerance either way, lands on the
+        // nearest keyframe instead. This is why the media box was empty during
+        // upload even though the thumbnail path ran.
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter  = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let at = CMTime(seconds: 0.1, preferredTimescale: 600)
         return await withCheckedContinuation { cont in
-            gen.generateCGImageAsynchronously(for: .zero) { cg, _, _ in
+            gen.generateCGImageAsynchronously(for: at) { cg, _, _ in
                 cont.resume(returning: cg.map { UIImage(cgImage: $0) })
             }
         }
