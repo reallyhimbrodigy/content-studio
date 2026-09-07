@@ -2944,7 +2944,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -2973,6 +2973,14 @@ const server = http.createServer((req, res) => {
     // conflict and returns the EXISTING row flagged __replayed so the caller
     // can unwind the just-claimed charge — one job, one charge, by construction.
     if (clientJobId) insertRow.id = clientJobId;
+    // ON THE INSERT, not in the fire-and-forget provenance patch below: the
+    // partial unique index (user_id, client_message_id) only makes create
+    // idempotent if the value is present when the row is written. Deferring it
+    // to an unawaited UPDATE would leave a window in which a duplicate submit
+    // sees no conflict — which is the class this column exists to close.
+    // Safe to inline: the column is live (verified 2026-09-06), and unlike the
+    // provenance stamps it is not racing an unlanded migration.
+    if (clientMessageId) insertRow.client_message_id = clientMessageId;
 
     const { data, error } = await supabaseAdmin
       .from('video_jobs')
@@ -2992,6 +3000,19 @@ const server = http.createServer((req, res) => {
         if (existing) return { ...existing, __replayed: true };
         // The id exists but belongs to someone else — reject, never leak it.
         throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
+      }
+      // A SECOND unique index can now fire: (user_id, client_message_id). This
+      // is a replay whose message id repeats under a DIFFERENT job id — a
+      // client that re-minted the job uuid while retrying the same message.
+      // It is still one message and must stay one job, one charge.
+      if (clientMessageId && (error.code === '23505' || /duplicate key/i.test(error.message || ''))) {
+        const { data: byMsg } = await supabaseAdmin
+          .from('video_jobs')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('client_message_id', clientMessageId)
+          .maybeSingle();
+        if (byMsg) return { ...byMsg, __replayed: true };
       }
       throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
     }
@@ -6150,6 +6171,21 @@ const server = http.createServer((req, res) => {
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rawClientJobId)
             ? rawClientJobId : null;
 
+        // Client message id (Frontend, 2026-09-06). Recovery was TEMPORAL — a
+        // +/-180s window with a single-candidate rule — because nothing linked a
+        // job to the message that created it. This makes it an equality lookup.
+        //
+        // DELIBERATELY NOT UUID-SHAPED. client_job_id can demand a UUID because
+        // we mint the contract; a message id belongs to the client's own chat
+        // store and may be a nanoid, a ULID, or a prefixed string. The last time
+        // I guessed a client id's charset instead of sampling it, the pattern
+        // rejected 55.6% of real devices. Cap the length, strip control
+        // characters, and otherwise take what the client sends.
+        const rawClientMsgId = String(body?.client_message_id || '').trim();
+        const clientMessageId =
+          rawClientMsgId && rawClientMsgId.length <= 200 && !/[\u0000-\u001f\u007f]/.test(rawClientMsgId)
+            ? rawClientMsgId : null;
+
         const reservation = await withKeyLock(`render:${authUser.id}`, async () => {
           // Idempotent replay fast-path: if the client's UUID already has a
           // row, this is a double-submit (retry mash / network replay). Return
@@ -6389,6 +6425,7 @@ const server = http.createServer((req, res) => {
             videoUrl,
             vibeInput,
             clientJobId,
+            clientMessageId,
             demo: isDemo,
             appVersion: clientAppVersion(req),
             sourceType: body?.source_type,
