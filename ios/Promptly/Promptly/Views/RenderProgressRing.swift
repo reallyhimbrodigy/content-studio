@@ -195,13 +195,18 @@ struct RenderProgressRing: View {
 
             if let onCancel, timeline.isCancellable {
                 Button(role: .destructive) { showCancelConfirm = true } label: {
-                    Text("Stop making this")
-                        .font(.system(size: 13 * k))
-                        .foregroundColor(.white.opacity(0.4))
+                    // ONE WORD, AND IT LOOKS DESTRUCTIVE. "Stop making this"
+                    // is a sentence where every other control in the app is a
+                    // word, and 40% white read as disabled rather than
+                    // dangerous — the two together made the one control that
+                    // throws work away the quietest thing on the screen.
+                    Text("Cancel")
+                        .font(.system(size: 13 * k, weight: .semibold))
+                        .foregroundColor(.red)
                 }
-                .confirmationDialog(String(localized: "Stop making this video?"),
+                .confirmationDialog(String(localized: "Cancel this video?"),
                                     isPresented: $showCancelConfirm, titleVisibility: .visible) {
-                    Button(String(localized: "Stop making it"), role: .destructive) { onCancel() }
+                    Button(String(localized: "Cancel video"), role: .destructive) { onCancel() }
                     Button(String(localized: "Keep going"), role: .cancel) {}
                 } message: {
                     Text("This stops your video before it starts. It won't count against today's free one.")
