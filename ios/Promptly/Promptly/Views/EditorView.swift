@@ -2633,7 +2633,8 @@ struct EditorView: View {
                     proxyVideoUrl: proxyUrl,
                     vibe: vibe,
                     premiumPipeline: ModelService.shared.premiumPipelineFlag(
-                        isPro: SubscriptionService.shared.effectiveIsPro)
+                        isPro: SubscriptionService.shared.effectiveIsPro),
+                    clientMessageId: messageId.uuidString
                 )
                 guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
                 messages[i].jobId = jobId
@@ -4410,6 +4411,18 @@ struct EditorView: View {
         let plain = ISO8601DateFormatter()
 
         for (i, at) in orphans {
+            // EXACT FIRST. `client_message_id` is populated from this build on,
+            // so a lost dispatch is matched by identity rather than by a window
+            // — the temporal match below stays only for jobs created before it.
+            if let exact = jobs.first(where: {
+                !claimed.contains($0.id) && $0.client_message_id == messages[i].id.uuidString
+            }) {
+                claimed.insert(exact.id)
+                messages[i].jobId = exact.id
+                Analytics.track("job_recovery", props: ["outcome": "recovered", "match": "exact"], durable: true)
+                await reconcileJobStatus(jobId: exact.id)
+                continue
+            }
             let candidates = jobs.filter { j in
                 guard !claimed.contains(j.id), let cs = j.created_at,
                       let d = withFraction.date(from: cs) ?? plain.date(from: cs) else { return false }

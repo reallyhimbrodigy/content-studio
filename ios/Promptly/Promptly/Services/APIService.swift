@@ -177,7 +177,7 @@ class APIService {
 
     // MARK: - Video Jobs
 
-    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
+    func createVideoJob(videoUrl: String, proxyVideoUrl: String? = nil, vibe: String, premiumPipeline: Bool = false, clientJobId: String? = nil, clientMessageId: String? = nil, sourceType: String? = nil, sourceDuration: Double? = nil) async throws -> String {
         #if DEBUG
         // `-simulateCreditsExhausted` — DEBUG only, nil in Release.
         //
@@ -222,6 +222,13 @@ class APIService {
             // inserts under this id; a double-submit replays the existing
             // job (one job, one charge) instead of minting a duplicate.
             let client_job_id: String?
+            /// THE MESSAGE THIS JOB BELONGS TO. The server has read this since
+            /// the idempotency work and the column has existed all along — the
+            /// client simply never sent it, so `video_jobs.client_message_id`
+            /// was null on every row and a job whose id never reached the client
+            /// could only be recovered by matching on TIME. With it, recovery is
+            /// exact.
+            let client_message_id: String?
             // §5 progressive playback CAPABILITY. This 1.3.3 build can consume a
             // partial HLS preview (start playing mid-render, swap to the final MP4),
             // so it advertises the capability PER DISPATCH. The worker publishes a
@@ -248,6 +255,7 @@ class APIService {
             model: premiumPipeline ? "lumen" : "flare",
             premium_pipeline_enabled: premiumPipeline ? true : nil,
             client_job_id: clientJobId,
+            client_message_id: clientMessageId,
             supports_progressive: true,
             source_type: sourceType,
             source_duration: sourceDuration,
@@ -762,6 +770,25 @@ class APIService {
     /// prefix (§1 contract — user images must never touch the public prefix).
     /// Absent (all existing callers) === today's behaviour.
     func getUploadUrl(fileName: String, purpose: String? = nil) async throws -> UploadUrlResponse {
+        // A SESSION BEFORE THE PRESIGN, NOT A BLIND 401.
+        //
+        // `authorizedRequest` attaches a Bearer only when one exists, and sends
+        // the request regardless — so a signed-out install fired an
+        // unauthenticated presign and the server rejected it. 86% of upload
+        // failures on 1.3.27 came from installs with no user_id at all: no
+        // expiring token, no race, simply no session, because anonymous
+        // sign-in did not exist on that build.
+        //
+        // Establish one first (idempotent — returns immediately when a session
+        // is already held), and if that still leaves us without a token, say so
+        // instead of spending a round trip to be told Unauthorized.
+        if await AuthService.shared.getValidToken() == nil {
+            await AuthService.shared.signInAnonymouslyIfNeeded()
+            guard await AuthService.shared.getValidToken() != nil else {
+                Analytics.track("upload_no_session", props: ["stage": "presign"], durable: true)
+                throw APIError.notAuthenticated
+            }
+        }
         var request = await authorizedRequest("/api/upload-url", method: "POST")
         var body = ["fileName": fileName]
         if let purpose { body["purpose"] = purpose }
@@ -942,6 +969,9 @@ class APIService {
         let id: String
         let status: String?
         let created_at: String?
+        /// Null on every job created before the client began sending it; the
+        /// temporal match covers those.
+        let client_message_id: String?
     }
     func listRecentJobs() async -> [RecentJob] {
         var request = await authorizedRequest("/api/video-jobs", method: "GET")

@@ -168,6 +168,10 @@ final class JobDispatchCoordinator {
                     vibe: vibe,
                     premiumPipeline: premiumPipeline,
                     clientJobId: clientJobId,
+                    // The pending item's id IS the message id — the upload path
+                    // already passes it as `messageId`. Sending it here is what
+                    // lets a lost dispatch response be recovered exactly.
+                    clientMessageId: pendingVideo.id.uuidString,
                     sourceType: pendingVideo.sourceType,
                     sourceDuration: pendingVideo.sourceDuration
                 )
