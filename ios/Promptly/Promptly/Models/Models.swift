@@ -580,23 +580,29 @@ final class AppState: ObservableObject {
     /// Renamed from the old exit-offer flag when the reveal rung was deleted;
     /// this presents the invite directly.
     @Published var showInviteRung: Bool = false
-    /// Bumped by `landOnChat()` on every authenticated landing. EditorView
-    /// observes it and focuses the composer — so a sign-in ALWAYS ends with the
-    /// keyboard up, ready to type a vibe (build 217).
-    @Published var composerFocusToken: Int = 0
 
     /// The explicit post-auth navigation reset (build 217, the "ALWAYS" rule):
     /// every successful sign-in lands on the chat surface with the composer
-    /// focused — never on a stale Account/Library sheet the previous session left
-    /// open. Dismiss all sheets, close the drawer, select the chat surface, and
-    /// signal the composer to focus. No auth path may skip this.
+    /// never on a stale Account/Library sheet the previous session left open.
+    /// Dismiss all sheets, close the drawer, select the chat surface. It does
+    /// NOT focus the composer: the keyboard belongs to the user's next tap, and
+    /// focusing here is what put a keyboard on the account page after sign-in.
+    /// WHEN A SHEET LAST CLOSED OVER THE EDITOR.
+    ///
+    /// A `fullScreenCover` removes the view underneath it, so dismissing one
+    /// fires `onAppear` on the editor again — indistinguishable, from inside
+    /// that callback, from the user actually arriving at chat. Focusing on both
+    /// is what raised a keyboard behind the account page. The editor consults
+    /// this to tell one from the other.
+    @Published var lastSheetDismissAt: Date?
+    func noteSheetDismissed() { lastSheetDismissAt = Date() }
+
     func landOnChat() {
         showAccount = false
         sidebarOpen = false
         selectedTab = 0
         paywallReason = nil
         exportGateContext = nil
-        composerFocusToken &+= 1
     }
 
     /// Clears the drawer/sheet nav state on SIGN-OUT so it can't persist into the

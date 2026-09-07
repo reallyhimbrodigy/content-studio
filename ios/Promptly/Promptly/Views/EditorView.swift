@@ -279,13 +279,21 @@ struct EditorView: View {
                     reeditSession = pending
                     appState.pendingReedit = nil
                 }
-                // NOTHING CLAIMS FOCUS ON APPEAR. This raised the keyboard
-                // 0.3s after the editor appeared — on launch, and again every
-                // time the user came back from a sheet — so returning from the
-                // account page or the paywall was met with a keyboard nobody
-                // asked for, covering half the screen. Focus now follows a tap:
-                // the field itself, a suggestion row, a dictated transcript, or
-                // a new chat the user created.
+                // FOCUS ON A GENUINE APPEARANCE, NOT ON A SHEET CLOSING.
+                // Chat is a composer-first screen: arriving at it should put the
+                // cursor in the field. But a fullScreenCover removes the editor
+                // while it is up, so dismissing one re-fires this same onAppear
+                // — and focusing there is what raised a keyboard behind the
+                // account page. One second is far longer than the gap between a
+                // dismissal and the appearance it causes, and far shorter than
+                // any real navigation back to chat.
+                let closedRecently = Date().timeIntervalSince(
+                    appState.lastSheetDismissAt ?? .distantPast) < 1.0
+                if !closedRecently {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        focusInput()
+                    }
+                }
             }
             .task {
                 // Pull chat history once per session so the sidebar populates
@@ -315,15 +323,14 @@ struct EditorView: View {
                     focusInput()
                 }
             }
-            // Post-auth landing (build 217): landOnChat() bumps this token on
-            // every sign-in, so the composer is ALWAYS focused after auth (a
-            // short delay lets the sheet dismissals settle before the keyboard
-            // rises).
-            .onChange(of: appState.composerFocusToken) { _, _ in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    focusInput()
-                }
-            }
+            // NO FOCUS ON THE POST-AUTH LANDING EITHER. This was the second
+            // of two auto-focus paths and the one that survived 4a9c0c6:
+            // landOnChat() bumps a token on EVERY sign-in, and this focused the
+            // composer 0.35s later. Signing in FROM the account page therefore
+            // dismissed that sheet and raised the keyboard on the way out — the
+            // "account keyboard" that persisted after the first fix.
+            // landOnChat() still does the navigation; it just no longer takes
+            // the keyboard with it.
             .onChange(of: chatStore.activeChatId) { oldId, newId in
                 handleActiveChatChange(oldId: oldId, newId: newId)
             }

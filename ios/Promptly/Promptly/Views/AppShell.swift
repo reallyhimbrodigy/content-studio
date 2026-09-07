@@ -225,6 +225,52 @@ struct AppShell: View {
         )) {
             AccountView()
         }
+        #if DEBUG
+        // `-probeAccountBounce`: open the account sheet and close it again,
+        // through the real bindings, so the keyboard-after-dismissal case can be
+        // captured without a finger. A simulator cannot tap, and this class of
+        // bug is invisible to the snapshot harness — which is how it shipped
+        // twice.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-probeAccountBounce") else { return }
+            try? await Task.sleep(for: .seconds(2))
+            appState.showAccount = true
+            try? await Task.sleep(for: .seconds(2))
+            appState.showAccount = false
+        }
+        #endif
+        // EVERY SURFACE THAT COVERS THE EDITOR REPORTS ITS OWN DISMISSAL.
+        // The editor cannot tell "the user arrived at chat" from "a cover was
+        // removed and the view underneath reappeared" — these say which it was.
+        // AND EVERY SURFACE RELEASES THE KEYBOARD ON THE WAY UP.
+        // The editor keeps first responder while a sheet covers it, so the
+        // keyboard was never dismissed — it sat behind the account page and was
+        // still there when it closed. Nothing re-focused; the focus simply never
+        // left. That is why removing the onAppear focus did not fix it.
+        .onChange(of: appState.showAccount) { was, now in
+            if !was && now { EditorView.dismissKeyboard() }
+            if was && !now { appState.noteSheetDismissed() }
+        }
+        .onChange(of: appState.wallPresented) { was, now in
+            if !was && now { EditorView.dismissKeyboard() }
+            if was && !now { appState.noteSheetDismissed() }
+        }
+        .onChange(of: appState.showInviteRung) { was, now in
+            if !was && now { EditorView.dismissKeyboard() }
+            if was && !now { appState.noteSheetDismissed() }
+        }
+        .onChange(of: appState.showCredits) { was, now in
+            if !was && now { EditorView.dismissKeyboard() }
+            if was && !now { appState.noteSheetDismissed() }
+        }
+        .onChange(of: appState.paywallReason) { was, now in
+            if was == nil && now != nil { EditorView.dismissKeyboard() }
+            if was != nil && now == nil { appState.noteSheetDismissed() }
+        }
+        .onChange(of: authGate.isPresenting) { was, now in
+            if !was && now { EditorView.dismissKeyboard() }
+            if was && !now { appState.noteSheetDismissed() }
+        }
         .onChange(of: appState.sidebarOpen) { _, isOpen in
             // Keyboard always dismisses on drawer open. We dismiss on
             // close too so a stale focus from the sidebar's search
