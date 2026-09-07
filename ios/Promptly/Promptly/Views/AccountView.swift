@@ -609,7 +609,18 @@ struct AccountView: View {
                     // a separate status indicator. Hidden entirely for
                     // free users so the header stays clean (no "FREE"
                     // chip — free is the default, nothing to celebrate).
-                    if effectiveIsPro {
+                    // THE ACTUAL TIER, same rule as the Subscription row twenty
+                    // lines up — which already says so in its own comment. This
+                    // one stayed a Pro/Free binary, so a Max subscriber's own
+                    // name badge read "PRO": the tier below the one they pay
+                    // for, on the line that is meant to read as their identity.
+                    if subscription.isMax {
+                        Text("MAX")
+                            .font(.system(size: 10 * k, weight: .bold))
+                            .padding(.horizontal, 7 * k).padding(.vertical, 2 * k)
+                            .background(Color.white, in: Capsule())
+                            .foregroundColor(.black)
+                    } else if effectiveIsPro {
                         PROBadge(compact: true)
                     }
                 }
