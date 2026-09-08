@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
+const { installSeen } = require('./lib/install-seen');
+const _i18n = require('./lib/i18n');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   isUserPro: isProfilePro,
@@ -31,6 +33,7 @@ const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField, clientValidateAuth } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
+const { isOwnedSource } = require('./lib/source-ownership');
 const apiLedger = require('./lib/api-outcome-ledger');
 const { makeJob404Guard } = require('./lib/job404-guard');
 const { isTerminalJobStatus, classifyLostTransition } = require('./lib/job-status');
@@ -111,8 +114,15 @@ function warmDispatcherOnIntent() {
   const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
   const warmUrl = process.env.MODAL_WARMUP_URL || modalRunUrl.replace(/-run-job(\.|$)/, '-warmup$1');
   if (!warmUrl) return;
+  // CARRIES THE WORKER SECRET like every other dispatch. This call posted a
+  // bare '{}' — the ONE worker endpoint out of three not sending auth, found by
+  // auditing all call sites rather than the two that were obvious. When the
+  // worker starts enforcing (step 3), an unauthenticated warmup would 403 and
+  // the on-intent warm would silently stop working: not an outage, just a
+  // slower first render that nobody would connect to this change.
   Promise.resolve(fetch(warmUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(8000),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...workerAuthField() }), signal: AbortSignal.timeout(8000),
   })).then(() => {}, (e) => console.warn('[warm-on-intent] warmup failed (non-fatal):', e && e.message));
 }
 
@@ -320,6 +330,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
 const _freeCredits = require('./lib/free-credits');
+const _darkRefusals = require('./lib/dark-refusals');
 // Default OFF. A debit that can 402 every user in the product is armed by
 // an explicit env flip, after balances are verified -- not by a merge.
 const CREDITS_DEBIT_ENABLED =
@@ -764,6 +775,26 @@ function sendJson(res, statusCode, payload) {
 // through; a 5xx or any unexpected error (ReferenceError, DB message, stack)
 // collapses to a generic line so internals never reach the user. The real error
 // is always logged at the call site — this only governs what the CLIENT sees.
+/**
+ * The caller's negotiated locale, and the ONE place the header is read.
+ *
+ * Every server-authored refusal is rendered by the client VERBATIM
+ * (APIService.swift:94/110/238/473) — it has no code-to-copy table for our
+ * strings — so if this returns 'en' for an Arabic device, that user reads
+ * English inside a fully Arabic app. 545 distinct users in 30 days are on the
+ * eight non-English locales we already translate.
+ *
+ * Never throws and never returns null: every caller is on an error path.
+ */
+function reqLocale(req) {
+  try {
+    const h = (req && req.headers && req.headers['accept-language']) || '';
+    const loc = _i18n.negotiateLocale(h);
+    _i18n.observeLocale(h, loc);
+    return loc;
+  } catch (_) { return _i18n.DEFAULT_LOCALE; }
+}
+
 function clientSafeMessage(error, fallback = 'Something went wrong. Please try again.') {
   const status = error && error.statusCode;
   if (typeof status === 'number' && status >= 400 && status < 500 && error.message) {
@@ -1850,6 +1881,11 @@ const server = http.createServer((req, res) => {
   // instrument itself named (Zac 2026-08-03). res.on('finish') fires once per
   // response regardless of writeHead/sendJson, so one attach here covers all.
   apiLedger.attach(req, res);
+  // Observe the caller's locale ONCE per request, at the same top-of-entry spot
+  // and for the same reason as the ledger attach above: anywhere lower and the
+  // early returns and 404s go uncounted, and the header_rate on /api/health
+  // would understate what clients actually send. Never throws.
+  req._locale = reqLocale(req);
 
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
@@ -3505,113 +3541,121 @@ const server = http.createServer((req, res) => {
   // deploy-sanity pass can assert prod is running the commit we just pushed —
   // added after a blueprint-sync failure raised the question "is prod even
   // rolling new commits?" and nothing could answer it from outside.
-  // ── REFERRAL RECONCILE ───────────────────────────────────────────────────
-  // The payout path. Until now the loop was CLAIM-ONLY: a referral could be
-  // created and could never qualify or pay, because qualify_referral and
-  // grant_referral_reward were revoked from `authenticated` (correctly — they
-  // were exploitable) and nothing called them as service_role. Closing the
-  // claim path while the payout path is dead is the worst ordering, and the
-  // invite link is about to work for the first time.
+  // ── REFERRAL: INSTALLS → SEVEN DAYS ──────────────────────────────────────
+  // Ruled 2026-09-05: three installs, seven days, once. An install is a row in
+  // `referrals` — the referred account claimed the code at sign-in, and the
+  // claim already refused the referrer's own device and any device referred
+  // before. No render requirement, no `qualified_at`: the render rule paid
+  // nothing for two weeks because nothing computed it, and a flag any client
+  // could set is not a fact.
   //
-  // TRUSTS NOTHING IT IS TOLD. The referrer is taken from the auth token, never
-  // the body. Qualification is decided by whether the referred user actually
-  // has a completed render — never by referrals.qualified_at, which is a flag
-  // that was until recently settable by any authenticated caller.
+  // TWO ENTRANCES, ONE FUNCTION. The referred user's client calls `claimed`
+  // right after the claim, so the reward lands without the referrer opening
+  // the app; the referrer's client calls `reconcile` on launch as the
+  // belt-and-braces. Both resolve the referrer server-side — never from the
+  // body.
+  async function reconcileReferrer(referrerId) {
+    const { reconcile } = require('./lib/referral-reconcile');
+    const { endTimeMs, REWARD_AT, REWARD_DAYS } = require('./lib/referral-rewards');
+
+    const { data: refs } = await supabaseAdmin
+      .from('referrals').select('id, referred_id, counted_at').eq('referrer_id', referrerId);
+    const rows = refs || [];
+    if (!rows.length) return { ok: true, days: 0, reason: 'no_referrals', installs: 0, threshold: REWARD_AT };
+
+    const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
+    const { data: grants } = await supabaseAdmin
+      .from('referral_rewards').select('days_granted, granted_at').eq('user_id', referrerId);
+    const all = grants || [];
+    const grantedInWindow = all.filter((g) => g.granted_at >= since)
+      .reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
+    const alreadyRewarded = all.some((g) => (Number(g.days_granted) || 0) > 0);
+    const priorCounted = rows.filter((r) => r.counted_at).length;
+
+    const decision = reconcile({ referrerId, referrals: rows, priorCounted, alreadyRewarded, grantedInWindow });
+    const installs = decision.countedAfter;
+
+    // Count the new installs whether or not they cross the line, so progress
+    // toward three is visible to the referrer and never re-counted.
+    if (decision.eligible.length && decision.days <= 0) {
+      await supabaseAdmin.from('referrals')
+        .update({ counted_at: new Date().toISOString() })
+        .eq('referrer_id', referrerId)
+        .in('referred_id', decision.eligible.map((e) => e.referred_id));
+    }
+
+    if (decision.days <= 0) {
+      return { ok: true, days: 0, reason: decision.reason, installs, threshold: REWARD_AT,
+               rewarded: alreadyRewarded, capped: decision.cap.capped };
+    }
+
+    const { data: prof } = await supabaseAdmin
+      .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
+    const beforeIso = prof?.pro_until || null;
+    const tierAfter = tierAfterGrant(prof?.tier, 'pro');
+    const fromMs = grantFromMs(beforeIso);
+    const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
+
+    // Ledger first, provider_ok false: a failed grant is visible, not absent.
+    const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
+      user_id: referrerId, days_granted: decision.days,
+      pro_until_before: beforeIso, pro_until_after: untilIso,
+      referral_ids: decision.eligible.map((e) => e.referred_id),
+      provider: 'db', provider_ok: false,
+    }).select('id').maybeSingle();
+
+    const { error: upErr } = await supabaseAdmin
+      .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
+
+    if (!upErr && ledger?.id) {
+      await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
+      await supabaseAdmin.from('referrals')
+        .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
+        .eq('referrer_id', referrerId)
+        .in('referred_id', decision.eligible.map((e) => e.referred_id));
+    }
+
+    supabaseAdmin.from('analytics_events').insert({
+      event: 'referral_reward_granted', platform: 'server', app_version: 'server',
+      user_id: referrerId,
+      props: { days: decision.days, installs, threshold: REWARD_AT, reward_days: REWARD_DAYS, provider_ok: !upErr },
+    }).then(() => {}).catch(() => {});
+
+    return { ok: !upErr, days: decision.days, pro_until: untilIso, installs, threshold: REWARD_AT, rewarded: true };
+  }
+
   if (parsed.pathname === '/api/referral/reconcile' && req.method === 'POST') {
     (async () => {
       try {
         if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
         const user = await requireSupabaseUser(req).catch(() => null);
         if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-        const referrerId = user.id;
-
-        const { reconcile } = require('./lib/referral-reconcile');
-        const { endTimeMs, CAP_DAYS_PER_30D } = require('./lib/referral-rewards');
-
-        const { data: refs } = await supabaseAdmin
-          .from('referrals').select('id, referred_id, qualified_at, counted_at')
-          .eq('referrer_id', referrerId);
-        const rows = refs || [];
-        if (!rows.length) return sendJson(res, 200, { ok: true, days: 0, reason: 'no_referrals' });
-
-        // The fact the payout rests on, read directly rather than trusted.
-        const ids = rows.map((r) => r.referred_id).filter(Boolean);
-        const { data: jobs } = await supabaseAdmin
-          .from('video_jobs').select('user_id').in('user_id', ids).eq('status', 'completed');
-        const withRender = new Set((jobs || []).map((j) => j.user_id));
-
-        const since = new Date(Date.now() - 30 * 24 * 3600e3).toISOString();
-        const { data: grants } = await supabaseAdmin
-          .from('referral_rewards').select('days_granted').eq('user_id', referrerId).gte('granted_at', since);
-        const grantedInWindow = (grants || []).reduce((a, g) => a + (Number(g.days_granted) || 0), 0);
-        const priorCounted = rows.filter((r) => r.counted_at).length;
-
-        const decision = reconcile({
-          referrerId, referrals: rows, referredWithRender: withRender, priorCounted, grantedInWindow,
-        });
-
-        // Qualified-with-no-render is a FINDING, not noise: it would mean
-        // qualification became reachable by something other than finishing a
-        // video. Recorded whether or not anything is granted.
-        const suspicious = decision.rejected.filter((r) => r.reason === 'qualified_without_render');
-        if (suspicious.length) {
-          supabaseAdmin.from('analytics_events').insert({
-            event: 'referral_qualified_without_render', platform: 'server', app_version: 'server',
-            user_id: referrerId, props: { count: suspicious.length },
-          }).then(() => {}).catch(() => {});
-        }
-
-        if (decision.days <= 0) {
-          return sendJson(res, 200, {
-            ok: true, days: 0, reason: decision.reason,
-            eligible: decision.eligible.length, capped: decision.cap.capped,
-          });
-        }
-
-        const { data: prof } = await supabaseAdmin
-          .from('profiles').select('pro_until, tier').eq('id', referrerId).maybeSingle();
-        const beforeIso = prof?.pro_until || null;
-        // A grant may only RAISE a tier. This wrote tier:'pro' unconditionally,
-        // so an active Max subscriber earning a referral was clobbered DOWN.
-        const tierAfter = tierAfterGrant(prof?.tier, 'pro');
-        const fromMs = grantFromMs(beforeIso);
-        const untilIso = new Date(endTimeMs(decision.days, fromMs)).toISOString();
-
-        // LEDGER FIRST, provider_ok false. A row exists either way, so a failed
-        // grant is visible rather than absent — absence and failure are
-        // otherwise the same nothing.
-        const { data: ledger } = await supabaseAdmin.from('referral_rewards').insert({
-          user_id: referrerId, days_granted: decision.days,
-          pro_until_before: beforeIso, pro_until_after: untilIso,
-          referral_ids: decision.eligible.map((e) => e.referred_id),
-          provider: 'db', provider_ok: false,
-        }).select('id').maybeSingle();
-
-        const { error: upErr } = await supabaseAdmin
-          .from('profiles').update({ tier: tierAfter, pro_until: untilIso }).eq('id', referrerId);
-
-        if (!upErr && ledger?.id) {
-          await supabaseAdmin.from('referral_rewards').update({ provider_ok: true }).eq('id', ledger.id);
-          await supabaseAdmin.from('referrals')
-            .update({ counted_at: new Date().toISOString(), reward_id: ledger.id })
-            .eq('referrer_id', referrerId)
-            .in('referred_id', decision.eligible.map((e) => e.referred_id));
-        }
-
-        supabaseAdmin.from('analytics_events').insert({
-          event: 'referral_reward_granted', platform: 'server', app_version: 'server',
-          user_id: referrerId,
-          props: { days: decision.days, capped: decision.cap.capped,
-                   withheld: decision.cap.withheld, cap: CAP_DAYS_PER_30D, provider_ok: !upErr },
-        }).then(() => {}).catch(() => {});
-
-        return sendJson(res, 200, {
-          ok: !upErr, days: decision.days, pro_until: untilIso,
-          capped: decision.cap.capped, withheld: decision.cap.withheld,
-        });
+        return sendJson(res, 200, await reconcileReferrer(user.id));
       } catch (err) {
         console.error('[referral/reconcile] error', err);
         return sendJson(res, 500, { ok: false, error: 'reconcile_failed' });
+      }
+    })();
+    return;
+  }
+
+  // The referred user, right after `claim_referral` said ok: settle the
+  // REFERRER's side now. The referrer is read from the referral row.
+  if (parsed.pathname === '/api/referral/claimed' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 503, { ok: false, error: 'supabase_not_configured' });
+        const user = await requireSupabaseUser(req).catch(() => null);
+        if (!user || !user.id) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        const { data: row } = await supabaseAdmin
+          .from('referrals').select('referrer_id').eq('referred_id', user.id).maybeSingle();
+        if (!row?.referrer_id) return sendJson(res, 200, { ok: true, days: 0, reason: 'not_referred' });
+        const r = await reconcileReferrer(row.referrer_id);
+        // Never tell the referred user about the referrer's account.
+        return sendJson(res, 200, { ok: r.ok, counted: true, installs: r.installs, threshold: r.threshold, rewarded: r.days > 0 });
+      } catch (err) {
+        console.error('[referral/claimed] error', err);
+        return sendJson(res, 500, { ok: false, error: 'claimed_failed' });
       }
     })();
     return;
@@ -3654,6 +3698,19 @@ const server = http.createServer((req, res) => {
       'Cache-Control': 'public, max-age=3600',
     });
     res.end(body);
+    return;
+  }
+
+  // INSTALL RECOGNITION — unauthenticated by necessity: it is asked BEFORE
+  // signup, which is the whole point. Answers only a boolean about a device id
+  // the caller already holds, so it discloses nothing a caller does not know.
+  if (parsed.pathname === '/api/install/seen' && req.method === 'GET') {
+    // `parsed` is url.parse(req.url, true) — the query bag, not URLSearchParams.
+    const deviceId = (parsed.query || {}).device_id;
+    installSeen(deviceId, supabaseAdmin).then((r) => {
+      if (r.retryAfter) { try { res.setHeader('Retry-After', String(r.retryAfter)); } catch {} }
+      sendJson(res, r.status, r.body);
+    }).catch(() => sendJson(res, 503, { error: 'lookup_failed' }));
     return;
   }
 
@@ -3866,6 +3923,140 @@ const server = http.createServer((req, res) => {
       //   update_notes           — one line of user-facing copy for the banner
       //                            (optional; client has a default).
       // All empty/off by default → the whole feature stays dark.
+      // LOCALE NEGOTIATION — reported so "does the client send Accept-Language"
+      // is a curl, not an assumption. header_rate near 0 on real traffic means
+      // the negotiation is DARK and the client must send the header before any
+      // of this reaches a user. supported is the app's own 12 locales.
+      i18n: { supported: _i18n.SUPPORTED.length, ..._i18n.localeStats() },
+      // ── WEB CHECKOUT (US storefront only, decided on the device) ─────────
+      // One JSON blob, filled from the RevenueCat Web Billing offering:
+      //   {"storefronts":["USA"],"saved_pct":15,"products":{
+      //      "promptly_pro_yearly":{"web_price":"$246.99","web_price_micros":246990000,
+      //                             "currency":"USD","url":"https://pay.rev.cat/<app>/{app_user_id}?..."}}}
+      // The client renders nothing unless the blob parses AND its storefront is
+      // listed AND the selected product has an entry. Absent → the feature is
+      // dark on every device, which is the state until the web offering exists.
+      web_checkout: (() => {
+        try {
+          const raw = String(process.env.WEB_CHECKOUT_JSON || '').trim();
+          if (!raw) return null;
+          const j = JSON.parse(raw);
+          if (!j || typeof j !== 'object' || !j.products || typeof j.products !== 'object') return null;
+
+          // KEYED BY PACKAGE ID, not product id. The Web Billing offering uses
+          // RevenueCat's package identifiers ($rc_weekly, $rc_monthly,
+          // $rc_annual) plus the custom Max packages — NOT the App Store
+          // product ids (promptly_pro_*). An allowlist written against product
+          // ids drops every real entry and returns null, which is the whole
+          // feature dark with nothing in the logs but a blob that "did not
+          // parse".
+          //
+          // SUBSCRIPTIONS ONLY. A credit top-up bought on the web grants
+          // NOTHING: RevenueCat emits VIRTUAL_CURRENCY_TRANSACTION and that
+          // event reaches the webhook's UNHANDLED branch — logged, acked 200,
+          // no write, no balance touched. Taking money for credits that never
+          // arrive is worse than not selling them.
+          const SUBSCRIPTIONS = new Set([
+            '$rc_weekly', '$rc_monthly', '$rc_annual',
+            'max_monthly', 'max_yearly',
+          ]);
+          const products = {};
+          const dropped = [];
+          for (const [id, p] of Object.entries(j.products)) {
+            if (!SUBSCRIPTIONS.has(id)) { dropped.push(id); continue; }
+            products[id] = p;
+          }
+          if (dropped.length) {
+            console.warn('[web_checkout] DROPPED non-subscription package(s) — a web '
+              + 'top-up grants no credits (VIRTUAL_CURRENCY_TRANSACTION is unhandled): '
+              + dropped.join(', '));
+          }
+          if (!Object.keys(products).length) return null;
+
+          // APPLE'S US PRICES — the thing the saving is measured AGAINST.
+          //
+          // Overridable by env so the App Store Connect gross-up flips the
+          // claim WITHOUT a code deploy: the moment ASC approves the new US
+          // prices, set APP_STORE_US_MICROS and the badge lights up on its own.
+          // The defaults are TODAY's live Apple prices, which are IDENTICAL to
+          // the web prices — so the derivation correctly yields 0 and the step
+          // stays dark until there is a real saving to claim.
+          const APPLE_DEFAULT = {
+            '$rc_weekly':  10990000,   // $10.99   -> $12.99 after gross-up
+            '$rc_monthly': 29990000,   // $29.99   -> $34.99
+            '$rc_annual':  289990000,  // $289.99  -> $339.99
+            'max_monthly': 89990000,   // $89.99   -> $105.99
+            'max_yearly':  799990000,  // $799.99  -> $939.99
+          };
+          // INTRO PRICES ARE THE COMPARISON THAT CONVERTS. A first-time buyer
+          // is not choosing between $289.99 and $289.99 — they are choosing
+          // between Apple's intro and the web intro. Compared separately
+          // because eligibility is per-customer and only the client knows it.
+          const APPLE_INTRO_DEFAULT = {
+            '$rc_annual':  145990000,  // $145.99  -> $171.75 after gross-up
+            '$rc_monthly': 14990000,   // $14.99   -> $17.99
+          };
+          const parseMicros = (envName, fallback) => {
+            try {
+              const o = JSON.parse(process.env[envName] || 'null');
+              if (!o || typeof o !== 'object') return fallback;
+              const out = { ...fallback };
+              for (const [k, v] of Object.entries(o)) {
+                const n = Number(v);
+                if (Number.isFinite(n) && n > 0) out[k] = n;
+              }
+              return out;
+            } catch (_) { return fallback; }
+          };
+          const APPLE = parseMicros('APP_STORE_US_MICROS', APPLE_DEFAULT);
+          const APPLE_INTRO = parseMicros('APP_STORE_US_INTRO_MICROS', APPLE_INTRO_DEFAULT);
+
+          // DERIVED, NEVER ASSERTED. saved_pct was a hardcoded 15 that rendered
+          // whatever the prices actually were, so a web price EQUAL to Apple's
+          // still advertised "save 15%" — a false claim about money that
+          // survives exactly as long as nobody compares the two numbers.
+          //
+          // A TRUE SAVING TOO SMALL TO CLAIM IS STILL NOT A CLAIM. Today's web
+          // intro on the annual is $144.99 against Apple's $145.99 — a real
+          // 0.68%, which rounds to "save 1%". That is honest and commercially
+          // worse than silence: a 1% badge reads as a gimmick and invites the
+          // comparison it loses. Below the floor the step stays dark, which is
+          // also the state the pricing change was planned around. After the
+          // App Store gross-up the same comparison is $171.75 against $144.99 —
+          // 16% — and it lights up on its own.
+          const MIN_CLAIM_PCT = 5;
+          const pctOf = (apple, web) => {
+            if (!Number.isFinite(apple) || !Number.isFinite(web)) return 0;
+            if (apple <= 0 || web <= 0 || web >= apple) return 0;
+            const pct = Math.round(((apple - web) / apple) * 100);
+            return pct >= MIN_CLAIM_PCT ? pct : 0;
+          };
+          let best = 0;
+          let bestIntro = 0;
+          for (const [id, p] of Object.entries(products)) {
+            const web = Number(p && p.web_price_micros);
+            const webIntro = Number(p && p.web_intro_price_micros);
+            p.saved_pct = pctOf(APPLE[id], web);
+            // Intro saving is reported only when BOTH sides have an intro —
+            // comparing an Apple intro against a full web price would invent a
+            // discount out of a billing-period mismatch.
+            p.intro_saved_pct = (Number.isFinite(webIntro) && APPLE_INTRO[id])
+              ? pctOf(APPLE_INTRO[id], webIntro) : 0;
+            if (p.saved_pct > best) best = p.saved_pct;
+            if (p.intro_saved_pct > bestIntro) bestIntro = p.intro_saved_pct;
+          }
+          if (!best && !bestIntro) {
+            console.warn('[web_checkout] no savings claim: no web price is below its '
+              + 'App Store price (base or intro). Badge suppressed rather than asserted.');
+          }
+          return {
+            storefronts: Array.isArray(j.storefronts) && j.storefronts.length ? j.storefronts : ['USA'],
+            saved_pct: best,
+            intro_saved_pct: bestIntro,
+            products,
+          };
+        } catch (_) { return null; }
+      })(),
       latest_version: String(process.env.LATEST_APP_VERSION || ''),
       min_supported_version: String(process.env.MIN_SUPPORTED_APP_VERSION || ''),
       force_update: String(process.env.FORCE_UPDATE || '') === '1' ? 'on' : 'off',
@@ -4097,6 +4288,7 @@ const server = http.createServer((req, res) => {
           'language_selected', 'signup_completed', 'social_proof_viewed', 'onboarding_completed',
           // ACTIVATION (client half — server also fires render_* + render-time *_rejected):
           'upload_started', 'upload_completed', 'result_viewed',
+          'render_started', 'render_completed', 'upload_source_missing',
           // Picker instrumentation (UNS/first-run BUILD(1)): picker_opened on every
           // present; picker_result {raw,resolved,dropped} on dismissal; and a durable
           // picker_asset_unresolved when a picked result resolves to no PHAsset (the
@@ -4116,7 +4308,7 @@ const server = http.createServer((req, res) => {
           // Referral program (conversion workstream; schema live 2026-08-21):
           // share-sheet open, ?ref= deep-link arrival, and client-observed claim.
           // Allowlisted AHEAD of the iOS build per the app-*-branch gate rule.
-          'referral_share', 'referral_link_opened', 'referral_claimed',
+          'referral_share', 'referral_link_opened', 'referral_claimed', 'referral_claim_rejected', 'referral_reward_received', 'upgrade_click_no_checkout', 'external_link_tap', 'checkout_method_chosen', 'checkout_sheet_shown',
           // The DENOMINATOR the referral loop never had (2026-08-29). All four
           // surfaces could report shares and none could report a share RATE, so
           // the ladder's entire purpose — making the first invite pay, and
@@ -4164,11 +4356,21 @@ const server = http.createServer((req, res) => {
           // activation. MUST be here or the SQL mirror (the DB our upload/no-token
           // analysis queries) drops them while PostHog keeps them — half-blind.
           'upload_failed', 'export_completed', 'push_permission',
-          // The native App Store review prompt (2026-09-07). Allowlisted
-          // BEFORE the client that emits them ships, or the SQL mirror drops
-          // them silently and the one question worth asking — does the
-          // trigger fire, and how often — cannot be answered.
+          // THE NATIVE REVIEW PROMPT AND ITS MANUAL PATH (2026-09-07).
+          // `review_prompt_shown` is the only record that the trigger fired
+          // at all: Apple caps the sheet at three a year and discards the
+          // rest silently, with no callback, so the ATTEMPT is the only
+          // observable there is. Dropped by the mirror, "the trigger never
+          // fires" and "the trigger fires and Apple refuses" look identical,
+          // and those two want opposite fixes.
           'review_prompt_shown', 'rate_app_tapped',
+          // `checkout_web_blocked` is the web-checkout link REFUSING to
+          // compose because RevenueCat's app_user_id does not yet match the
+          // signed-in uid. It should be rare; if it is not, the sign-in
+          // reorder is racing identification and the reason field says which
+          // (no_account / identity_mismatch). A refusal nobody can count is
+          // indistinguishable from a checkout nobody tapped.
+          'checkout_web_blocked',
           // 1.3.4 in-app ready-state card (returning-user recovery funnel):
           'ready_banner_shown', 'ready_banner_open', 'ready_banner_dismiss',
           // Billing-identity hardening (blocked-pre-identity + RC identify diagnostics):
@@ -4200,6 +4402,56 @@ const server = http.createServer((req, res) => {
           // completely unmeasurable. Carries error_code/error_subcode/
           // error_cause in the worker's shape so both codebases union.
           'upload_never_started',
+          // Upload STAGE timings (2026-09-07). One row per upload carrying
+          // t_staged / t_first_byte / t_last_byte / t_ack / t_dispatch against
+          // a single t0. Dropped, the only thing left is a total — and a total
+          // cannot say whether the time went on staging a copy nobody needed or
+          // on the transfer, which are opposite fixes.
+          'upload_timing',
+          // The presign now REFUSES to fire without a session (2026-09-07).
+          // 86% of upload failures on 1.3.27 came from installs with no user_id
+          // at all — the client sent an unauthenticated presign and the server
+          // returned 401 with nobody to attribute it to. This is the count of
+          // times that refusal fires, which is the only way to tell "anonymous
+          // sign-in is covering it" from "it is still happening, silently".
+          'upload_no_session',
+          // A render whose jobId never reached the client is now RECOVERED
+          // from the dispatch timestamp (2026-09-07). `job_recovery` is the
+          // only record of whether that works — outcome splits recovered /
+          // no_candidate / ambiguous. Dropped silently, a recovered render and
+          // a missed one look identical, which defeats the instrument.
+          'job_recovery',
+          // A vanished staged source is now RECOVERABLE (2026-09-07): the
+          // client re-materialises the video from the photo library instead of
+          // failing the pick. `upload_restage` is the only record of whether
+          // that recovery works — outcome splits restaged / no_identifier /
+          // asset_gone / no_resource / write_failed, which is the difference
+          // between "the fix works" and "the video really was gone".
+          'upload_restage',
+          // ── THE 250 CLIENT COHORT (2026-09-06) ────────────────────────────
+          // Six events build 250 already emits and this set did not know. Same
+          // shape as the 244 cohort below: dropped silently by the SQL mirror,
+          // fine in PostHog, so every read of them on the server side would
+          // have been a confident zero. Allowlisted BEFORE 250 is released.
+          //
+          // AUTH — deferred auth now gates ONE seam, purchase. `auth_sheet_opened`
+          // is the denominator for that seam; without it "reached the seam" and
+          // "never reached it" are the same empty result.
+          'auth_sheet_opened',
+          // Anonymous -> real identity. `identity_link_existing_account` is the
+          // branch where the email already belongs to another account, which is
+          // the only case that can strand a user's jobs on the anonymous id.
+          'identity_link_existing_account',
+          // The 249 blocker: sessions did not survive an app update. Fires when
+          // the UserDefaults session is moved into the Keychain, so the fix's
+          // reach across the installed base is measurable rather than asserted.
+          'session_migrated_to_keychain',
+          // UNS launch reconcile (items 2-6). `_swept` is the denominator (picks
+          // found stale at launch), `_retry` and `_failed` split it into
+          // recovered vs terminal — the split is the whole point, since a sweep
+          // count alone cannot say whether the reconcile works.
+          'upload_reconcile_swept', 'upload_reconcile_retry', 'upload_reconcile_failed',
+
           // ── THE 244 CLIENT COHORT (2026-09-02) ────────────────────────────
           // 25 events the client on app-conversion-surface already emits and
           // this set did not know. Every one of them was being DROPPED by the
@@ -4241,6 +4493,23 @@ const server = http.createServer((req, res) => {
           // picker asset is a pick that never becomes a job.
           'device_id_keychain_write_failed', 'first_run_keychain_write_failed',
           'picker_asset_unrecoverable',
+          // ANONYMOUS AUTH FUNNEL (2026-09-06). Allowlisted the day the client
+          // started emitting them, which is the whole lesson of the 25 that were
+          // dropped for a full release: the allowlist trailing the client is
+          // indistinguishable from the client not emitting.
+          // identity_link_* are the instrument for the one leg of linking that
+          // cannot be tested server-side — whether the client calls linkIdentity
+          // (same user_id, history preserved) or a fresh sign-in (new id, a
+          // month of jobs orphaned).
+          'anon_signin_ok', 'anon_signin_failed', 'auth_gate_suppressed',
+          'identity_link_sent', 'identity_link_failed',
+          // Reply quality signal from the chat surface.
+          'reply_rated',
+          // The RECOVERY half of the two above: the keychain lost the identity
+          // and the device_id was recovered anyway. Emitted by shipped iOS and
+          // dropped silently until 2026-09-06 — without it the keychain-failure
+          // events read as pure loss, with no denominator for how many recover.
+          'first_run_recovered_from_device_id',
           // Onboarding language choice — segments every funnel above by locale.
           'language_changed',
           // FREE-TIER CREDITS (2026-09-02). Allowlisted BEFORE the client emits
@@ -4264,6 +4533,12 @@ const server = http.createServer((req, res) => {
           // original 25 — each one silently dropped by the SQL mirror until
           // someone noticed the funnel was short.
           'exit_offer_shown',
+          // 5th allowlist drift the pre-push parity gate has caught (2026-09-04).
+          // update_banner_shown/dismissed/prompt_tapped close the exposure blind
+          // spot flagged on 2026-09-03: the update banner rendered with NO
+          // analytics at all, so "how many users saw it" was unanswerable and
+          // any zero would have been a reader artifact, not a suppression bug.
+          'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
           // Fifth. The top-up screen's UPGRADE HERO — the purple card that
           // argues a subscription against a one-time pack at the highest-intent
           // moment in the app. It carries `source` so the credit wall and the
@@ -5153,10 +5428,16 @@ const server = http.createServer((req, res) => {
         }
         console.log('[account] will delete', s3Keys.length, 'S3 objects after DB rows');
 
-        // 2. Delete DB rows explicitly. Order matters only for the
-        //    profiles row (its FK has CASCADE so it would go automatically
-        //    on auth user delete, but we delete it first to keep the
-        //    state machine readable).
+        // 2. Delete DB rows explicitly.
+        //
+        // THE COMMENT HERE USED TO SAY profiles CASCADES. IT DOES NOT.
+        // Measured from pg_constraint 2026-09-06: profiles_id_fkey is
+        // ON DELETE **NO ACTION**. (video_jobs and chats are SET NULL;
+        // usage_events and device_tokens are the only real CASCADEs.) So the
+        // profiles delete is not tidiness — it is LOAD-BEARING. Without it,
+        // step 3 fails with a foreign-key violation and the user is left with
+        // an account they cannot delete, which is an App Store review problem
+        // as much as a product one.
         const deleteResults = await Promise.allSettled([
           supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
           supabaseAdmin.from('chats').delete().eq('user_id', userId),
@@ -5166,6 +5447,32 @@ const server = http.createServer((req, res) => {
         for (const r of deleteResults) {
           if (r.status === 'rejected' || r.value?.error) {
             console.error('[account] DB row delete failure (continuing):', r.value?.error || r.reason);
+          }
+        }
+
+        // 2b. PROVE the blocking row is gone before trying step 3.
+        // The loop above logs failures and CONTINUES, which is right for the
+        // SET NULL / CASCADE tables — an orphaned job row is cheap. It is wrong
+        // for profiles: continuing past that failure guarantees a 500 from
+        // deleteUser, reported as a generic auth_delete_failed that names
+        // neither the table nor the constraint. One retry, then an honest error.
+        {
+          const { data: stillThere } = await supabaseAdmin
+            .from('profiles').select('id').eq('id', userId).limit(1);
+          if (Array.isArray(stillThere) && stillThere.length) {
+            console.warn('[account] profiles row survived the batch — retrying before auth delete');
+            const { error: retryErr } = await supabaseAdmin
+              .from('profiles').delete().eq('id', userId);
+            const { data: afterRetry } = await supabaseAdmin
+              .from('profiles').select('id').eq('id', userId).limit(1);
+            if (Array.isArray(afterRetry) && afterRetry.length) {
+              console.error('[account] CANNOT delete profiles row; aborting before auth delete', retryErr);
+              return sendJson(res, 500, {
+                error: 'profile_delete_failed',
+                detail: 'profiles row must be removed before the auth user '
+                      + '(profiles_id_fkey is ON DELETE NO ACTION)',
+              });
+            }
           }
         }
 
@@ -5342,6 +5649,24 @@ const server = http.createServer((req, res) => {
           'PRODUCT_CHANGE',
           'UNCANCELLATION',
           'NON_RENEWING_PURCHASE',
+          // WEB BILLING (2026-09-05, confirmed against RevenueCat's event
+          // reference, not assumed). Stripe / RC Billing / Paddle purchases
+          // emit the same five names above, so those needed no change. But
+          // PURCHASE_REDEEMED is WEB-EXCLUSIVE ("a Paddle, RevenueCat Billing,
+          // or Stripe purchase was redeemed") and had no handler — it fell to
+          // the unhandled branch, which logs and acks 200 WITHOUT writing.
+          //
+          // Why that is a real grant and not a duplicate: on web flows the
+          // purchase and the redemption can carry DIFFERENT app_user_ids — the
+          // buyer purchases (INITIAL_PURCHASE) and the redeeming account
+          // attaches the entitlement (PURCHASE_REDEEMED). Handling only the
+          // former grants Pro to the wrong id and leaves the actual user
+          // unentitled, which is exactly the silent web-purchase failure this
+          // webhook exists to prevent.
+          //
+          // INVOICE_ISSUANCE is the other web-exclusive event and is
+          // deliberately NOT here: it is an UNPAID invoice.
+          'PURCHASE_REDEEMED',
         ]);
         // Events that revoke Pro IMMEDIATELY (vs CANCELLATION which lets
         // them stay Pro through expiration_at_ms).
@@ -5610,13 +5935,33 @@ const server = http.createServer((req, res) => {
           if (grantsPro.has(type) && payload.tier) {
             try {
               const { data: cur } = await supabaseAdmin
-                .from('profiles').select('tier').eq('id', id).maybeSingle();
+                .from('profiles').select('tier, pro_until').eq('id', id).maybeSingle();
               const raised = tierAfterGrant(cur && cur.tier, payload.tier);
               if (raised !== payload.tier) {
                 console.log(`[RevenueCat] raise-guard: keeping stored tier '${raised}' `
                   + `over incoming grant '${payload.tier}' for ${id}`);
               }
               payload.tier = raised;
+              // EXPIRY GUARD, GRANTS ONLY (2026-09-05). A grant carries
+              // pro_until = expiration_at_ms, and expirationIso is null when the
+              // event omits that field. Writing it would NULL a still-valid paid
+              // period — a grant that REVOKES. CANCELLATION already guards
+              // exactly this ("a missing/zero expiration must NOT null it out");
+              // the grant path did not, and PURCHASE_REDEEMED is the event most
+              // likely to arrive without one since the expiry lives on the
+              // original purchase.
+              //
+              // Only ever KEEPS a longer/existing future expiry — it never
+              // shortens one, so a genuine expiry change still applies.
+              if (payload.pro_until === null || payload.pro_until === undefined) {
+                const stored = cur && cur.pro_until;
+                if (stored && new Date(stored).getTime() > Date.now()) {
+                  console.log(`[RevenueCat] expiry-guard: ${type} carried no `
+                    + `expiration; keeping stored pro_until '${stored}' for ${id} `
+                    + `rather than nulling a paid period`);
+                  payload.pro_until = stored;
+                }
+              }
             } catch (_) {
               // A failed read must not drop the grant. Worst case we write the
               // incoming tier, which is exactly the pre-guard behaviour.
@@ -6122,6 +6467,40 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'invalid_proxy_url' });
         }
 
+        // ── PROVENANCE, NOT JUST SAFETY ──────────────────────────────────────
+        // isSafeRemoteMediaUrl is an SSRF guard: it proves the URL is not
+        // internal. It says NOTHING about who owns it, so any public https URL
+        // passed — an arbitrary internet video the worker would download and
+        // render on our compute, or ANOTHER USER'S source key. The keys are
+        // unguessable, but unguessable is secrecy, not authorisation: a shared
+        // or leaked URL rendered fine.
+        //
+        // Ownership is in the key. /api/upload-url mints
+        // `sources/${authUser.id}/...`, so the owner is derivable from the path
+        // and no confirm table is needed.
+        //
+        // THE SAMPLE CLIP IS THE ONE EXEMPTION, and it is exempt because it is
+        // the server's OWN configured source — matched by exact equality
+        // against the env value, never by pattern. It cannot be user-supplied.
+        const _sampleSrc = String(process.env.SAMPLE_DEMO_SOURCE_URL || '').trim();
+        // BOTH URLs, because the worker downloads BOTH. proxy_video_url is not
+        // persisted on the job row, which is exactly why it is easy to miss —
+        // it is passed straight through to the worker (see the dispatch body
+        // below) and fetched there, so an unguarded proxy is the same hole
+        // wearing a different parameter name.
+        for (const [label, u] of [['video_url', videoUrl], ['proxy_video_url', proxyVideoUrl]]) {
+          if (!u) continue;
+          if (u === _sampleSrc) continue;
+          if (isOwnedSource(u, authUser.id)) continue;
+          console.warn('[render] rejected a source this user does not own: field=%s url=%s user=%s',
+            label, stripQuery(u).slice(0, 120), authUser.id);
+          return sendJson(res, 403, {
+            error: 'source_not_owned',
+            field: label,
+            message: 'That video was not uploaded by this account. Upload it again and retry.',
+          });
+        }
+
         // §4 sample-clip demo. The exemption (no daily-quota decrement, no
         // concurrency block) is honored ONLY when the source is the server's
         // configured official sample clip — the anti-abuse keystone: a user
@@ -6166,6 +6545,27 @@ const server = http.createServer((req, res) => {
         const _debitFloor = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
         const _debitApplies = _freeCredits.debitApplies(
           { build: _debitBuild, minBuild: _debitFloor });
+        // ARMED-BUT-INERT IS THE FAILURE MODE THIS MAKES VISIBLE.
+        // CREDITS_DEBIT_ENABLED=1 with FREE_CREDITS_MIN_BUILD unset produces a
+        // system that reports `debit_armed: true` at /healthz and debits
+        // NOBODY, because debitApplies() returns false on a non-integer floor.
+        // That state persisted undetected and took an elimination across five
+        // conjuncts to diagnose, since nothing on the path logged anything.
+        //
+        // Deliberately distinguishes the two skips: an UNSET FLOOR is a
+        // configuration defect (the feature cannot work for anyone), while a
+        // BUILD BELOW the floor is correct, expected, and self-resolving as the
+        // installed base upgrades. Collapsing them would bury the defect in the
+        // expected case — which is precisely how this hid.
+        if (CREDITS_DEBIT_ENABLED && !_debitApplies) {
+          _darkRefusals.observeDarkRefusal(
+            Number.isInteger(_debitFloor) ? 'debit_skipped:build_below_floor'
+                                          : 'debit_INERT:min_build_unset',
+            Number.isInteger(_debitFloor)
+              ? `build=${_debitBuild} floor=${_debitFloor}`
+              : 'CREDITS_DEBIT_ENABLED=1 but FREE_CREDITS_MIN_BUILD unset — '
+                + 'NOBODY is being debited');
+        }
         // EXACTLY ONE LIMITER PER REQUEST. When this is true credits are the
         // limiter and the daily cap is retired for this request; when false the
         // daily cap is the limiter and nothing is debited. Both-on would 402 a
@@ -7089,7 +7489,7 @@ const server = http.createServer((req, res) => {
         }
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at, client_message_id')
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
           .limit(100);
@@ -7098,6 +7498,10 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, {
           jobs: (data || []).map((job) => ({
             id: job.id,
+            // The client matches a lost dispatch against this. Selected but not
+            // projected, it would read as null on every row — the same
+            // wrong-field shape that made result_url look like 100% failure.
+            client_message_id: job.client_message_id || null,
             status: job.status,
             progress: Number(job.progress || 0),
             current_step: job.current_step || job.status,
@@ -7368,6 +7772,10 @@ const server = http.createServer((req, res) => {
         // live against 241 by accident.
         const _minBuild = parseInt(process.env.REVERSE_TRIAL_MIN_BUILD || '', 10);
         if (!Number.isInteger(_minBuild)) {
+          // OBSERVED, not just refused. A dark path with no trace is
+          // indistinguishable from a path nobody reached.
+          _darkRefusals.observeDarkRefusal('reverse_trial:min_build_unset',
+                                           'REVERSE_TRIAL_MIN_BUILD is not set');
           return sendJson(res, 503, { error: 'reverse_trial_unavailable',
                                       reason: 'min_build_unset' });
         }
@@ -7600,6 +8008,12 @@ const server = http.createServer((req, res) => {
         // a weak key by accident.
         const _minBuild = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
         if (!Number.isInteger(_minBuild)) {
+          // THIS IS THE ONE THAT COST HOURS. Unset, it also makes
+          // debitApplies() false for every user, so the credits debit is
+          // silently inert while /healthz reports debit_armed: true.
+          _darkRefusals.observeDarkRefusal('free_credits:min_build_unset',
+                                           'FREE_CREDITS_MIN_BUILD is not set — '
+                                           + 'the render debit is ALSO inert');
           return sendJson(res, 503, { error: 'free_credits_unavailable',
                                       reason: 'min_build_unset' });
         }
