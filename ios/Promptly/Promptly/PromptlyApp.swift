@@ -310,6 +310,22 @@ struct PromptlyApp: App {
     /// first `.active` (cold launch) and on every real background→active resume —
     /// NOT on transient inactive↔active blips (Control Center, notification
     /// banners), which would inflate the count.
+    /// Whether the capture harness is standing in for the app. Read twice —
+    /// once to stand the real app down, once to raise the harness — so the two
+    /// can never disagree about which is showing.
+    ///
+    /// DEFINED IN BOTH CONFIGURATIONS, false in Release. Its uses are in the
+    /// view body, which is not itself `#if DEBUG`, so a DEBUG-only definition
+    /// compiled in Debug and broke the archive. release-build-gate caught it;
+    /// Debug passing says nothing about the configuration that ships.
+    private var snapshotHarnessActive: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-snapshotPayoff")
+        #else
+        return false
+        #endif
+    }
+
     @Environment(\.scenePhase) private var scenePhase
     @State private var didStartSession = false
 
@@ -587,13 +603,6 @@ struct PromptlyApp: App {
     /// are tier-aware for, posed so each can be captured. Idempotent, so both
     /// the harness path and the root task can call it.
     @MainActor
-    /// Whether the capture harness is covering the app. Read twice — once to
-    /// stand the real app down, once to raise the harness — so the two can
-    /// never disagree about which is showing.
-    private var snapshotHarnessActive: Bool {
-        ProcessInfo.processInfo.arguments.contains("-snapshotPayoff")
-    }
-
     static func applyTierPose() {
         let a = ProcessInfo.processInfo.arguments
         guard let i = a.firstIndex(of: "-poseTier"), i + 1 < a.count else { return }
