@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 # ACCESSIBILITY IDENTIFIERS — COUNTED, NOT MERELY PRESENT.
 #
+# STANDING RISK, STATED UP FRONT: this is Python parsing Swift with regexes, and
+# it has already been wrong twice — both times reporting the CODE as broken when
+# the fault was its own reading.
+#   1. It read only `accessibilityIdentifier("literal")`, so a ternary
+#      (canUpgrade ? "account.upgrade" : "account.manage") and a concatenation
+#      ("account.row." + slug(label)) looked like no definition at all. Six
+#      present identifiers were reported missing.
+#   2. It counted the empty literal in `"video.action.reedit" + (isPro ? "" :
+#      ".locked")` as a name, and reported an EMPTY identifier "defined twice".
+# Both came from assuming the simplest spelling of a call. It now reads
+# paren-balanced arguments and understands ternaries and concatenations, but the
+# next unusual spelling is a third miss waiting to happen.
+#
+# So: WHEN THIS GATE SAYS AN IDENTIFIER IS MISSING, CHECK THE FILE BEFORE
+# CHANGING IT. A checker that cannot see a definition reports the code as broken
+# instead of itself, which is the worst failure available to the thing
+# everything else is measured by. If a definition is spelled a new way, teach
+# the extractor rather than respelling the code to suit it.
+#
 # WHY COUNTING (ruled 2026-09-07). A presence assertion cannot catch a SECOND
 # caller. Two views carrying the same identifier does not fail anything: XCTest
 # resolves `app.buttons["x"]` to the first match, so the suite silently drives
