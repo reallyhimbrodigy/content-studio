@@ -1560,6 +1560,15 @@ struct EditorView: View {
               // upload that could not start. Choosing a video you cannot use is
               // a worse first impression than an empty screen.
               AuthService.shared.currentUser?.id != nil,
+              // A GENUINE FIRST INSTALL, not a wiped UserDefaults flag
+              // (2026-09-07). `first_session_autopicker_fired` is erased with
+              // the app, so a user who deleted and reinstalled — same account,
+              // same plan, same history, restored from the Keychain — had the
+              // system photo picker opened for them as if they were new. This
+              // surface had its own, narrower definition of "first"; it now
+              // reads the ruled one. The UserDefaults flag stays as the
+              // once-per-install latch it actually is.
+              FirstInstall.isFirstInstall,
               !UserDefaults.standard.bool(forKey: "first_session_autopicker_fired"),
               messages.filter({ !$0.isOnboarding }).isEmpty,
               pendingVideos.isEmpty, reeditSession == nil else { return }

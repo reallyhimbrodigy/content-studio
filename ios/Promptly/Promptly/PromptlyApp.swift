@@ -410,7 +410,12 @@ struct PromptlyApp: App {
               // "first run" is keyed on the KEYCHAIN so a reinstall does not
               // replay a paywall at someone who may already be paying.
               // UserDefaults would; it is erased with the app.
-              (onboarding.deferredAuthEnabled ? !FirstRun.seen : auth.isAuthenticated),
+              // ONE DEFINITION (2026-09-07). This asked `!FirstRun.seen` alone
+              // — blind to a restored session and to the server's answer — so a
+              // signed-out reinstall on a device the server knows was sold the
+              // first-launch paywall again. FirstInstall is the ruled rule and
+              // the funnel below now reads the same one.
+              (onboarding.deferredAuthEnabled ? FirstInstall.isFirstInstall : auth.isAuthenticated),
               // NEVER to an existing subscriber. This guard became necessary
               // BECAUSE of the reordering above: while the surface was gated on
               // `!auth.isAuthenticated`, a signed-out user had no known Pro
@@ -422,6 +427,12 @@ struct PromptlyApp: App {
               // effectiveIsPro (2026-09-05): RC-only `isPro` missed a signed-in
               // subscriber whose server entitlement was the authoritative one.
               !subscription.effectiveIsPro,
+              // AND WAIT FOR THE INSTALL SIGNALS (2026-09-07). This branch
+              // waited for RevenueCat and not for the two signals that say the
+              // user has been here before, so a reinstall could be decided while
+              // the session restore and the device lookup were both still in
+              // flight — and both would have suppressed it.
+              FirstInstall.hasResolved(deadlinePassed: resolveDeadlinePassed),   // countdown-ok: internal wait, not UI
               // AND WAIT FOR REVENUECAT TO ANSWER (2026-09-02, deferred auth).
               //
               // `isPro` starts false and becomes true a moment after launch when
@@ -502,9 +513,15 @@ struct PromptlyApp: App {
               // Only on the deferred-auth path. With deferred auth OFF the flow
               // runs AFTER signup, so being authenticated is what a new user
               // looks like there, not what a returning one looks like.
+              // The same three signals this clause always used, now named once
+              // in FirstInstall so the paywall above and the autopicker in
+              // EditorView cannot drift to a narrower reading of "new".
+              // `!auth.isAuthenticated` became `restoredExistingSession`: under
+              // deferred auth a genuine first install is authenticated within a
+              // second, so the old term was answering a different question and
+              // only ordering kept it right.
               (onboarding.deferredAuthEnabled
-                 ? (!FirstRun.seen && !auth.isAuthenticated
-                    && !InstallHistory.deviceKnownToServer)
+                 ? FirstInstall.isFirstInstall
                  : auth.isAuthenticated),
               // NEVER THE FUNNEL FOR SOMEONE WHO IS PAYING (2026-09-05).
               //
@@ -533,11 +550,14 @@ struct PromptlyApp: App {
               // it only stops the funnel being decided on an unread entitlement.
               (!auth.isAuthenticated || subscription.hasResolvedCustomerInfo
                || resolveDeadlinePassed),  // countdown-ok: internal wait, not UI
-              // And on the device answer, the same way. Deciding the funnel
-              // before the lookup returns is the identical race the entitlement
-              // clause above describes.
-              (InstallHistory.hasResolved
-               || resolveDeadlinePassed)   // countdown-ok: internal wait, not UI
+              // And on the install-history answer, the same way. Deciding
+              // before the signals return is the identical race the entitlement
+              // clause above describes — the answer that would have suppressed
+              // this screen arrives a moment after it is shown. Now covers the
+              // session restore too, not just the device lookup: checkSession is
+              // async, so `restoredExistingSession` is false for an instant on
+              // EVERY launch, including a returning user's.
+              FirstInstall.hasResolved(deadlinePassed: resolveDeadlinePassed)   // countdown-ok: internal wait, not UI
         else { return false }
         return true
     }
@@ -789,6 +809,24 @@ struct PromptlyApp: App {
                 // reinstall must not replay it. UserDefaults would; the Keychain
                 // should not. Printed so it can be read across an uninstall.
                 print("FIRSTRUN seen=\(FirstRun.seen)")
+                // THE FIRST-INSTALL VERDICT AND EVERY SIGNAL BEHIND IT.
+                // The three proofs are read from this line, not inferred from
+                // whether a screen happened to appear — a suppressed funnel and
+                // a funnel that lost a race look identical in a screenshot.
+                // SETTLED, not sampled. checkSession and the device lookup are
+                // both async, so every launch reads "no session, unknown device"
+                // for an instant — printing there would report a returning user
+                // as new and the proof would be of the race, not the rule.
+                Task { @MainActor in
+                    for _ in 0..<50 where !FirstInstall.hasResolved(deadlinePassed: false) {   // countdown-ok: DEBUG proof line, not UI
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    print("FIRSTINSTALL isFirst=\(FirstInstall.isFirstInstall)"
+                          + " restoredSession=\(AuthService.shared.restoredExistingSession)"
+                          + " firstRunSeen=\(FirstRun.seen)"
+                          + " deviceKnown=\(InstallHistory.deviceKnownToServer)"
+                          + " resolved=\(FirstInstall.hasResolved(deadlinePassed: false))")   // countdown-ok: DEBUG proof line, not UI
+                }
                 // `-poseCredits N`: show the counter in a capture without an
                 // account. Posed, and labelled as such in the report — a
                 // screenshot of an invented balance presented as real would be

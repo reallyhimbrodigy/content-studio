@@ -13,6 +13,17 @@ class AuthService {
     var accessToken: String?
     var isLoading = true
 
+    /// DID THIS LAUNCH RESTORE A SESSION THAT ALREADY EXISTED?
+    ///
+    /// Not `isAuthenticated`, which under deferred auth becomes true within a
+    /// second of a GENUINE first install — `signInAnonymouslyIfNeeded` mints a
+    /// user for everyone. The question the first-install rule actually asks is
+    /// whether a session was here BEFORE this launch, and only a restore can
+    /// answer it. The session lives in the Keychain, so it survives a
+    /// delete-and-reinstall while every UserDefaults flag is wiped — which is
+    /// exactly the case that was reading as "new". See FirstInstall.
+    private(set) var restoredExistingSession = false
+
     private let tokenKey = "promptly_access_token"
     private let refreshKey = "promptly_refresh_token"
     private let tokenExpiryKey = "promptly_token_expiry"
@@ -41,7 +52,27 @@ class AuthService {
         Keychain.get(refreshKey) ?? UserDefaults.standard.string(forKey: refreshKey)
     }
 
-    private init() {}
+    /// SNAPSHOTTED AT CONSTRUCTION, BEFORE ANYTHING CAN WRITE A SESSION.
+    ///
+    /// The first attempt set this from `checkSession` and from
+    /// `signInAnonymouslyIfNeeded`'s early returns. Both were wrong, and the
+    /// simulator said so: on a genuinely fresh install it read TRUE. Once
+    /// `signInAnonymouslyIfNeeded` mints a user it calls `saveSession`, which
+    /// writes the Keychain — so from that instant "the Keychain holds a token"
+    /// no longer means "a token was here before this launch", and any later
+    /// caller (the idempotent re-entry, a racing second call, a second
+    /// checkSession) reads a session THIS launch created and calls the user
+    /// returning. That would have suppressed the funnel for every new user — a
+    /// permanent hole in the top of the funnel, strictly worse than the
+    /// reinstall bug it was written to fix.
+    ///
+    /// `init` runs on the first touch of `.shared`, which is at or before the
+    /// first sign-in path by construction, so the read is correct in every
+    /// ordering. One writer; `signOut` is the only thing that clears it.
+    private init() {
+        restoredExistingSession = Keychain.get(tokenKey) != nil
+            || UserDefaults.standard.string(forKey: tokenKey) != nil
+    }
 
     // MARK: - Session Management
 
@@ -550,6 +581,7 @@ class AuthService {
         }
         accessToken = nil
         currentUser = nil
+        restoredExistingSession = false
         // Return the app to its initial route. AppState is a process-lifetime
         // singleton, so selectedTab survives sign-out; and the Sign Out button
         // lives on the Account tab (selectedTab == 2). Without this reset, the
