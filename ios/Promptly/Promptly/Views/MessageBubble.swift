@@ -1147,6 +1147,11 @@ final class VideoExporter: ObservableObject {
         var exportProps: [String: Any] = ["method": "save"]
         if let jobId { exportProps["job_id"] = jobId }
         Analytics.track("export_completed", props: exportProps)
+        // THE MOMENT OF DELIGHT. A new asset is in their camera roll; this is
+        // the one place a review is asked for. FeedbackManager decides — it
+        // refuses a first-timer, anyone with a failed render this session, and
+        // anyone already asked.
+        await MainActor.run { FeedbackManager.shared.recordExportCompleted(method: "save") }
         return id
     }
 
@@ -1200,6 +1205,11 @@ final class VideoExporter: ObservableObject {
                 await MainActor.run {
                     shareState = .idle
                     Self.presentShareSheet(fileUrl: localFile)
+                    // AFTER the share sheet, not before: the ask follows the
+                    // thing they wanted, it does not interrupt it. iOS queues
+                    // the review sheet behind the presentation either way, but
+                    // the ordering here is the intent, not a coincidence.
+                    FeedbackManager.shared.recordExportCompleted(method: "share")
                 }
             } catch ExportError.freeExportSpent {
                 // Same treatment on the Share path as on Save — both are exits,

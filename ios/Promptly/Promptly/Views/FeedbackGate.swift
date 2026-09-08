@@ -37,6 +37,32 @@ struct FeedbackGate {
     /// allowed. Two means "we've watched the product work for them twice."
     static let MIN_RENDERS: Int = 2
 
+    // MARK: The native review prompt (ruled 2026-09-07)
+    //
+    // ASK AT THE MOMENT OF DELIGHT, NEVER AT A GATE. The trigger is a completed
+    // export or share — the user has the video they came for, in their hands.
+    // Never after a failure, never on a paywall, never before their first video.
+    //
+    // ASK PEOPLE WHO HAVE HAD A GOOD EXPERIENCE. A user whose last render died
+    // leaves a one-star, and they are the likeliest to review unprompted, so
+    // the failure condition is not a nicety.
+    //
+    // ONCE, THEN A LONG SILENCE. Apple caps the sheet at three prompts a year
+    // and silently discards the rest, so a bad trigger burns the quota with
+    // nothing to show for it. Counted locally BECAUSE the discards are
+    // invisible: the only way not to spend attempts Apple is throwing away is
+    // to not make them.
+
+    /// Successful renders required before the first ask.
+    static let REVIEW_MIN_RENDERS: Int = 2
+    /// Exports (save or share) required before the first ask. The trigger
+    /// itself is an export, so this is satisfied by the very export that fires
+    /// it — it exists to refuse a user who has never taken a video out.
+    static let REVIEW_MIN_EXPORTS: Int = 1
+    /// The long silence after the first ask. Well beyond Apple's own window, so
+    /// a re-ask is a genuinely different season of use rather than a retry.
+    static let REVIEW_REASK_DAYS: Double = 120
+
     /// Back-off schedule between prompts, indexed by `ignoreStreak` (clamped to
     /// the last entry). Streak 0 -> 14 days, 1 -> 30, 2+ -> 60. Tunable.
     static let COOLDOWN_DAYS: [Double] = [14, 30, 60]
@@ -67,6 +93,12 @@ struct FeedbackGate {
         var lastAnswerAt: Date? = nil
         /// When we last asked for the native App Store review (nil = never).
         var lastAppStorePromptAt: Date? = nil
+    /// Exports (save or share) this user has completed, lifetime.
+    var exportCount: Int = 0
+    /// Whether a render FAILED during the current app session. Session-scoped
+    /// on purpose: it is not a permanent mark against the user, it is "right
+    /// now is the wrong moment to ask".
+    var failedRenderInSession: Bool = false
     }
 
     // MARK: Pure decisions
@@ -110,6 +142,28 @@ struct FeedbackGate {
     /// elapsed since the last ask. This is intentionally separate from
     /// `shouldShowPrompt` so the in-app prompt can appear far more often than
     /// the rate-limited StoreKit sheet.
+    /// Whether the native review sheet may be asked for at THIS export.
+    ///
+    /// Every condition is a refusal, and each one is here because asking the
+    /// wrong person is worse than not asking:
+    ///
+    ///   - two successful renders: not their first video, so the ask follows a
+    ///     pattern of the product working rather than a single lucky run;
+    ///   - one export: they have taken something out of the app;
+    ///   - no failed render in this session: the user whose render just died is
+    ///     precisely the one-star, and they are already the likeliest to review
+    ///     unprompted;
+    ///   - never asked, or asked more than REVIEW_REASK_DAYS ago AND exporting
+    ///     again — a second ask has to be earned by a second good experience,
+    ///     not merely by the calendar.
+    static func reviewPromptEligible(state: State, now: Date) -> Bool {
+        guard state.successfulRenderCount >= REVIEW_MIN_RENDERS else { return false }
+        guard state.exportCount >= REVIEW_MIN_EXPORTS else { return false }
+        guard !state.failedRenderInSession else { return false }
+        guard let last = state.lastAppStorePromptAt else { return true }
+        return now.timeIntervalSince(last) >= REVIEW_REASK_DAYS * SECONDS_PER_DAY
+    }
+
     static func appStoreReviewEligible(state: State, now: Date) -> Bool {
         guard let last = state.lastAppStorePromptAt else {
             // Never asked — always eligible the first time.

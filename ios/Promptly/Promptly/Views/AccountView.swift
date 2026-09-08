@@ -354,6 +354,17 @@ struct AccountView: View {
                 cardRow("Restore purchases", trailing: restoreInFlight ? .progress : .none) {
                     restorePurchases()
                 }
+                // THE MANUAL PATH, ALWAYS ALLOWED. The native sheet is rationed
+                // by Apple and refused by our own conditions; this is for
+                // someone who already wants to and went looking. `action=
+                // write-review` opens the App Store straight on the review
+                // composer rather than the product page.
+                cardRow("Rate Promptly", trailing: .chevron) {
+                    Analytics.track("rate_app_tapped", props: ["source": "account"], durable: true)
+                    if let url = URL(string: "https://apps.apple.com/app/id6762497454?action=write-review") {
+                        UIApplication.shared.open(url)
+                    }
+                }
                 cardDivider
                 upgradeOrManageRow
             }

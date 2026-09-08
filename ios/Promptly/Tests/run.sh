@@ -88,3 +88,12 @@ swiftc "$DIR/../Promptly/Services/ChatListMerge.swift" \
        "$DIR/ChatListMergeTests.swift" \
        -o "${TMPDIR:-/tmp}/chatmergetest"
 "${TMPDIR:-/tmp}/chatmergetest"
+
+# ReviewPrompt — when the native App Store review sheet may be asked for. Apple
+# caps it at three a year and SILENTLY discards the rest, so a wrong condition
+# does not fail loudly: it spends an attempt on someone who was never shown a
+# sheet. Pure Foundation.
+swiftc "$DIR/../Promptly/Views/FeedbackGate.swift" \
+       "$DIR/ReviewPromptTests.swift" \
+       -o "${TMPDIR:-/tmp}/reviewprompttest"
+"${TMPDIR:-/tmp}/reviewprompttest"

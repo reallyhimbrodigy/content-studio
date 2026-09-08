@@ -4163,6 +4163,11 @@ const server = http.createServer((req, res) => {
           // activation. MUST be here or the SQL mirror (the DB our upload/no-token
           // analysis queries) drops them while PostHog keeps them — half-blind.
           'upload_failed', 'export_completed', 'push_permission',
+          // The native App Store review prompt (2026-09-07). Allowlisted
+          // BEFORE the client that emits them ships, or the SQL mirror drops
+          // them silently and the one question worth asking — does the
+          // trigger fire, and how often — cannot be answered.
+          'review_prompt_shown', 'rate_app_tapped',
           // 1.3.4 in-app ready-state card (returning-user recovery funnel):
           'ready_banner_shown', 'ready_banner_open', 'ready_banner_dismiss',
           // Billing-identity hardening (blocked-pre-identity + RC identify diagnostics):

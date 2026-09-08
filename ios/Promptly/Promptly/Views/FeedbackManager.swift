@@ -29,6 +29,7 @@ final class FeedbackManager: ObservableObject {
         static let ignoreStreak = "feedback.ignoreStreak"
         static let lastAnswerAt = "feedback.lastAnswerAt"
         static let lastAppStorePromptAt = "feedback.lastAppStorePromptAt"
+        static let exportCount = "feedback.exportCount"
     }
 
     // MARK: - Published state (drives SwiftUI bindings)
@@ -38,6 +39,11 @@ final class FeedbackManager: ObservableObject {
     @Published private(set) var ignoreStreak: Int
     @Published private(set) var lastAnswerAt: Date?
     @Published private(set) var lastAppStorePromptAt: Date?
+    @Published private(set) var exportCount: Int = 0
+    /// SESSION-SCOPED, AND DELIBERATELY NOT PERSISTED. "A render failed for you
+    /// once, months ago" is not a reason never to ask; "a render died a minute
+    /// ago" is. It resets with the process, which is the window that matters.
+    private(set) var failedRenderInSession = false
 
     private let defaults: UserDefaults
 
@@ -48,6 +54,7 @@ final class FeedbackManager: ObservableObject {
         self.ignoreStreak = defaults.integer(forKey: Key.ignoreStreak)
         self.lastAnswerAt = defaults.object(forKey: Key.lastAnswerAt) as? Date
         self.lastAppStorePromptAt = defaults.object(forKey: Key.lastAppStorePromptAt) as? Date
+        self.exportCount = defaults.integer(forKey: Key.exportCount)
     }
 
     // MARK: - Derived state snapshot for the gate
@@ -61,7 +68,9 @@ final class FeedbackManager: ObservableObject {
             lastPromptAt: lastPromptAt,
             ignoreStreak: ignoreStreak,
             lastAnswerAt: lastAnswerAt,
-            lastAppStorePromptAt: lastAppStorePromptAt
+            lastAppStorePromptAt: lastAppStorePromptAt,
+            exportCount: exportCount,
+            failedRenderInSession: failedRenderInSession
         )
     }
 
@@ -111,11 +120,12 @@ final class FeedbackManager: ObservableObject {
         defaults.set(ignoreStreak, forKey: Key.ignoreStreak)
         defaults.set(now, forKey: Key.lastAnswerAt)
 
-        if FeedbackGate.appStoreReviewEligible(state: currentState, now: now) {
-            requestAppStoreReview()
-            lastAppStorePromptAt = now
-            defaults.set(now, forKey: Key.lastAppStorePromptAt)
-        }
+        // NO REVIEW ASK FROM HERE ANY MORE (ruled 2026-09-07). A thumbs-up on
+        // the in-app card used to trigger the native sheet, on the strength of
+        // a 90-day interval and nothing else — it could fire for a user whose
+        // render had just failed, and before they had ever exported anything.
+        // It also spent the same rationed attempt Apple caps at three a year.
+        // The one trigger is a completed export; see recordExportCompleted.
     }
 
     /// User gave negative feedback. Resets the ignore streak and records the
@@ -126,6 +136,50 @@ final class FeedbackManager: ObservableObject {
         lastAnswerAt = now
         defaults.set(ignoreStreak, forKey: Key.ignoreStreak)
         defaults.set(now, forKey: Key.lastAnswerAt)
+    }
+
+    // MARK: - The native review prompt (ruled 2026-09-07)
+
+    /// A render failed. Suppresses the review ask for the rest of this session.
+    ///
+    /// The user whose render just died is exactly the one-star, and they are
+    /// already the likeliest to review unprompted — the 442 who hit a dead
+    /// retry are that cohort. Asking them is worse than not asking anyone.
+    func recordRenderFailed() {
+        failedRenderInSession = true
+    }
+
+    /// An export or share COMPLETED — the moment the user has the video they
+    /// came for. The only trigger for the native sheet.
+    ///
+    /// Never at a gate, never after a failure, never on a paywall: this is
+    /// called from the two `export_completed` sites and nowhere else, so there
+    /// is no path from a refusal or a wall to a review ask.
+    ///
+    /// The count is written BEFORE the decision, so the export that triggers
+    /// the very first ask is itself counted — a user's first export can qualify
+    /// them, which is the intent; the condition exists to refuse someone who
+    /// has never taken a video out at all.
+    func recordExportCompleted(method: String) {
+        let now = Date()
+        exportCount += 1
+        defaults.set(exportCount, forKey: Key.exportCount)
+
+        guard FeedbackGate.reviewPromptEligible(state: currentState, now: now) else { return }
+
+        // RECORDED WHETHER OR NOT APPLE SHOWS IT. Apple caps the sheet at three
+        // a year and silently discards the rest — there is no callback and no
+        // error, so "did the user see it" is unknowable from here. Counting the
+        // ATTEMPT is the only honest bookkeeping, and it is what stops us
+        // spending attempts on a quota Apple is already throwing away.
+        lastAppStorePromptAt = now
+        defaults.set(now, forKey: Key.lastAppStorePromptAt)
+        Analytics.track("review_prompt_shown",
+                        props: ["trigger": method,
+                                "renders": successfulRenderCount,
+                                "exports": exportCount],
+                        durable: true)
+        requestAppStoreReview()
     }
 
     // MARK: - StoreKit review

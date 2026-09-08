@@ -4372,6 +4372,14 @@ struct EditorView: View {
                 print("[reconcile] \(jobId) → finishing → completed")
                 return
             case "failed":
+                // THIS SESSION IS NOT THE MOMENT TO ASK FOR A REVIEW. A user
+                // whose render just died leaves a one-star, and they are the
+                // likeliest to review unprompted — the dead-retry cohort is
+                // exactly that group. Set before the auto-retry branch below,
+                // deliberately: even a failure we go on to recover from means
+                // the user saw a render fail, and the ask can wait for a
+                // session that did not.
+                FeedbackManager.shared.recordRenderFailed()
                 // UPLOAD_STALLED auto-recovery: the worker couldn't fetch the
                 // source in time (a stalled PUT) and coded it retryable. Silently
                 // re-run the render ONCE — a slow-but-alive upload has usually
