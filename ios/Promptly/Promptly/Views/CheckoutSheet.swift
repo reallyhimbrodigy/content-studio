@@ -95,10 +95,12 @@ struct CheckoutSheet: View {
                           subtitle: String(localized: "No in-app purchase fees"),
                           badge: saved.map { String(localized: "\(money($0)) saved") },
                           cards: true)
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("checkout.web")
                 methodRow(.apple, title: String(localized: "Pay in-app"),
                           subtitle: String(localized: "Includes in-app purchase fees"),
                           badge: nil, cards: false)
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("checkout.apple")
             }
             .padding(.horizontal, 20 * k)
@@ -108,6 +110,12 @@ struct CheckoutSheet: View {
                 feeLine
                 Divider().overlay(Color.white.opacity(0.15))
                 totalLine(String(localized: "Total"), totalText, bold: true)
+                    // ONE ELEMENT. totalLine is an HStack of two Texts, so the
+                    // identifier propagated to both and the query was ambiguous
+                    // — XCTest refuses those outright. Combined, it reads
+                    // "Total, $144.99" as a single element, which is also what
+                    // VoiceOver should say about a row that is one fact.
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("checkout.total")
             }
             .padding(.horizontal, 24 * k).padding(.top, 18 * k)
@@ -271,6 +279,9 @@ struct CheckoutSheet: View {
                     .monospacedDigit()
             }
         }
+        // Same shape as checkout.total: a row of several Texts, so the
+        // identifier reached every one of them and the query was ambiguous.
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("checkout.fee")
     }
 

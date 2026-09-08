@@ -208,6 +208,13 @@ struct EditorView: View {
                             .contentShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        // ONE ELEMENT, not the container plus its children. The
+                        // identifier propagates to descendants otherwise, the
+                        // tree carries it three times, and XCTest refuses to
+                        // resolve it at all. VoiceOver has the same problem:
+                        // a banner is one thing to tap, not an icon, a sentence
+                        // and a chevron read out separately.
+                        .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("credits.banner")
                         .padding(.horizontal, 10 * k)
                         .padding(.bottom, 6 * k)

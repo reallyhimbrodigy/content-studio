@@ -473,6 +473,14 @@ struct AccountView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Subscription")
         .accessibilityValue(subscription.isMax ? "Max" : (effectiveIsPro ? "Pro" : "Free"))
+        // THE TIER IN THE IDENTIFIER, not only in the spoken value. This row is
+        // where a Max subscriber was told they were on PRO — the tier below the
+        // one they pay for — so a test has to assert WHICH badge is showing,
+        // and asserting it through `accessibilityValue` would mean matching
+        // "Max" / "Pro" / "Free" as text, which is exactly the kind of string
+        // that gets localized later and quietly stops matching.
+        .accessibilityIdentifier("account.subscription."
+                                 + (subscription.isMax ? "max" : (effectiveIsPro ? "pro" : "free")))
     }
 
     /// The accent CTA row — an UPGRADE PATH ONLY WHEN ONE EXISTS.

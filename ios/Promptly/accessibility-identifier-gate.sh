@@ -14,6 +14,15 @@
 # paren-balanced arguments and understands ternaries and concatenations, but the
 # next unusual spelling is a third miss waiting to happen.
 #
+# WHAT THIS GATE CANNOT SEE: a RUNTIME duplicate. One definition in source can
+# still resolve to several elements in the tree — an identifier on a Button
+# whose label holds an icon, a label and a chevron propagates to all of them,
+# and XCTest then refuses to resolve it ("Multiple matching elements found").
+# `.accessibilityElement(children: .combine)` is the fix, and it is what
+# VoiceOver wants anyway. Source duplicates are caught here; runtime duplicates
+# are caught by the suite failing loudly, which is the right division — but do
+# not read a PASS here as "every identifier resolves to one element".
+#
 # So: WHEN THIS GATE SAYS AN IDENTIFIER IS MISSING, CHECK THE FILE BEFORE
 # CHANGING IT. A checker that cannot see a definition reports the code as broken
 # instead of itself, which is the worst failure available to the thing

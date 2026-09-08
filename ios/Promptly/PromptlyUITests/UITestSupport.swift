@@ -36,6 +36,23 @@ enum UITest {
         return app
     }
 
+    /// Look an identifier up ACROSS ELEMENT TYPES.
+    ///
+    /// `.accessibilityElement(children: .combine)` changes what an identified
+    /// view resolves to — a combined HStack of two Texts is no longer a
+    /// staticText — so a query typed to one kind starts missing it for a reason
+    /// that has nothing to do with the app being wrong. Looking it up by
+    /// identifier alone is the honest question.
+    ///
+    /// `.element` and NOT `.firstMatch`: it throws on multiple matches, which
+    /// is exactly the ambiguity worth surfacing. firstMatch would quietly pick
+    /// one and the test would pass while resolving against two elements — the
+    /// failure the identifier gate exists to prevent, reintroduced in the
+    /// suite's own lookup.
+    static func any(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).element
+    }
+
     /// Wait for an element, failing with the identifier rather than a bare
     /// "false is not true" — a suite nobody can read is a suite nobody fixes.
     @discardableResult

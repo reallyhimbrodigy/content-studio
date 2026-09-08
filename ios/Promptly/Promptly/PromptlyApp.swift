@@ -587,6 +587,13 @@ struct PromptlyApp: App {
     /// are tier-aware for, posed so each can be captured. Idempotent, so both
     /// the harness path and the root task can call it.
     @MainActor
+    /// Whether the capture harness is covering the app. Read twice — once to
+    /// stand the real app down, once to raise the harness — so the two can
+    /// never disagree about which is showing.
+    private var snapshotHarnessActive: Bool {
+        ProcessInfo.processInfo.arguments.contains("-snapshotPayoff")
+    }
+
     static func applyTierPose() {
         let a = ProcessInfo.processInfo.arguments
         guard let i = a.firstIndex(of: "-poseTier"), i + 1 < a.count else { return }
@@ -628,6 +635,21 @@ struct PromptlyApp: App {
                 } else if showOnboardingV2 {
                     OnboardingV2Flow()
                         .transition(.opacity)
+                } else if snapshotHarnessActive {
+                    // THE HARNESS REPLACES THE APP, IT DOES NOT SIT ON TOP OF IT
+                    // (2026-09-08). It was rendered as an overlay in the ZStack
+                    // below, with AppShell — and therefore a second, real
+                    // EditorView — still mounted underneath. Invisible in a
+                    // screenshot, which is all the harness was ever used for.
+                    //
+                    // Not invisible to a UI test: every identifier inside
+                    // EditorView appeared TWICE in the accessibility tree, and
+                    // XCTest refuses an ambiguous query — "Multiple matching
+                    // elements found" on credits.banner and checkout.web. Worse,
+                    // `.exists` is true for an ambiguous query, so the tests that
+                    // only checked existence passed while resolving against two
+                    // elements: weaker than they looked, and silently so.
+                    EmptyView()
                 } else if auth.isAuthenticated || onboarding.deferredAuthEnabled {
                     // Deferred auth: browsing needs no account. The account is
                     // asked for at the first action that requires one, through
@@ -644,7 +666,7 @@ struct PromptlyApp: App {
                 // Snapshot harness (presentations-proven-by-presentations): when
                 // launched with -snapshotPayoff, cover the app with the real §6 /
                 // paywall views on mock data for an external screenshot capture.
-                if ProcessInfo.processInfo.arguments.contains("-snapshotPayoff") {
+                if snapshotHarnessActive {
                     PayoffSnapshotHarnessView()
                         // The tier pose has to be applied on THIS path too: the
                         // harness covers the app before the root's .task runs,

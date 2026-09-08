@@ -77,6 +77,27 @@ echo "  ASSOCIATED_DOMAINS enabled on the App ID ✓"
 # alarm that looks exactly like a real finding. The IPA is what Apple receives.
 #
 # Absence of an artifact is NOT a pass — it is an unchecked leg, and it says so.
+# THE APP TARGET'S BUILD, NOT THE FIRST ONE IN THE FILE (2026-09-08).
+#
+# `grep -m1` took whichever CURRENT_PROJECT_VERSION appeared first, which was
+# fine while the project had one target. Adding PromptlyUITests put a SECOND
+# build config in the file — bundle id app.usepromptly.ios.uitests, version
+# 1.0 (1) — ahead of the app's, so this started reading 1 instead of 253.
+#
+# It would not have failed. The comparison below would simply never match, and
+# the gate would print "profile leg UNCHECKED" and exit 0 — forever, in a
+# pass-shaped message. Scoped to the app's own bundle id so a third target
+# cannot do it again.
+WANT_BUILD=$(awk -v RS='};' '/PRODUCT_BUNDLE_IDENTIFIER = app.usepromptly.ios;/ \
+                              && /CURRENT_PROJECT_VERSION/' \
+             "$DIR/Promptly.xcodeproj/project.pbxproj" \
+             | grep -m1 -o 'CURRENT_PROJECT_VERSION = [0-9]*' | grep -o '[0-9]*')
+if [ -z "$WANT_BUILD" ]; then
+  echo "  could not read the APP target's build number from the project —"
+  echo "  refusing to compare against an unknown version."
+  exit 1
+fi
+
 IPA=$(ls -t /private/tmp/claude-501/*/*/scratchpad/export*/Promptly.ipa \
              "$DIR"/../../export*/Promptly.ipa 2>/dev/null | head -1)
 if [ -z "$IPA" ] || [ ! -f "$IPA" ]; then
@@ -112,7 +133,6 @@ fi
 #
 # The build number is the semantic fact: an IPA is only evidence about the
 # version it actually contains.
-WANT_BUILD=$(grep -m1 -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$DIR/Promptly.xcodeproj/project.pbxproj" | grep -o '[0-9]*')
 IPA_BUILD=$(unzip -p "$IPA" 'Payload/*.app/Info.plist' 2>/dev/null \
             | plutil -extract CFBundleVersion raw - 2>/dev/null || echo "")
 if [ -z "$IPA_BUILD" ] || [ "$IPA_BUILD" != "$WANT_BUILD" ]; then
