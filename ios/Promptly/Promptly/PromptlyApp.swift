@@ -703,6 +703,16 @@ struct PromptlyApp: App {
                 #endif
                 #if DEBUG
                 if motionProof { Self.motionProofReset(); OnboardingState.shared.debugForceFlag("first_launch_paywall"); OnboardingState.shared.debugForceFlag("onboarding_v2") }
+                // `-resetOnboarding` — the same LIVE reset, without the motion
+                // proof's flag forcing. A UI test that completes the funnel
+                // sets `hasCompletedOnboarding` in UserDefaults, which survives
+                // the next launch — so the second funnel test ran against a
+                // completed funnel and failed on "Q1 never appeared". Resetting
+                // the in-memory state as well as the defaults is the point:
+                // writing only the defaults leaves THIS launch on the old
+                // value, which is the bug the comment above motionProofReset
+                // describes.
+                if ProcessInfo.processInfo.arguments.contains("-resetOnboarding") { Self.motionProofReset() }
                 #endif
             }
             .onChange(of: auth.isAuthenticated) { _, authed in

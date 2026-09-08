@@ -38,7 +38,23 @@ enum FirstInstall {
 
     /// Any ONE of these means they have been here before.
     static var hasBeenHereBefore: Bool {
-        AuthService.shared.restoredExistingSession
+        #if DEBUG
+        // `-poseFreshInstall` — DEBUG only, compiled out of Release.
+        //
+        // A UI test cannot produce a genuine first install: the signals that
+        // define one live in the KEYCHAIN, which survives uninstall and cannot
+        // be cleared from inside a test run. Only `simctl erase` does that, and
+        // the rule itself is already proven that way — three cases on an erased
+        // device, verdict read from a settled log line.
+        //
+        // So this poses the ANSWER, and the funnel tests that stand on it are
+        // testing the funnel's own content, not the rule that admits them to
+        // it. Two different claims, proven by two different means, and neither
+        // standing in for the other.
+        if ProcessInfo.processInfo.arguments.contains("-poseFreshInstall") { return false }
+        #endif
+        // The implicit return is gone now the body has more than one statement.
+        return AuthService.shared.restoredExistingSession
             || FirstRun.seen
             || InstallHistory.deviceKnownToServer
     }

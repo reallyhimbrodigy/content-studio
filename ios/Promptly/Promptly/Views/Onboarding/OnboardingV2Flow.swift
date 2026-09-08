@@ -401,6 +401,13 @@ struct ReferralCatchBeat: View {
                         .padding(.vertical, 14 * k)
                 }
                 .padding(.bottom, 8 * k)
+                // THE EXIT FROM THE LAST RUNG. Named `onboarding.exit` rather
+                // than after this screen, because the funnel walk needs "the
+                // way onward from whatever rung this is" — and this rung has
+                // been added once already. A test that named the screen would
+                // have to be edited the next time the sequence changes, while
+                // the claim it makes ("a new user gets through") would not have.
+                .accessibilityIdentifier("onboarding.exit")
             }
             .symmetricHeightOnRegular()
         }

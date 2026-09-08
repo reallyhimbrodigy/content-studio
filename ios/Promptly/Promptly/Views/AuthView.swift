@@ -303,6 +303,7 @@ struct AuthView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Sign in with Apple"))
+                    .accessibilityIdentifier("auth.apple")
                 }
             }
 
@@ -321,6 +322,7 @@ struct AuthView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .accessibilityLabel("Continue with Google")
+            .accessibilityIdentifier("auth.google")
         }
     }
 
@@ -349,6 +351,7 @@ struct AuthView: View {
                 .foregroundColor(.secondary)
                 .tracking(0.3)
             TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(Color(.placeholderText)))
+                .accessibilityIdentifier("auth.email")
                 .focused($focusedField, equals: .email)
                 .submitLabel(.go)
                 .onSubmit { sendCode() }

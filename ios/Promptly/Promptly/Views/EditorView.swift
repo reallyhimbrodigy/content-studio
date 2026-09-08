@@ -1074,6 +1074,7 @@ struct EditorView: View {
 
                     TextField("", text: $inputText, axis: .vertical)
                         .focused($isInputFocused)
+                        .accessibilityIdentifier("composer.field")
                         .lineLimit(1...6)
                         .foregroundColor(.white)
                         .font(.system(size: 18 * k))
@@ -1161,6 +1162,7 @@ struct EditorView: View {
                     .opacity(canSend && !isChatStreaming ? 1 : 0)
                     .scaleEffect(canSend && !isChatStreaming ? 1 : 0.5)
                     .accessibilityLabel("Send")
+                    .accessibilityIdentifier("composer.send")
                     .allowsHitTesting(canSend && !isChatStreaming)
                     .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
 

@@ -42,6 +42,21 @@ done
 grep -q "static var isFirstInstall: Bool { !hasBeenHereBefore }" <<< "$FIB" || {
   echo "  isFirstInstall is no longer the negation of hasBeenHereBefore"; FAIL=1; }
 
+# 1b. THE TEST SEAM IS DEBUG-ONLY. `-poseFreshInstall` makes the funnel
+#     reachable in a UI test; shipped, it would hand the funnel to every user
+#     who passed the flag — and more to the point it would mean the rule can be
+#     turned off from outside.
+if grep -q "poseFreshInstall" <<< "$FIB"; then
+  grep -q "#if DEBUG" <<< "$FIB" || {
+    echo "  -poseFreshInstall is not fenced behind #if DEBUG"; FAIL=1; }
+  # The fence has to be ABOVE the pose, not merely present in the file.
+  POSE_LINE=$(grep -n "poseFreshInstall" <<< "$FIB" | head -1 | cut -d: -f1)
+  FENCE_LINE=$(grep -n "#if DEBUG" <<< "$FIB" | head -1 | cut -d: -f1)
+  if [ -n "$POSE_LINE" ] && [ -n "$FENCE_LINE" ] && [ "$FENCE_LINE" -ge "$POSE_LINE" ]; then
+    echo "  the #if DEBUG fence sits AFTER the pose — it fences nothing"; FAIL=1
+  fi
+fi
+
 # 2. NOT IP (ruled 2026-09-07). CGNAT plus India-dominant traffic means an IP
 #    match suppresses the funnel for genuinely new users on the same carrier.
 grep -qiE 'ip_?address|egress|remote_?addr|client_?ip' <<< "$FIB" && {

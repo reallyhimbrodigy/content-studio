@@ -166,6 +166,7 @@ struct OnboardingQuestionView: View {
                     }
                     Spacer()
                     Button("Skip") { onContinue([]); onSkip() }
+                        .accessibilityIdentifier("onboarding.skip")
                         .font(.system(size: 16 * k, weight: .medium))
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -238,6 +239,7 @@ struct OnboardingQuestionView: View {
                 }
                 .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
                 .disabled(!canContinue)
+                .accessibilityIdentifier("onboarding.continue")
                 .padding(.horizontal, 20 * k)
                 .padding(.bottom, 16 * k)
             }
@@ -314,6 +316,10 @@ struct OnboardingQuestionView: View {
             )
         }
         .buttonStyle(OnboardingPressStyle(reduceMotion: reduceMotion))
+        // KEYED BY THE OPTION KEY, which is the answer's stable identity. Not
+        // the label (localized into eleven languages) and not the index (the
+        // order is a layout decision that has already changed once).
+        .accessibilityIdentifier("onboarding.option.\(key)")
     }
 }
 
