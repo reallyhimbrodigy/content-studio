@@ -4311,6 +4311,21 @@ const server = http.createServer((req, res) => {
           // activation. MUST be here or the SQL mirror (the DB our upload/no-token
           // analysis queries) drops them while PostHog keeps them — half-blind.
           'upload_failed', 'export_completed', 'push_permission',
+          // THE NATIVE REVIEW PROMPT AND ITS MANUAL PATH (2026-09-07).
+          // `review_prompt_shown` is the only record that the trigger fired
+          // at all: Apple caps the sheet at three a year and discards the
+          // rest silently, with no callback, so the ATTEMPT is the only
+          // observable there is. Dropped by the mirror, "the trigger never
+          // fires" and "the trigger fires and Apple refuses" look identical,
+          // and those two want opposite fixes.
+          'review_prompt_shown', 'rate_app_tapped',
+          // `checkout_web_blocked` is the web-checkout link REFUSING to
+          // compose because RevenueCat's app_user_id does not yet match the
+          // signed-in uid. It should be rare; if it is not, the sign-in
+          // reorder is racing identification and the reason field says which
+          // (no_account / identity_mismatch). A refusal nobody can count is
+          // indistinguishable from a checkout nobody tapped.
+          'checkout_web_blocked',
           // 1.3.4 in-app ready-state card (returning-user recovery funnel):
           'ready_banner_shown', 'ready_banner_open', 'ready_banner_dismiss',
           // Billing-identity hardening (blocked-pre-identity + RC identify diagnostics):
