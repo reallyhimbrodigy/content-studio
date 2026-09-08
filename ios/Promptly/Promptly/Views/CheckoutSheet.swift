@@ -141,7 +141,32 @@ struct CheckoutSheet: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("checkout.cta")
-            .padding(.horizontal, 20 * k).padding(.bottom, 12 * k)
+            .padding(.horizontal, 20 * k).padding(.bottom, 8 * k)
+
+            // APPLE 3.1.2 APPLIES HERE TOO. This screen sells an auto-renewing
+            // subscription — it is the last thing between the user and a
+            // charge on either path — and it carried neither the renewal
+            // disclosure nor the two links. Every other selling surface in the
+            // app has both; this one was new and shipped without them.
+            Text(TrialCopy.fineprint)
+                .font(.system(size: 9 * k))
+                .foregroundColor(.white.opacity(0.4))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20 * k)
+            HStack(spacing: 14 * k) {
+                Button("Terms of Use") {
+                    if let u = URL(string: "https://usepromptly.app/terms") { UIApplication.shared.open(u) }
+                }
+                Button("Privacy Policy") {
+                    if let u = URL(string: "https://usepromptly.app/privacy") { UIApplication.shared.open(u) }
+                }
+            }
+            .cType(9)
+            .foregroundColor(.white.opacity(0.45))
+            .buttonStyle(.plain)
+            .padding(.bottom, 12 * k)
+            .accessibilityIdentifier("checkout.legal")
         }
         .background(Color(white: 0.07).ignoresSafeArea())
         .onAppear {
