@@ -510,6 +510,13 @@ struct AccountView: View {
             .padding(.horizontal, 16 * k).cControl(52).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // NOT DERIVED FROM THE LABEL, because this row's label CHANGES with the
+        // viewer — "Upgrade" for someone who can, "Manage subscription" for
+        // someone who cannot. A label-derived identifier would move with it and
+        // the test would silently start asserting about the other behaviour.
+        // The two states are named separately, so a test says which one it
+        // expected to find.
+        .accessibilityIdentifier(canUpgrade ? "account.upgrade" : "account.manage")
     }
 
     /// ONE WORD (Zac, on 248). The row named the tier it was selling — "Upgrade

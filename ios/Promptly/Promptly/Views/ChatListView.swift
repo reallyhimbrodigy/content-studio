@@ -207,6 +207,7 @@ struct ChatListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("nav.account")
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) {
             Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 0.5)

@@ -1387,6 +1387,7 @@ struct EditorView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+                .accessibilityIdentifier("nav.sidebar")
 
             .accessibilityLabel("Show chats")
 
