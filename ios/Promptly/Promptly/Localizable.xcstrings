@@ -27506,6 +27506,83 @@
         }
       }
     },
+    "This permanently deletes your account, your chats, and every video you have made. The videos cannot be recovered afterwards, so save anything you want to keep first. This cannot be undone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يؤدي هذا إلى حذف حسابك ومحادثاتك وكل فيديو أنشأته نهائيًا. لا يمكن استرجاع الفيديوهات بعد ذلك، لذا احفظ ما تريد الاحتفاظ به أولًا. لا يمكن التراجع عن هذا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এটি আপনার অ্যাকাউন্ট, চ্যাট এবং আপনার তৈরি প্রতিটি ভিডিও স্থায়ীভাবে মুছে দেয়। ভিডিওগুলি পরে ফেরানো যাবে না, তাই আগে যা রাখতে চান তা সেভ করুন। এটি ফেরানো যাবে না।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dies löscht dein Konto, deine Chats und jedes Video, das du erstellt hast, dauerhaft. Die Videos lassen sich danach nicht wiederherstellen — sichere vorher alles, was du behalten möchtest. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This permanently deletes your account, your chats, and every video you have made. The videos cannot be recovered afterwards, so save anything you want to keep first. This cannot be undone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto elimina permanentemente tu cuenta, tus chats y todos los vídeos que has creado. Los vídeos no se podrán recuperar, así que guarda antes lo que quieras conservar. Esto no se puede deshacer."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ceci supprime définitivement votre compte, vos conversations et toutes les vidéos que vous avez créées. Les vidéos seront irrécupérables : enregistrez d'abord ce que vous souhaitez garder. Cette action est irréversible."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इससे आपका खाता, आपकी चैट और आपके बनाए गए सभी वीडियो हमेशा के लिए मिट जाएंगे। वीडियो बाद में वापस नहीं मिलेंगे, इसलिए जो रखना है उसे पहले सेव कर लें। इसे पहले जैसा नहीं किया जा सकता।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ini menghapus permanen akun, obrolan, dan semua video yang kamu buat. Video tidak bisa dipulihkan setelahnya, jadi simpan dulu yang ingin kamu pertahankan. Tindakan ini tidak bisa dibatalkan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント、チャット、作成したすべての動画を完全に削除します。動画は後から復元できないため、残したいものは先に保存してください。この操作は取り消せません。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यसले तपाईंको खाता, च्याट र तपाईंले बनाएका सबै भिडियो स्थायी रूपमा मेटाउँछ। पछि भिडियो फिर्ता ल्याउन सकिँदैन, त्यसैले राख्न चाहेको कुरा पहिले सेभ गर्नुहोस्। यो पूर्ववत गर्न सकिँदैन।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso exclui permanentemente sua conta, suas conversas e todos os vídeos que você criou. Os vídeos não poderão ser recuperados depois, então salve antes o que quiser manter. Não é possível desfazer."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس سے آپ کا اکاؤنٹ، آپ کی چیٹس اور آپ کے بنائے گئے تمام ویڈیوز مستقل طور پر حذف ہو جائیں گے۔ بعد میں ویڈیوز واپس نہیں مل سکیں گی، اس لیے جو رکھنا ہے پہلے محفوظ کر لیں۔ اسے واپس نہیں کیا جا سکتا۔"
+          }
+        }
+      }
+    },
     "This stops the edit before it starts — your daily render won't be used.": {
       "extractionState": "stale",
       "localizations": {
@@ -27720,76 +27797,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "اس ورژن میں ایک مسئلہ تھا جو ہم نے ٹھیک کر دیا ہے۔ اپ ڈیٹ لیں اور چند سیکنڈ میں واپس آ جائیں۔"
-          }
-        }
-      }
-    },
-    "This will permanently delete your account and all your data. This cannot be undone.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "سيؤدي هذا إلى حذف حسابك وكل بياناتك نهائيًا. لا يمكن التراجع عن ذلك."
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "এতে আপনার অ্যাকাউন্ট ও সব ডেটা স্থায়ীভাবে মুছে যাবে। এটি আর ফেরানো যাবে না।"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dein Konto und alle deine Daten werden dauerhaft gelöscht. Das lässt sich nicht rückgängig machen."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Esto borrará permanentemente tu cuenta y todos tus datos. No se puede deshacer."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ton compte et toutes tes données seront définitivement supprimés. Cette action est irréversible."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "इससे आपका खाता और आपका सारा डेटा हमेशा के लिए मिट जाएगा। इसे वापस नहीं लाया जा सकता।"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ini akan menghapus akunmu dan semua datamu secara permanen. Tindakan ini tidak bisa dibatalkan."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "アカウントとすべてのデータが完全に削除されます。元に戻すことはできません。"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "यसले तपाईंको खाता र सबै डेटा स्थायी रूपमा मेटाउँछ। यो फिर्ता ल्याउन सकिँदैन।"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Isso vai apagar permanentemente sua conta e todos os seus dados. Não dá para desfazer."
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "اس سے آپ کا اکاؤنٹ اور تمام ڈیٹا مستقل طور پر حذف ہو جائے گا۔ اسے واپس نہیں لایا جا سکتا۔"
           }
         }
       }

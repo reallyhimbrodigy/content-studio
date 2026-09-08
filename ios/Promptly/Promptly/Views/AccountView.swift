@@ -204,7 +204,7 @@ struct AccountView: View {
                 Button("Delete my account", role: .destructive) { deleteAccount() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently delete your account and all your data. This cannot be undone.")
+                Text("This permanently deletes your account, your chats, and every video you have made. The videos cannot be recovered afterwards, so save anything you want to keep first. This cannot be undone.")
             }
             .alert("Couldn't delete account", isPresented: Binding(
                 get: { deleteAccountError != nil },
