@@ -689,6 +689,16 @@ struct AccountView: View {
     }
 
     /// One row inside a card. `action == nil` renders a non-tappable display row.
+    /// `Restore purchases` -> `restore_purchases`. ASCII-lowercase and
+    /// underscores only, so the identifier is stable across locales and cannot
+    /// pick up a character an XCTest predicate would have to escape.
+    static func slug(_ s: String) -> String {
+        let mapped = s.lowercased().map { ch -> Character in
+            (ch.isLetter && ch.isASCII) || ch.isNumber ? ch : "_"
+        }
+        return String(mapped).split(separator: "_").joined(separator: "_")
+    }
+
     private func cardRow(_ label: String, value: String? = nil, tint: Color = .white,
                          trailing: CardTrailing = .chevron, action: (() -> Void)?) -> some View {
         Button { action?() } label: {
@@ -716,6 +726,11 @@ struct AccountView: View {
         .disabled(action == nil)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(label)
+        // DERIVED FROM THE ROW'S OWN LABEL, so a row added later cannot ship
+        // without an identifier and none of them has to be kept in a list.
+        // The base string, not the localized one: an identifier that changes
+        // with the device language is not an identifier.
+        .accessibilityIdentifier("account.row." + Self.slug(label))
         .accessibilityValue(value ?? "")
     }
 

@@ -1,0 +1,158 @@
+{
+  "identifier": "E28311DF-C5AC-45C8-8AE3-11312FF57872",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_applicationInternalID": "6762497454",
+    "_developerTeamID": "8KT9332327",
+    "_lastSynchronizedDate": 0,
+    "_askToBuyEnabled": false,
+    "_billingIssuesEnabled": false,
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_timeRate": 0
+  },
+  "subscriptionGroups": [
+    {
+      "id": "22118034",
+      "localizations": [],
+      "name": "Promptly Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "12.99",
+          "familyShareable": false,
+          "groupNumber": 3,
+          "internalID": "4287005",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Weekly",
+              "displayName": "Promptly Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "promptly_pro_weekly",
+          "recurringSubscriptionPeriod": "P1W",
+          "referenceName": "Pro Weekly",
+          "subscriptionGroupID": "22118034",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "35.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "1824699",
+          "introductoryOffer": {
+            "displayPrice": "17.99",
+            "internalID": "4734757",
+            "numberOfPeriods": 1,
+            "paymentMode": "payAsYouGo",
+            "subscriptionPeriod": "P1M"
+          },
+          "localizations": [
+            {
+              "description": "Monthly",
+              "displayName": "Promptly Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "promptly_pro_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Pro Monthly",
+          "subscriptionGroupID": "22118034",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "349.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "4644273",
+          "introductoryOffer": {
+            "displayPrice": "174.99",
+            "internalID": "7978989",
+            "numberOfPeriods": 1,
+            "paymentMode": "payAsYouGo",
+            "subscriptionPeriod": "P1Y"
+          },
+          "localizations": [
+            {
+              "description": "Yearly",
+              "displayName": "Promptly Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "promptly_pro_yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Pro Yearly",
+          "subscriptionGroupID": "22118034",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    },
+    {
+      "id": "22351756",
+      "localizations": [],
+      "name": "Promptly Max",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "105.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "3419515",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Monthly",
+              "displayName": "Promptly Max",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "promptly_max_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Max Monthly",
+          "subscriptionGroupID": "22351756",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "949.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "7066578",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Yearly",
+              "displayName": "Promptly Max",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "promptly_max_yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Max Yearly",
+          "subscriptionGroupID": "22351756",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

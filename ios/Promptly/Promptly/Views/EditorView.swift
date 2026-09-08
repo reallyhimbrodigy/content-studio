@@ -1428,6 +1428,7 @@ struct EditorView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("nav.upgrade")
             }
 
             // The count, small, immediately left of the avatar. It self-hides

@@ -630,6 +630,7 @@ struct PaywallLayout: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("paywall.close")
             Spacer()
         }
         .padding(.horizontal, 8 * k)
@@ -658,6 +659,7 @@ struct PaywallLayout: View {
                                 .fill(isOn ? Color.white : Color.clear)
                         )
                         .contentShape(RoundedRectangle(cornerRadius: 10 * k, style: .continuous))
+                        .accessibilityIdentifier("paywall.tier.\(tier.title.lowercased())")
                 }
                 .buttonStyle(.plain)
             }
@@ -873,6 +875,17 @@ struct PaywallLayout: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        // STATE IN THE IDENTIFIER, NOT IN accessibilityValue. The first version
+        // used .accessibilityValue("held"/"purchasable") and the localization
+        // gate refused it, correctly: accessibilityValue is SPOKEN, so those
+        // words would have reached VoiceOver in English in all eleven
+        // languages. An identifier is not user-facing and is never localized,
+        // which is exactly why it is the right place for test state.
+        //
+        // A held row is `…\(id).held`, a purchasable one is `…\(id)`. Both are
+        // exact matches, so a test asserts which one it found rather than
+        // matching "Your plan" against eleven translations.
+        .accessibilityIdentifier("paywall.duration.\(option.id)" + (isOwned ? ".held" : ""))
     }
 
     // MARK: Footer
@@ -893,6 +906,7 @@ struct PaywallLayout: View {
                     .frame(maxWidth: .infinity)
                     .cControl(48)
                     .background(Capsule().fill(Self.accent))
+                    .accessibilityIdentifier("paywall.cta")
             }
             .buttonStyle(.plain)
             .disabled(selectedId == nil)
