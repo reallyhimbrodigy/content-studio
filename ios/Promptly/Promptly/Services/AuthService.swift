@@ -18,6 +18,29 @@ class AuthService {
     private let tokenExpiryKey = "promptly_token_expiry"
     private var refreshTask: Task<Void, Never>?
 
+    /// THE ONLY READ OF THE REFRESH TOKEN. Keychain first, UserDefaults as the
+    /// one-release migration fallback — the same order `checkSession` always
+    /// used, and now the order the two REFRESH paths use as well.
+    ///
+    /// They didn't. `getValidToken` and `scheduleTokenRefresh` each read
+    /// UserDefaults directly, so the store the session actually lives in was
+    /// invisible to both. The case that bites: a delete-and-reinstall (or any
+    /// path that clears the Data container) wipes UserDefaults and leaves the
+    /// Keychain — which is the entire reason the session moved there.
+    /// `checkSession` then restores from the Keychain and, because the expiry
+    /// also lived in the wiped UserDefaults, `expiry == 0` makes `needsRefresh`
+    /// permanently true. If that launch refresh fails SOFTLY (offline, 5xx) the
+    /// session is deliberately kept — and from then on neither refresh path can
+    /// find a refresh token, so every call rides an expired JWT and comes back
+    /// 401 until the next launch that has network.
+    ///
+    /// It is also a landmine for the release that drops the UserDefaults mirror
+    /// `saveSession` writes: on that build these two paths would find nothing
+    /// for ANY user, and no session could ever refresh. One reader, one order.
+    private var storedRefreshToken: String? {
+        Keychain.get(refreshKey) ?? UserDefaults.standard.string(forKey: refreshKey)
+    }
+
     private init() {}
 
     // MARK: - Session Management
@@ -25,8 +48,7 @@ class AuthService {
     func checkSession() async {
         // Keychain first, UserDefaults as the one-release migration fallback.
         guard let token = Keychain.get(tokenKey) ?? UserDefaults.standard.string(forKey: tokenKey),
-              let refreshToken = Keychain.get(refreshKey)
-                ?? UserDefaults.standard.string(forKey: refreshKey) else {
+              let refreshToken = storedRefreshToken else {
             isLoading = false
             return
         }
@@ -119,7 +141,7 @@ class AuthService {
         let expiry = UserDefaults.standard.double(forKey: tokenExpiryKey)
         let needsRefresh = expiry == 0 || Date().timeIntervalSince1970 > (expiry - 300)
 
-        if needsRefresh, let refreshToken = UserDefaults.standard.string(forKey: refreshKey) {
+        if needsRefresh, let refreshToken = storedRefreshToken {
             do {
                 try await refreshSession(refreshToken: refreshToken)
                 return accessToken
@@ -710,7 +732,7 @@ class AuthService {
         refreshTask = Task {
             try? await Task.sleep(for: .seconds(refreshIn))
             guard !Task.isCancelled else { return }
-            guard let refreshToken = UserDefaults.standard.string(forKey: refreshKey) else { return }
+            guard let refreshToken = storedRefreshToken else { return }
             do {
                 try await refreshSession(refreshToken: refreshToken)
                 scheduleTokenRefresh() // Schedule next refresh
