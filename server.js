@@ -12,6 +12,7 @@ const {
   entitlementTier,
   tierFromEntitlement,
   tierAfterGrant,
+  tierAfterRevoke,
   tierRank,
   grantFromMs,
   unknownPeriodPaid,
@@ -5427,9 +5428,45 @@ const server = http.createServer((req, res) => {
             };
           }
         } else if (revokesProNow.has(type)) {
+          // ASK WHAT IS STILL ACTIVE before writing 'free'.
+          //
+          // This wrote 'free' unconditionally, and there is a real customer
+          // shape it destroys: a Max subscriber downgrades to Pro, the Pro
+          // grant arrives, the raise-guard correctly keeps 'max' over it — and
+          // then the Max EXPIRATION fires and revokes the Pro they are paying
+          // for, because nothing in the row records that the Pro grant ever
+          // happened. Ordering-dependent, and UNOBSERVABLE today at zero Max
+          // rows: it goes live the day someone buys Max.
+          //
+          // reconcileEntitlementFromRevenueCat mirrors RC's live
+          // active_entitlements — the same call TRANSFER already uses — so it
+          // answers exactly the question the expiration cannot: is anything
+          // else still entitling this user?
+          //
+          // FAILS TOWARD REVOKING. No secret, a throw, or "not active" all fall
+          // to 'free', which is today's behaviour byte for byte. An unreachable
+          // RevenueCat must never make a cancelled subscription permanent.
+          let _revokeTier = 'free';
+          let _revokeReconcile = null;
+          try {
+            _revokeReconcile = await reconcileEntitlementFromRevenueCat(appUserId);
+            _revokeTier = tierAfterRevoke(_revokeReconcile);
+          } catch (_) {
+            _revokeTier = 'free';
+          }
+          if (_revokeTier !== 'free') {
+            // PRINTED, not just decided. A revoke that did NOT revoke is the
+            // single most surprising outcome in this handler, and it must be
+            // greppable the first time it happens rather than inferred from a
+            // tier that failed to change.
+            console.log(`[RevenueCat] revoke ${type} for ${id}: RC still reports `
+              + `'${_revokeTier}' active — keeping it instead of writing free`);
+          }
           update = {
-            tier: 'free',
-            pro_until: null,
+            tier: _revokeTier,
+            pro_until: _revokeTier === 'free'
+              ? null
+              : ((_revokeReconcile && _revokeReconcile.proUntil) || null),
             rc_app_user_id: appUserId,
             rc_product_id: productId,
             rc_period_type: periodType,
