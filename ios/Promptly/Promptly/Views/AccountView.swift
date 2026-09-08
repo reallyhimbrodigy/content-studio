@@ -113,6 +113,13 @@ struct AccountView: View {
                     }
                     .padding(.horizontal, 16 * k)
                     .padding(.top, 4 * k)
+                    // TWO STATES, NAMED SEPARATELY, like account.upgrade /
+                    // account.manage above. This row's label changes with the
+                    // viewer — "Sign in or create account" for an anonymous
+                    // session, "Log out" for a real one — so one identifier
+                    // covering both would let a test assert about whichever it
+                    // happened to get.
+                    .accessibilityIdentifier(isAnonymousSession ? "account.signin" : "account.signout")
 
                     // Delete + version
                     VStack(spacing: 14 * k) {
@@ -129,6 +136,7 @@ struct AccountView: View {
                             }
                         }
                         .disabled(isDeletingAccount)
+                        .accessibilityIdentifier("account.delete")
 
                         Text(versionString)
                             .font(.system(size: 12 * k))

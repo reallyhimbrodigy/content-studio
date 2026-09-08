@@ -713,6 +713,26 @@ struct PromptlyApp: App {
                 // value, which is the bug the comment above motionProofReset
                 // describes.
                 if ProcessInfo.processInfo.arguments.contains("-resetOnboarding") { Self.motionProofReset() }
+                // `-poseCreditsGrantAfter <seconds> <balance>` — DEBUG only.
+                //
+                // The banner APPEARING is a launch-time state and two launches
+                // prove it. The banner CLEARING is the claim worth testing:
+                // that it is bound to the published balance rather than to a
+                // snapshot taken when the view was built. Nothing a UI test can
+                // tap changes the balance — the grant lands from the server,
+                // asynchronously, after a top-up completes.
+                //
+                // So this simulates exactly that: the balance moves, on its
+                // own, a moment after launch. If the banner is bound it goes;
+                // if it was a snapshot it stays, and the test says so.
+                let a2 = ProcessInfo.processInfo.arguments
+                if let i = a2.firstIndex(of: "-poseCreditsGrantAfter"), i + 2 < a2.count,
+                   let secs = Double(a2[i + 1]), let bal = Int(a2[i + 2]) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(secs))
+                        CreditsService.shared.debugSetBalance(bal)
+                    }
+                }
                 #endif
             }
             .onChange(of: auth.isAuthenticated) { _, authed in
