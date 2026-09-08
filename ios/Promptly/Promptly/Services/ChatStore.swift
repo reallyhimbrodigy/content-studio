@@ -5,6 +5,8 @@ import Foundation
 /// the sidebar renders. EditorView reads/writes through here so the
 /// sidebar stays in sync without needing every save to trigger a list
 /// refetch.
+extension Chat: ChatListItem {}
+
 @MainActor
 final class ChatStore: ObservableObject {
     static let shared = ChatStore()
@@ -66,10 +68,22 @@ final class ChatStore: ObservableObject {
         loadError = nil
         do {
             let fetched = try await ChatService.shared.listChats()
-            self.chats = fetched
+            // AN EMPTY SUCCESS IS NOT AN AUTHORITATIVE EMPTY. This assigned
+            // `fetched` straight onto `chats`, so a 200 carrying `[]` for a user
+            // who does have chats wiped the thread in front of them — and this
+            // runs on EVERY foreground (AppShell's willEnterForeground). The
+            // catch below is careful never to clear on an error, which is
+            // exactly the tell: only one of the two failure shapes was handled.
+            // A stale token or a transient RLS miss returns 200 + [], not a
+            // throw. See `merged` for what an empty list is now allowed to do.
+            let merged = ChatListMerge.merged(fetched: fetched, local: chats, unsavedIds: Set(pendingSaves.keys))
+            self.chats = merged
             // If the active chat is gone (e.g., deleted on another device),
             // drop it so the editor falls back to "no chat selected".
-            if let active = activeChatId, !fetched.contains(where: { $0.id == active }) {
+            // Against the MERGED list, not `fetched` — a chat kept because its
+            // save has not landed yet is still a chat, and clearing the active
+            // id would bounce the user out of the thread they are typing in.
+            if let active = activeChatId, !merged.contains(where: { $0.id == active }) {
                 self.activeChatId = nil
             }
             // If the user has no chats at all, leave activeChatId nil — the
@@ -82,7 +96,7 @@ final class ChatStore: ObservableObject {
             // otherwise, to leave normal launch UX unchanged.
             if activeChatId == nil,
                let saved = UserDefaults.standard.string(forKey: Self.lastActiveChatKey),
-               let chat = fetched.first(where: { $0.id == saved }),
+               let chat = merged.first(where: { $0.id == saved }),
                chat.messages.contains(where: { $0.isInFlightRender }) {
                 self.activeChatId = saved
             }

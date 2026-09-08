@@ -79,3 +79,12 @@ swiftc "$DIR/../Promptly/Services/VersionMath.swift" \
        "$DIR/VersionMathTests.swift" \
        -o "${TMPDIR:-/tmp}/versionmathtest"
 "${TMPDIR:-/tmp}/versionmathtest"
+
+# ChatListMerge — what a server list is allowed to REMOVE from the chats already
+# on screen. The defect: a 200 carrying [] (stale token, transient RLS miss)
+# wiped the user's thread on every foreground, because only the ERROR shape was
+# handled and the unhandled one arrives as a success. Pure Foundation.
+swiftc "$DIR/../Promptly/Services/ChatListMerge.swift" \
+       "$DIR/ChatListMergeTests.swift" \
+       -o "${TMPDIR:-/tmp}/chatmergetest"
+"${TMPDIR:-/tmp}/chatmergetest"
