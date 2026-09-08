@@ -28,7 +28,7 @@ const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField, clientValidateAuth } = require('./lib/video-processor/dispatch-to-modal');
 const { findDeadSourceJob } = require('./lib/source-presence');
 const apiLedger = require('./lib/api-outcome-ledger');
 const { makeJob404Guard } = require('./lib/job404-guard');
@@ -5037,6 +5037,33 @@ const server = http.createServer((req, res) => {
           // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
           // the live preview even if a manifest arrives.
           progressive_playback_enabled: progressivePlaybackEnabled(),
+          // WORKER AUTH FOR THE CLIENT'S /validate CALL (2026-09-07).
+          //
+          // Layer 2 talking-head validation is the ONE worker endpoint whose
+          // caller is the app itself — there is no server proxy in front of it,
+          // so it sends no `_worker_auth` and 11 of 11 real calls arrive
+          // missing. Until the client carries one, /validate is an
+          // unauthenticated GPU endpoint anyone can bill us for.
+          //
+          // Carried here rather than on /api/health because health is PUBLIC:
+          // putting it there would publish the secret to the world, strictly
+          // worse than sending none. /api/usage is behind requireSupabaseUser,
+          // the client already polls it, and the snapshot is held in memory
+          // only — it never lands in a plist or a backup.
+          //
+          // MODAL_VALIDATE_SECRET FIRST, and it should be a DIFFERENT value
+          // from MODAL_RUN_SECRET. Anything the app can send, someone can
+          // extract; that is unavoidable for a client-called endpoint and the
+          // point here is to stop anonymous use, not to make it unforgeable.
+          // But if it is the same secret run_job uses, extracting it from the
+          // app also buys the ability to dispatch arbitrary GPU renders — a
+          // far larger bill than validate. The fallback exists only so the
+          // client half can ship before the separate secret is provisioned.
+          // Resolved by clientValidateAuth() in dispatch-to-modal.js, beside
+          // workerAuthField, so the secret's selection rule has ONE definition.
+          // Omitted entirely when neither env var is set, so the field never
+          // ships empty.
+          ...(clientValidateAuth() ? { validate_token: clientValidateAuth() } : {}),
           // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
           // The first-run hero offers "Watch Promptly edit this" only when this is
           // on AND a clip is configured. Two flag-selectable modes:

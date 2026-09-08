@@ -40,6 +40,14 @@ final class UsageService: ObservableObject {
         // instead of waiting for the final mux. Server-gated, OFF by default; the
         // client player plumbing is wired behind this flag before it flips.
         let progressive_playback_enabled: Bool?
+        /// Worker auth for the client's own /validate call — the one worker
+        /// endpoint with no server proxy in front of it. Optional, so a server
+        /// that has not shipped the field (or has no secret set) still decodes
+        /// and the call goes out exactly as it does today. Carried on THIS
+        /// response and not /api/health because health is public; this one is
+        /// behind requireSupabaseUser. Held in memory only — the snapshot is
+        /// never written to UserDefaults, so it cannot land in a backup.
+        let validate_token: String?
     }
 
     @Published var snapshot: Snapshot?
@@ -54,6 +62,15 @@ final class UsageService: ObservableObject {
     // The old `?? 3` fallback is exactly the class of bug that showed a free user
     // "2 left" (a legacy trial cap of 3 minus one render); there is no safe
     // guessed limit, so the answer to "unknown" is nil, not a number.
+    /// The secret to send as `_worker_auth` on /validate. nil until the first
+    /// authenticated snapshot lands, and nil forever on a server that sets no
+    /// secret — both of which mean the call goes out unauthenticated, which is
+    /// today's behaviour. NEVER logged and never persisted.
+    var validateToken: String? {
+        guard let t = snapshot?.validate_token, !t.isEmpty else { return nil }
+        return t
+    }
+
     var renderLimit: Int? { snapshot?.render_limit }
     var chatLimit: Int? { snapshot?.chat_limit }
     var rendersLeft: Int? { snapshot.map { max(0, $0.render_limit - $0.renders_today) } }

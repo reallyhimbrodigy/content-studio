@@ -145,9 +145,33 @@ class APIService {
     /// committing to the full source upload, so an incompatible clip
     /// is caught in 5-9s instead of 30-60s into a doomed render.
     ///
-    /// The endpoint is a public Modal URL (no auth header required).
     /// 30s timeout because cold Modal container starts can land in
     /// the 5-10s range and we'd rather wait than blow past the timeout.
+    ///
+    /// WORKER AUTH (2026-09-07). /validate is the one worker endpoint whose
+    /// caller is the app itself — there is no server proxy in front of it, so
+    /// it sent nothing and 11 of 11 real calls arrived missing. Until the
+    /// client carries a secret it is an unauthenticated GPU endpoint anyone can
+    /// bill us for.
+    ///
+    /// Carried the way run_job carries it: `_worker_auth` in the JSON BODY, not
+    /// a header — see workerAuthField() in lib/video-processor/dispatch-to-modal.js.
+    /// The worker's fail-closed `_require_worker_auth` pops the field before the
+    /// handler sees it, so the field name and its placement are the contract,
+    /// and the two callers must not drift.
+    ///
+    /// The secret is NOT in the binary: it arrives on /api/usage, which is
+    /// behind requireSupabaseUser, and lives in memory only. It is therefore
+    /// rotatable server-side without an App Store release — which matters here,
+    /// because a value baked into a build could never be rotated for the builds
+    /// already in the field.
+    ///
+    /// FAILS OPEN, on purpose. If the token is not in hand the call goes out
+    /// without it, exactly as it does today. Every build in the field predates
+    /// this field, so arming the worker rejects them — and Layer 2 is an
+    /// optimisation, not a gate: the caller already treats a validate error as
+    /// non-fatal and uploads anyway. Blocking uploads on a validation service
+    /// would be a far worse failure than skipping the pre-check.
     func validateVideo(sampleS3Url: String) async throws -> ValidationResponse {
         // Modal hash-suffixed URL. The "obvious" name
         // promptlyvalidator-validate.modal.run is 64 chars in the subdomain
@@ -165,7 +189,21 @@ class APIService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30
-        request.httpBody = try JSONEncoder().encode(["sample_url": sampleS3Url])
+        // One refresh if the snapshot has not landed yet. Validation runs when
+        // the user picks a clip, usually well after launch, so this is normally
+        // a no-op — but a pick in the first seconds of a cold launch would
+        // otherwise send an unauthenticated call for no reason.
+        var workerAuth = await UsageService.shared.validateToken
+        if workerAuth == nil {
+            await UsageService.shared.refresh()
+            workerAuth = await UsageService.shared.validateToken
+        }
+        // Same field name and same placement as the server's workerAuthField():
+        // `_worker_auth` in the body. Omitted when unknown, never sent empty —
+        // an empty string is a value the worker would have to special-case.
+        var body: [String: String] = ["sample_url": sampleS3Url]
+        if let workerAuth { body["_worker_auth"] = workerAuth }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await requestData(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
