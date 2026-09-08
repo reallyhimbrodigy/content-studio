@@ -1119,6 +1119,41 @@ struct TwoStepPaywall: View {
         }
     }
 
+
+    /// WHERE A PLAN TAP GOES, once the account question is settled.
+    ///
+    /// A named function rather than an inline closure because the AuthGate
+    /// resume has to re-run EXACTLY this. `AuthGate.resume` used to call
+    /// `SubscriptionService.purchase` directly, which goes straight to Apple —
+    /// so a US user who should have seen the checkout step got Apple's sheet
+    /// instead, purely because they signed in on the way. Same decision either
+    /// way, or the sign-in changes what the user is buying.
+    private func route(_ id: String) {
+            guard let pkg = packages.first(where: {
+                $0.storeProduct.productIdentifier == id
+            }) else { return }
+            let noun = id.lowercased().contains("max") ? String(localized: "Max") : String(localized: "Pro")
+            if let item = CheckoutRouter.item(for: pkg, tierNoun: noun,
+                                              surface: PaywallView.reasonKey(for: reason)) {
+                checkout = item        // US storefront: the checkout step decides
+                return
+            }
+            Task {
+                // CONTEXT IS THE ENTRY, not the view. "two_step_paywall"
+                // named the screen, so every purchase from every entry
+                // collapsed into one bucket and could not be compared with
+                // the view events, which split by entry. A funnel needs both
+                // ends keyed the same way or the ratio is meaningless.
+                // Kept on ONE line: purchase-context-gate scans the call
+                // line for `context:`, so wrapping the argument hid it and
+                // read as an unstamped purchase. The gate is right — an
+                // unstamped purchase is invisible in the by-surface cut —
+                // so the formatting moves, not the rule.
+                let ok = await subscription.purchase(pkg, context: PaywallView.reasonKey(for: reason))
+                if ok { isPresented = false }
+            }
+    }
+
     private var resolvedBody: some View {
         let prods = products
         return PaywallLayout(
@@ -1131,29 +1166,16 @@ struct TwoStepPaywall: View {
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             onClose: { isPresented = false },
             onPurchase: { id in
-                guard let pkg = packages.first(where: {
-                    $0.storeProduct.productIdentifier == id
-                }) else { return }
-                let noun = id.lowercased().contains("max") ? String(localized: "Max") : String(localized: "Pro")
-                if let item = CheckoutRouter.item(for: pkg, tierNoun: noun,
-                                                  surface: PaywallView.reasonKey(for: reason)) {
-                    checkout = item        // US storefront: the checkout step decides
-                    return
-                }
-                Task {
-                    // CONTEXT IS THE ENTRY, not the view. "two_step_paywall"
-                    // named the screen, so every purchase from every entry
-                    // collapsed into one bucket and could not be compared with
-                    // the view events, which split by entry. A funnel needs both
-                    // ends keyed the same way or the ratio is meaningless.
-                    // Kept on ONE line: purchase-context-gate scans the call
-                    // line for `context:`, so wrapping the argument hid it and
-                    // read as an unstamped purchase. The gate is right — an
-                    // unstamped purchase is invisible in the by-surface cut —
-                    // so the formatting moves, not the rule.
-                    let ok = await subscription.purchase(pkg, context: PaywallView.reasonKey(for: reason))
-                    if ok { isPresented = false }
-                }
+                // THE SEAM, BEFORE THE SHEET (ruled 2026-09-07). An anonymous
+                // user signs in FIRST and lands directly in checkout — no
+                // second decision, no re-selecting the plan. Mechanically it
+                // has to be this order: the web link carries app_user_id in its
+                // PATH, so a purchase composed before the identity resolves
+                // attaches to the anonymous customer.
+                guard AuthGate.shared.allow(
+                    .purchase(productId: id, context: PaywallView.reasonKey(for: reason))
+                ) else { return }
+                route(id)
             },
             // APP REVIEW ARTIFACT ONLY (DEBUG), nil in Release. Apple wants the
             // purchase in context — Max's tier with its real plan options — and
@@ -1185,5 +1207,10 @@ struct TwoStepPaywall: View {
                                 .merging(SubscriptionService.cachedStorefrontProps) { a, _ in a })
         }
         .task { if packages.isEmpty { await subscription.refreshOfferings() } }
+        // THE RESUME LANDS HERE, not in Apple's sheet. Registered on the view
+        // that owns `checkout`, so the plan the user chose before signing in
+        // resolves through the same router it would have without the detour.
+        .onAppear { AuthGate.shared.onPurchaseResume = { productId, _ in route(productId) } }
+        .onDisappear { AuthGate.shared.onPurchaseResume = nil }
     }
 }

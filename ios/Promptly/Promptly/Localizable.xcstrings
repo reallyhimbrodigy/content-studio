@@ -20760,6 +20760,83 @@
         }
       }
     },
+    "Paying on the web needs your account confirmed first. You can pay in-app instead, or try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paying on the web needs your account confirmed first. You can pay in-app instead, or try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para pagar en la web primero hay que confirmar tu cuenta. Puedes pagar en la app o volver a intentarlo en un momento."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para pagar na web, sua conta precisa ser confirmada primeiro. Você pode pagar no app ou tentar de novo em instantes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Payer sur le web nécessite d'abord la confirmation de ton compte. Tu peux payer dans l'app ou réessayer dans un instant."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für die Zahlung im Web muss dein Konto zuerst bestätigt sein. Du kannst stattdessen in der App zahlen oder es gleich noch einmal versuchen."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pembayaran lewat web perlu akunmu dikonfirmasi dulu. Kamu bisa bayar di aplikasi, atau coba lagi sebentar lagi."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वेब पर भुगतान के लिए पहले आपके खाते की पुष्टि ज़रूरी है। आप ऐप में भुगतान कर सकते हैं, या थोड़ी देर में दोबारा कोशिश करें।"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ওয়েবে পেমেন্ট করতে আগে আপনার অ্যাকাউন্ট নিশ্চিত হওয়া দরকার। আপনি অ্যাপেই পেমেন্ট করতে পারেন, বা একটু পরে আবার চেষ্টা করুন।"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वेबमा भुक्तानी गर्न पहिले तपाईंको खाता पुष्टि हुनुपर्छ। तपाईं एपमै भुक्तानी गर्न सक्नुहुन्छ, वा केही बेरमा फेरि प्रयास गर्नुहोस्।"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ویب پر ادائیگی کے لیے پہلے آپ کے اکاؤنٹ کی تصدیق ضروری ہے۔ آپ ایپ میں ادائیگی کر سکتے ہیں، یا تھوڑی دیر بعد دوبارہ کوشش کریں۔"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يتطلّب الدفع عبر الويب تأكيد حسابك أولًا. يمكنك الدفع داخل التطبيق، أو المحاولة مرة أخرى بعد قليل."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ウェブでのお支払いには、まずアカウントの確認が必要です。アプリ内で支払うか、少し時間をおいてもう一度お試しください。"
+          }
+        }
+      }
+    },
     "Personal / everyday": {
       "localizations": {
         "ar": {
@@ -22327,6 +22404,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "تجویز کردہ"
+          }
+        }
+      }
+    },
+    "Rate Promptly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rate Promptly"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valorar Promptly"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaliar o Promptly"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noter Promptly"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly bewerten"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beri rating Promptly"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly को रेट करें"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly রেট করুন"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly लाई रेट गर्नुहोस्"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly کو ریٹ کریں"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قيّم Promptly"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly を評価"
           }
         }
       }
@@ -30453,6 +30607,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "چہرے کہاں ہلتے ہیں دیکھا جا رہا ہے"
+          }
+        }
+      }
+    },
+    "We couldn't confirm your account": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We couldn't confirm your account"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos confirmar tu cuenta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não conseguimos confirmar sua conta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu confirmer ton compte"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir konnten dein Konto nicht bestätigen"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kami tidak dapat mengonfirmasi akunmu"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हम आपका खाता सत्यापित नहीं कर सके"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আমরা আপনার অ্যাকাউন্ট নিশ্চিত করতে পারিনি"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हामीले तपाईंको खाता पुष्टि गर्न सकेनौं"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہم آپ کا اکاؤنٹ تصدیق نہیں کر سکے"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر علينا تأكيد حسابك"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントを確認できませんでした"
           }
         }
       }

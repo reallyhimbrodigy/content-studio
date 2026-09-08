@@ -498,7 +498,15 @@ final class SubscriptionService: ObservableObject {
         // Inverted to a hard `guard`, so a signed-out caller is refused rather
         // than falling through. The refusal records what the user was trying to
         // buy so sign-in can resume it instead of dropping them at the start.
-        guard AuthService.shared.currentUser?.id != nil else {
+        // THE SAME PREDICATE AS THE GATE (2026-09-07). This tested
+        // `currentUser?.id != nil`, which is TRUE for the anonymous session
+        // every user gets at launch — so the guard passed for exactly the
+        // people it exists to stop, and a purchase reaching here from any
+        // caller other than the paywall went straight through. Fixing AuthGate
+        // alone would have left this as the second definition of "signed in",
+        // which is how the first one drifted.
+        guard AuthService.shared.currentUser?.id != nil,
+              !AuthService.shared.hasAnonymousSession else {
             var props: [String: Any] = [
                 "plan": planKey(package),
                 "product": package.storeProduct.productIdentifier,

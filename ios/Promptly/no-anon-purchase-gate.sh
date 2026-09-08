@@ -20,12 +20,22 @@ SVC="Services/SubscriptionService.swift"
 
 # 1. purchase() must open with a HARD guard on a signed-in user, not an `if`.
 BODY=$(awk '/func purchase\(_ package: Package/,/^    }$/' "$SVC")
-if ! echo "$BODY" | grep -qE 'guard AuthService\.shared\.currentUser\?\.id != nil else'; then
-  echo "  purchase() does not hard-guard on a signed-in user"
+# STRENGTHENED 2026-09-07. This pinned `currentUser?.id != nil` alone, which is
+# TRUE for the anonymous session every user gets at launch under deferred auth —
+# so the gate was enforcing a guard that admitted exactly the callers it was
+# written to refuse. Both clauses now, in either order.
+if ! echo "$BODY" | grep -qE 'guard AuthService\.shared\.currentUser\?\.id != nil' \
+   || ! echo "$BODY" | grep -q '!AuthService.shared.hasAnonymousSession'; then
+  echo "  purchase() does not hard-guard on a REAL account (anonymous sessions"
+  echo "  have an id, so the id check alone admits every user)"
   FAIL=1
 fi
 # The guard must come BEFORE the store call, not after it.
-GUARD_LINE=$(echo "$BODY" | grep -nE 'guard AuthService\.shared\.currentUser\?\.id != nil else' | head -1 | cut -d: -f1)
+# The ordering check's own pattern still ended in `else`, which the two-clause
+# guard does not — so GUARD_LINE came back EMPTY and the `[ -n "$GUARD_LINE" ]`
+# below skipped the whole check. It would have reported nothing while the guard
+# sat after the store call. Match the guard's opening, not its punctuation.
+GUARD_LINE=$(echo "$BODY" | grep -nE 'guard AuthService\.shared\.currentUser\?\.id != nil' | head -1 | cut -d: -f1)
 BUY_LINE=$(echo "$BODY" | grep -nE 'Purchases\.shared\.purchase|purchases\.purchase\(' | head -1 | cut -d: -f1)
 if [ -n "$GUARD_LINE" ] && [ -n "$BUY_LINE" ] && [ "$GUARD_LINE" -ge "$BUY_LINE" ]; then
   echo "  the auth guard sits AFTER the store call — it guards nothing"

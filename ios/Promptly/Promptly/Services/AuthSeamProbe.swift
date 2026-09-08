@@ -15,8 +15,15 @@ import RevenueCat
 @MainActor
 enum AuthSeamProbe {
     static func run() async {
-        guard AuthService.shared.currentUser?.id == nil else {
-            print("SEAMPROBE SKIPPED — a session exists; this must run signed out")
+        // THE PROBE HAD THE SEAM'S OWN BUG (2026-09-07). It skipped whenever a
+        // session existed, and under deferred auth one ALWAYS exists — so the
+        // probe built to prove this seam by execution has been skipping every
+        // run, and reported nothing while the seam it guards did nothing.
+        // Signed out now means "no real account", which is what the seam means.
+        guard AuthService.shared.hasAnonymousSession
+                || AuthService.shared.currentUser?.id == nil else {
+            print("SEAMPROBE SKIPPED — a REAL account is signed in; this must run "
+                  + "anonymous or signed out")
             return
         }
 

@@ -54,6 +54,12 @@ struct CheckoutSheet: View {
     let onApple: () -> Void
     let onDismiss: () -> Void
     @State private var method: Method = .web
+    /// Waiting for RevenueCat to agree who this is. The CTA disables rather
+    /// than composing a link on an id that is about to change.
+    @State private var preparing = false
+    /// The identity could not be settled. Fails closed and says so — opening
+    /// Safari on the wrong id spends real money against the wrong account.
+    @State private var identityError = false
     /// The Apple-selected state is half the spec — the fee live, the total the
     /// higher number — and a snapshot cannot tap the row to reach it.
     private static var posedApple: Bool {
@@ -140,7 +146,10 @@ struct CheckoutSheet: View {
                     .background(Capsule().fill(Self.accent))
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("checkout.cta")
+            .disabled(preparing)
+            // ONE identifier, switched — not two modifiers, where only the last
+            // would have applied and the disabled state would be invisible.
+            .accessibilityIdentifier(preparing ? "checkout.cta.preparing" : "checkout.cta")
             .padding(.horizontal, 20 * k).padding(.bottom, 8 * k)
 
             // APPLE 3.1.2 APPLIES HERE TOO. This screen sells an auto-renewing
@@ -172,6 +181,18 @@ struct CheckoutSheet: View {
         .onAppear {
             if Self.posedApple { method = .apple }
             Analytics.track("checkout_sheet_shown", props: ["surface": item.surface, "product": item.productId])
+        }
+        // A REFUSAL THE USER CAN SEE. Setting identityError without rendering
+        // it would leave the CTA doing nothing at all, which reads as the app
+        // being broken and is worse than the wrong-id purchase it prevents.
+        // Apple is offered as the way through, because it is: StoreKit binds
+        // the transaction to the receipt, not to an id in a URL.
+        .alert("We couldn't confirm your account",
+               isPresented: $identityError) {
+            Button("Pay in-app") { identityError = false; onApple() }
+            Button("Cancel", role: .cancel) { identityError = false }
+        } message: {
+            Text("Paying on the web needs your account confirmed first. You can pay in-app instead, or try again in a moment.")
         }
     }
 
@@ -284,8 +305,54 @@ struct CheckoutSheet: View {
         return c.url
     }
 
+    /// THE LINK IS NOT COMPOSED UNTIL REVENUECAT AGREES WHO THIS IS.
+    ///
+    /// `app_user_id` goes in the URL's PATH, so whatever id is current at this
+    /// instant is the customer the purchase creates — there is no later
+    /// correction. Two things already made that usually right: the id is read
+    /// here at tap time rather than when the sheet was built, and `saveSession`
+    /// re-runs `identify` on every sign-in. Both are mitigations, not the
+    /// property. `identify` is async and retries up to three times, so a user
+    /// who signs in and taps immediately can still compose a link on the
+    /// PREVIOUS id — and after the sign-in reorder that is the common path, not
+    /// a rare one.
+    ///
+    /// So: refuse to compose until `Purchases.shared.appUserID` equals the
+    /// signed-in uid, awaiting `ensureIdentified()` to get there. It fails
+    /// CLOSED — no link, an error the user can act on — because opening Safari
+    /// on the wrong id spends real money against an account they are walking
+    /// away from, and nothing downstream can tell that happened.
     private func openWeb() {
-        let appUserId = Purchases.shared.appUserID
+        guard let uid = AuthService.shared.currentUser?.id,
+              !AuthService.shared.hasAnonymousSession else {
+            // The seam should have caught this before the sheet ever appeared.
+            // Refusing here too, because "the other guard covers it" is how a
+            // guard stops covering it.
+            Analytics.track("checkout_web_blocked", props: ["reason": "no_account",
+                                                            "surface": item.surface], durable: true)
+            identityError = true
+            return
+        }
+        if Purchases.shared.appUserID == uid {
+            openWebNow(appUserId: uid)
+            return
+        }
+        preparing = true
+        Task { @MainActor in
+            let ok = await SubscriptionService.shared.ensureIdentified()
+            preparing = false
+            guard ok, Purchases.shared.appUserID == uid else {
+                Analytics.track("checkout_web_blocked",
+                                props: ["reason": "identity_mismatch", "surface": item.surface],
+                                durable: true)
+                identityError = true
+                return
+            }
+            openWebNow(appUserId: uid)
+        }
+    }
+
+    private func openWebNow(appUserId: String) {
         guard let url = Self.checkoutURL(template: item.web.url,
                                          appUserId: appUserId,
                                          packageId: item.packageId) else { return }

@@ -56,6 +56,15 @@ final class AuthGate: ObservableObject {
     /// rather than a published value: one more modifier on the editor's body
     /// chain put the type-checker over its limit.
     var onSendResume: (() -> Void)?
+    /// THE RESUME LANDS WHERE THE TAP WOULD HAVE. `resume` called
+    /// `SubscriptionService.purchase` directly, which goes straight to Apple —
+    /// so a US user who should have seen the checkout step got Apple's sheet
+    /// instead, purely because they had signed in on the way. The paywall
+    /// registers this and re-runs its OWN routing (CheckoutRouter first, Apple
+    /// otherwise), so the plan they chose resolves the same way it would have
+    /// before the interruption. A closure, like onSendResume, because the
+    /// decision needs the paywall's view state.
+    var onPurchaseResume: ((String, String) -> Void)?
     var pendingIsPurchase: Bool { pending?.isPurchase ?? false }
     /// Drives the sign-in presentation.
     @Published var isPresenting = false
@@ -83,9 +92,30 @@ final class AuthGate: ObservableObject {
     /// A non-purchase intent is therefore ALLOWED rather than gated. The cases
     /// are kept so the probe and the gate can assert they never raise, which is
     /// a stronger guarantee than deleting them and trusting no one adds a call.
+    /// SIGNED IN MEANS A REAL ACCOUNT, NOT MERELY A SESSION (2026-09-07).
+    ///
+    /// Both guards below tested `currentUser?.id != nil`. Under deferred auth
+    /// every user gets an ANONYMOUS Supabase session at launch, with a real id
+    /// — so that test passed for exactly the people the seam exists to stop.
+    /// `allow` returned true, `require` returned early without presenting, and
+    /// the purchase seam never fired for anyone. It was written for a world
+    /// where a signed-out user had no session at all, and anonymous sign-in
+    /// quietly removed that world.
+    ///
+    /// It matters most on the WEB path, where it is a correctness question and
+    /// not only a flow one: the checkout link carries app_user_id in its PATH,
+    /// so a purchase taken before sign-in attaches to the anonymous customer.
+    /// If the user then signs into an EXISTING account (the
+    /// identity_already_exists branch, where the uid genuinely changes) the
+    /// entitlement lands on an id they have walked away from.
+    private var hasRealAccount: Bool {
+        AuthService.shared.currentUser?.id != nil
+            && !AuthService.shared.hasAnonymousSession
+    }
+
     @discardableResult
     func allow(_ intent: Intent) -> Bool {
-        if AuthService.shared.currentUser?.id != nil { return true }
+        if hasRealAccount { return true }
         guard intent.isPurchase else { return true }
         require(intent)
         return false
@@ -104,7 +134,7 @@ final class AuthGate: ObservableObject {
     }
 
     func require(_ intent: Intent) {
-        guard AuthService.shared.currentUser?.id == nil else { return }
+        guard !hasRealAccount else { return }
         // The one seam. Anything else asking to gate is a regression, not a
         // request — it is dropped here rather than reaching the presenter.
         guard intent.isPurchase else {
@@ -167,7 +197,15 @@ final class AuthGate: ObservableObject {
                                 props: ["product": productId, "context": context])
                 return
             }
-            Task { await SubscriptionService.shared.purchase(pkg, context: context) }
+            if let route = onPurchaseResume {
+                // Same routing as a fresh tap: the checkout step when it
+                // applies, Apple otherwise. `pkg` above is resolved only to
+                // prove the product is still on offer.
+                _ = pkg
+                route(productId, context)
+            } else {
+                Task { await SubscriptionService.shared.purchase(pkg, context: context) }
+            }
         case .export, .profileWrite:
             // These resume at their own call sites, which own the work; the
             // gate's job was to guarantee an account exists by the time they
