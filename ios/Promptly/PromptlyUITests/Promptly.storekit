@@ -1,7 +1,53 @@
 {
   "identifier": "E28311DF-C5AC-45C8-8AE3-11312FF57872",
   "nonRenewingSubscriptions": [],
-  "products": [],
+  "products": [
+    {
+      "displayPrice": "9.99",
+      "familyShareable": false,
+      "internalID": "2170378",
+      "localizations": [
+        {
+          "description": "5 videos",
+          "displayName": "5 videos",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "promptly_topup_5",
+      "referenceName": "5 videos",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "19.99",
+      "familyShareable": false,
+      "internalID": "1858154",
+      "localizations": [
+        {
+          "description": "10 videos",
+          "displayName": "10 videos",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "promptly_topup_10",
+      "referenceName": "10 videos",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "39.99",
+      "familyShareable": false,
+      "internalID": "9268492",
+      "localizations": [
+        {
+          "description": "20 videos",
+          "displayName": "20 videos",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "promptly_topup_20",
+      "referenceName": "20 videos",
+      "type": "Consumable"
+    }
+  ],
   "settings": {
     "_applicationInternalID": "6762497454",
     "_developerTeamID": "8KT9332327",

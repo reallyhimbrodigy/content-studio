@@ -569,6 +569,17 @@ struct CreditsTopUpView: View {
             .contentShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
         }
         .buttonStyle(.plain)
+        // KEYED BY THE PACK'S OWN ID — the App Store product identifier — not
+        // by its position. The packs are ordered by size today and that order
+        // is a presentation decision; an index-keyed identifier would repoint
+        // every assertion the first time it changed.
+        // AND THE SELECTED STATE, which was missing entirely. The paywall's
+        // duration rows carry it; these did not, so VoiceOver announced three
+        // identical rows with no way to tell which one was chosen — on a screen
+        // whose whole job is choosing one. Found by a UI test asserting the
+        // selection moved.
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityIdentifier("topup.pack.\(pack.id)")
     }
 
     /// The SKUs are configured in App Store Connect, not here. Until they exist
@@ -684,6 +695,7 @@ struct CreditsTopUpView: View {
             }
             .buttonStyle(.plain)
             .disabled(isPurchasing)
+            .accessibilityIdentifier("topup.cta")
 
             Text("One-time purchase.")
                 .font(.system(size: 10 * k))

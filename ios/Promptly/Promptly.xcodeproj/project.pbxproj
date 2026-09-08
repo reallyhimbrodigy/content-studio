@@ -50,6 +50,8 @@
 		AA0000A2 /* ReferralService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000A2; };
 		AA0000A6 /* VersionAwareness.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000A6; };
 		AA0000A7 /* VersionMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000A7; };
+		UA000005 /* TopUpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UB000005; };
+		UA000004 /* RenderPathUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UB000004; };
 		UA000003 /* FunnelUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UB000003; };
 		UA000001 /* MoneyPathUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UB000001; };
 		UA000002 /* UITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = UB000002; };
@@ -169,6 +171,8 @@
 		AB0000A2 /* ReferralService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferralService.swift; sourceTree = "<group>"; };
 		AB0000A6 /* VersionAwareness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionAwareness.swift; sourceTree = "<group>"; };
 		AB0000A7 /* VersionMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionMath.swift; sourceTree = "<group>"; };
+		UB000005 /* TopUpUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopUpUITests.swift; sourceTree = "<group>"; };
+		UB000004 /* RenderPathUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderPathUITests.swift; sourceTree = "<group>"; };
 		UB000003 /* FunnelUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunnelUITests.swift; sourceTree = "<group>"; };
 		UB000001 /* MoneyPathUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyPathUITests.swift; sourceTree = "<group>"; };
 		UB000002 /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
@@ -231,12 +235,12 @@
 		AE000004 = {isa = PBXGroup; children = (ABF00002, AB000003, AB000004, AB000005, AB000006, AB000015, AB000016, AB000017, AB000018, AB000021, AB000022, AB000024, AB000025, AB000026, AB000027, AB000029, AB000030, AB000031, AB00002C, AB00002D, AB000032, AB000033, AB0000F3, AB0000T1, AB000055, AB000059, AB000060, AB000061, AB000062, AB000063, AB0000D1, AB0000E5, AB0000E7, AB000011, AB000901, CC000001, BC000001, AB00000A, AB00006A, AB000074, AB000075, AB000076, AB000077, AB0000A2, AB0000A6, AB0000A7, AB0000C7, AB0000C8); path = Services; sourceTree = "<group>"; };
 		AE000005 = {isa = PBXGroup; children = (ABF00001, AB000007, AB000008, AB000009, AB000010, AB000050, AB000051, AB000052, AB000053, AB000012, AB000019, AB000020, AB000028, AB00002A, AB00002B, AB00002E, AB00002F, AB000058, AB000069, AB00006E, AB000070, AB0000A0, AB0000A1, AB0000F1, AB0000F5, AB0000A5, AB0000B9, AE000007, AB0000E1, AB00000C, AB00000D, AB00000E, DC000001, AB00000F, AB00000B, AB0000E2, AB0000E3, AB0000E4, AB0000E6); path = Views; sourceTree = "<group>"; };
 		AE000006 = {isa = PBXGroup; children = (AC000001, AC000002); name = Products; sourceTree = "<group>"; };
-		AE000009 = {isa = PBXGroup; children = (UB000001, UB000002, UB000003); path = PromptlyUITests; sourceTree = "<group>"; };
+		AE000009 = {isa = PBXGroup; children = (UB000001, UB000002, UB000003, UB000004, UB000005); path = PromptlyUITests; sourceTree = "<group>"; };
 		AE000007 = {isa = PBXGroup; children = (AB000073, AB0000C1, AB0000C3); path = Onboarding; sourceTree = "<group>"; };
 
 		AF000001 = {isa = PBXNativeTarget; buildConfigurationList = AG000003; buildPhases = (AF000002, AD000001, AF000003, AF000004, AA0000B0); buildRules = (); dependencies = (); name = Promptly; packageProductDependencies = (AJ000001 /* Sentry */, AJ000002 /* RevenueCat */, AJ000003 /* PostHog */); productName = Promptly; productReference = AC000001; productType = "com.apple.product-type.application"; };
 
-		UD000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (UA000001, UA000002, UA000003); runOnlyForDeploymentPostprocessing = 0; };
+		UD000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (UA000001, UA000002, UA000003, UA000004, UA000005); runOnlyForDeploymentPostprocessing = 0; };
 		UD000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		UD000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		UE000001 = {isa = PBXContainerItemProxy; containerPortal = AH000001; proxyType = 1; remoteGlobalIDString = AF000001; remoteInfo = Promptly; };

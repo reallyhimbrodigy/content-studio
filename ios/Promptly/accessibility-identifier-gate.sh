@@ -66,14 +66,25 @@ for f in swift_files(src):
         for arg in call_args(line):
             if 'String(localized:' in arg:
                 localized.append(f"{f}:{ln}")
-            for lit in re.findall(r'"([^"]*)"', arg):
+            lits = re.findall(r'"([^"]*)"', arg)
+            # A CONCATENATION IS A FAMILY, NOT A LIST OF NAMES. The second
+            # version of this gate reported an EMPTY identifier "defined twice",
+            # because `"video.action.reedit" + (isPro ? "" : ".locked")` has an
+            # empty literal in it and every literal was being read as a name.
+            # In a concatenation the FIRST literal is the family; the rest are
+            # suffix fragments and name nothing on their own.
+            concatenated = '+' in arg
+            for pos, lit in enumerate(lits):
+                if not lit:
+                    continue                   # "" is a suffix, never a name
                 if '\\(' in lit:
                     prefixes.add(lit.split('\\(')[0])
                     inner = lit[lit.index('\\(') + 2:]
                     if re.match(r'\s*(index|idx|i)\b', inner):
                         index_keyed.append(f"{f}:{ln}  {lit}")
-                elif arg.strip().endswith('+') or '+' in arg.split(f'"{lit}"')[-1][:3]:
-                    prefixes.add(lit)          # "account.row." + slug(label)
+                elif concatenated:
+                    if pos == 0:
+                        prefixes.add(lit)      # "account.row." + slug(label)
                 else:
                     literals[lit].append(f"{f}:{ln}")
 

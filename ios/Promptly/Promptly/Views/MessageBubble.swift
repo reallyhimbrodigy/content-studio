@@ -1288,7 +1288,18 @@ struct VideoActionRow: View {
         _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr, jobId: jobId))
     }
 
-    private var isPro: Bool { subscription.isPro || usage.isPro }
+    /// ONE DEFINITION, THE APP'S (2026-09-07). This was
+    /// `subscription.isPro || usage.isPro` — the SECOND surface to re-derive
+    /// entitlement that way; AccountView had the identical line and was fixed
+    /// for the identical reason. It omits `isMax`, which
+    /// `SubscriptionService.effectiveIsPro` composes, so a Max subscriber whose
+    /// entitlement is Max-only sees Re-edit LOCKED — a feature they pay for,
+    /// walled. It survives today only because the Max products are attached to
+    /// the `pro` entitlement as an interim guard; the moment that ends, every
+    /// Max subscriber loses Re-edit and nothing here would have changed.
+    ///
+    /// Found by a UI test asserting the pill is open for a subscriber.
+    private var isPro: Bool { subscription.effectiveIsPro }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12 * k) {
@@ -1417,6 +1428,7 @@ struct VideoActionRow: View {
         }
         .buttonStyle(.plain)
         .threadPillChrome(false)
+        .accessibilityIdentifier("video.action.new")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Make another video")
     }
@@ -1496,6 +1508,10 @@ struct VideoActionRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Re-edit this video")
         .accessibilityValue(isPro ? "" : "Pro feature, tap to unlock")
+        // STATE IN THE IDENTIFIER. `.locked` when the viewer is not Pro, so a
+        // test asserts the wall rather than looking for a lock glyph or
+        // matching "Pro feature" in eleven languages.
+        .accessibilityIdentifier("video.action.reedit" + (isPro ? "" : ".locked"))
     }
 
     @ViewBuilder
@@ -1537,6 +1553,12 @@ struct VideoActionRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel(for: label))
         .accessibilityValue(accessibilityValue(for: state))
+        // FROM THE BASE LABEL, not the displayed one. `label` is the English
+        // literal the call site passes; `labelText` is what gets localized and
+        // what changes with export state ("Saving…", "Saved"). An identifier
+        // built from the displayed text would move in both directions.
+        .accessibilityIdentifier("video.action." + label.lowercased()
+                                    .replacingOccurrences(of: " ", with: "_"))
     }
 
     private func accessibilityLabel(for label: String) -> String {
@@ -1625,6 +1647,7 @@ struct VideoActionRow: View {
         .disabled(isSharing)
         .accessibilityLabel("Share your video")
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("video.share")
     }
 }
 
