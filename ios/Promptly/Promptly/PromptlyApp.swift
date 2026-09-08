@@ -721,6 +721,36 @@ struct PromptlyApp: App {
             }
             .onChange(of: scenePhase) { previous, phase in
                 if phase == .active {
+                    // ENTITLEMENT ON EVERY FOREGROUND (2026-09-07).
+                    //
+                    // Nothing re-read it. `identify` + `UsageService.refresh`
+                    // run in the LAUNCH task, and `refreshCustomerInfo` runs at
+                    // bootstrap and on identify — so a purchase that completed
+                    // while the app was backgrounded was invisible until a
+                    // relaunch, or until the user happened to open the paywall,
+                    // the account page, or send a message.
+                    //
+                    // That is exactly the web-checkout path. The buyer leaves
+                    // for Safari, pays, and taps "Open Promptly" on /success —
+                    // which foregrounds this app rather than launching it. The
+                    // webhook has already written the entitlement to profiles by
+                    // then, and the client never asked. "Shows Pro on next
+                    // foreground" was not true, and the reason was on this side,
+                    // not in the webhook.
+                    //
+                    // BOTH SOURCES, because effectiveIsPro composes them and
+                    // they arrive by different routes: /api/usage carries the
+                    // server's view (what the webhook wrote — the only one that
+                    // can see a WEB purchase this device never made), and
+                    // customerInfo carries RevenueCat's. Outside the
+                    // session-start guard below on purpose: this must run on
+                    // every foreground, not once per session.
+                    if auth.isAuthenticated {
+                        Task { @MainActor in
+                            await UsageService.shared.refresh()
+                            await SubscriptionService.shared.refreshCustomerInfo()
+                        }
+                    }
                     if !didStartSession || previous == .background {
                         didStartSession = true
                         // Carries the UI language so the twelve-language
