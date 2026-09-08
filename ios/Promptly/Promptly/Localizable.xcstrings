@@ -22758,77 +22758,6 @@
         }
       }
     },
-    "Re-editing anything you've already made is still free.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "إعادة تحرير أي شيء أنشأته من قبل لا تزال مجانية."
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "আপনি আগে যা বানিয়েছেন তা পুনঃসম্পাদনা এখনও বিনামূল্যে।"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alles neu zu bearbeiten, was du schon erstellt hast, bleibt kostenlos."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reeditar lo que ya has creado sigue siendo gratis."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retoucher ce que tu as déjà créé reste gratuit."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "आपने जो पहले बनाया है उसे दोबारा एडिट करना अब भी मुफ़्त है।"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mengedit ulang apa pun yang sudah kamu buat tetap gratis."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "すでに作成した動画の再編集は引き続き無料です。"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "तपाईंले पहिले बनाएको जुनसुकै पुनः सम्पादन गर्नु अझै निःशुल्क छ।"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reeditar o que você já criou continua grátis."
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "آپ نے جو پہلے بنایا ہے اسے دوبارہ ایڈٹ کرنا اب بھی مفت ہے۔"
-          }
-        }
-      }
-    },
     "Ready": {
       "localizations": {
         "ar": {
@@ -24544,6 +24473,7 @@
       }
     },
     "See plans": {
+      "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -24561,6 +24491,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tarife ansehen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See plans"
           }
         },
         "es": {
@@ -32832,73 +32768,79 @@
         }
       }
     },
-    "You're out of credits for now": {
+    "You're out of credits — get more": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "نفدت أرصدتك في الوقت الحالي"
+            "value": "نفدت أرصدتك — احصل على المزيد"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "আপাতত আপনার ক্রেডিট শেষ"
+            "value": "আপনার ক্রেডিট ফুরিয়েছে — আরও নিন"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deine Credits sind vorerst aufgebraucht"
+            "value": "Keine Credits mehr — mehr holen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of credits — get more"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Te has quedado sin créditos por ahora"
+            "value": "Te has quedado sin créditos: consigue más"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous n'avez plus de crédits pour le moment"
+            "value": "Vous n'avez plus de crédits — en obtenir"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "फ़िलहाल आपके क्रेडिट ख़त्म हो गए"
+            "value": "आपके क्रेडिट खत्म हो गए — और लें"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kreditmu habis untuk saat ini"
+            "value": "Kredit kamu habis — ambil lagi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "クレジットを使い切りました"
+            "value": "クレジットがありません — 追加する"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "अहिलेलाई तपाईंका क्रेडिट सकिए"
+            "value": "तपाईंको क्रेडिट सकियो — थप लिनुहोस्"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seus créditos acabaram por enquanto"
+            "value": "Seus créditos acabaram — obtenha mais"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "فی الحال آپ کے کریڈٹس ختم ہو گئے"
+            "value": "آپ کے کریڈٹس ختم ہو گئے — مزید حاصل کریں"
           }
         }
       }

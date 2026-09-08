@@ -14,6 +14,9 @@ struct EditorView: View {
     @ObservedObject private var usageService = UsageService.shared
     @ObservedObject private var versionAware = VersionAwareness.shared
     @ObservedObject private var onboardingState = OnboardingState.shared
+    /// The banner above the composer reads this directly, so it clears the
+    /// moment a top-up lands rather than on the next relaunch.
+    @ObservedObject private var credits = CreditsService.shared
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -159,6 +162,56 @@ struct EditorView: View {
                         // duplication as the "N today" capsule.
                     } else {
                         UsageMeterStrip { appState.presentPaywall(.manual) }
+                    }
+                    // OUT OF CREDITS IS A BANNER, NOT A SCREEN.
+                    //
+                    // It sits directly above the composer with the thread still
+                    // visible behind it, because the difference between a nudge
+                    // and a wall is whether the conversation is still there. One
+                    // tap goes straight to top-up — no intermediate paywall and
+                    // no ladder, because the top-up screen already carries the
+                    // tier-aware hero and lets the user do the comparison
+                    // themselves. It persists while the balance is zero rather
+                    // than showing once, and it clears itself the moment credits
+                    // arrive because it reads the published balance directly.
+                    // The composer stays live underneath: chat is not gated,
+                    // only the render is.
+                    if onboardingState.creditsEnabled, credits.balance == 0 {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            AppState.shared.showCredits = true
+                        } label: {
+                            HStack(spacing: 8 * k) {
+                                Image(systemName: "bolt.slash.fill")
+                                    .font(.system(size: 13 * k))
+                                    .foregroundColor(Color(hex: "F4E4BC"))
+                                Text("You're out of credits — get more")
+                                    .font(.system(size: 14 * k, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12 * k, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding(.horizontal, 14 * k)
+                            .padding(.vertical, 10 * k)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("credits.banner")
+                        .padding(.horizontal, 10 * k)
+                        .padding(.bottom, 6 * k)
+                        .transition(.opacity)
                     }
                     inputBar
                 }

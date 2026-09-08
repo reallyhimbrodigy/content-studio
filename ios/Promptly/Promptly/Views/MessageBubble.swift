@@ -629,24 +629,12 @@ struct MessageBubble: View {
                     // it reads as the product being unsure what it charged.
                     // Credits are the model under test, so they take the line
                     // while the experiment runs.
-                    if message.creditsExhausted {
-                        // The zero-balance block, in the thread, where the send
-                        // happened. `refreshDate` is nil until the server sends
-                        // one — the surface simply omits that line rather than
-                        // inventing a date, for the same reason it omits an
-                        // unread balance.
-                        // TO THE TOP-UP, NOT THE PAYWALL. This sent the user to
-                        // `.manual` — the upgrade paywall — which answers the
-                        // wrong question: a Pro subscriber who has spent their
-                        // monthly credits is already on the tier the paywall
-                        // sells, so it offered them what they had just been
-                        // charged for. What they are out of is CREDITS, and the
-                        // screen that sells credits is the top-up.
-                        CreditsExhaustedMessage(refreshDate: nil) {
-                            Analytics.track("credits_topup_open", props: ["source": "exhausted_bubble"])
-                            AppState.shared.showCredits = true
-                        }
-                    } else if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
+                    // THE ZERO-BALANCE WALL IS GONE FROM THE THREAD.
+                    // Out of credits is now a banner above the composer, where
+                    // the conversation stays visible behind it and one tap goes
+                    // to top-up. A block in the thread read as a wall and put a
+                    // dead end in the transcript the user scrolls past forever.
+                    if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
                         CreditsRefundedMessage(amount: refunded)
                     } else if !SubscriptionService.shared.effectiveIsPro {
                         HStack(spacing: 5 * k) {

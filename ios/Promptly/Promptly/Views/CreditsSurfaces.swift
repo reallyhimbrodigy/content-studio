@@ -139,63 +139,6 @@ struct CreditBalanceStrip: View {
 /// RE-EDITS STAY FREE, and the copy says so. That is the strongest argument
 /// available here and the product makes it for itself: someone at zero can still
 /// iterate on everything they have already made.
-struct CreditsExhaustedMessage: View {
-    @Environment(\.conversionScale) private var k
-    let refreshDate: Date?
-    let onSeePlans: () -> Void
-
-    private var refreshLine: String? {
-        guard let d = refreshDate else { return nil }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        f.locale = Locale(identifier: AppLanguage.current)
-        return String(localized: "Your credits refresh on \(f.string(from: d))")
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8 * k) {
-            Text("You're out of credits for now")
-                .font(.system(size: 15 * k, weight: .semibold))
-                .foregroundColor(.white)
-
-            if let refreshLine {
-                Text(refreshLine)
-                    .font(.system(size: 14 * k))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-
-            // The product's own argument, not a sales line.
-            Text("Re-editing anything you've already made is still free.")
-                .font(.system(size: 14 * k))
-                .foregroundColor(.white.opacity(0.7))
-                .fixedSize(horizontal: false, vertical: true)
-
-            Button(action: onSeePlans) {
-                Text("See plans")
-                    .font(.system(size: 14 * k, weight: .semibold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 16 * k)
-                    .frame(height: 36 * k)
-                    .background(Color.white, in: Capsule())
-            }
-            .padding(.top, 2 * k)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            Analytics.track("credits_exhausted_shown", props: ["context": "composer"])
-        }
-    }
-}
-
-/// The refund, rendered in the thread when the server pushes it.
-///
-/// VISIBLE, NOT SILENT — the spec is explicit and it is right: a silent balance
-/// restore is indistinguishable from never having been charged, so the user
-/// cannot tell the system did the right thing. Seeing the refund is what makes a
-/// failed render feel handled rather than merely survived.
-///
-/// The client never performs this restore; it renders what the server reports.
 struct CreditsRefundedMessage: View {
     @Environment(\.conversionScale) private var k
     let amount: Int

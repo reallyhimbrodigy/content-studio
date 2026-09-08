@@ -109,10 +109,18 @@ struct PayoffSnapshotHarnessView: View {
             // The capture must show suppression happening, not a hidden row.
             SubscriptionService.shared.debugSetMax(true)
             o.debugForceFlag("referral_progress")
-        case 40, 42, 43, 44:
+        case 40, 43, 44:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
             CreditsService.shared.debugSetBalance(40)
+        case 42:
+            // ZERO AT SETUP, NOT IN THE VIEW'S TASK. 42 shared the balance-40
+            // group and its own .task set zero afterwards — one render too
+            // late, so the banner never met its condition and the capture
+            // showed the thread with no banner at all.
+            o.debugForceFlag("credits")
+            o.debugSetCreditsAllowance(200)
+            CreditsService.shared.debugSetBalance(0)
         case 32, 33, 34, 36, 37:
             o.debugForceFlag("credits")
             o.debugSetCreditsAllowance(200)
@@ -347,13 +355,12 @@ struct PayoffSnapshotHarnessView: View {
                 // VStack with a trailing Spacer, which pinned it to the top and
                 // made the symmetry checker report a 1170pt bottom band — a
                 // failure invented by the harness, not present in the product.
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CreditsExhaustedMessage(refreshDate: nil, onSeePlans: {})
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                }
+                // THE REAL EDITOR WITH A ZERO BALANCE, not a posed card. The
+                // whole point of the banner is that the conversation stays
+                // visible behind it, so a capture of the banner alone would
+                // prove nothing about the thing being judged.
+                EditorView()
+                    .task { Self.seedStoreChat(reedit: false) }
             }
             case 31: bleed("UpgradePaywall — the REAL switch, flag as shipped") {
                 // NOT TwoStepPaywall directly. This renders the switch every
