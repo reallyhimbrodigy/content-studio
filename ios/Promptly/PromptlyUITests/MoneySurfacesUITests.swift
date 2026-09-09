@@ -28,7 +28,7 @@ final class MoneySurfacesUITests: XCTestCase {
                           intro: Bool, storefront: String = "USA") -> UITest.Launch {
         var c = UITest.Launch(deviceSeen: true)
         c.extra = ["-snapshotPayoff", "-snapshotState", "54",
-                   "-webCheckoutJSON", Self.liveOffering,
+                   "-webCheckoutJSON", Self.offering,
                    "-posePackage", package,
                    "-poseApplePrice", applePrice,
                    "-storefront", storefront]
@@ -159,7 +159,7 @@ final class MoneySurfacesUITests: XCTestCase {
     /// a literal rather than fetched at test time on purpose: a suite whose
     /// assertions move when a server config changes reports a config edit as a
     /// client regression.
-    private static let liveOffering = """
+    static let offering = """
     {"storefronts":["USA"],"saved_pct":17,"intro_saved_pct":17,"products":{\
     "$rc_annual":{"web_price":"$289.99","web_price_micros":289990000,"currency":"USD",\
     "url":"https://pay.rev.cat/chnxerwypyprnctc/{app_user_id}?package_id=$rc_annual",\
@@ -168,4 +168,80 @@ final class MoneySurfacesUITests: XCTestCase {
     "url":"https://pay.rev.cat/chnxerwypyprnctc/{app_user_id}?package_id=$rc_monthly",\
     "web_intro_price":"$14.99","web_intro_price_micros":14990000,"saved_pct":17,"intro_saved_pct":17}}}
     """
+}
+
+/// THE STOREFRONT MATRIX AND SIGN-OUT.
+///
+/// Split from MoneySurfacesUITests only for length; the same rule applies —
+/// every figure asserted is App Store Connect's or the live offering's, never
+/// one chosen here.
+final class StorefrontAndSessionUITests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    private func checkout(package: String, applePrice: String,
+                          intro: Bool = false, storefront: String) -> UITest.Launch {
+        var c = UITest.Launch(deviceSeen: true)
+        c.extra = ["-snapshotPayoff", "-snapshotState", "54",
+                   "-webCheckoutJSON", MoneySurfacesUITests.offering,
+                   "-posePackage", package,
+                   "-poseApplePrice", applePrice,
+                   "-storefront", storefront]
+        if intro { c.extra.append("-poseIntro") }
+        return c
+    }
+
+    // MARK: The step exists on exactly one storefront
+
+    /// The offering names USA and nothing else. Every other storefront must get
+    /// Apple only — and the reason to test more than one is that "not offered
+    /// here" has to come from the OFFERING rather than from a hardcoded
+    /// exception for the one country somebody happened to try.
+    func testTheStepIsUSOnly() {
+        for sf in ["GBR", "DEU", "IND", "AUS"] {
+            let app = UITest.launch(checkout(package: "$rc_annual",
+                                             applePrice: "349.99", storefront: sf))
+            UITest.requireAbsent(app.buttons["checkout.web"],
+                                 "the checkout step on the \(sf) storefront", settle: 6)
+            app.terminate()
+        }
+        // And the positive control, so the four absences above are the
+        // storefront gate working rather than the sheet never rendering.
+        let us = UITest.launch(checkout(package: "$rc_annual",
+                                        applePrice: "349.99", storefront: "USA"))
+        UITest.require(us.buttons["checkout.web"],
+                       "the checkout step on USA — without this the four "
+                       + "absences prove nothing", timeout: 30)
+    }
+
+    // MARK: The figures are derived per package, not once
+
+    func testDerivedFiguresPerPackage() {
+        // Pro Month, returning buyer: Apple $35.99 against the web's $29.99.
+        let app = UITest.launch(checkout(package: "$rc_monthly",
+                                         applePrice: "35.99", storefront: "USA"))
+        UITest.require(app.buttons["checkout.web"], "the checkout step", timeout: 30)
+        let total = UITest.require(UITest.any(app, "checkout.total"), "the total")
+        XCTAssertTrue(total.label.contains("29.99"),
+                      "the monthly total is not the monthly web price (saw: \(total.label))")
+        let fee = UITest.require(UITest.any(app, "checkout.fee"), "the fee line")
+        XCTAssertTrue(fee.label.contains("6.00"),
+                      "the fee is not $35.99 − $29.99 (saw: \(fee.label))")
+    }
+
+    // MARK: Sign-out — NOT YET COVERED, deliberately not stubbed
+    //
+    // The product half is done and gated (AuthService.hasRealAccount, one
+    // definition, read by the account row and the purchase seam). The TEST is
+    // not: `-poseSignedIn` makes hasAnonymousSession false, but hasRealAccount
+    // also requires a landed `currentUser`, and the posed state does not
+    // reliably produce one in time for the account page.
+    //
+    // Left absent rather than skipped. A skipped test reads as coverage in
+    // every summary that counts tests, and the whole argument for this suite is
+    // that a screenshot of a posed state is not evidence. Sign-out with a real
+    // account is on the device checklist, where a real account exists.
 }

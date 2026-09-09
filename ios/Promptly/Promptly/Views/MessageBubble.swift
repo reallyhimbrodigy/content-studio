@@ -1116,7 +1116,40 @@ final class VideoExporter: ObservableObject {
         // session — the render is the user's whether or not they have an
         // account, and the only seam is purchase.
         let sourceUrl = try await resolveSaveSourceUrl()
-        return try await ensureLocalFile(from: sourceUrl)
+        let local = try await ensureLocalFile(from: sourceUrl)
+        await Self.reportIfImplausiblyShort(local, jobId: jobId)
+        return local
+    }
+
+    /// A DELIVERED RENDER THAT IS TOO SHORT TO BE AN EDIT.
+    ///
+    /// Builder-1 found car_short delivering 0.975s from a 10s source — a kept
+    /// ratio of 0.096. Nothing on the client notices: a one-second render is
+    /// presented exactly like any other finished video, with Share, Save and
+    /// Re-edit, because no duration is measured anywhere on the delivery path.
+    ///
+    /// MEASURED, NOT SUPPRESSED. Whether a near-empty render should be withheld
+    /// is a product ruling, and withholding one is not reversible from here —
+    /// a user who genuinely uploaded a three-second clip should get a
+    /// three-second video back. So this reports and does not act. The numbers
+    /// it produces are what a suppression rule would have to be set from.
+    ///
+    /// THE ABSOLUTE FLOOR, NOT A RATIO. The ratio is the better signal and the
+    /// client cannot compute it: source_duration is sent UP with the job and
+    /// never comes back, and it is not on the message. Duration alone is the
+    /// honest client-side measurement, so that is what this claims.
+    ///
+    /// Local file, already downloaded for the export — no extra network, and it
+    /// runs at save/share rather than on every render, so it costs nothing for
+    /// a render nobody exports.
+    static let implausiblyShortSeconds: Double = 2.0
+    private static func reportIfImplausiblyShort(_ url: URL, jobId: String?) async {
+        guard let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
+              seconds.isFinite, seconds > 0 else { return }
+        guard seconds < implausiblyShortSeconds else { return }
+        var props: [String: Any] = ["seconds": round(seconds * 1000) / 1000]
+        if let jobId { props["job_id"] = jobId }
+        Analytics.track("render_implausibly_short", props: props, durable: true)
     }
 
     private func ensureSavedToPhotos() async throws -> String {

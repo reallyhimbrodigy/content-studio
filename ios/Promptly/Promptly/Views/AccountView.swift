@@ -46,8 +46,20 @@ struct AccountView: View {
     }
 
     /// A session with no identity attached: signed in to nothing.
+    /// NO REAL ACCOUNT, which is not the same as "the session is anonymous".
+    ///
+    /// This read `currentUser?.isAnonymous == true`, which is FALSE when
+    /// `currentUser` is nil — so a device with no landed session at all was
+    /// offered "Log out". Reproduced on the simulator after a sign-out: three
+    /// tests that had been passing started failing because the session had not
+    /// come back yet, and the row said Log out to someone with nothing to log
+    /// out of.
+    ///
+    /// `presentForSignIn` deliberately keeps its own looser guard — it accepts
+    /// a nil user too — so the row and the sheet agree. Changing both at once
+    /// is what broke the sign-in sheet on the first attempt at this.
     private var isAnonymousSession: Bool {
-        AuthService.shared.currentUser?.isAnonymous == true
+        AuthService.shared.currentUser?.isAnonymous != false
     }
 
     private var effectiveIsPro: Bool {
