@@ -4319,6 +4319,15 @@ const server = http.createServer((req, res) => {
           // fires" and "the trigger fires and Apple refuses" look identical,
           // and those two want opposite fixes.
           'review_prompt_shown', 'rate_app_tapped',
+          // A DELIVERED RENDER TOO SHORT TO BE AN EDIT (2026-09-08).
+          // Builder-1 found car_short delivering 0.975s from a 10s source.
+          // The client measures the file it already downloaded for the
+          // export and reports; it does not suppress, because withholding a
+          // render is a product ruling and a genuinely short source should
+          // still come back short. Dropped by the mirror, the question this
+          // exists to answer — how often, and to how many users — cannot be
+          // asked, and a suppression floor would be set from a guess.
+          'render_implausibly_short',
           // `checkout_web_blocked` is the web-checkout link REFUSING to
           // compose because RevenueCat's app_user_id does not yet match the
           // signed-in uid. It should be rare; if it is not, the sign-in
