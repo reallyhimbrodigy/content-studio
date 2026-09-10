@@ -8683,6 +8683,33 @@ if (require.main === module) {
     setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
     setInterval(runCompletionReconcile, 120 * 1000);
 
+    // ── AGENTIC COLLECTION ──────────────────────────────────────────────────
+    // The worker writes its result to a presigned PUT before returning, so this
+    // reads OUR storage at a key derived from the job id. Nothing is held in
+    // this process, which is the entire point: the completion tail once sat
+    // behind an in-process await that no deploy survived, and main auto-deploys.
+    //
+    // DARK BY STRUCTURE, not by a flag check. The sweep selects on
+    // pipeline='agentic', and nothing carries that value until routeForNewJob()
+    // says so. With AGENTIC_ENABLED unset it reads zero rows and does zero work
+    // — there is no second switch here to forget to arm, and no branch that
+    // behaves differently once the route goes live.
+    const { sweepAgentic } = require('./lib/agentic-dispatch');
+    let agenticBusy = false;
+    const runAgenticSweep = async () => {
+      if (agenticBusy) return;
+      agenticBusy = true;
+      try {
+        await sweepAgentic(supabaseAdmin);
+      } catch (err) {
+        console.error('[agentic] sweep crashed:', err?.message || err);
+      } finally {
+        agenticBusy = false;
+      }
+    };
+    setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
+    setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+
     // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
     // across 441 users are in NO chat — 140 in the last 7 days — because the
     // message that references a render is a client-owned debounced PATCH that a
