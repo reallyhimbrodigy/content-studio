@@ -334,6 +334,34 @@ const _darkRefusals = require('./lib/dark-refusals');
 // an explicit env flip, after balances are verified -- not by a merge.
 const CREDITS_DEBIT_ENABLED =
   String(process.env.CREDITS_DEBIT_ENABLED || '').trim() === '1';
+
+// ── THE AGENTIC WIRE, SHIPPED DARK ──────────────────────────────────────────
+// Same posture as web checkout: the whole path lands unarmed and arms itself
+// when the thing it depends on exists. Off, every route decision below resolves
+// to 'handler' and the server is byte-identical to today.
+//
+// AGENTIC_ENABLED=1 arms the route. It is deliberately SEPARATE from the credit
+// switch: the wire can be live and dark-priced (no debit) while
+// CREDITS_DEBIT_ENABLED is off, because the debit is a money decision with its
+// own blast radius and this is a routing decision. Coupling them would mean
+// arming the pipeline required repricing every tier.
+const AGENTIC_ENABLED =
+  String(process.env.AGENTIC_ENABLED || '').trim() === '1';
+const AGENTIC_BASE_URL = String(process.env.AGENTIC_BASE_URL || '').trim();
+const _agenticPlan = require('./lib/agentic-plan');
+
+/**
+ * WHICH PIPELINE HANDLES THIS JOB. Trap 2 of the worker contract: the decision
+ * is made HERE, once, from configuration — never inferred later from which plan
+ * column happens to be populated. The value returned is what gets stored on the
+ * row at creation, and the URL chosen is the same fact said a second way.
+ *
+ * Fails closed: no base URL means no agentic route, however the flag reads. An
+ * armed flag pointing at nothing would 500 every render.
+ */
+function routeForNewJob() {
+  return (AGENTIC_ENABLED && AGENTIC_BASE_URL) ? 'agentic' : 'handler';
+}
 const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
@@ -2980,7 +3008,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -3002,6 +3030,15 @@ const server = http.createServer((req, res) => {
     // assuming 10. Balance stays authoritative at RevenueCat.
     if (Number.isInteger(creditsDebited) && creditsDebited > 0) {
       insertRow.credits_debited = creditsDebited;
+    }
+    // WHICH PIPELINE, RECORDED AT CREATION (worker contract trap 2). The caller
+    // resolves this from configuration via routeForNewJob() and hands it in;
+    // this function never decides it and never infers it. Left NULL when the
+    // caller did not say, which reads as "predates the column" — deliberately
+    // NOT as 'handler', because a default here would manufacture a fact about
+    // every job that skipped the argument.
+    if (pipeline === 'handler' || pipeline === 'agentic') {
+      insertRow.pipeline = pipeline;
     }
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
@@ -6777,6 +6814,8 @@ const server = http.createServer((req, res) => {
             appVersion: clientAppVersion(req),
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
+            // The route decision, stored as a fact rather than inferred later.
+            pipeline: routeForNewJob(),
             creditsDebited: _creditsDebited,
           });
           if (created.__replayed) {
@@ -7142,7 +7181,7 @@ const server = http.createServer((req, res) => {
         // Load the original job — must exist, belong to this user, and have a source URL
         const { data: orig, error: origErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot')
+          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan')
           .eq('id', originalJobId)
           .single();
         if (origErr || !orig) {
@@ -7182,8 +7221,14 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        // Mode resolution: tweak requires a saved edit_recipe; otherwise reinterpret.
-        const hasSavedPlan = orig.edit_recipe && typeof orig.edit_recipe === 'object';
+        // MODE RESOLUTION. This read `orig.edit_recipe && typeof orig.edit_recipe
+        // === 'object'`, which is PRESENCE, not shape. handler's recipe is a
+        // dict and the agentic plan is a list; typeof answers 'object' for
+        // both, so a plan sitting in edit_recipe passed this check, became mode
+        // 'tweak', and dispatched to handler.py carrying a structure it cannot
+        // read — every value legal, nothing thrown, a confidently wrong edit.
+        // isHandlerRecipe excludes arrays explicitly. See lib/agentic-plan.js.
+        const hasSavedPlan = _agenticPlan.isHandlerRecipe(orig.edit_recipe);
         const mode = hasSavedPlan ? 'tweak' : 'reinterpret';
         console.log(`[re-edit] originalJobId=${originalJobId} mode=${mode} changeRequest="${changeRequest.slice(0, 120)}"`);
 
@@ -7195,6 +7240,15 @@ const server = http.createServer((req, res) => {
           videoUrl: orig.video_url,
           vibeInput: orig.vibe_input || 'Re-edit',
           appVersion: clientAppVersion(req),
+          // A DERIVATIVE INHERITS ITS PARENT'S PIPELINE, and inherits it as a
+          // stored fact rather than re-resolving from config. Re-resolving
+          // would let a job created under one route be re-edited under another
+          // the moment the flag flipped, handing an agentic plan to handler or
+          // the reverse. When the parent predates the column (NULL) this stays
+          // NULL rather than guessing — an unknown parent makes an unknown
+          // child, which is true, and the agentic route refuses on it below.
+          pipeline: (orig.pipeline === 'handler' || orig.pipeline === 'agentic')
+            ? orig.pipeline : null,
         });
         console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
 
