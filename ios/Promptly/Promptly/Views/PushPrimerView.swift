@@ -11,7 +11,7 @@ import UIKit
 /// existing PushService.requestPermissionIfNeeded() path, so registration
 /// stays single-tracked (idempotent status check + token short-circuit in
 /// setDeviceToken; nothing here double-registers). "Not now" — or a
-/// swipe-down, which counts as the same choice — dismisses forever-quiet:
+/// swipe-down, which counts as the same choice — DEFERS rather than silences:
 /// the once-per-install guard was claimed at present time, and the system
 /// one-shot stays intact for a future re-ask flag.
 ///
@@ -130,6 +130,7 @@ enum PushPrimerPresenter {
         weak var hostRef: UIViewController?
         let primer = PushPrimerView(
             onAccept: {
+                PushService.shared.recordSoftPromptAccepted()
                 // Dismiss first, THEN raise the system dialog — the OS alert
                 // centers cleanly over the chat instead of floating over a
                 // sheet that's mid-departure.
@@ -138,6 +139,12 @@ enum PushPrimerPresenter {
                 }
             },
             onDecline: {
+                // A DEFERRAL, recorded as one. maybeOfferDeliveryPrimer used to
+                // call markSoftPromptOffered() on the way IN, so the sheet spent
+                // the user's future merely by appearing — before they had
+                // touched anything. Now the outcome is recorded on the way out,
+                // and "Not now" sets a retry date.
+                PushService.shared.recordSoftPromptDeclined()
                 hostRef?.dismiss(animated: true)
             }
         )

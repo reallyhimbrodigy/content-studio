@@ -4683,12 +4683,14 @@ private struct PushExplainerAlert: ViewModifier {
         content.alert("Get notified when it's ready?", isPresented: $isPresented) {
             Button("Notify me") {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                PushService.shared.markSoftPromptOffered()
+                PushService.shared.recordSoftPromptAccepted()
                 Analytics.track("push_softprompt", props: ["choice": "accept"])
                 Task { await PushService.shared.requestPermissionIfNeeded() }
             }
             Button("Not now", role: .cancel) {
-                PushService.shared.markSoftPromptOffered()
+                // Both buttons called markSoftPromptOffered(), so a deferral and
+                // a consent recorded identically and "Not now" meant never.
+                PushService.shared.recordSoftPromptDeclined()
                 Analytics.track("push_softprompt", props: ["choice": "decline"])
             }
         } message: {

@@ -25,6 +25,11 @@ final class PushService {
     private let askedKey = "promptly.pushService.didAskForPermission"
     private let softOfferedKey = "promptly.pushService.didOfferSoftPrompt"
     private let primerOfferedKey = "promptly.pushService.didOfferDeliveryPrimer"
+    // The bookkeeping that replaces the two flags above as BARS. Both old keys
+    // are still read — 1,056 devices carry them — but neither can silence us
+    // permanently any more. See SoftPromptPolicy.
+    private let declineCountKey = "promptly.pushService.softPromptDeclineCount"
+    private let retryAfterKey = "promptly.pushService.softPromptRetryAfter"
 
     /// True if we've shown the system permission dialog at least once. Used
     /// to avoid asking twice (after a denial we shouldn't keep prompting —
@@ -40,19 +45,65 @@ final class PushService {
         UserDefaults.standard.bool(forKey: softOfferedKey)
     }
 
-    /// Whether to show the pre-permission explainer now. Only if the explainer
-    /// hasn't been shown AND the system dialog is still unseen (notDetermined,
-    /// tracked via `hasAskedForPermission`). This is the guarantee we NEVER ask
-    /// cold: the caller shows the explainer, and ONLY a "Notify me" tap reaches
-    /// requestPermissionIfNeeded() and the iOS dialog. A "Not now" leaves the
-    /// system one-shot intact for a future re-offer.
+    /// Whether to show the pre-permission explainer now.
+    ///
+    /// This was `!hasAskedForPermission && !didOfferSoftPrompt`, and BOTH alert
+    /// buttons set that flag — so one "Not now" silenced the app forever and
+    /// 1,056 users ended up with no push token. The comment above it even
+    /// claimed a "Not now" left things "intact for a future re-offer"; nothing
+    /// in the code did that. A deferral now sets a DATE.
+    ///
+    /// The guarantee that has NOT changed: we never ask cold. The caller shows
+    /// the explainer, and only a "Notify me" tap reaches
+    /// requestPermissionIfNeeded() and the iOS dialog.
     var shouldOfferSoftPrompt: Bool {
-        !hasAskedForPermission && !didOfferSoftPrompt
+        SoftPromptPolicy.shouldOffer(softPromptState, now: Date())
     }
 
-    /// Mark the pre-permission explainer as shown (called on either button).
-    func markSoftPromptOffered() {
+    /// Everything SoftPromptPolicy needs, read in one place so the predicate and
+    /// the recording below cannot drift apart.
+    var softPromptState: SoftPromptPolicy.State {
+        let d = UserDefaults.standard
+        return .init(
+            systemDialogSeen: hasAskedForPermission,
+            declineCount: d.integer(forKey: declineCountKey),
+            retryAfter: d.object(forKey: retryAfterKey) as? Date,
+            legacyOfferedFlag: d.bool(forKey: softOfferedKey),
+            // A device that has never written the count key has never been
+            // through the new bookkeeping — its legacy flag is all we know.
+            migrated: d.object(forKey: declineCountKey) != nil
+        )
+    }
+
+    /// The user tapped "Notify me". Nothing to defer: the iOS dialog is next,
+    /// and `hasAskedForPermission` becomes the (correct, permanent) stop.
+    func recordSoftPromptAccepted() {
         UserDefaults.standard.set(true, forKey: softOfferedKey)
+    }
+
+    /// The user tapped "Not now", or dismissed. THE DEFERRAL. Count it and set
+    /// a date — never a flag. The legacy key is still written so an older build
+    /// installed over this one keeps its old behaviour rather than re-asking
+    /// from zero.
+    func recordSoftPromptDeclined() {
+        let d = UserDefaults.standard
+        let next = SoftPromptPolicy.effectiveDeclines(softPromptState) + 1
+        d.set(next, forKey: declineCountKey)
+        d.set(SoftPromptPolicy.nextRetry(afterDeclines: next, from: Date()), forKey: retryAfterKey)
+        d.set(true, forKey: softOfferedKey)
+        Analytics.track("push_softprompt_deferred", props: [
+            "decline_count": next,
+            "retry_after_days": Int(SoftPromptPolicy.retryGaps[
+                min(max(next - 1, 0), SoftPromptPolicy.retryGaps.count - 1)] / 86_400),
+        ])
+    }
+
+    /// Kept so old call sites compile; a bare "we showed it" with no outcome is
+    /// exactly the ambiguity that caused this, so it records a DECLINE — the
+    /// conservative reading, and the one that still leaves a way back.
+    @available(*, deprecated, message: "Call recordSoftPromptAccepted() or recordSoftPromptDeclined() — an offer without an outcome is what set the permanent flag.")
+    func markSoftPromptOffered() {
+        recordSoftPromptDeclined()
     }
 
     /// True once the post-first-delivery primer sheet has claimed its one
@@ -76,12 +127,23 @@ final class PushService {
     /// — because EditorView's completion sink checks shouldOfferSoftPrompt on
     /// the line right after the persist call that got us here; claiming now is
     /// what stops the legacy alert and this sheet stacking on the same beat.
-    /// "Not now" / swipe is forever-quiet (a second ask only via a future flag).
+    /// "Not now" / swipe defers — PushPrimerView records the decline, which sets
+    /// a retry date. It is not forever-quiet; that was the defect.
     func maybeOfferDeliveryPrimer() {
         guard OnboardingState.shared.pushPrimerEnabled else { return }
+        // THE PRIMER NO LONGER GUARDS ON WHAT IT EXISTS TO RECOVER FROM.
+        // This read `guard !didOfferDeliveryPrimer, shouldOfferSoftPrompt`, and
+        // the second half was false for every user who had ever tapped "Not
+        // now" — which is precisely the 1,056 this sheet was built to reach. It
+        // was dead for its own target population. Worse, it then called
+        // markSoftPromptOffered(), so merely showing it spent the future too.
+        //
+        // `shouldOfferSoftPrompt` is now date-based, so it is the right gate to
+        // ask — a deferral expires. `didOfferDeliveryPrimer` stays a one-per-
+        // install claim for the SHEET specifically, so the sheet and the legacy
+        // alert still cannot stack on one beat.
         guard !didOfferDeliveryPrimer, shouldOfferSoftPrompt else { return }
         UserDefaults.standard.set(true, forKey: primerOfferedKey)
-        markSoftPromptOffered()
         Task { @MainActor in
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             // Granted/denied at the OS level (e.g. flipped in Settings without
@@ -93,6 +155,36 @@ final class PushService {
             // and the ask should read as a response to the payoff, not an
             // interruption of it.
             try? await Task.sleep(for: .seconds(0.9))
+            PushPrimerPresenter.present()
+        }
+    }
+
+    /// Offer the soft prompt after a successful export or share.
+    ///
+    /// This call site is the second half of the fix. Making "Not now" expire is
+    /// useless on its own: the expiry only matters if something LOOKS again, and
+    /// the two existing look-points both fire around a user's FIRST render —
+    /// which the 1,056 are long past. An export is the right re-ask moment for
+    /// the same reason it is the right review-prompt moment: the user has just
+    /// chosen to keep the thing we made.
+    ///
+    /// Everything is gated in `shouldOfferSoftPrompt`, so this is a no-op for a
+    /// user who consented, who was never asked, or whose retry date has not
+    /// arrived. The OS check keeps it honest for permission flipped in Settings.
+    @MainActor
+    func maybeOfferSoftPromptAfterExport(method: String) {
+        guard shouldOfferSoftPrompt else { return }
+        Task { @MainActor in
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            guard settings.authorizationStatus == .notDetermined else { return }
+            // Let the save/share confirmation land first — the ask should read
+            // as a response to the payoff, not an interruption of it.
+            try? await Task.sleep(for: .seconds(0.9))
+            Analytics.track("push_softprompt_reoffered", props: [
+                "trigger": "export",
+                "method": method,
+                "prior_declines": SoftPromptPolicy.effectiveDeclines(softPromptState),
+            ])
             PushPrimerPresenter.present()
         }
     }

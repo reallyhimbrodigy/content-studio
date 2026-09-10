@@ -1185,6 +1185,15 @@ final class VideoExporter: ObservableObject {
         // refuses a first-timer, anyone with a failed render this session, and
         // anyone already asked.
         await MainActor.run { FeedbackManager.shared.recordExportCompleted(method: "save") }
+        // THE RE-ASK, at the same moment and for the same reason. A user who
+        // just saved a video has had the good experience; if their only prior
+        // answer was a "Not now" whose retry date has passed, this is when to
+        // ask again. Self-gated on shouldOfferSoftPrompt — a no-op for anyone
+        // who consented, was never asked, or is still inside their gap. The two
+        // existing look-points both fire around a user's FIRST render, which the
+        // 1,056 are long past; without a later look-point, expiring the flag
+        // would change nothing.
+        await MainActor.run { PushService.shared.maybeOfferSoftPromptAfterExport(method: "save") }
         return id
     }
 
@@ -1243,6 +1252,7 @@ final class VideoExporter: ObservableObject {
                     // the review sheet behind the presentation either way, but
                     // the ordering here is the intent, not a coincidence.
                     FeedbackManager.shared.recordExportCompleted(method: "share")
+                    PushService.shared.maybeOfferSoftPromptAfterExport(method: "share")
                 }
             } catch ExportError.freeExportSpent {
                 // Same treatment on the Share path as on Save — both are exits,
