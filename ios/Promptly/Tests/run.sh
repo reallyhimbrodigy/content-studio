@@ -97,3 +97,13 @@ swiftc "$DIR/../Promptly/Views/FeedbackGate.swift" \
        "$DIR/ReviewPromptTests.swift" \
        -o "${TMPDIR:-/tmp}/reviewprompttest"
 "${TMPDIR:-/tmp}/reviewprompttest"
+
+# ChatMessageMerge — what a client SAVE may remove from a chat. The client
+# PATCHed the whole messages array blind, so the server's correctly-CAS'd render
+# attach was overwritten by an array that predated it (16 of 16 stranded jobs,
+# 2026-09-09). The opposite defect is just as real: a merge that keeps
+# everything resurrects deleted messages. Pure Foundation.
+swiftc "$DIR/../Promptly/Services/ChatMessageMerge.swift" \
+       "$DIR/ChatMessageMergeTests.swift" \
+       -o "${TMPDIR:-/tmp}/chatmsgmergetest"
+"${TMPDIR:-/tmp}/chatmsgmergetest"

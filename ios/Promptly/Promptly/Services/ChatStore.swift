@@ -6,6 +6,7 @@ import Foundation
 /// sidebar stays in sync without needing every save to trigger a list
 /// refetch.
 extension Chat: ChatListItem {}
+extension SerializedMessage: ChatMessageIdentifiable {}
 
 @MainActor
 final class ChatStore: ObservableObject {
@@ -30,6 +31,21 @@ final class ChatStore: ObservableObject {
 
     private var saveDebounceTask: Task<Void, Never>?
     private var pendingSaves: [String: (messages: [SerializedMessage], title: String?)] = [:]
+
+    /// THE MERGE BASE. Every message id this client has READ from the server or
+    /// created itself, per chat — the common ancestor that lets a save tell
+    /// "absent because I never saw it" (preserve) from "absent because I
+    /// removed it" (honour the delete). Without it a merge is a union, and a
+    /// union resurrects every message the user has ever deleted.
+    ///
+    /// In memory only, on purpose: a relaunch reloads from the server, so
+    /// everything it then holds is by definition seen, and a deletion that had
+    /// not been flushed was already lost with the process.
+    private var seenMessageIds: [String: Set<String>] = [:]
+
+    private func noteSeen(_ chatId: String, _ messages: [SerializedMessage]) {
+        seenMessageIds[chatId, default: []].formUnion(messages.map(\.id))
+    }
 
     private init() {}
 
@@ -77,6 +93,9 @@ final class ChatStore: ObservableObject {
             // A stale token or a transient RLS miss returns 200 + [], not a
             // throw. See `merged` for what an empty list is now allowed to do.
             let merged = ChatListMerge.merged(fetched: fetched, local: chats, unsavedIds: Set(pendingSaves.keys))
+            // Everything the server just handed us is now SEEN, so a later save
+            // that omits one of these is a real deletion rather than staleness.
+            for c in merged { noteSeen(c.id, c.messages) }
             self.chats = merged
             // If the active chat is gone (e.g., deleted on another device),
             // drop it so the editor falls back to "no chat selected".
@@ -182,6 +201,8 @@ final class ChatStore: ObservableObject {
     func scheduleSave(chatId: String, messages: [SerializedMessage], explicitTitle: String? = nil) {
         let title = explicitTitle ?? Chat.deriveTitle(from: messages)
         pendingSaves[chatId] = (messages: messages, title: title)
+        // A message this client composed is seen by definition.
+        noteSeen(chatId, messages)
 
         // Post-first-delivery push primer (flag: push_primer; inert off). A
         // message flipping to completed-WITH-video in this save, versus the
@@ -249,8 +270,12 @@ final class ChatStore: ObservableObject {
                 try await ChatService.shared.updateChat(
                     id: chatId,
                     messages: payload.messages,
-                    title: payload.title
+                    title: payload.title,
+                    seen: seenMessageIds[chatId] ?? []
                 )
+                // What we just wrote is now seen — including anything the merge
+                // rescued, so the NEXT save can legitimately delete it.
+                noteSeen(chatId, payload.messages)
             } catch {
                 print("[chats] updateChat \(chatId) failed: \(error.localizedDescription)")
                 // Re-queue for the next debounce window. If the user keeps

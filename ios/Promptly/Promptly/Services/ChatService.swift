@@ -89,10 +89,80 @@ final class ChatService {
 
     /// Persist the latest message list + auto-derived title for a chat.
     /// Server's BEFORE UPDATE trigger refreshes updated_at automatically.
-    func updateChat(id: String, messages: [SerializedMessage], title: String?) async throws {
-        guard var req = await authedRequest(path: "/rest/v1/chats?id=eq.\(id)", method: "PATCH") else {
+    /// READ, MERGE, THEN WRITE UNDER A COMPARE-AND-SET.
+    ///
+    /// This PATCHed `{"messages": <entire array>}` against `?id=eq.<id>` — a
+    /// blind whole-column write. The server attaches a render's assistant
+    /// message with CAS, correctly; this then wrote back an array that predated
+    /// the attach and the message was gone. 16 of 16 stranded jobs (2026-09-09)
+    /// had a client write to that user's chats after the render completed —
+    /// every one, no exceptions.
+    ///
+    /// THE CAS IS NOT OPTIONAL. Read-merge-write alone narrows the window; it
+    /// does not close it. A server attach landing between the read and the
+    /// PATCH is lost exactly as before, and this is a write the sweep re-issues
+    /// every ten minutes, so a narrow window is one that gets hit. The filter
+    /// carries the `updated_at` the read returned; a row that moved underneath
+    /// matches nothing, and the merge runs again on what is actually there.
+    ///
+    /// Bounded at three attempts and then it throws, so the caller re-queues.
+    /// It does NOT fall back to the blind write — falling back to the defect
+    /// under contention is falling back exactly when it matters.
+    func updateChat(id: String, messages: [SerializedMessage], title: String?,
+                    seen: Set<String> = []) async throws {
+        for attempt in 1...3 {
+            let current = try await fetchChatRow(id: id)
+            let merged = ChatMessageMerge.merged(local: messages,
+                                                 remote: current.messages,
+                                                 seen: seen)
+            if try await patchChat(id: id, messages: merged, title: title,
+                                   ifUpdatedAt: current.updatedAt) { return }
+            print("[chats] updateChat \(id): row moved under attempt \(attempt) — re-merging")
+        }
+        throw APIError.jobCreationFailed("updateChat \(id): lost the CAS three times")
+    }
+
+    private struct ChatRow { let messages: [SerializedMessage]; let updatedAt: String }
+
+    private func fetchChatRow(id: String) async throws -> ChatRow {
+        guard let req = await authedRequest(
+            path: "/rest/v1/chats?id=eq.\(id)&select=messages,updated_at", method: "GET") else {
             throw APIError.notAuthenticated
         }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.jobCreationFailed("chat read failed: \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
+        }
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              let row = rows.first else {
+            // The row is gone (deleted on another device). Nothing to merge
+            // against and nothing to preserve.
+            return ChatRow(messages: [], updatedAt: "")
+        }
+        let updatedAt = row["updated_at"] as? String ?? ""
+        var msgs: [SerializedMessage] = []
+        if let raw = row["messages"], JSONSerialization.isValidJSONObject(["m": raw]) {
+            let blob = try JSONSerialization.data(withJSONObject: raw)
+            msgs = (try? Self.decoder.decode([SerializedMessage].self, from: blob)) ?? []
+        }
+        return ChatRow(messages: msgs, updatedAt: updatedAt)
+    }
+
+    /// Returns true when the row was actually written. `return=representation`
+    /// makes PostgREST hand back the rows it touched, so zero rows is a LOST
+    /// CAS rather than a silent success — a 200 with an empty body is exactly
+    /// the shape this whole fix exists to stop trusting.
+    private func patchChat(id: String, messages: [SerializedMessage], title: String?,
+                           ifUpdatedAt: String) async throws -> Bool {
+        var path = "/rest/v1/chats?id=eq.\(id)"
+        if !ifUpdatedAt.isEmpty,
+           let enc = ifUpdatedAt.addingPercentEncoding(withAllowedCharacters: .alphanumerics) {
+            path += "&updated_at=eq.\(enc)"
+        }
+        guard var req = await authedRequest(path: path, method: "PATCH") else {
+            throw APIError.notAuthenticated
+        }
+        req.setValue("return=representation", forHTTPHeaderField: "Prefer")
         // Encode messages through JSONEncoder so dates serialize consistently
         // with the schema's JSONB column.
         let messagesJSON = try JSONEncoder().encode(messages)
@@ -107,6 +177,11 @@ final class ChatService {
             let bodyStr = String(data: data, encoding: .utf8) ?? ""
             throw APIError.jobCreationFailed("updateChat \((resp as? HTTPURLResponse)?.statusCode ?? -1): \(bodyStr)")
         }
+        // ZERO ROWS IS A LOST CAS, NOT A SUCCESS. PostgREST answers a PATCH
+        // that matched nothing with 200 and `[]`, which is the same
+        // empty-success shape that hid this class in the first place.
+        let touched = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+        return !(touched?.isEmpty ?? true)
     }
 
     /// Hard-delete a chat. RLS prevents touching anyone else's row.
