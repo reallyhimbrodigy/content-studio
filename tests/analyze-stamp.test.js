@@ -37,13 +37,12 @@ test('stamp: constants are the pinned values (guards accidental drift)', () => {
   // the drift guard has been red against a correct, deliberate change ever
   // since — a guard nobody reads. Pinned to what actually ships.
   //
-  // KNOWN RISK, NOT SILENTLY BLESSED: `gemini-flash-latest` is an ALIAS, and
-  // 91ff645 found it rotated the CHAT path onto a model with zero provisioned
-  // quota (100% 429s). Chat is now pinned to a concrete model
-  // (lib/chat-actions.js TOOLS_MODEL). The analyze path still rides the alias;
-  // moving it is a model change on every render's analysis and is an owner
-  // decision, not a test edit. When that lands, this pin moves with it.
-  assert.equal(GEMINI_MODEL, 'gemini-flash-latest');
+  // AND NOW OFF THE ALIAS. The analyze path rode `gemini-flash-latest` until
+  // 2026-09-11; it is pinned to the same concrete model as chat, verified with a
+  // real generateContent on the production credential first. Two of the three
+  // models this path has used (gemini-2.5-flash, gemini-2.0-flash) now 404,
+  // which is the rotation rate an alias exposed every render's analysis to.
+  assert.equal(GEMINI_MODEL, 'gemini-3.6-flash');
   assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(ANALYZER_VERSION), 'version is a date tag');
 });
 
