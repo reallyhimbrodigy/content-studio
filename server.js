@@ -6985,7 +6985,42 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        await dispatchJobToModal({
+        // ── THE ROUTE, ACTED ON ─────────────────────────────────────────────
+        // routeForNewJob() stored `pipeline` on the row at creation; this is
+        // where that stored fact decides where the job actually goes. Without
+        // this branch the column was a label nobody read — the job was marked
+        // 'agentic' and dispatched to handler anyway, which is worse than not
+        // having the column: a row asserting a pipeline it never used, that a
+        // re-edit would then inherit.
+        //
+        // Reads the value FROM THE ROW rather than calling routeForNewJob()
+        // again. Re-resolving would let a flag flip between creation and
+        // dispatch send a job one way while its row says the other.
+        let _agenticDispatched = false;
+        if (job.pipeline === 'agentic' && AGENTIC_BASE_URL) {
+          try {
+            const { prepareAndDispatchAgentic } = require('./lib/agentic-dispatch');
+            await prepareAndDispatchAgentic({
+              baseUrl: AGENTIC_BASE_URL,
+              jobId: job.id,
+              videoUrl,
+              brief: vibeInput,
+            });
+            _agenticDispatched = true;
+          } catch (e) {
+            // FALL BACK, AND CORRECT THE ROW. The user gets their video either
+            // way; what must not survive is a row that says 'agentic' for a
+            // render handler produced. A wrong label is not cosmetic here — a
+            // later re-edit INHERITS pipeline, so it would take the agentic path
+            // looking for a prior_plan that was never written.
+            console.error(`[agentic] dispatch failed for ${job.id} (${e && e.code}: `
+              + `${e && e.message}) — falling back to handler and relabelling the row`);
+            await supabaseAdmin.from('video_jobs')
+              .update({ pipeline: 'handler' }).eq('id', job.id);
+          }
+        }
+
+        if (!_agenticDispatched) await dispatchJobToModal({
           pushProgressToSSE,
           jobId: job.id,
           videoUrl,
