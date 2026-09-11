@@ -61,8 +61,23 @@ const ALLOW = {
   ownsKey: 'exported for lib/__smoke_chat_media; chat-media inlines the ownership check',
   hasCompletionClaim: 'exported for tests; completion-repair inlines the claim check',
   isValidRating: 'exported for tests; feedback.js inlines the range check',
-  reconcileTerminalInvariant: 'invoked by the cron sweep via dynamic require, not a static reference',
-  getPendingModalJobs: 'invoked by the modal-webhook cron path via dynamic require',
+  // BOTH OF THESE CLAIMED A CRON THAT DOES NOT EXIST (corrected 2026-09-11).
+  // render.yaml defines exactly two crons — trend-video-pipeline and
+  // daily-scoreboard — and neither references either module, nor is there a
+  // dynamic require of them anywhere. The reasons read as settled and were not
+  // true, which is the failure this allowlist is otherwise built to prevent: an
+  // exception is supposed to be a decision someone made, and a decision resting
+  // on a cron nobody wrote is an oversight wearing a decision's clothes.
+  // assertReasonsAreTrue() below now refuses a reason naming a cron unless that
+  // cron is in render.yaml.
+  reconcileTerminalInvariant: 'NOT SCHEDULED — a manual operator sweep, read-only '
+    + 'unless apply=true because flipping a row sends a real notification. New '
+    + 'violations are prevented at source by terminalizeFailure, which IS wired '
+    + '(lib/video-processor/dispatch-to-modal.js:354); 1 pre-existing row remains '
+    + '(1 user, 2026-08-26, zero accrual in the last 7 days)',
+  getPendingModalJobs: 'NOT CALLED in production — a getter over the in-process '
+    + 'pendingModalJobs map, exported for lib/__smoke_completion_delivery to '
+    + 'inspect registration. The map itself is live; this accessor is not',
   TOOLS_MODEL: 'constant model id read as data',
   // SIBLING EXPORTS beside a USED entry point. tier-capabilities IS imported
   // (server.js + wall-enforcement use `capabilities`); gate-receipt IS imported
@@ -185,6 +200,37 @@ test('every exported lib function has a production caller', () => {
     `Each is a feature that can be complete, correct, tested and entirely ` +
     `INERT — refundJobCredits was exactly this and cost the credits refund. ` +
     `Wire it, delete it, or add it to ALLOW with a reason.`);
+});
+
+test('an allowlist reason that names a cron must name a cron that EXISTS', () => {
+  // A REASON MUST BE TRUE, NOT MERELY NON-EMPTY. Two entries here claimed
+  // "invoked by the cron sweep via dynamic require" and "invoked by the
+  // modal-webhook cron path" — and render.yaml has exactly two crons, neither
+  // of which touches either module, with no dynamic require anywhere. The
+  // allowlist checked that a reason existed and never that it was true, so the
+  // two functions it was hiding read as decided rather than as overlooked.
+  //
+  // This cannot verify every claim a reason might make. It verifies the one
+  // that is both checkable and was actually wrong: if a reason says "cron", a
+  // cron by that name must exist in render.yaml.
+  const yamlPath = path.join(ROOT, 'render.yaml');
+  if (!fs.existsSync(yamlPath)) return;              // no manifest, nothing to check
+  const yaml = fs.readFileSync(yamlPath, 'utf8');
+  const cronBlock = yaml.slice(yaml.indexOf('\ncrons:'));
+  const cronNames = [...cronBlock.matchAll(/^\s*-\s*name:\s*(\S+)/gm)].map((m) => m[1]);
+  assert.ok(cronNames.length > 0,
+    'positive control: no cron names parsed out of render.yaml, so this test '
+    + 'would pass vacuously for every claim');
+
+  for (const [fn, reason] of Object.entries(ALLOW)) {
+    if (!/\bcron\b/i.test(String(reason))) continue;
+    const named = cronNames.some((c) => String(reason).includes(c));
+    assert.ok(named,
+      `${fn}'s allowlist reason claims a cron, but names none of the crons that `
+      + `actually exist (${cronNames.join(', ')}). A reason resting on a cron `
+      + `nobody wrote is an oversight wearing a decision's clothes — either name `
+      + `the real cron, or say plainly that the function is not scheduled.`);
+  }
 });
 
 test('CONTROL: the scan finds functions and can fail', () => {

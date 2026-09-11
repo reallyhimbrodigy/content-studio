@@ -349,6 +349,7 @@ const AGENTIC_ENABLED =
   String(process.env.AGENTIC_ENABLED || '').trim() === '1';
 const AGENTIC_BASE_URL = String(process.env.AGENTIC_BASE_URL || '').trim();
 const _agenticPlan = require('./lib/agentic-plan');
+const _creditsBatch = require('./lib/credits-batch');
 
 /**
  * WHICH PIPELINE HANDLES THIS JOB. Trap 2 of the worker contract: the decision
@@ -6805,11 +6806,31 @@ const server = http.createServer((req, res) => {
             // once per render, and the (user_id, period) PK makes it a no-op for
             // every render after the first of a period. Never throws.
             await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
-            try {
-              await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
-              _creditsDebited = _credits.COST_PER_RENDER;
-            } catch (e) {
-              if (e && e.code === 'INSUFFICIENT') {
+            // ONE SOURCE IS A BATCH OF ONE. Routed through debitSources so the
+            // ten-source path and the single-source path are the SAME code,
+            // exercised on every render today rather than first meeting real
+            // traffic on the day multi-upload ships. It also stops the module
+            // being inert: the reachability check flagged credits-batch.js as
+            // entirely unimported, which it was.
+            //
+            // Behaviour is unchanged. armed:true because this whole block is
+            // already inside `if (creditsAreTheLimiter)`, and debitSources with
+            // one source performs exactly one debit and reports its outcome —
+            // the two failure branches below map 1:1 onto 'insufficient' and
+            // 'unavailable', which it already keeps apart for the same reason
+            // this site does.
+            const _batch = await _creditsBatch.debitSources({
+              userId: authUser.id,
+              sources: [{ client_key: clientJobId || 'single' }],
+              armed: true,
+              debit: (u, amt) => _credits.debit(u, amt),
+              costPerSource: _credits.COST_PER_RENDER,
+            });
+            if (_batch.answered.length === 1) {
+              _creditsDebited = _batch.answered[0].credits_debited;
+            } else {
+              const _why = (_batch.held[0] || {}).reason;
+              if (_why === 'insufficient') {
                 // 402 carries `needed` ONLY. With no pre-read the server never
                 // learns the balance on this path and RC's 422 does not report
                 // it; promising a balance here would be a contract we cannot
@@ -6836,7 +6857,7 @@ const server = http.createServer((req, res) => {
               // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
               // A refusal and an outage are different failures and must not be
               // collapsed — one is the user's problem, the other is ours.
-              console.error('  [credits] grant path unavailable:', e && e.code, e && e.message);
+              console.error('  [credits] grant path unavailable: held as', _why);
               return { status: 503, body: {
                 error: 'credits_unavailable', kind: 'credits', retryable: true,
               } };

@@ -183,20 +183,37 @@ const codeOnly = (src) => src.split('\n')
   .filter((l) => !l.trim().startsWith('//'))
   .join('\n');
 
+// The charge now goes through debitSources — one source is a batch of one, so
+// the ten-source path and this one are the SAME code. Both tests below used to
+// anchor on the inline literal `_credits.debit(authUser.id` and went red on a
+// refactor that changed no ordering and no branch. Anchored on the call that
+// actually performs the charge instead; the properties are unchanged.
+const DEBIT_ANCHOR = '_creditsBatch.debitSources({';
+
 test('the debit runs BEFORE the job insert, and demos are exempt', () => {
-  const iDebit = SRC.indexOf('_credits.debit(authUser.id');
+  const iDebit = SRC.indexOf(DEBIT_ANCHOR);
   const iInsert = SRC.indexOf('const created = await createQueuedVideoJob({');
   assert.ok(iDebit > 0, 'no debit call in the dispatch path — credits are inert');
   assert.ok(iInsert > 0);
   assert.ok(iDebit < iInsert,
     'debit must precede the insert/spawn; spawn-then-debit spends GPU on a ' +
     'render the user cannot pay for');
-  const window = SRC.slice(iDebit - 700, iDebit);
-  assert.match(window, /!isDemo/,
+  // STRUCTURAL, not a character window. The old 700-char slice matched
+  // `isConfigured()` inside a COMMENT ("...so isConfigured() is true in
+  // production"), which is prose promising a property code has to hold. Both
+  // guards live in the predicate the charge sits under, so that is what is read.
+  const CODE = codeOnly(SRC);
+  const lim = (CODE.match(/const creditsAreTheLimiter = [^;]*/) || [''])[0];
+  assert.ok(lim.length > 0, 'creditsAreTheLimiter not found');
+  assert.match(lim, /isConfigured\(\)/,
+    'must not attempt a debit when credits are unconfigured');
+  const iLimiterIf = CODE.indexOf('if (creditsAreTheLimiter) {');
+  const iCharge = CODE.indexOf(DEBIT_ANCHOR);
+  assert.ok(iLimiterIf > 0 && iCharge > iLimiterIf,
+    'the charge must sit inside the creditsAreTheLimiter block');
+  assert.match(CODE.slice(0, iCharge), /if \(!isDemo\)|isDemo/,
     'a demo is quota-exempt and must be credit-exempt too, or the first-run ' +
     'sample clip charges the user 10');
-  assert.match(window, /isConfigured\(\)/,
-    'must not attempt a debit when credits are unconfigured');
 });
 
 test('402 carries needed ONLY — never a balance we did not read', () => {
@@ -219,7 +236,7 @@ test('an outage does NOT free-render', () => {
   // against the wrong site — deleting the dispatch branch entirely still went
   // green until this was scoped. Same family as matching a short token against
   // unrelated source.
-  const iDebit = SRC.indexOf('_credits.debit(authUser.id');
+  const iDebit = SRC.indexOf(DEBIT_ANCHOR);
   assert.ok(iDebit > 0, 'no debit call — nothing to guard');
   // BOUNDED STRUCTURALLY, NOT BY CHARACTER COUNT. This was slice(iDebit, +1800)
   // and went red on merge when comments between the debit and its outage branch
@@ -233,7 +250,7 @@ test('an outage does NOT free-render', () => {
     'the dispatch debit has no outage branch — an RC outage would fall ' +
     'through and spawn a free render');
   assert.match(region, /503/, 'an outage must refuse, not render for free');
-  assert.match(region, /INSUFFICIENT/,
+  assert.match(region, /_why === 'insufficient'/,
     'a refusal must be distinguished from an outage at the dispatch site');
 });
 
