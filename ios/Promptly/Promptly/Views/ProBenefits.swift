@@ -190,6 +190,37 @@ enum ProBenefits {
     /// the credit numbers early — which would be false in the other direction,
     /// the failure mode that reads as conservative and therefore goes unnoticed.
     @MainActor
+    /// THE PRO CAPACITY CLAIM, IN ONE PLACE. Both the cap-encounter subtitles and
+    /// the lapsed-trial wall need to say what Pro actually gives; each spelled it
+    /// for itself and benefits-parity-gate refused the build, correctly. Two
+    /// screens owning a copy of the pitch drift, and the drift is invisible in
+    /// review because each file reads correctly by itself.
+    ///
+    /// Derived from TIER_ALLOWANCE via CreditAllowance rather than written out,
+    /// so the number cannot fall out of step with what is actually granted.
+    /// WHOLE SENTENCES, NOT A FRAGMENT INTERPOLATED INTO ONE. The first version
+    /// of this returned just the claim and let each screen interpolate it. That
+    /// satisfied benefits-parity and broke localisation: the interpolation
+    /// minted new keys carrying %@ which the catalog did not have, so eleven
+    /// locales would have fallen back to English — caught by localization-gate.
+    /// It is also the wrong shape for translation regardless, because word order
+    /// around an inserted phrase differs by language and the translator never
+    /// sees the finished sentence.
+    ///
+    /// So the SENTENCES live here, one catalog key each, translated as units.
+    static func reeditSubtitle() -> String {
+        String(localized: "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.")
+    }
+
+    static func exportGateSubtitle() -> String {
+        String(localized: "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.")
+    }
+
+    static func lapsedTrialSubtitle() -> String {
+        String(localized: "Everything you made is still here. Go Pro for 200 credits a month — 20 videos.")
+    }
+
+    @MainActor
     static var paywallSubtitle: String {
         let o = OnboardingState.shared
         guard o.creditsEnabled, let monthly = o.creditsMonthlyAllowance, monthly > 0 else {

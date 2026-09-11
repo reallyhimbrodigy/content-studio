@@ -215,7 +215,7 @@ struct PaywallView: View {
         case .dailyChats(_, let lim):
             return String(localized: "Free includes \(lim) AI chat messages per day. Upgrade for unlimited.")
         case .reedit:
-            return String(localized: "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.")
+            return ProBenefits.reeditSubtitle()
         case .manual:
             return ProBenefits.paywallSubtitle
         case .lumen:
@@ -223,7 +223,7 @@ struct PaywallView: View {
         case .concurrency:
             return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:
-            return String(localized: "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.")
+            return ProBenefits.exportGateSubtitle()
         // Scheduled surfaces, not cap encounters: nothing was blocked, so there
         // is no limit to name. `paywallSubtitle` is the flag-aware general
         // pitch — and it is the ONE subtitle that switches with the credits
