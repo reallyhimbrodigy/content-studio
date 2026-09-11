@@ -4824,7 +4824,7 @@ const server = http.createServer((req, res) => {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: chatCaps.chatLimit,
-            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
           });
         }
 
@@ -5048,7 +5048,7 @@ const server = http.createServer((req, res) => {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: streamCaps.chatLimit,
-            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
           });
         }
 
@@ -6590,10 +6590,24 @@ const server = http.createServer((req, res) => {
             tier: wallTier,
             enforced: wallEnforce,
             app_usable: wallCaps.appUsable,
+            // 'unlimited' here is TRUE AND NARROW: it describes the DAILY CAP,
+            // which credits retire rather than raise. Left exactly as it was —
+            // scripts/deploy-sanity.js asserts render_limit === 'unlimited' for
+            // a known-Pro account as its standing tier→caps invariant, and
+            // rewriting a truthful field to carry a different fact would break
+            // that check while making this one no clearer.
             render_limit: wallCaps.renderLimit === Infinity ? 'unlimited' : wallCaps.renderLimit,
             concurrency_cap: wallCaps.uploadMax,
             chat_limit: wallCaps.chatLimit === Infinity ? 'unlimited' : wallCaps.chatLimit,
             reedit: wallCaps.reedit,
+            // WHICH LIMITER IS ACTUALLY IN FORCE. Exactly one is, by
+            // construction, and without saying so a reader takes
+            // render_limit:'unlimited' as the whole answer — which is how "Pro
+            // is unlimited" survived into copy after credits started metering it.
+            limiter: creditsAreTheLimiter ? 'credits' : 'daily_cap',
+            credit_allowance: creditsAreTheLimiter
+              ? (_credits.TIER_ALLOWANCE[_creditTier] ?? null) : null,
+            credit_cost_per_render: creditsAreTheLimiter ? _credits.COST_PER_RENDER : null,
           });
         }
 
@@ -6779,7 +6793,7 @@ const server = http.createServer((req, res) => {
                 error: 'daily_limit_reached',
                 kind: 'render',
                 limit: wallCaps.renderLimit,
-                message: `You've used your ${wallCaps.renderLimit} free renders today. Upgrade to Pro for unlimited.`,
+                message: `You've used your ${wallCaps.renderLimit} free renders today. Pro includes 200 credits a month — 20 videos.`,
               } };
             }
           }
