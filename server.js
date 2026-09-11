@@ -3928,6 +3928,32 @@ const server = http.createServer((req, res) => {
       credits: (/^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
                 && _rcHealthProbe.value === 'ok')
         ? 'on' : 'off',
+      // DOES THE METER ACTUALLY MOVE? Separate from `credits` above, which only
+      // says the meter may be DRAWN.
+      //
+      // These were one thing when the client was written and are two things
+      // now, and the gap is user-visible TODAY: `credits` is on, so build 254's
+      // OnboardingState sets creditsEnabled=true, and ProBenefits then claims
+      // "20 videos a month" to an entitled Pro subscriber — whose App Store
+      // listing says "Unlimited renders" and who really does get unlimited,
+      // because CREDITS_DEBIT_ENABLED is off. The paywall is UNDERSELLING the
+      // product, which is the failure direction that reads as conservative and
+      // therefore goes unnoticed. The credit BADGE has the same problem from
+      // the other side: a balance that never decreases.
+      //
+      // Conjoins everything that must be true for a debit to happen, because
+      // any one of them missing makes the meter inert while looking armed —
+      // that exact state (CREDITS_DEBIT_ENABLED=1 with FREE_CREDITS_MIN_BUILD
+      // unset) once reported armed and debited nobody, and took an elimination
+      // across five conjuncts to find.
+      //
+      // ADDITIVE ON PURPOSE: `credits` keeps its meaning so builds <=254 do not
+      // change behaviour on this deploy. 255 reads this key instead.
+      credits_metering: (CREDITS_DEBIT_ENABLED
+                         && Number.isInteger(parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10))
+                         && _credits.isConfigured()
+                         && _rcHealthProbe.value === 'ok')
+        ? 'on' : 'off',
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -6516,8 +6542,20 @@ const server = http.createServer((req, res) => {
         // it as a paid tier — metered, it would render down its balance and then
         // be refused forever. Scoped to comp_pro ONLY; see isCompAccount for why
         // "paid with no rc_app_user_id" is the unsafe way to say this.
+        // TIER IS A CONJUNCT, not a separate decision made later. Free and Max
+        // are metered; PRO IS NOT, because all three Pro listings say
+        // "Unlimited" and 200 credits is 20 videos a month — 8 of 27 Pro
+        // subscribers already exceed that in 30 days. Max is metered precisely
+        // BECAUSE its listing already says "100 videos a month", which is
+        // exactly its 1000-credit grant. See lib/credits.js METERED_TIERS for
+        // the measurements. Comp stays excluded on its own line below: it is
+        // exempt for a different reason (no subscription for RC's recurring
+        // grant to hang on), and collapsing two reasons into one condition is
+        // how the next person deletes the wrong half.
+        const _creditTier = _credits.creditTierFor(entitlement.row || {});
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
           && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })
+          && _credits.tierIsMetered(_creditTier)
           && !isCompAccount(entitlement.row);
 
         const wallTier = tierFromEntitlement(entitlement);
