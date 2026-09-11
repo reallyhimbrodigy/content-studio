@@ -16,8 +16,19 @@ function region() {
 
 test('72 HOURS from now, never calendar days', () => {
   const R = region();
-  assert.match(R, /Date\.now\(\) \+ 72 \* 3600 \* 1000/,
-    'a decline at 23:50 must yield 72 hours, not eight');
+  // THIS PINNED THE BUG. It matched `Date.now() + 72 * 3600 * 1000` — the
+  // absolute expression that OVERWROTE a six-month Max subscription with three
+  // days the moment the user tapped Decline. The code was fixed to extend from
+  // the later of now and the existing pro_until (grantFromMs), and this test
+  // then went red for weeks asserting the defect was still present: a landmine
+  // for the next person who "fixes" the code to match the test. Re-pinned on
+  // the fix, and the old expression is now asserted ABSENT.
+  assert.match(R, /grantFromMs\(beforeIso\) \+ 72 \* 3600 \* 1000/,
+    'a decline at 23:50 must yield 72 hours, not eight — measured from the later ' +
+    'of now and any existing pro_until, or a paid subscription is overwritten');
+  assert.doesNotMatch(R, /Date\.now\(\) \+ 72 \* 3600/,
+    'the absolute Date.now()+72h is the bug that overwrote a six-month Max ' +
+    'subscription with three days — it must not come back');
   assert.doesNotMatch(R, /startOfDay|setHours\(0/,
     'no calendar-day arithmetic anywhere in the grant');
 });
@@ -83,7 +94,12 @@ test('the 30-day cap is SUMmed, and exhaustion REFUSES rather than truncates', (
 test('ledger FIRST with provider_ok:false, then pro_until, then confirm', () => {
   const R = region();
   const iLedger = R.indexOf('provider_ok: false');
-  const iProf = R.indexOf("from('profiles').update({ tier: 'pro'");
+  // Same class as above: this pinned `tier: 'pro'`, the literal that DEMOTED a
+  // Max subscriber to Pro on a trial grant. The code now routes through
+  // tierAfterGrant so the grant can only raise a tier, never lower it.
+  const iProf = R.indexOf("from('profiles').update({ tier: tierAfterGrant(");
+  assert.ok(iProf > 0, 'the profile write must go through tierAfterGrant — a bare ' +
+    "tier: 'pro' demotes a Max subscriber who taps Decline");
   const iOk = R.indexOf('provider_ok: true');
   assert.ok(iLedger > 0 && iProf > iLedger,
     'ledger row must exist before the grant, so a failure is visible');
