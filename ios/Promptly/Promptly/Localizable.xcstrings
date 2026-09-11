@@ -3871,6 +3871,160 @@
         }
       }
     },
+    "20 videos a month": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 videos a month"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 فيديو شهريًا"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মাসে ২০টি ভিডিও"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 Videos im Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 vídeos al mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 vidéos par mois"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हर महीने 20 वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 video sebulan"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月に動画20本"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "महिनामा २० भिडियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 vídeos por mês"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ماہانہ 20 ویڈیوز"
+          }
+        }
+      }
+    },
+    "200 credits a month — 20 videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 credits a month — 20 videos"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 رصيد شهريًا — 20 فيديو"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "মাসে ২০০ ক্রেডিট — ২০টি ভিডিও"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 Credits im Monat – 20 Videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 créditos al mes: 20 vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 crédits par mois — 20 vidéos"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हर महीने 200 क्रेडिट — 20 वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 kredit sebulan — 20 video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月に200クレジット — 動画20本"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "महिनामा २०० क्रेडिट — २० भिडियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 créditos por mês — 20 vídeos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ماہانہ 200 کریڈٹ — 20 ویڈیوز"
+          }
+        }
+      }
+    },
     "700+ creators": {
       "extractionState": "manual",
       "localizations": {
@@ -11412,72 +11566,79 @@
         }
       }
     },
-    "Every episode into clips, unlimited": {
+    "Every episode into clips": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every episode into clips"
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل حلقة إلى مقاطع، بلا حدود"
+            "value": "كل حلقة إلى مقاطع"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "প্রতিটি পর্ব থেকে ক্লিপ, সীমাহীন"
+            "value": "প্রতিটি এপিসোড ক্লিপে"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jede Folge in Clips, unbegrenzt"
+            "value": "Jede Folge in Clips"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada episodio en clips, sin límite"
+            "value": "Cada episodio en clips"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chaque épisode en clips, sans limite"
+            "value": "Chaque épisode en clips"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हर एपिसोड से क्लिप्स, असीमित"
+            "value": "हर एपिसोड क्लिप्स में"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Setiap episode jadi klip, tanpa batas"
+            "value": "Setiap episode jadi klip"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのエピソードをクリップに、無制限"
+            "value": "すべてのエピソードをクリップに"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "हरेक एपिसोडबाट क्लिप, असीमित"
+            "value": "हरेक एपिसोड क्लिपमा"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada episódio em clipes, sem limite"
+            "value": "Cada episódio em clipes"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ہر ایپیسوڈ سے کلپس، لامحدود"
+            "value": "ہر ایپیسوڈ کلپس میں"
           }
         }
       }
@@ -11559,212 +11720,233 @@
         }
       }
     },
-    "Every promo cut and captioned, unlimited": {
+    "Every promo cut and captioned": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every promo cut and captioned"
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل إعلان ترويجي مقصوص ومترجم، بلا حدود"
+            "value": "كل إعلان مقصوص ومترجم"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "প্রতিটি প্রোমো কাটা ও ক্যাপশনসহ, সীমাহীন"
+            "value": "প্রতিটি প্রোমো কাট ও ক্যাপশনসহ"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jede Promo geschnitten und untertitelt, unbegrenzt"
+            "value": "Jede Promo geschnitten und untertitelt"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada promo cortada y subtitulada, sin límite"
+            "value": "Cada promo cortada y subtitulada"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chaque promo montée et sous-titrée, sans limite"
+            "value": "Chaque promo montée et sous-titrée"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हर प्रोमो कटा और कैप्शन के साथ, असीमित"
+            "value": "हर प्रोमो कट और कैप्शन के साथ"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Setiap promo dipotong dan diberi teks, tanpa batas"
+            "value": "Setiap promo dipotong dan diberi teks"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのプロモをカットして字幕付きに、無制限"
+            "value": "すべてのプロモをカットして字幕付きに"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "हरेक प्रोमो कट र क्याप्सनसहित, असीमित"
+            "value": "हरेक प्रोमो कट र क्याप्सनसहित"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada promo cortada e legendada, sem limite"
+            "value": "Cada promo cortada e legendada"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ہر پرومو کٹا اور کیپشن کے ساتھ، لامحدود"
+            "value": "ہر پرومو کٹ اور کیپشن کے ساتھ"
           }
         }
       }
     },
-    "Every take into a finished cut, unlimited": {
+    "Every take into a finished cut": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every take into a finished cut"
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل لقطة إلى مونتاج مكتمل، بلا حدود"
+            "value": "كل لقطة إلى مونتاج نهائي"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "প্রতিটি টেক থেকে সম্পূর্ণ কাট, সীমাহীন"
+            "value": "প্রতিটি টেক পূর্ণ কাটে"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeder Take zum fertigen Video, unbegrenzt"
+            "value": "Jeder Take zum fertigen Schnitt"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada toma en un montaje final, sin límite"
+            "value": "Cada toma en un corte final"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chaque prise en montage fini, sans limite"
+            "value": "Chaque prise en montage fini"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हर टेक से तैयार कट, असीमित"
+            "value": "हर टेक एक फ़ाइनल कट में"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Setiap take jadi hasil akhir, tanpa batas"
+            "value": "Setiap take jadi potongan jadi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのテイクを完成カットに、無制限"
+            "value": "すべてのテイクを完成カットに"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "हरेक टेकबाट तयार कट, असीमित"
+            "value": "हरेक टेक पूरा कटमा"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada gravação em um corte final, sem limite"
+            "value": "Cada take em um corte final"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ہر ٹیک سے مکمل کٹ، لامحدود"
+            "value": "ہر ٹیک مکمل کٹ میں"
           }
         }
       }
     },
-    "Every vlog cut and captioned, unlimited": {
+    "Every vlog cut and captioned": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every vlog cut and captioned"
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل مدونة فيديو مقصوصة ومترجمة، بلا حدود"
+            "value": "كل مدونة مرئية مقصوصة ومترجمة"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "প্রতিটি ভ্লগ কাটা ও ক্যাপশনসহ, সীমাহীন"
+            "value": "প্রতিটি ভ্লগ কাট ও ক্যাপশনসহ"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeder Vlog geschnitten und untertitelt, unbegrenzt"
+            "value": "Jeder Vlog geschnitten und untertitelt"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada vlog cortado y subtitulado, sin límite"
+            "value": "Cada vlog cortado y subtitulado"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chaque vlog monté et sous-titré, sans limite"
+            "value": "Chaque vlog monté et sous-titré"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "हर व्लॉग कटा और कैप्शन के साथ, असीमित"
+            "value": "हर व्लॉग कट और कैप्शन के साथ"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Setiap vlog dipotong dan diberi teks, tanpa batas"
+            "value": "Setiap vlog dipotong dan diberi teks"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのVlogをカットして字幕付きに、無制限"
+            "value": "すべてのvlogをカットして字幕付きに"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "हरेक भ्लग कट र क्याप्सनसहित, असीमित"
+            "value": "हरेक भ्लग कट र क्याप्सनसहित"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cada vlog cortado e legendado, sem limite"
+            "value": "Cada vlog cortado e legendado"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ہر ولاگ کٹا اور کیپشن کے ساتھ، لامحدود"
+            "value": "ہر ولاگ کٹ اور کیپشن کے ساتھ"
           }
         }
       }
@@ -13359,162 +13541,156 @@
         }
       }
     },
-    "Free includes %lld video renders per day. Upgrade to Pro for unlimited.": {
-      "extractionState": "stale",
+    "Free includes 30 credits a month — 3 videos. Pro includes 200 credits — 20 videos.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free includes 30 credits a month — 3 videos. Pro includes 200 credits — 20 videos."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تتضمن الخطة المجانية %lld معالجات فيديو يوميًا. اشترك في Pro للحصول على عدد غير محدود."
+            "value": "المجاني يشمل 30 رصيدًا شهريًا — 3 فيديوهات. Pro يشمل 200 رصيد — 20 فيديو."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "ফ্রি-তে দিনে %lldটি ভিডিও রেন্ডার আছে। সীমাহীনের জন্য Pro নিন।"
+            "value": "ফ্রি-তে মাসে ৩০ ক্রেডিট — ৩টি ভিডিও। Pro-তে ২০০ ক্রেডিট — ২০টি ভিডিও।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Gratis-Tarif enthält %lld Videos pro Tag. Mit Pro unbegrenzt."
-          }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld video per day. Upgrade to Pro for unlimited."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free includes %lld videos per day. Upgrade to Pro for unlimited."
-                }
-              }
-            }
+            "value": "Kostenlos: 30 Credits im Monat – 3 Videos. Pro: 200 Credits – 20 Videos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El plan gratuito incluye %lld renders de vídeo al día. Pasa a Pro para tenerlos sin límite."
+            "value": "Gratis incluye 30 créditos al mes: 3 vídeos. Pro incluye 200 créditos: 20 vídeos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La version gratuite inclut %lld rendus vidéo par jour. Passez à Pro pour l'illimité."
+            "value": "Le gratuit inclut 30 crédits par mois — 3 vidéos. Pro inclut 200 crédits — 20 vidéos."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "फ़्री में रोज़ %lld वीडियो रेंडर शामिल हैं। असीमित के लिए Pro लें।"
+            "value": "फ़्री में हर महीने 30 क्रेडिट — 3 वीडियो। Pro में 200 क्रेडिट — 20 वीडियो।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Paket gratis mencakup %lld render video per hari. Naik ke Pro untuk tanpa batas."
+            "value": "Gratis mencakup 30 kredit sebulan — 3 video. Pro mencakup 200 kredit — 20 video."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無料プランは1日%lld本のレンダリングです。Pro なら無制限。"
+            "value": "無料は月30クレジット（動画3本）。Proは200クレジット（動画20本）。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "निःशुल्कमा दैनिक %lld भिडियो रेन्डर छन्। असीमितका लागि Pro लिनुहोस्।"
+            "value": "निःशुल्कमा महिनामा ३० क्रेडिट — ३ भिडियो। Pro मा २०० क्रेडिट — २० भिडियो।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O plano gratuito inclui %lld renders de vídeo por dia. Assine o Pro para ter ilimitado."
+            "value": "O grátis inclui 30 créditos por mês — 3 vídeos. O Pro inclui 200 créditos — 20 vídeos."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "مفت پلان میں روزانہ %lld ویڈیو رینڈرز شامل ہیں۔ لامحدود کے لیے Pro لیں۔"
+            "value": "مفت میں ماہانہ 30 کریڈٹ — 3 ویڈیوز۔ Pro میں 200 کریڈٹ — 20 ویڈیوز۔"
           }
         }
       }
     },
-    "Free includes a limited number of saved videos. Pro saves and shares every video — plus unlimited renders and chats.": {
-      "extractionState": "stale",
+    "Free includes a limited number of saved videos. Pro saves and shares every video — plus 200 credits a month and unlimited chats.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free includes a limited number of saved videos. Pro saves and shares every video — plus 200 credits a month and unlimited chats."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تتضمن الخطة المجانية عددًا محدودًا من الفيديوهات المحفوظة. يحفظ Pro كل فيديو ويشاركه — مع معالجات ومحادثات بلا حدود."
+            "value": "المجاني يشمل عددًا محدودًا من الفيديوهات المحفوظة. Pro يحفظ ويشارك كل فيديو — مع 200 رصيد شهريًا ومحادثات غير محدودة."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "ফ্রি-তে সংরক্ষিত ভিডিওর সংখ্যা সীমিত। Pro প্রতিটি ভিডিও সংরক্ষণ ও শেয়ার করে — সঙ্গে সীমাহীন রেন্ডার ও চ্যাট।"
+            "value": "ফ্রি-তে সীমিত সংখ্যক ভিডিও সেভ হয়। Pro প্রতিটি ভিডিও সেভ ও শেয়ার করে — সঙ্গে মাসে ২০০ ক্রেডিট ও আনলিমিটেড চ্যাট।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Gratis-Tarif enthält eine begrenzte Zahl gespeicherter Videos. Pro speichert und teilt jedes Video — dazu unbegrenzt viele neue Videos und Chats."
+            "value": "Kostenlos speicherst du begrenzt viele Videos. Pro speichert und teilt jedes Video – plus 200 Credits im Monat und unbegrenzte Chats."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El plan gratuito incluye un número limitado de vídeos guardados. Pro guarda y comparte todos los vídeos, además de renders y chats ilimitados."
+            "value": "Gratis incluye un número limitado de vídeos guardados. Pro guarda y comparte todos — más 200 créditos al mes y chats ilimitados."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La version gratuite inclut un nombre limité de vidéos enregistrées. Pro enregistre et partage chaque vidéo — plus des rendus et discussions illimités."
+            "value": "Le gratuit limite les vidéos enregistrées. Pro enregistre et partage chaque vidéo — plus 200 crédits par mois et des chats illimités."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "फ़्री में सेव किए गए वीडियो की संख्या सीमित है। Pro हर वीडियो सेव और शेयर करता है — साथ में असीमित रेंडर और चैट।"
+            "value": "फ़्री में सीमित वीडियो सेव होते हैं। Pro हर वीडियो सेव और शेयर करता है — साथ में हर महीने 200 क्रेडिट और अनलिमिटेड चैट।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Paket gratis mencakup jumlah video tersimpan yang terbatas. Pro menyimpan dan membagikan setiap video — plus render dan obrolan tanpa batas."
+            "value": "Gratis menyimpan video dalam jumlah terbatas. Pro menyimpan dan membagikan setiap video — plus 200 kredit sebulan dan chat tanpa batas."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無料プランで保存できる動画数には上限があります。Pro はすべての動画を保存・共有でき、レンダリングとチャットも無制限。"
+            "value": "無料では保存できる動画数に上限があります。Proはすべての動画を保存・共有 — さらに月200クレジットとチャット無制限。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "निःशुल्कमा सुरक्षित भिडियोको संख्या सीमित छ। Pro ले हरेक भिडियो सुरक्षित र साझा गर्छ — सँगै असीमित रेन्डर र च्याट।"
+            "value": "निःशुल्कमा सीमित भिडियो मात्र सेभ हुन्छ। Pro ले हरेक भिडियो सेभ र सेयर गर्छ — साथै महिनामा २०० क्रेडिट र असीमित च्याट।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O plano gratuito inclui um número limitado de vídeos salvos. O Pro salva e compartilha todos os vídeos — além de renders e chats ilimitados."
+            "value": "O grátis salva um número limitado de vídeos. O Pro salva e compartilha todos — mais 200 créditos por mês e chats ilimitados."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "مفت پلان میں محفوظ ویڈیوز کی تعداد محدود ہے۔ Pro ہر ویڈیو محفوظ اور شیئر کرتا ہے — ساتھ لامحدود رینڈرز اور چیٹس۔"
+            "value": "مفت میں محدود ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ویڈیو محفوظ اور شیئر کرتا ہے — ساتھ ماہانہ 200 کریڈٹ اور لامحدود چیٹس۔"
           }
         }
       }
@@ -14479,72 +14655,79 @@
         }
       }
     },
-    "Go beyond your one free video a day — everything, unlimited.": {
+    "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تجاوز الفيديو المجاني الواحد يوميًا — كل شيء، بلا حدود."
+            "value": "تجاوز الفيديوهات الثلاثة المجانية شهريًا — يمنحك Pro ‏200 رصيد، أي 20 فيديو."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "দিনে একটি বিনামূল্যের ভিডিওর বাইরে যান — সবকিছু, সীমাহীন।"
+            "value": "মাসে ৩টি ফ্রি ভিডিওর বাইরে যান — Pro দেয় ২০০ ক্রেডিট, ২০টি ভিডিও।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mehr als ein Gratis-Video pro Tag — alles, unbegrenzt."
+            "value": "Mehr als die 3 kostenlosen Videos im Monat – Pro gibt dir 200 Credits, 20 Videos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ve más allá de tu vídeo gratis al día: todo, sin límite."
+            "value": "Ve más allá de los 3 vídeos gratis al mes: Pro te da 200 créditos, 20 vídeos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dépasse ta vidéo gratuite par jour — tout, en illimité."
+            "value": "Dépasse les 3 vidéos gratuites par mois — Pro te donne 200 crédits, 20 vidéos."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "रोज़ के एक मुफ़्त वीडियो से आगे बढ़ें — सब कुछ, असीमित।"
+            "value": "हर महीने 3 फ़्री वीडियो से आगे बढ़ें — Pro देता है 200 क्रेडिट, 20 वीडियो।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lampaui satu video gratis per hari — semuanya, tanpa batas."
+            "value": "Lampaui 3 video gratis sebulan — Pro memberi 200 kredit, 20 video."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1日1本の無料動画を超えて — すべて無制限に。"
+            "value": "無料の月3本を超えて — Proなら200クレジット、動画20本。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "दिनको एक निःशुल्क भिडियोभन्दा अगाडि बढ्नुहोस् — सबै, असीमित।"
+            "value": "महिनाको ३ निःशुल्क भिडियोभन्दा अगाडि — Pro ले दिन्छ २०० क्रेडिट, २० भिडियो।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vá além do seu vídeo grátis por dia — tudo, sem limite."
+            "value": "Vá além dos 3 vídeos grátis por mês — o Pro dá 200 créditos, 20 vídeos."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "روزانہ ایک مفت ویڈیو سے آگے بڑھیں — سب کچھ، لامحدود۔"
+            "value": "ماہانہ 3 مفت ویڈیوز سے آگے بڑھیں — Pro دیتا ہے 200 کریڈٹ، 20 ویڈیوز۔"
           }
         }
       }
@@ -16995,73 +17178,79 @@
         }
       }
     },
-    "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus unlimited renders and chats.": {
-      "extractionState": "stale",
+    "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus 200 credits a month and unlimited chats.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus 200 credits a month and unlimited chats."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "عدّل التحريرات المكتملة دون إعادة الرفع. يفتح Pro إعادة التحرير إضافة إلى معالجات ومحادثات بلا حدود."
+            "value": "عدّل النتائج النهائية دون إعادة الرفع. Pro يفتح إعادة التحرير مع 200 رصيد شهريًا ومحادثات غير محدودة."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "আবার আপলোড না করেই সম্পন্ন এডিট বদলান। Pro পুনঃসম্পাদনার সঙ্গে সীমাহীন রেন্ডার ও চ্যাট খুলে দেয়।"
+            "value": "আবার আপলোড ছাড়াই শেষ হওয়া এডিট বদলান। Pro রি-এডিট খোলে — সঙ্গে মাসে ২০০ ক্রেডিট ও আনলিমিটেড চ্যাট।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ändere fertige Videos ohne erneutes Hochladen. Pro schaltet die Neubearbeitung frei, dazu unbegrenzt viele neue Videos und Chats."
+            "value": "Ändere fertige Edits ohne erneutes Hochladen. Pro schaltet Re-Edit frei – plus 200 Credits im Monat und unbegrenzte Chats."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cambia montajes terminados sin volver a subirlos. Pro desbloquea la reedición, además de renders y chats ilimitados."
+            "value": "Cambia ediciones terminadas sin volver a subirlas. Pro desbloquea la reedición — más 200 créditos al mes y chats ilimitados."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modifiez des montages terminés sans réimporter. Pro débloque la retouche, plus des rendus et discussions illimités."
+            "value": "Modifie un montage terminé sans le réimporter. Pro débloque la retouche — plus 200 crédits par mois et des chats illimités."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "तैयार एडिट्स में बिना दोबारा अपलोड किए बदलाव करें। Pro री-एडिट के साथ असीमित रेंडर और चैट देता है।"
+            "value": "दोबारा अपलोड किए बिना पूरे एडिट बदलें। Pro री-एडिट खोलता है — साथ में हर महीने 200 क्रेडिट और अनलिमिटेड चैट।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ubah editan yang sudah jadi tanpa unggah ulang. Pro membuka edit ulang plus render dan obrolan tanpa batas."
+            "value": "Ubah hasil edit tanpa mengunggah ulang. Pro membuka alur edit ulang — plus 200 kredit sebulan dan chat tanpa batas."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "アップロードし直さずに完成した編集を変更できます。Pro では再編集に加え、レンダリングとチャットも無制限。"
+            "value": "再アップロードなしで完成した編集を変更。Proは再編集を解放 — さらに月200クレジットとチャット無制限。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "पुनः अपलोड नगरी तयार सम्पादनमा परिवर्तन गर्नुहोस्। Pro ले पुनः सम्पादनसँगै असीमित रेन्डर र च्याट खोल्छ।"
+            "value": "पुनः अपलोड नगरी सकिएका सम्पादन बदल्नुहोस्। Pro ले रि-एडिट खोल्छ — साथै महिनामा २०० क्रेडिट र असीमित च्याट।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Altere edições finalizadas sem reenviar. O Pro libera a reedição, além de renders e chats ilimitados."
+            "value": "Altere edições prontas sem reenviar. O Pro libera a reedição — mais 200 créditos por mês e chats ilimitados."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "دوبارہ اپ لوڈ کیے بغیر مکمل ایڈٹس میں تبدیلی کریں۔ Pro ری ایڈٹ کے ساتھ لامحدود رینڈرز اور چیٹس دیتا ہے۔"
+            "value": "دوبارہ اپلوڈ کیے بغیر مکمل ایڈٹ بدلیں۔ Pro ری-ایڈٹ کھولتا ہے — ساتھ ماہانہ 200 کریڈٹ اور لامحدود چیٹس۔"
           }
         }
       }
@@ -28676,230 +28865,6 @@
         }
       }
     },
-    "Unlimited renders": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "عمليات تصيير غير محدودة"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "সীমাহীন রেন্ডার"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unbegrenzt viele neue Videos"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlimited renders"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renderizados ilimitados"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rendus illimités"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित रेंडर"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Render tanpa batas"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "レンダリング無制限"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित रेन्डर"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renderizações ilimitadas"
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "لامحدود رینڈرز"
-          }
-        }
-      }
-    },
-    "Unlimited videos": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "فيديوهات بلا حدود"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "আনলিমিটেড ভিডিও"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unbegrenzte Videos"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlimited videos"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Videos ilimitados"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vidéos illimitées"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित वीडियो"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video tanpa batas"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "動画は無制限"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित भिडियो"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vídeos ilimitados"
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "لامحدود ویڈیوز"
-          }
-        }
-      }
-    },
-    "Unlimited videos, no daily cap": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "فيديوهات غير محدودة، بلا حد يومي"
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "সীমাহীন ভিডিও, দৈনিক কোনো সীমা নেই"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unbegrenzte Videos, kein Tageslimit"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vídeos ilimitados, sin límite diario"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vidéos illimitées, sans limite quotidienne"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित वीडियो, कोई दैनिक सीमा नहीं"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video tanpa batas, tanpa kuota harian"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "動画は無制限、1日の上限なし"
-          }
-        },
-        "ne": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "असीमित भिडियो, दैनिक सीमा छैन"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vídeos ilimitados, sem limite diário"
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "لامحدود ویڈیوز، کوئی روزانہ حد نہیں"
-          }
-        }
-      }
-    },
     "Unlock Promptly %@": {
       "extractionState": "manual",
       "localizations": {
@@ -33437,6 +33402,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "آج کی مفت ویڈیو استعمال ہو چکی ہے"
+          }
+        }
+      }
+    },
+    "You've used your credits for now. Pro includes 200 credits a month — 20 videos.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used your credits for now. Pro includes 200 credits a month — 20 videos."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "استهلكت رصيدك حاليًا. Pro يشمل 200 رصيد شهريًا — 20 فيديو."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ক্রেডিট এখন শেষ। Pro-তে মাসে ২০০ ক্রেডিট — ২০টি ভিডিও।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Credits sind vorerst aufgebraucht. Pro enthält 200 Credits im Monat – 20 Videos."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Has agotado tus créditos por ahora. Pro incluye 200 créditos al mes: 20 vídeos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tes crédits sont épuisés pour le moment. Pro inclut 200 crédits par mois — 20 vidéos."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपके क्रेडिट फ़िलहाल ख़त्म हो गए हैं। Pro में हर महीने 200 क्रेडिट — 20 वीडियो।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kreditmu habis untuk saat ini. Pro mencakup 200 kredit sebulan — 20 video."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットを使い切りました。Proは月に200クレジット — 動画20本。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको क्रेडिट अहिलेलाई सकियो। Pro मा महिनामा २०० क्रेडिट — २० भिडियो।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus créditos acabaram por enquanto. O Pro inclui 200 créditos por mês — 20 vídeos."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کے کریڈٹ فی الحال ختم ہو گئے۔ Pro میں ماہانہ 200 کریڈٹ — 20 ویڈیوز۔"
           }
         }
       }

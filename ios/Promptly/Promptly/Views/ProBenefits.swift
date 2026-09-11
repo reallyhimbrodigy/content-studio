@@ -162,7 +162,7 @@ enum ProBenefits {
     /// easy to miss because it reads as conservative.
     static func headlineVideoClaim(creditsEnabled: Bool, monthlyCredits: Int?) -> Benefit {
         guard creditsEnabled, let c = monthlyCredits, c > 0 else {
-            return Benefit(icon: "infinity", text: String(localized: "Unlimited videos, no daily cap"))
+            return Benefit(icon: "infinity", text: String(localized: "200 credits a month — 20 videos"))
         }
         return Benefit(icon: "infinity",
                        text: String(localized: "\(monthlyVideos(credits: c)) videos a month"))
@@ -193,7 +193,7 @@ enum ProBenefits {
     static var paywallSubtitle: String {
         let o = OnboardingState.shared
         guard o.creditsEnabled, let monthly = o.creditsMonthlyAllowance, monthly > 0 else {
-            return String(localized: "Go beyond your one free video a day — everything, unlimited.")
+            return String(localized: "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos.")
         }
         return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
     }
@@ -217,7 +217,7 @@ enum ProBenefits {
     static func cardFeatures(creditsEnabled: Bool, monthlyCredits: Int?) -> [String] {
         var out: [String] = []
         if !creditsEnabled || (monthlyCredits ?? 0) <= 0 {
-            out.append(String(localized: "Unlimited videos"))
+            out.append(String(localized: "20 videos a month"))
         }
         out += [
             String(localized: "Auto captions and cuts"),
@@ -363,10 +363,10 @@ enum ProBenefits {
         // compound-key gate now prevents.
         let made: String? = {
             switch OnboardingQuestion.contentTypeV2(videoType) {
-            case "podcast":     return String(localized: "Every episode into clips, unlimited")
-            case "talkinghead": return String(localized: "Every take into a finished cut, unlimited")
-            case "vlogs":       return String(localized: "Every vlog cut and captioned, unlimited")
-            case "promo":       return String(localized: "Every promo cut and captioned, unlimited")
+            case "podcast":     return String(localized: "Every episode into clips")
+            case "talkinghead": return String(localized: "Every take into a finished cut")
+            case "vlogs":       return String(localized: "Every vlog cut and captioned")
+            case "promo":       return String(localized: "Every promo cut and captioned")
             default:            return nil
             }
         }()
