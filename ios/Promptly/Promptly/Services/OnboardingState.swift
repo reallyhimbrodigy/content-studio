@@ -242,7 +242,29 @@ final class OnboardingState: ObservableObject {
             }
             pushPrimerEnabled = (obj?["push_primer"] as? String) == "on"
             exportGateTwoPageEnabled = (obj?["exportgate_two_page"] as? String) == "on"
-            creditsEnabled = (obj?["credits"] as? String) == "on"
+            // THE METER MOVING, NOT THE METER BEING DRAWABLE (2026-09-11).
+            //
+            // This read `credits`, which only says the meter MAY BE DRAWN. That
+            // flag is ON in production while CREDITS_DEBIT_ENABLED is off, so
+            // every surface gated on creditsEnabled has been making claims
+            // against a meter that does not move:
+            //
+            //   ProBenefits.headlineVideoClaim falls back to storeKitAllowance()
+            //   when the server sends no credits_monthly (it does not), so an
+            //   entitled Pro subscriber is told "20 videos a month" — while
+            //   their App Store listing says "Unlimited renders" and they really
+            //   do get unlimited. UNDERSELLING the product, which is the failure
+            //   direction that reads as conservative and therefore goes
+            //   unnoticed. That file's own comment warns about exactly this.
+            //
+            //   CreditBadge and CreditsSurfaces show a balance that never
+            //   decreases, which is the same lie from the other side.
+            //
+            // These were one thing when this line was written and are two things
+            // now. `credits_metering` conjoins everything that must be true for
+            // a debit to actually happen; older builds keep reading `credits`
+            // unchanged, so this is additive on the server.
+            creditsEnabled = (obj?["credits_metering"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
             #if DEBUG
             debugReapplyForcedFlags()   // the refresh must not undo a forced flag
@@ -353,7 +375,7 @@ final class OnboardingState: ObservableObject {
         // flip, so none could be recorded, screenshotted, or reviewed before
         // shipping. A surface that cannot be seen before it ships is reviewed
         // by its users.
-        case "credits": if !creditsEnabled { creditsEnabled = true }
+        case "credits", "credits_metering": if !creditsEnabled { creditsEnabled = true }
         case "before_after": if !beforeAfterEnabled { beforeAfterEnabled = true }
         case "instant_questions": if !instantQuestionsEnabled { instantQuestionsEnabled = true }
         case "reverse_trial": if !reverseTrialEnabled { reverseTrialEnabled = true }
