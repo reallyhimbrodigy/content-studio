@@ -313,11 +313,23 @@ test('the sweep SELECTS the columns the credits refund reads', () => {
   // credits_debited is the receipt. If the sweep does not select it, every job
   // reads undefined and the refund no-ops as "never debited" — green tests,
   // zero refunds.
-  const iSel = LEG.indexOf(".select('id, user_id");
-  const sel = LEG.slice(iSel, iSel + 260);
+  // ANCHORED ON THE COLUMN LIST, NOT ON `.select(` — the list moved into a
+  // SELECT_COLS constant when the sweep grew a second query, and pinning the
+  // call shape made a correct refactor fail with a message about a missing
+  // column that was never missing.
+  const iSel = LEG.indexOf("'id, user_id");
+  assert.ok(iSel > 0, 'the sweep column list was not found at all');
+  const sel = LEG.slice(iSel, iSel + 300);
   assert.match(sel, /credits_debited/,
     'without this column every refund no-ops as never-debited');
   assert.match(sel, /credits_refunded_at/);
+  // And BOTH queries must use it — a second selector that omits the credit
+  // columns reads them as undefined and no-ops exactly as a missing column would.
+  const selects = (LEG.match(/\.select\(/g) || []).length;
+  const usesConst = (LEG.match(/SELECT_COLS/g) || []).length;
+  assert.ok(usesConst === 0 || usesConst >= 2,
+    'if the column list is a constant, every sweep query must use it');
+  assert.ok(selects >= 1);
 });
 
 test('the SSE frame carries a type discriminator', () => {
