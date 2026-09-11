@@ -6725,79 +6725,79 @@
         }
       }
     },
-    "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want.": {
+    "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "عدّل فيديو جاهزًا دون إرساله مرة أخرى. برو يتيح لك ذلك، وفيديوهات ومحادثات بلا حدود."
+            "value": "عدّل فيديو نهائيًا دون إعادة إرساله. Pro يتيح ذلك، مع 200 رصيد شهريًا — 20 فيديو — ومحادثات غير محدودة."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "শেষ হওয়া ভিডিও আবার না পাঠিয়েই বদলান। Pro-তে সেটা করা যায়, আর যত খুশি ভিডিও ও চ্যাট।"
+            "value": "শেষ হওয়া ভিডিও আবার না পাঠিয়েই বদলান। Pro তা দেয়, সঙ্গে মাসে ২০০ ক্রেডিট — ২০টি ভিডিও — ও আনলিমিটেড চ্যাট।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ändere ein fertiges Video, ohne es nochmal zu schicken. Mit Pro geht das — und so viele Videos und Chats du willst."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want."
+            "value": "Ändere ein fertiges Video, ohne es erneut zu senden. Pro macht das möglich – mit 200 Credits im Monat, 20 Videos, und unbegrenzten Chats."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cambia un vídeo terminado sin volver a enviarlo. Pro te deja hacerlo, y todos los vídeos y chats que quieras."
+            "value": "Cambia un vídeo terminado sin volver a enviarlo. Pro te lo permite, con 200 créditos al mes (20 vídeos) y chats ilimitados."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modifie une vidéo finie sans la renvoyer. Pro te le permet, avec autant de vidéos et de discussions que tu veux."
+            "value": "Modifie une vidéo finie sans la renvoyer. Pro le permet, avec 200 crédits par mois — 20 vidéos — et des chats illimités."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "बना हुआ वीडियो दोबारा भेजे बिना बदलें। Pro में यह हो सकता है, और जितने चाहें वीडियो और चैट।"
+            "value": "पूरा हो चुका वीडियो दोबारा भेजे बिना बदलें। Pro यह देता है — हर महीने 200 क्रेडिट, 20 वीडियो, और अनलिमिटेड चैट।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ubah video yang sudah jadi tanpa mengirimnya lagi. Pro bisa, plus video dan obrolan sebanyak yang kamu mau."
+            "value": "Ubah video jadi tanpa mengirim ulang. Pro memungkinkannya, dengan 200 kredit sebulan — 20 video — dan chat tanpa batas."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "できあがった動画を送り直さずに変えられます。Proならできて、動画もチャットも好きなだけ。"
+            "value": "完成した動画を送り直さずに変更。Proなら可能です — 月200クレジット（動画20本）とチャット無制限。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "बनिसकेको भिडियो फेरि नपठाई फेर्नुहोस्। Pro मा यो सम्भव छ, र जति चाहे भिडियो र च्याट।"
+            "value": "सकिएको भिडियो पुनः नपठाई बदल्नुहोस्। Pro ले यो दिन्छ — महिनामा २०० क्रेडिट, २० भिडियो, र असीमित च्याट।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mude um vídeo pronto sem enviar de novo. O Pro deixa, e ainda dá vídeos e conversas sem limite."
+            "value": "Altere um vídeo pronto sem reenviá-lo. O Pro permite isso, com 200 créditos por mês — 20 vídeos — e chats ilimitados."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "مکمل ویڈیو دوبارہ بھیجے بغیر بدلیں۔ Pro میں یہ ممکن ہے، اور جتنی چاہیں ویڈیوز اور چیٹس۔"
+            "value": "مکمل ویڈیو دوبارہ بھیجے بغیر بدلیں۔ Pro یہ دیتا ہے — ماہانہ 200 کریڈٹ، 20 ویڈیوز، اور لامحدود چیٹس۔"
           }
         }
       }
@@ -12259,143 +12259,156 @@
         }
       }
     },
-    "Everything you made is still here. Go Pro to keep creating without limits.": {
-      "extractionState": "stale",
+    "Everything you made is still here. Go Pro for 200 credits a month — 20 videos.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything you made is still here. Go Pro for 200 credits a month — 20 videos."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل ما أنشأته لا يزال هنا. اشترك في Pro لتواصل الإنشاء بلا حدود."
+            "value": "كل ما صنعته ما زال هنا. اشترك في Pro للحصول على 200 رصيد شهريًا — 20 فيديو."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "আপনার বানানো সবকিছু এখানেই আছে। সীমা ছাড়া বানাতে Pro নিন।"
+            "value": "আপনার বানানো সব কিছু এখনও আছে। Pro নিন — মাসে ২০০ ক্রেডিট, ২০টি ভিডিও।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alles, was du erstellt hast, ist noch da. Hol dir Pro und erstelle ohne Limits weiter."
+            "value": "Alles, was du erstellt hast, ist noch da. Hol dir Pro für 200 Credits im Monat – 20 Videos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todo lo que has creado sigue aquí. Pasa a Pro para seguir creando sin límites."
+            "value": "Todo lo que creaste sigue aquí. Hazte Pro por 200 créditos al mes: 20 vídeos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tout ce que tu as créé est toujours là. Passe à Pro pour continuer sans limites."
+            "value": "Tout ce que tu as créé est toujours là. Passe à Pro pour 200 crédits par mois — 20 vidéos."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "आपका बनाया सब कुछ यहीं है। बिना सीमा बनाते रहने के लिए Pro लें।"
+            "value": "आपने जो बनाया वह सब यहीं है। Pro लें — हर महीने 200 क्रेडिट, 20 वीडियो।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Semua yang kamu buat masih ada. Naik ke Pro untuk terus berkarya tanpa batas."
+            "value": "Semua yang kamu buat masih ada. Ambil Pro untuk 200 kredit sebulan — 20 video."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "作成したものはすべて残っています。Pro なら制限なく作り続けられます。"
+            "value": "作ったものはすべて残っています。Proなら月200クレジット — 動画20本。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "तपाईंले बनाएको सबै यहीँ छ। सीमाविना बनाइरहन Pro लिनुहोस्।"
+            "value": "तपाईंले बनाएका सबै यहीँ छन्। Pro लिनुहोस् — महिनामा २०० क्रेडिट, २० भिडियो।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tudo o que você criou continua aqui. Assine o Pro para continuar criando sem limites."
+            "value": "Tudo o que você criou continua aqui. Assine o Pro por 200 créditos por mês — 20 vídeos."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "آپ کا بنایا ہوا سب کچھ یہیں ہے۔ بغیر حد کے بناتے رہنے کے لیے Pro لیں۔"
+            "value": "آپ نے جو بنایا وہ سب یہیں ہے۔ Pro لیں — ماہانہ 200 کریڈٹ، 20 ویڈیوز۔"
           }
         }
       }
     },
-    "Everything's unlocked. No daily limit — create as much as you want.": {
+    "Everything's unlocked — every feature, no daily cap on chats.": {
+      "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything's unlocked — every feature, no daily cap on chats."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كل شيء مفتوح. بلا حد يومي — أنشئ بقدر ما تشاء."
+            "value": "كل شيء مفتوح — جميع الميزات، ولا حد يومي على المحادثات."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "সবকিছু আনলক। দৈনিক কোনো সীমা নেই — যত খুশি বানান।"
+            "value": "সব কিছু আনলকড — প্রতিটি ফিচার, চ্যাটে কোনো দৈনিক সীমা নেই।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alles freigeschaltet. Kein Tageslimit — erstelle so viel du willst."
+            "value": "Alles freigeschaltet – jede Funktion, kein Tageslimit für Chats."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todo desbloqueado. Sin límite diario: crea todo lo que quieras."
+            "value": "Todo desbloqueado: todas las funciones y sin límite diario de chats."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tout est débloqué. Aucune limite quotidienne — crée autant que tu veux."
+            "value": "Tout est débloqué — toutes les fonctions, aucune limite quotidienne sur les discussions."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "सब कुछ अनलॉक है। कोई दैनिक सीमा नहीं — जितना चाहें बनाएँ।"
+            "value": "सब कुछ अनलॉक — हर फ़ीचर, चैट पर कोई दैनिक सीमा नहीं।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Semuanya terbuka. Tanpa batas harian — buat sebanyak yang kamu mau."
+            "value": "Semua terbuka — setiap fitur, tanpa batas harian untuk chat."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべて解放されました。1日の上限なし、好きなだけつくれます。"
+            "value": "すべて解放 — 全機能、チャットの1日の上限なし。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "सबै अनलक भयो। दैनिक सीमा छैन — जति चाहनुहुन्छ बनाउनुहोस्।"
+            "value": "सबै अनलक — हरेक फिचर, च्याटमा दैनिक सीमा छैन।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tudo liberado. Sem limite diário — crie quanto quiser."
+            "value": "Tudo liberado — todos os recursos, sem limite diário de chats."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "سب کچھ اَن لاک ہے۔ کوئی روزانہ حد نہیں — جتنا چاہیں بنائیں۔"
+            "value": "سب کچھ کھلا — ہر فیچر، چیٹس پر کوئی روزانہ حد نہیں۔"
           }
         }
       }
@@ -13208,199 +13221,79 @@
         }
       }
     },
-    "Free gives you %lld videos a day. Pro gives you as many as you want.": {
+    "Free gives you 3 videos a month. Pro gives you 20.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free gives you 3 videos a month. Pro gives you 20."
+          }
+        },
         "ar": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "المجاني يمنحك فيديو واحدًا في اليوم. برو يمنحك ما تشاء."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "المجاني يمنحك %lld فيديو في اليوم. برو يمنحك ما تشاء."
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "المجاني يمنحك 3 فيديوهات شهريًا. Pro يمنحك 20."
           }
         },
         "bn": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "ফ্রিতে দিনে %lld টি ভিডিও পাবেন। Pro-তে যত খুশি।"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি-তে মাসে ৩টি ভিডিও। Pro-তে ২০টি।"
           }
         },
         "de": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Gratis bekommst du %lld Video am Tag. Mit Pro so viele du willst."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Gratis bekommst du %lld Videos am Tag. Mit Pro so viele du willst."
-                }
-              }
-            }
-          }
-        },
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free gives you %lld video a day. Pro gives you as many as you want."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Free gives you %lld videos a day. Pro gives you as many as you want."
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kostenlos: 3 Videos im Monat. Pro: 20."
           }
         },
         "es": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Gratis te da %lld vídeo al día. Pro te da todos los que quieras."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Gratis te da %lld vídeos al día. Pro te da todos los que quieras."
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gratis te da 3 vídeos al mes. Pro te da 20."
           }
         },
         "fr": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "En gratuit tu as %lld vidéo par jour. Avec Pro, autant que tu veux."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "En gratuit tu as %lld vidéos par jour. Avec Pro, autant que tu veux."
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le gratuit te donne 3 vidéos par mois. Pro t’en donne 20."
           }
         },
         "hi": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "मुफ़्त में रोज़ %lld वीडियो मिलता है। Pro में जितने चाहें।"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "मुफ़्त में रोज़ %lld वीडियो मिलते हैं। Pro में जितने चाहें।"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़्री में हर महीने 3 वीडियो। Pro में 20।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gratis memberi %lld video sehari. Pro sebanyak yang kamu mau."
+            "value": "Gratis memberi 3 video sebulan. Pro memberi 20."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無料は1日%lld本です。Proなら好きなだけ作れます。"
+            "value": "無料は月に動画3本。Proは20本。"
           }
         },
         "ne": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "निःशुल्कमा दिनको %lld भिडियो। Pro मा जति चाहे पनि।"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "निःशुल्कमा महिनामा ३ भिडियो। Pro मा २०।"
           }
         },
         "pt-BR": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "O grátis dá %lld vídeo por dia. O Pro dá quantos você quiser."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "O grátis dá %lld vídeos por dia. O Pro dá quantos você quiser."
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "O grátis dá 3 vídeos por mês. O Pro dá 20."
           }
         },
         "ur": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "مفت میں روزانہ %lld ویڈیو۔ Pro میں جتنی چاہیں۔"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "مفت میں روزانہ %lld ویڈیوز۔ Pro میں جتنی چاہیں۔"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "مفت میں ماہانہ 3 ویڈیوز۔ Pro میں 20۔"
           }
         }
       }
@@ -13695,79 +13588,79 @@
         }
       }
     },
-    "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want.": {
+    "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos."
+          }
+        },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "المجاني يحفظ عددًا قليلًا من الفيديوهات فقط. برو يحفظ ويشارك كل واحد، وبلا حدود."
+            "value": "المجاني يحفظ عددًا قليلًا من الفيديوهات فقط. Pro يحفظ ويشارك كل واحد، مع 200 رصيد شهريًا — 20 فيديو."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "ফ্রিতে অল্প কিছু ভিডিও সেভ হয়। Pro সব সেভ করে, শেয়ার করে, আর যত খুশি বানাতে দেয়।"
+            "value": "ফ্রি-তে অল্প কিছু ভিডিও সেভ হয়। Pro প্রতিটি সেভ ও শেয়ার করে, সঙ্গে মাসে ২০০ ক্রেডিট — ২০টি ভিডিও।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gratis kannst du nur ein paar Videos speichern. Pro speichert und teilt jedes — und du machst so viele du willst."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want."
+            "value": "Kostenlos speicherst du nur wenige Videos. Pro speichert und teilt jedes – mit 200 Credits im Monat, 20 Videos."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gratis solo guarda unos pocos vídeos. Pro guarda y comparte todos, y te deja hacer los que quieras."
+            "value": "Gratis solo guarda unos pocos vídeos. Pro guarda y comparte todos, con 200 créditos al mes: 20 vídeos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "En gratuit tu ne gardes que quelques vidéos. Pro garde et partage chacune, et tu en fais autant que tu veux."
+            "value": "Le gratuit n’enregistre que quelques vidéos. Pro enregistre et partage chacune, avec 200 crédits par mois — 20 vidéos."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "मुफ़्त में सिर्फ़ कुछ वीडियो सेव होते हैं। Pro हर एक सेव और शेयर करता है, और जितने चाहें बनाएँ।"
+            "value": "फ़्री में कुछ ही वीडियो सेव होते हैं। Pro हर एक सेव और शेयर करता है — हर महीने 200 क्रेडिट, 20 वीडियो।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gratis hanya menyimpan beberapa video. Pro menyimpan dan membagikan semuanya, sebanyak yang kamu mau."
+            "value": "Gratis hanya menyimpan beberapa video. Pro menyimpan dan membagikan semuanya, dengan 200 kredit sebulan — 20 video."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "無料では数本しか保存できません。Proは全部保存して共有でき、好きなだけ作れます。"
+            "value": "無料では数本しか保存できません。Proはすべて保存・共有 — 月200クレジット、動画20本。"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "निःशुल्कमा केही भिडियो मात्र सेभ हुन्छ। Pro ले सबै सेभ र सेयर गर्छ, जति चाहे बनाउन दिन्छ।"
+            "value": "निःशुल्कमा केही भिडियो मात्र सेभ हुन्छ। Pro ले हरेक सेभ र सेयर गर्छ — महिनामा २०० क्रेडिट, २० भिडियो।"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O grátis guarda só alguns vídeos. O Pro guarda e compartilha todos, e deixa fazer quantos quiser."
+            "value": "O grátis salva só alguns vídeos. O Pro salva e compartilha todos, com 200 créditos por mês — 20 vídeos."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "مفت میں صرف چند ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ایک محفوظ اور شیئر کرتا ہے، جتنی چاہیں بنائیں۔"
+            "value": "مفت میں صرف چند ویڈیوز محفوظ ہوتی ہیں۔ Pro ہر ایک محفوظ اور شیئر کرتا ہے — ماہانہ 200 کریڈٹ، 20 ویڈیوز۔"
           }
         }
       }

@@ -94,7 +94,7 @@ struct TrialWallView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                     Text(context == .lapsed
-                         ? "Everything you made is still here. Go Pro to keep creating without limits."
+                         ? String(localized: "Everything you made is still here. Go Pro for 200 credits a month — 20 videos.")
                          : ProBenefits.paywallSubtitle)
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.65))

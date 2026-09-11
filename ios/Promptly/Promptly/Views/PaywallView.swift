@@ -208,12 +208,14 @@ struct PaywallView: View {
     }
     private var subtitle: String {
         switch reason {
-        case .dailyRenders(_, let lim):
-            return String(localized: "Free gives you \(lim) videos a day. Pro gives you as many as you want.")
+        // `lim` was the DAILY render cap. Credits are the limiter now, so the
+        // daily number is no longer the thing being bought against.
+        case .dailyRenders:
+            return String(localized: "Free gives you 3 videos a month. Pro gives you 20.")
         case .dailyChats(_, let lim):
             return String(localized: "Free includes \(lim) AI chat messages per day. Upgrade for unlimited.")
         case .reedit:
-            return String(localized: "Change a finished video without sending it again. Pro lets you do that, and make as many videos and chats as you want.")
+            return String(localized: "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.")
         case .manual:
             return ProBenefits.paywallSubtitle
         case .lumen:
@@ -221,7 +223,7 @@ struct PaywallView: View {
         case .concurrency:
             return String(localized: "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.")
         case .exportGate:
-            return String(localized: "Free lets you save only a few videos. Pro saves and shares every one, and lets you make as many as you want.")
+            return String(localized: "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.")
         // Scheduled surfaces, not cap encounters: nothing was blocked, so there
         // is no limit to name. `paywallSubtitle` is the flag-aware general
         // pitch — and it is the ONE subtitle that switches with the credits
@@ -1189,7 +1191,7 @@ struct ProCelebrationView: View {
                     // duplication benefits-parity-gate exists to prevent.
                     Text(OnboardingState.shared.creditsEnabled
                          ? String(localized: "Your plan is active. Create as much as your monthly credits allow.")
-                         : String(localized: "Everything's unlocked. No daily limit — create as much as you want."))
+                         : String(localized: "Everything's unlocked — every feature, no daily cap on chats."))
                         .cType(15)
                         .foregroundColor(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
