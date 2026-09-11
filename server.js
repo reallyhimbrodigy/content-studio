@@ -1982,7 +1982,15 @@ const server = http.createServer((req, res) => {
           .map((m) => String(m.name || '').replace('models/', ''));
       } catch (e) { out.models_available = 'list_failed:' + String((e && e.message) || e).slice(0, 80); }
       out.candidate_test = {};
-      for (const m of ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
+      // CANDIDATES MUST INCLUDE WHAT WE ACTUALLY RUN. This list tested four
+      // models and none of them was the one chat is pinned to, nor the one
+      // analyze rides — so the diag could report a clean bill while saying
+      // nothing about either live path. `models_available` is NOT a substitute:
+      // it filters on supportedGenerationMethods, and the failure that took
+      // chat down was a 429 from ZERO PROVISIONED QUOTA on a model that listed
+      // perfectly well. Only a real generateContent distinguishes them.
+      for (const m of ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.0-flash',
+                       'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
         try {
           const cr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
