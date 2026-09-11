@@ -4209,8 +4209,22 @@ const server = http.createServer((req, res) => {
           // Which tiers the entitlement map resolved, once anything has asked
           // RC. null = never resolved (or the lookup failed). Missing 'max'
           // here means Max purchases cannot resolve as Max.
+          // NULL MEANT TWO DIFFERENT THINGS AND THE READER COULD NOT TELL.
+          // resolveEntitlementTierMap is LAZY and per-process: it populates on
+          // the first customer sync after a boot. So `null` was both "not asked
+          // yet" (benign, and the normal state for minutes after every deploy)
+          // and "asked and got nothing we recognise" (a renamed lookup_key in
+          // the dashboard, which silently stops a tier resolving and makes
+          // paying users look free).
+          //
+          // Read cold, it looked like the second. It cost an investigation into
+          // whether Max was unsellable — the answer was that nobody had synced
+          // since the restart, and the map resolves ['max','pro'] fine. Same
+          // shape as `credits: on` answering a narrower question than the one
+          // being asked of it.
           entitlementTiers: _rcEntitlementTierMap
             ? [...new Set(Object.values(_rcEntitlementTierMap))].sort() : null,
+          entitlementTiersState: _rcEntitlementTierMap ? 'resolved' : 'not_yet_resolved',
           creditsDebitArmed: CREDITS_DEBIT_ENABLED,
         };
       })(),
