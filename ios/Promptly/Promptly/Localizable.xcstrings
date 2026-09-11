@@ -5850,6 +5850,83 @@
         }
       }
     },
+    "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التعديلات الأكبر تستغرق وقتًا أطول قليلًا — يمكنك إغلاق التطبيق وسنعلمك عندما يصبح جاهزًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "বড় এডিট করতে একটু বেশি সময় লাগে — আপনি অ্যাপটি বন্ধ করতে পারেন, তৈরি হলে আমরা জানিয়ে দেব।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Größere Bearbeitungen dauern etwas länger – du kannst die App schließen, wir sagen dir Bescheid, sobald sie fertig ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las ediciones más grandes tardan un poco más: puedes cerrar la app y te avisaremos cuando esté lista."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les montages plus longs prennent un peu plus de temps — tu peux fermer l'app, on te préviendra dès que c'est prêt."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बड़े एडिट में थोड़ा ज़्यादा समय लगता है — आप ऐप बंद कर सकते हैं, तैयार होने पर हम आपको बता देंगे।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit yang lebih besar butuh waktu sedikit lebih lama — kamu bisa menutup aplikasi, nanti kami beri tahu saat sudah siap."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大きな編集は少し時間がかかります。アプリを閉じても大丈夫です。準備ができたらお知らせします。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ठूला सम्पादनमा अलि बढी समय लाग्छ — तपाईं एप बन्द गर्न सक्नुहुन्छ, तयार भएपछि हामी तपाईंलाई जानकारी दिनेछौं।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edições maiores demoram um pouco mais — você pode fechar o app que a gente avisa quando estiver pronto."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بڑی ایڈٹس میں تھوڑا زیادہ وقت لگتا ہے — آپ ایپ بند کر سکتے ہیں، تیار ہونے پر ہم آپ کو بتا دیں گے۔"
+          }
+        }
+      }
+    },
     "Buy ^[%lld video](inflect: true)": {
       "extractionState": "manual",
       "localizations": {

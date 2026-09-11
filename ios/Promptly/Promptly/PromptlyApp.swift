@@ -186,6 +186,18 @@ struct PromptlyApp: App {
             }
             if let i = args.firstIndex(of: "-poseCredits"), i + 1 < args.count,
                let n = Int(args[i + 1]) {
+                // POSING A BALANCE POSES THE SURFACE THAT SHOWS IT. Every credit
+                // surface is gated on `creditsEnabled`, so a posed balance with
+                // the flag off renders nothing and the test sees an empty screen
+                // rather than the state it asked for — posing one half of a pair.
+                //
+                // This became load-bearing when creditsEnabled moved from the
+                // DISPLAY flag (`credits`, on in production) to the one that says
+                // the meter MOVES (`credits_metering`, dark). Before that the
+                // banner happened to appear because a live server said so, which
+                // means these tests were passing on production configuration
+                // rather than on what they posed.
+                OnboardingState.shared.debugForceFlag("credits_metering")
                 CreditsService.shared.debugSetBalance(n)
             }
         }

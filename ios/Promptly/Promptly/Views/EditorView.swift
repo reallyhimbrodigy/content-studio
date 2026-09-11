@@ -221,6 +221,32 @@ struct EditorView: View {
                         .transition(.opacity)
                     }
                     inputBar
+
+                    // SETS THE EXPECTATION BEFORE THE WAIT, not during it. A
+                    // render takes minutes and the composer is the last thing a
+                    // user reads before starting one, so this is where "this
+                    // will take a while, you can leave" costs nothing and lands.
+                    //
+                    // UNCONDITIONAL, and that is only honest because the
+                    // soft-prompt fix makes the second clause true for
+                    // everyone: a "Not now" now sets a RETRY DATE rather than a
+                    // permanent flag, and the re-ask fires after a successful
+                    // export, so a user who declined once is asked again at a
+                    // moment of delight instead of never. Before that fix this
+                    // line would have promised a notification to the 1,056
+                    // users who could never be asked for permission again.
+                    //
+                    // Small and grey by intent: it is a reassurance, not an
+                    // instruction, and anything louder reads as an apology for
+                    // the wait.
+                    Text(String(localized: "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready."))
+                        .font(.system(size: 11 * k))
+                        .foregroundColor(.white.opacity(0.38))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Theme.Space.md * k)
+                        .padding(.bottom, Theme.Space.xs * k)
+                        .accessibilityIdentifier("composer.renderWaitNote")
                 }
                 // ONE EDIT, SEVEN STRIPS. Everything in this stack — the re-edit
                 // chip, the referral card, the update strip, the vibe pill, the
