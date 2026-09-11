@@ -3738,7 +3738,31 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+/** Why a credits switch reads on/off. Every branch names ONE actionable cause;
+ *  "off" on its own sends an operator looking for a fault that may not exist. */
+function _resolveCreditsSwitch({ envOn, requireDebit }) {
+  const probe = _rcHealthProbe.value;
+  const floorOk = Number.isInteger(parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10));
+  const rcOk = _credits.isConfigured();
+  if (requireDebit && !CREDITS_DEBIT_ENABLED) return { value: 'off', reason: 'debit_disabled' };
+  if (!requireDebit && !envOn) return { value: 'off', reason: 'disabled_by_operator' };
+  if (!rcOk) return { value: 'off', reason: 'revenuecat_unconfigured' };
+  if (requireDebit && !floorOk) return { value: 'off', reason: 'min_build_unset' };
+  // PROBE PENDING IS NOT PROBE FAILED. The probe fires a few seconds after
+  // boot, so this is the normal state right after every deploy — and it is the
+  // one that reads as a fault.
+  if (probe === null || probe === undefined) return { value: 'off', reason: 'probe_pending' };
+  if (probe !== 'ok') return { value: 'off', reason: `probe_failed:${probe}` };
+  return { value: 'on', reason: 'armed' };
+}
+
   if (parsed.pathname === '/api/health' && req.method === 'GET') {
+    const _creditsDisplay = _resolveCreditsSwitch({
+      envOn: /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim()),
+      requireDebit: false,
+    });
+    const _creditsMeter = _resolveCreditsSwitch({ envOn: true, requireDebit: true });
+
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
@@ -3934,35 +3958,21 @@ const server = http.createServer((req, res) => {
       // Read `revenuecat.probe` below to tell "the operator left it off" from
       // "the project is unreachable" — they render identically here on purpose,
       // because both mean the same thing to a client: do not draw a balance.
-      credits: (/^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
-                && _rcHealthProbe.value === 'ok')
-        ? 'on' : 'off',
-      // DOES THE METER ACTUALLY MOVE? Separate from `credits` above, which only
-      // says the meter may be DRAWN.
+      credits: _creditsDisplay.value,
+      // WHY IT IS OFF, NOT JUST THAT IT IS. 'off' conflated five different
+      // causes — the operator disabled it, the RC probe has not run yet, the
+      // probe failed, the currency is unconfigured, the build floor is unset —
+      // and an operator reading this cannot act on any of them. I read
+      // `credits: off` on a freshly booted process during this very work and
+      // briefly took it for a fault; it was a probe that had not fired yet.
       //
-      // These were one thing when the client was written and are two things
-      // now, and the gap is user-visible TODAY: `credits` is on, so build 254's
-      // OnboardingState sets creditsEnabled=true, and ProBenefits then claims
-      // "20 videos a month" to an entitled Pro subscriber — whose App Store
-      // listing says "Unlimited renders" and who really does get unlimited,
-      // because CREDITS_DEBIT_ENABLED is off. The paywall is UNDERSELLING the
-      // product, which is the failure direction that reads as conservative and
-      // therefore goes unnoticed. The credit BADGE has the same problem from
-      // the other side: a balance that never decreases.
-      //
-      // Conjoins everything that must be true for a debit to happen, because
-      // any one of them missing makes the meter inert while looking armed —
-      // that exact state (CREDITS_DEBIT_ENABLED=1 with FREE_CREDITS_MIN_BUILD
-      // unset) once reported armed and debited nobody, and took an elimination
-      // across five conjuncts to find.
-      //
-      // ADDITIVE ON PURPOSE: `credits` keeps its meaning so builds <=254 do not
-      // change behaviour on this deploy. 255 reads this key instead.
-      credits_metering: (CREDITS_DEBIT_ENABLED
-                         && Number.isInteger(parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10))
-                         && _credits.isConfigured()
-                         && _rcHealthProbe.value === 'ok')
-        ? 'on' : 'off',
+      // Third field today with this shape (after entitlementTiers and the route
+      // ledger): CORRECT, and silently ambiguous about which of two very
+      // different states it reports. The value is untouched for every existing
+      // reader; the reason sits beside it.
+      creditsState: _creditsDisplay.reason,
+      credits_metering: _creditsMeter.value,
+      creditsMeteringState: _creditsMeter.reason,
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
