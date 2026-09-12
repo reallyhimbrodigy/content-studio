@@ -1880,6 +1880,24 @@ function isProfileSettingsSchemaMissing(err) {
 // on ANY uncertainty (table absent, query error) and the scheduler then does
 // NOT run — an unknown is not a missing row, and running blindly every boot
 // would hammer the judge.
+// ── THE DEBIT FLOOR AND THE CLIENT THAT CAN CLAIM ───────────────────────────
+// An env floor below CLIENT_CLAIM_MIN_BUILD does not under-charge; it charges
+// users who can NEVER be granted, because their binary does not call the grant
+// endpoint. The clamp in free-credits.js makes that harmless, but a floor set
+// below the client's is still a configuration mistake worth naming out loud —
+// silently correcting an operator's number without telling them is how the
+// next person sets it again.
+(() => {
+  const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+  if (!Number.isInteger(env)) return;
+  const client = _freeCredits.CLIENT_CLAIM_MIN_BUILD;
+  if (env >= client) return;
+  console.error(`[ALERT] FREE_CREDITS_MIN_BUILD=${env} is below the first build whose `
+    + `client asks for its grant (${client}). Builds ${env}-${client - 1} can be charged `
+    + `but never granted. The debit floor is clamped to ${client}; set the env to `
+    + `${client} or higher to make the configuration say what it does.`);
+})();
+
 if (String(process.env.SCOREBOARD_SCHEDULER_DISABLED || '') !== '1') {
   try {
     require('./lib/scoreboard-scheduler').startScoreboardScheduler({
@@ -4258,6 +4276,24 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             ? [...new Set(Object.values(_rcEntitlementTierMap))].sort() : null,
           entitlementTiersState: _rcEntitlementTierMap ? 'resolved' : 'not_yet_resolved',
           creditsDebitArmed: CREDITS_DEBIT_ENABLED,
+          // THE FLOOR THAT IS ACTUALLY APPLIED, alongside the two numbers it
+          // comes from — because reading one of them alone is how this went
+          // wrong. `env` is what an operator set; `client` is the first build
+          // whose app asks for its grant at all; `effective` is the max. When
+          // env sits below client, every free user between them is chargeable
+          // and permanently ungrantable, which is exactly what happened at
+          // env=245 with 882 users on 246. Reported as three fields rather
+          // than one so the gap is visible rather than inferable.
+          creditsDebitFloor: (() => {
+            const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+            const envOk = Number.isInteger(env);
+            return {
+              env: envOk ? env : null,
+              client: _freeCredits.CLIENT_CLAIM_MIN_BUILD,
+              effective: _freeCredits.effectiveDebitFloor(envOk ? env : null),
+              envBelowClient: envOk && env < _freeCredits.CLIENT_CLAIM_MIN_BUILD,
+            };
+          })(),
         };
       })(),
       cloudfront: (() => {
@@ -6574,7 +6610,11 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             Number.isInteger(_debitFloor) ? 'debit_skipped:build_below_floor'
                                           : 'debit_INERT:min_build_unset',
             Number.isInteger(_debitFloor)
-              ? `build=${_debitBuild} floor=${_debitFloor}`
+              // The EFFECTIVE floor, not the env one. Reporting `floor=245`
+              // while refusing build 246 reads as a contradiction and sends the
+              // reader to the wrong variable.
+              ? `build=${_debitBuild} floor=${_freeCredits.effectiveDebitFloor(_debitFloor)}`
+                + ` (env=${_debitFloor} client=${_freeCredits.CLIENT_CLAIM_MIN_BUILD})`
               : 'CREDITS_DEBIT_ENABLED=1 but FREE_CREDITS_MIN_BUILD unset — '
                 + 'NOBODY is being debited');
         }
