@@ -6,6 +6,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
+// One line per failure, cause included — see lib/log-error.js for why a bare
+// object handed to console.error stores a record that ends at `{`.
+const { errLine } = require('./lib/log-error');
 const _i18n = require('./lib/i18n');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
@@ -2122,7 +2125,7 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          console.error('[Subscription] fetch error', error);
+          console.error('[Subscription] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 200, { ok: true, plan: 'free' });
         }
 
@@ -2192,7 +2195,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] fetch error', error);
+          console.error('[ProfileSettings] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
         }
 
@@ -2239,7 +2242,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] fetch error', error);
+          console.error('[ProfileSettings] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
         }
 
@@ -2247,13 +2250,32 @@ const server = http.createServer((req, res) => {
           ? data.profile_settings
           : {};
         const nextSettings = { ...current, ...safePatch };
+        // Empty string is not an email. An anonymous session has none, and
+        // there is exactly one '' slot in a UNIQUE column — see the upsert.
+        const profileEmail = toPlainString(user.email || user?.user_metadata?.email || '').trim();
 
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('profiles')
           .upsert(
             {
               id: user.id,
-              email: toPlainString(user.email || user?.user_metadata?.email || ''),
+              // EMAIL IS OMITTED WHEN THE SESSION HAS NONE — it is NOT written
+              // as ''. profiles.email carries a plain UNIQUE constraint, and
+              // Postgres exempts NULL from uniqueness but not the empty string.
+              // So `|| ''` meant the FIRST email-less session to save a setting
+              // took the one and only '' slot (row e833de15, 2026-09-08
+              // 05:04:16Z) and every email-less session after it got 23505 on
+              // profiles_email_key — 29 failed saves across the next four days,
+              // and a structurally blocked population of 99 profiles whose
+              // email is NULL. A fallback that turns "unknown" into a real
+              // value is the same class as the ambiguous NULL, pointed the
+              // other way: it makes an absence collide.
+              //
+              // Omitting it is also the correct ownership call. This endpoint
+              // owns profile_settings; email belongs to auth and to the
+              // profile-creation path. An update here must not touch it, and an
+              // insert here should leave it NULL rather than guess.
+              ...(profileEmail ? { email: profileEmail } : {}),
               profile_settings: nextSettings,
               updated_at: new Date().toISOString(),
             },
@@ -2270,7 +2292,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] update error', updateError);
+          console.error('[ProfileSettings] update error', errLine(updateError, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_update_failed' });
         }
 
@@ -7473,7 +7495,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           .maybeSingle();
 
         if (error) {
-          console.error('  ❌ Database error:', error);
+          console.error('[VideoJobStatus] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
@@ -7616,7 +7638,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           .maybeSingle();
 
         if (error) {
-          console.error('[VideoEditor][JobStatus] Database error:', error);
+          console.error('[VideoEditor][JobStatus] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
@@ -7656,7 +7678,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           .maybeSingle();
 
         if (error) {
-          console.error('[refresh-urls] DB error:', error);
+          console.error('[refresh-urls] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to load job' });
         }
         if (!job) return sendJson(res, 404, { error: 'Job not found' });
@@ -8200,7 +8222,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           }, { onConflict: 'token' });
 
         if (error) {
-          console.error('[devices-register] DB error:', error);
+          console.error('[devices-register] DB error', errLine(error, { user: authUser.id, platform }));
           return sendJson(res, 500, { error: 'register_failed' });
         }
         return sendJson(res, 200, { ok: true });
