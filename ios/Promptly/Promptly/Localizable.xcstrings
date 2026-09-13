@@ -17821,6 +17821,83 @@
         }
       }
     },
+    "Max is ^[%lld credit](inflect: true) a month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max هو ^[%lld رصيد](inflect: true) شهريًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max হলো মাসে ^[%lld ক্রেডিট](inflect: true)।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max sind ^[%lld Credit](inflect: true) im Monat."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max is ^[%lld credit](inflect: true) a month."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max son ^[%lld crédito](inflect: true) al mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max, c'est ^[%lld crédit](inflect: true) par mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max हर महीने ^[%lld क्रेडिट](inflect: true) देता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max adalah ^[%lld kredit](inflect: true) sebulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max は月 ^[%lld クレジット](inflect: true) です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max भनेको महिनामा ^[%lld क्रेडिट](inflect: true) हो।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max são ^[%lld crédito](inflect: true) por mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ماہانہ ^[%lld کریڈٹ](inflect: true) ہے۔"
+          }
+        }
+      }
+    },
     "Microphone access needed": {
       "localizations": {
         "ar": {

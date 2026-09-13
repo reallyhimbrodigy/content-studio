@@ -633,7 +633,18 @@ struct CreditsTopUpView: View {
     /// through `String(localized:)` renders as literal markup.
     private var upsellLine: Text {
         let allowance = maxAllowance ?? 1000
-        let price = maxMonthlyPrice ?? "$89.99"
+        // NEVER A PRICE WE DID NOT READ. This fell back to the literal
+        // "$89.99" — a US-dollar string rendered to every storefront, shown to
+        // the Indian user whose real Pro yearly is INR 17,900 and who has no
+        // dollar price at all. A quote the store never gave is worse than no
+        // quote: the user can hold us to it, and the charge would disagree with
+        // the screen. When the Max product has not resolved, the sentence drops
+        // its price clause — a separate localized key, so the twelve
+        // translations each keep their own word order rather than having a
+        // number spliced into a sentence built for English.
+        guard let price = maxMonthlyPrice else {
+            return Text("Max is ^[\(allowance) credit](inflect: true) a month.")
+        }
         return Text("Max is ^[\(allowance) credit](inflect: true) a month for \(price).")
     }
 
