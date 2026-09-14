@@ -4552,6 +4552,15 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // times that refusal fires, which is the only way to tell "anonymous
           // sign-in is covering it" from "it is still happening, silently".
           'upload_no_session',
+          // The never-worse fallback now REFUSES a single PUT above 100 MB
+          // (2026-09-14). Measured over 7 days: 36 uploads degraded to single-PUT
+          // while above the multipart threshold, 13 over 100 MB, one at 1,241 MB
+          // — one request that must survive the whole transfer with no resume
+          // point. This counts the refusals, which is the only way to tell "the
+          // init retry fixed it" from "we are now failing these earlier": a
+          // refusal is a deliberate honest failure, and without the event it is
+          // indistinguishable from the doomed attempt it replaced.
+          'upload_fallback_refused',
           // A render whose jobId never reached the client is now RECOVERED
           // from the dispatch timestamp (2026-09-07). `job_recovery` is the
           // only record of whether that works — outcome splits recovered /
