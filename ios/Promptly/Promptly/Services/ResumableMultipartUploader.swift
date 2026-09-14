@@ -83,6 +83,12 @@ final class ResumableMultipartUploader: NSObject {
     private let ctxStoreKey = "ResumableMultipartUploader.partCtx.v1"
     private var partCtx: [Int: PartContext] = [:]
     private var partAttempts: [String: Int] = [:]     // "uploadId#part" → attempts (in-memory)
+    /// CUMULATIVE retries per upload. Distinct from `partAttempts`, which is
+    /// cleared the moment a part succeeds — so at completion time it is empty and
+    /// cannot answer "how much re-sending did this upload cost". An upload that
+    /// retried eleven parts once each and one that sailed through look identical
+    /// without this, and the retry storm is exactly what we are trying to size.
+    private var partRetries: [String: Int] = [:]      // uploadId → cumulative retries
     private var taskBytes: [Int: Int64] = [:]         // taskId → bytesSent (for smooth progress)
 
     /// In-memory per-transfer state for the ALIVE path (lost on app-kill; the killed
@@ -287,7 +293,26 @@ final class ResumableMultipartUploader: NSObject {
             attempt += 1
             do {
                 let pub = try await APIService.shared.multipartComplete(key: ledger.key, uploadId: uploadId, parts: wire)
-                Analytics.track("upload_completed", props: ["path": "multipart", "parts": parts.count])
+                // WHAT THE EVENT COULD NOT ANSWER. It carried only `parts`, so the
+                // one number anyone actually asks — how long did the upload take,
+                // and for how many bytes — was unavailable, and the 30 seconds
+                // everyone feels had no denominator. Duration and bytes are both
+                // sent RAW rather than a throughput: dividing here would bake in
+                // one reading of a number that wants to be cut by connection,
+                // build and part size later.
+                //
+                // `retries` is the cumulative tally, not the live attempt map,
+                // which is cleared on each part's success and is therefore empty
+                // by the time we get here.
+                let elapsedMs = Int(Date().timeIntervalSince(ledger.createdAt) * 1000)
+                Analytics.track("upload_completed", props: [
+                    "path": "multipart",
+                    "parts": parts.count,
+                    "bytes": ledger.fileSize,
+                    "duration_ms": elapsedMs,
+                    "retries": partRetries[uploadId] ?? 0,
+                    "part_size": ledger.partSize,
+                ])
                 resolveTransfer(uploadId: uploadId, result: .success(pub))
                 cleanupLocalState(uploadId: uploadId)
                 return
@@ -398,6 +423,7 @@ final class ResumableMultipartUploader: NSObject {
             let k = "\(ctx.uploadId)#\(ctx.partNumber)"
             let n = (partAttempts[k] ?? 0) + 1
             partAttempts[k] = n
+            partRetries[ctx.uploadId, default: 0] += 1
             // Transport-error mirror (HTTPClientError diagnosis): Sentry auto-
             // captures these 5xx invisibly; this puts the SAME signal where our
             // reads run. FIRST retry per part only — bounded, never a spam loop.
@@ -460,6 +486,7 @@ final class ResumableMultipartUploader: NSObject {
         }
         persistPartContexts()
         partAttempts = partAttempts.filter { !$0.key.hasPrefix("\(uploadId)#") }
+        partRetries.removeValue(forKey: uploadId)
     }
 
     private func persistPartContexts() {
