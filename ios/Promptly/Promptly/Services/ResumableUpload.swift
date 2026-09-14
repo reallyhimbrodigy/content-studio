@@ -56,9 +56,19 @@ enum MultipartChunker {
     /// accepted at PUT time and fails only at complete [Contract 2], so the planner
     /// never emits one.
     static let s3MinPartSize: Int64 = 5 * 1024 * 1024        // 5,242,880 bytes
-    /// Default part size — matches the dead foreground path; amortizes per-part
-    /// overhead while staying well above the floor.
-    static let defaultPartSize: Int64 = 16 * 1024 * 1024
+    /// Default part size. WAS 16 MiB, and 16 MiB x 6 parallel connections put
+    /// 96 MB in flight on one phone's uplink — with a 60s per-request idle
+    /// timeout, six PUTs competing for the same link starve each other until one
+    /// stalls past the timeout, and the retry re-enters the same contest.
+    /// 98.4% of upload errors were status 0 (no HTTP response, "The request
+    /// timed out") on the multipart path, across 223 users and seven builds, and
+    /// MORE on wifi than cellular — contention, not bandwidth.
+    ///
+    /// 8 MiB is comfortably above the 5 MiB S3 floor, so no rounding can produce
+    /// a short middle part, and halves the bytes any single stalled connection
+    /// is holding. Paired with 3 connections (see MultipartUploader's session)
+    /// this is 24 MB in flight rather than 96.
+    static let defaultPartSize: Int64 = 8 * 1024 * 1024
     /// Server cap on part count [Contract 2] (S3's own limit is 10,000; ours is lower).
     static let maxParts = 1000
 

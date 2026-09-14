@@ -950,7 +950,18 @@ class APIService {
             await ResumableMultipartUploader.shared.resumeAndSweepOnForeground()
             let partSize = MultipartChunker.chosenPartSize(fileSize: size)
             let partCount = MultipartChunker.partCount(fileSize: size, partSize: partSize)
-            if let initResp = try? await multipartInit(fileName: fileName, partCount: partCount) {
+            // RETRY INIT BEFORE DEGRADING. A single transient failure here used
+            // to cost the entire resumable path for this upload and drop it onto
+            // a single PUT it may not survive.
+            var initResp: MultipartInitResponse?
+            for attempt in 1...MultipartConfig.maxInitAttempts {
+                initResp = try? await multipartInit(fileName: fileName, partCount: partCount)
+                if initResp != nil { break }
+                if attempt < MultipartConfig.maxInitAttempts {
+                    try? await Task.sleep(for: .seconds(Double(attempt)))
+                }
+            }
+            if let initResp {
                 onPublicUrlResolved(initResp.publicUrl)   // URL-immediate: the multipart publicUrl
                 Analytics.track("upload_attempt", props: [
                     "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
@@ -966,6 +977,19 @@ class APIService {
                     return initResp.publicUrl   // multipart landed the object
                 }
                 // transfer threw (parts/complete gave up; abort already fired) → single-PUT.
+            }
+            // NEVER-WORSE HAS A CEILING. Below it a single PUT is a real
+            // fallback; above it it is a request that cannot finish, and
+            // attempting it spends the user's time and bytes to arrive at the
+            // same failure with no resume point. Fail honestly instead — the
+            // caller's recovery path is better than a doomed progress bar.
+            if size > MultipartConfig.singlePutCeiling {
+                Analytics.track("upload_fallback_refused", props: [
+                    "size_mb": (Double(size) / 1_048_576.0 * 10).rounded() / 10,
+                    "ceiling_mb": MultipartConfig.singlePutCeiling / 1_048_576,
+                    "conn": ReachabilityMonitor.currentConnectionType,
+                ], durable: true)
+                throw APIError.uploadFailed
             }
         }
 

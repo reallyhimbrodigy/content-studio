@@ -79,6 +79,10 @@ final class BackgroundUploadManager: NSObject {
         config.sessionSendsLaunchEvents = true
         // Allow 30 minutes for a single PUT before iOS gives up.
         config.timeoutIntervalForResource = 30 * 60
+        // Explicit for the same reason as the multipart session: the 60s default
+        // is the idle timeout that fires, and inheriting it silently beside a
+        // 30-minute resource budget hides which one is doing the work.
+        config.timeoutIntervalForRequest = 90
         // Session creates and owns its own delegate queue.
         return URLSession(configuration: config, delegate: BackgroundUploadDelegate.shared, delegateQueue: nil)
     }()

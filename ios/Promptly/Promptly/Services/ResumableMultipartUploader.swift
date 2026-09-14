@@ -27,6 +27,23 @@ enum MultipartConfig {
     /// Files at/above this benefit from multipart (parallelism + resumability); below
     /// it single-PUT is strictly better (no init/complete roundtrips).
     static let threshold: Int64 = 30 * 1024 * 1024
+    /// THE CEILING ON THE "NEVER WORSE" FALLBACK. When multipart init throws,
+    /// uploadSourceNeverWorse degrades to a single PUT — which is genuinely
+    /// never-worse for a 35 MB file and a guaranteed failure for a 1.2 GB one.
+    /// Measured over 7 days: 36 attempts went single-PUT while ABOVE the
+    /// multipart threshold, 13 of them over 100 MB, one at 1,241 MB. Each is one
+    /// request that must survive the whole transfer with no resumability, and
+    /// the degradation is silent because falling back reads as the safe
+    /// direction.
+    ///
+    /// Above this, failing honestly is the safe direction: the caller shows its
+    /// recovery and the user retries, instead of watching a progress bar that
+    /// cannot finish.
+    static let singlePutCeiling: Int64 = 100 * 1024 * 1024
+    /// multipartInit is one cheap API call, and a transient failure on it
+    /// currently costs the whole resumable path for that upload. Retry before
+    /// degrading.
+    static let maxInitAttempts = 3
     /// [Contract 2, revised 2026-08-27] Part URLs are presigned for 7 DAYS
     /// server-side (was 3600s — that 1h deadline WAS the Aug-24 spike:
     /// resume-window-expired hit 51.3% of spike failures vs 26.8% baseline,
@@ -109,7 +126,20 @@ final class ResumableMultipartUploader: NSObject {
         config.isDiscretionary = false             // user-initiated → upload ASAP
         config.sessionSendsLaunchEvents = true
         config.timeoutIntervalForResource = 30 * 60
-        config.httpMaximumConnectionsPerHost = 6   // parallel parts
+        // EXPLICIT, because the default is 60s and it was never raised when the
+        // resource timeout went to 30 minutes. Those two measure different
+        // things: `ForResource` is the whole transfer's budget, `ForRequest` is
+        // how long a single part may go with NO bytes moving. Inheriting 60s
+        // next to a 30-minute resource cap reads as "we thought about this" and
+        // was not thought about — it is the timeout that actually fired.
+        //
+        // 90s, not 30 minutes: an idle timeout that never fires cannot tell a
+        // slow connection from a dead one, and a dead part should be retried
+        // rather than held open to the resource cap.
+        config.timeoutIntervalForRequest = 90
+        // WAS 6. Six concurrent 16 MiB parts = 96 MB in flight on one uplink;
+        // they starved each other into the idle timeout. 3 x 8 MiB = 24 MB.
+        config.httpMaximumConnectionsPerHost = 3   // parallel parts
         return URLSession(configuration: config, delegate: MultipartUploadDelegate.shared, delegateQueue: nil)
     }()
 

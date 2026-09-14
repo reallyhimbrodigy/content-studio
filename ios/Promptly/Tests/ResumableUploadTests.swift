@@ -62,10 +62,16 @@ struct ResumableUploadTestMain {
 
         // ── 2. chosenPartSize — ≥5 MiB and ≤1000 parts ───────────────────────
 
-        check(MultipartChunker.chosenPartSize(fileSize: 50 * MB) == 16 * MB,
-              "a normal clip uses the 16 MiB default")
-        check(MultipartChunker.chosenPartSize(fileSize: 3 * MB) == 16 * MB,
+        // 8 MiB, not 16: six concurrent 16 MiB parts put 96 MB in flight on one
+        // uplink and starved each other into the 60s idle timeout (98.4% of
+        // upload errors were status 0, more on wifi than cellular). Paired with
+        // 3 connections this is 24 MB in flight.
+        check(MultipartChunker.chosenPartSize(fileSize: 50 * MB) == 8 * MB,
+              "a normal clip uses the 8 MiB default")
+        check(MultipartChunker.chosenPartSize(fileSize: 3 * MB) == 8 * MB,
               "a tiny file still reports the default part size (yields one part)")
+        check(MultipartChunker.chosenPartSize(fileSize: 50 * MB) >= MIN,
+              "the default stays above the 5 MiB S3 floor, so no middle part is short")
         let huge: Int64 = 40 * 1024 * MB   // 40 GiB
         let hugePS = MultipartChunker.chosenPartSize(fileSize: huge)
         check(hugePS >= MIN, "huge-file part size stays ≥ 5 MiB")
