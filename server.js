@@ -500,7 +500,26 @@ async function preDispatchNoSpeechGate({ jobId, videoUrl, userId, pushProgressTo
     console.warn('[no-speech-gate] hint resolve failed — fail open:', e && e.message);
     return { gated: false, hint: null };
   }
-  if (hint && hint.word_count === 0) {
+  // A ZERO THAT MEANS TWO THINGS. `word_count: 0` arrives both for a genuinely
+  // speechless clip AND for one whose transcript is simply not cached yet — the
+  // dispatch hint logs pair `transcript_cached: false` with `word_count: 0`
+  // routinely, and `word_count: null` shows up too. Without a second field this
+  // guard cannot tell "there is no speech" from "we have not looked", and it
+  // rejects the second as if it were the first.
+  //
+  // THE CONTRACT ABOVE ALREADY PROMISED THIS. It says a missing or UNKNOWN
+  // word_count returns { gated:false } — the code just had no way to recognise
+  // unknown, because unknown and zero are the same value. `transcript_cached`
+  // is the field that separates them.
+  //
+  // Masked today: nothing has been rejected here in 51 days. It is a live trap
+  // if the routing flag that skips this gate is ever switched off — the gate
+  // would start failing clips whose transcript had not landed yet, which is the
+  // most expensive possible false reject: the user is told their clip has no
+  // speech, and it does.
+  const wordCountKnown = Boolean(hint && hint.transcript_cached)
+    && Number.isInteger(hint.word_count);
+  if (wordCountKnown && hint.word_count === 0) {
     try {
       await markJobFailed(jobId, { errorCode: 'NO_SPEECH', userMessage: NO_SPEECH_COPY, userId, pushProgressToSSE });
       console.log('  [no-speech-gate] 0-word clip rejected PRE-dispatch job=%s user=%s', jobId, userId);
