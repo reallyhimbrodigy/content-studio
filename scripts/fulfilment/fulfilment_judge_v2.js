@@ -72,7 +72,16 @@ RULES
 - A LANGUAGE ask is honored only if the language matches. "captions in Hinglish" + caption_track present but caption_language "en" = DROPPED_SILENTLY. A caption track alone does NOT honor a language ask.
 - Content description with no ask contributes no asks.
 - When evidence is genuinely ambiguous, prefer DROPPED_SILENTLY over HONORED. An audit that flatters the pipeline is worth nothing.
-- "noted_where" must quote the words that did the telling, or be null. A NEGOTIATED verdict with nothing quoted is not negotiated.`;
+- "noted_where" must quote the words that did the telling, or be null. A NEGOTIATED verdict with nothing quoted is not negotiated.
+
+DID MORE THAN ASKED — fill "unasked" with every change the record shows that NO ask in the brief covers.
+- SCOPE DECIDES STRICTNESS, and you are told the brief's scope.
+  SURGICAL_REEDIT or a brief carrying an explicit CONSTRAINT: the user named exactly what they wanted. ANY other change is unasked — a zoom, a card, a caption restyle, a cut they did not request. "Make the captions bigger" answered with three zooms added has THREE unasked entries, however good the zooms are.
+  PRESET or PRESET_PLUS_MODIFIER: a preset licenses the standard families — cuts, captions, zooms, sound effects, motion graphics, text. Those are NOT unasked. Something outside them still is.
+  STRUCTURED_BRIEF: the brief lists what it wants. Anything outside the list is unasked.
+- Judge from the OPS and the TIMELINE, not from what an editor would plausibly do.
+- An empty array is the correct and common answer. Do not invent an entry to look thorough.
+- A change that an ask covers is NOT unasked, even if it was done badly — that is the ask's own verdict.`;
 
 const TOOL = {
   name: 'record_fulfilment',
@@ -93,8 +102,25 @@ const TOOL = {
           required: ['text', 'class', 'verdict', 'evidence', 'noted_where'],
         },
       },
+      // ZAC'S SEP-9 LAW, MADE VISIBLE. "A minimal or specific brief gets exactly
+      // that and nothing more." The judge could not see this before: it scored
+      // what was ASKED and never what was ADDED, so a surgical brief answered
+      // with a full edit scored 1.0 honor. Every entry here is a change on the
+      // timeline that NO ask in the brief covers.
+      unasked: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            what: { type: 'string', description: 'the change nobody asked for' },
+            class: { type: 'string' },
+            evidence: { type: 'string', description: 'the op or timeline field showing it' },
+          },
+          required: ['what', 'class', 'evidence'],
+        },
+      },
     },
-    required: ['asks'],
+    required: ['asks', 'unasked'],
   },
 };
 
@@ -104,6 +130,7 @@ async function judgeRun(rec) {
   if (ev.state === 'ABSENT') return { state: 'ABSENT', evidence: ev, asks: [] };
   const user = [
     `BRIEF: ${JSON.stringify(rec.brief)}`,
+    `BRIEF SCOPE: ${rec.request_class || 'UNKNOWN'}${rec.has_constraint ? ' (carries an explicit CONSTRAINT)' : ''}`,
     `OPS (${ev.n_ops}): ${JSON.stringify(rec.ops)}`,
     `TIMELINE: ${JSON.stringify(ev)}`,
     rec.agent_reply ? `AGENT REPLY TO USER: ${JSON.stringify(rec.agent_reply)}` : 'AGENT REPLY TO USER: (none recorded)',
@@ -135,10 +162,21 @@ async function judgeRun(rec) {
       }
     }
     const n = asks.length || 1;
+    const unasked = Array.isArray(tu.input.unasked) ? tu.input.unasked : [];
+    // A SURGICAL OR CONSTRAINED BRIEF FAILS ON ANY UNASKED CHANGE, whatever its
+    // honor rate. Reported as its own state rather than folded into the honor
+    // number, because "did everything asked AND three things nobody asked for"
+    // is a different failure from "missed one" and hiding it inside a rate
+    // would make a full edit on a surgical brief read as a perfect score.
+    const strict = ['SURGICAL_REEDIT'].includes(rec.request_class) || !!rec.has_constraint;
     return {
-      state: 'MEASURED', judge_version: JUDGE_VERSION, evidence: ev, asks,
+      state: 'MEASURED', judge_version: JUDGE_VERSION, evidence: ev, asks, unasked,
       honor_rate: +(asks.filter(k => k.verdict === 'HONORED').length / n).toFixed(3),
       silent_drop_rate: +(asks.filter(k => k.verdict === 'DROPPED_SILENTLY').length / n).toFixed(3),
+      did_more_than_asked: unasked.length,
+      scope_verdict: (strict && unasked.length) ? 'FAILED_DID_MORE_THAN_ASKED'
+        : unasked.length ? 'EXTRA_WITHIN_PRESET_LICENCE' : 'IN_SCOPE',
+      strict_scope: strict,
     };
   }
   throw new Error('exhausted retries');

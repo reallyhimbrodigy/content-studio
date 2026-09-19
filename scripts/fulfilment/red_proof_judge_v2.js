@@ -76,7 +76,55 @@ const CASES = [
     console.log(`          plant applied: yes | matching ask(s): ${hit.length} | verdict(s): ${got.join(', ') || '(none matched)'}`);
     for (const a of hit) console.log(`            "${a.text}" -> ${a.verdict}  noted=${JSON.stringify(a.noted_where)}`);
   }
-  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted cases, baseline clean`);
+  // ── ZAC'S SEP-9 LAW: placing more than was asked is a FAILURE ─────────
+  // The judge could not see this before — it scored what was asked and never
+  // what was added, so a surgical brief answered with a full edit scored 1.0.
+  console.log('\n  SURGICAL SCOPE — did more than asked:');
+
+  // A SURGICAL brief: one change named. The record also adds three zooms.
+  const SURG = {
+    id: 'rp-surgical',
+    brief: 'Just make the captions bigger.',
+    request_class: 'SURGICAL_REEDIT',
+    ops: [
+      { tool: 'edit_captions', args: { size: 'large' }, why: 'the brief asks for bigger captions' },
+      { tool: 'edit_item', args: { type: 'effect', kind: 'zoom', at: 2.0 }, why: 'adds energy' },
+      { tool: 'edit_item', args: { type: 'effect', kind: 'zoom', at: 7.5 }, why: 'adds energy' },
+      { tool: 'edit_item', args: { type: 'effect', kind: 'zoom', at: 14.0 }, why: 'adds energy' },
+    ],
+    timeline: { caption_track: true, caption_language: 'en', items: 4, duration_s: 20.4,
+                components: [{ kind: 'zoom' }, { kind: 'zoom' }, { kind: 'zoom' }],
+                audio_tracks: ['dialogue'] },
+    agent_reply: 'Made the captions bigger and added some zooms for energy.',
+  };
+  const sv = await judgeRun(JSON.parse(JSON.stringify(SURG)));
+  const capHonored = sv.asks.some(a => /caption/i.test(a.text) && a.verdict === 'HONORED');
+  const sOk = sv.did_more_than_asked >= 3 && sv.scope_verdict === 'FAILED_DID_MORE_THAN_ASKED' && capHonored;
+  if (!sOk) allok = false;
+  console.log(`  ${sOk ? 'RED ok ' : 'MISS   '} three unasked zooms on a surgical brief -> ${sv.scope_verdict}, did_more=${sv.did_more_than_asked}`);
+  console.log(`           and the ASK itself still reads HONORED (${capHonored}) — the failure is the EXTRA, not the ask`);
+  for (const u of (sv.unasked || []).slice(0, 4)) console.log(`             unasked: ${u.what} — ${u.evidence}`.slice(0, 118));
+
+  // GREEN: the SAME placements under a PRESET brief are the preset working.
+  const PRESET = { ...JSON.parse(JSON.stringify(SURG)), id: 'rp-preset',
+    brief: 'Viral engaging video', request_class: 'PRESET' };
+  const pv = await judgeRun(PRESET);
+  const pOk = pv.scope_verdict !== 'FAILED_DID_MORE_THAN_ASKED';
+  if (!pOk) allok = false;
+  console.log(`  ${pOk ? 'RED ok ' : 'MISS   '} [green] the SAME zooms under a PRESET brief -> ${pv.scope_verdict}`);
+  console.log(`           a preset licenses the standard families; flagging them would make the check noise`);
+
+  // GREEN: a surgical brief answered with ONLY the asked change is clean.
+  const CLEAN = { ...JSON.parse(JSON.stringify(SURG)), id: 'rp-surgical-clean',
+    ops: [SURG.ops[0]],
+    timeline: { ...SURG.timeline, items: 1, components: [] },
+    agent_reply: 'Made the captions bigger.' };
+  const cv = await judgeRun(CLEAN);
+  const cOk = cv.did_more_than_asked === 0 && cv.scope_verdict === 'IN_SCOPE';
+  if (!cOk) allok = false;
+  console.log(`  ${cOk ? 'RED ok ' : 'MISS   '} [green] surgical brief, only the asked change -> ${cv.scope_verdict}, did_more=${cv.did_more_than_asked}`);
+
+  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted drops + 3 scope legs, baseline clean`);
   console.error(`judge cost $${cost().toFixed(4)} over 4 runs = $${(cost() / 4).toFixed(4)}/run`);
   process.exit(allok ? 0 : 1);
 })();
