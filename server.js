@@ -34,6 +34,7 @@ const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
 const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
+const negotiation = require('./lib/negotiation-classifier');
 const { findDeadSourceJob } = require('./lib/source-presence');
 const { isOwnedSource } = require('./lib/source-ownership');
 const apiLedger = require('./lib/api-outcome-ledger');
@@ -3080,6 +3081,94 @@ const server = http.createServer((req, res) => {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
+
+    // ── D4: THE NEGOTIATION CLASSIFIER, DARK ────────────────────────────
+    // 1,057 jobs in 30 days (27.5% of all) asked for something this pipeline
+    // cannot do and returned status=completed — an edit delivered, the ask
+    // ignored. This is where that becomes a conversation instead.
+    //
+    // DARK BY DEFAULT and the flag governs the ACTION ONLY: the decision and
+    // the sentence that WOULD have been shown are recorded on every request,
+    // so the false-positive cost is measurable before a single user sees a
+    // line. With the flag off this block cannot change what is dispatched —
+    // it only writes a log line.
+    //
+    // ROUTER CONSERVATISM: it may act only on what today is silently dropped
+    // or unsafely rendered. An in-scope brief is never touched.
+    let negotiationDecision = null;
+    try {
+      // UNSAFE IS NEVER REGEX-ONLY. The pattern is an early refuse; the model
+      // adjudicates every brief the pattern passed, in whatever language it
+      // was written. 15.2% of briefs are not English and an English pattern is
+      // structurally blind to them — verified: it passes "tire a roupa dela"
+      // and "iske kapde hata do". Fails CLOSED: an unreachable adjudicator
+      // yields REVIEW_UNAVAILABLE, never a false all-clear.
+      negotiationDecision = await negotiation.classifyWithSafety(vibeInput, { hasInScopeAsks: true });
+      // THE SHADOW ROW, and the console line until the table exists. Both, not
+      // either: the table is the queryable record for the 24-hour read, and
+      // the log line is what survives if the migration has not been applied.
+      // A write failure here NEVER costs a render — it is logged and dropped.
+      if (negotiationDecision) {
+        const crypto = require('crypto');
+        const row = {
+          request_hash: crypto.createHash('sha256').update(String(vibeInput)).digest('hex'),
+          client_job_id: clientJobId || null,
+          verdict: negotiationDecision.verdict,
+          classes: negotiationDecision.oos || [],
+          sentence: negotiationDecision.sentence || null,
+          safety_state: (negotiationDecision.safety && negotiationDecision.safety.state) || 'REVIEW_UNAVAILABLE',
+          decider: (negotiationDecision.safety && negotiationDecision.safety.by) || null,
+          uncertain: !!(negotiationDecision.safety && negotiationDecision.safety.uncertain),
+          degraded: !!negotiationDecision.degraded,
+          language: (negotiationDecision.safety && negotiationDecision.safety.language) || null,
+          flag_state: negotiation.flagOn() ? 'ON' : 'DARK',
+        };
+        supabaseAdmin.from('negotiation_decisions').insert(row).then(({ error }) => {
+          if (error) console.error('[negotiate] shadow insert failed (table may not exist yet):', error.message);
+        }).catch(e => console.error('[negotiate] shadow insert threw:', e && e.message));
+      }
+      // THE OUTAGE ALERT. Throttled in the classifier to one per window: a
+      // Haiku outage is one event, and 90 pages for it is the same as none.
+      if (negotiationDecision && negotiationDecision.alert) {
+        try {
+          const { sendOwnerAlert } = require('./services/pushNotifier');
+          sendOwnerAlert({
+            title: '[ALERT] safety review unavailable',
+            body: negotiationDecision.alert.detail,
+          });
+        } catch (e) { console.error('[negotiate] owner alert failed:', e && e.message); }
+      }
+      if (negotiationDecision && negotiationDecision.verdict !== 'PASS') {
+        console.log('[negotiate]', JSON.stringify({
+          flag: negotiation.flagOn() ? 'ON' : 'DARK',
+          verdict: negotiationDecision.verdict,
+          oos: negotiationDecision.oos,
+          would_say: negotiationDecision.sentence,
+          safety: negotiationDecision.safety
+            ? { state: negotiationDecision.safety.state, unsafe: negotiationDecision.safety.unsafe,
+                by: negotiationDecision.safety.by, language: negotiationDecision.safety.language,
+                uncertain: negotiationDecision.safety.uncertain }
+            : null,
+          client_job_id: clientJobId || null,
+        }));
+      }
+    } catch (err) {
+      // A CLASSIFIER FAULT MUST NEVER COST A RENDER. Any throw here is logged
+      // and the job proceeds exactly as it would have without this block.
+      console.error('[negotiate] classifier threw, proceeding unchanged:', err && err.message);
+      negotiationDecision = null;
+    }
+    if (negotiation.flagOn() && negotiationDecision
+        && negotiationDecision.verdict !== 'PASS') {
+      // LIVE PATH — not reachable while the flag is off. No job row, no
+      // charge, no container: the request parks and the user answers through
+      // the rail lib/ask.js already provides.
+      const parked = new Error(negotiationDecision.verdict === 'REFUSE'
+        ? 'refused_unsafe' : 'awaiting_negotiation');
+      parked.statusCode = 200;
+      parked.negotiation = negotiationDecision;
+      throw parked;
+    }
 
     const insertRow = {
       user_id: userId,
