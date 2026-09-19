@@ -28,6 +28,45 @@ const JUDGE_VERSION = 'agentic-v2';
 // there was to coalesce both locations AND to say when neither exists.
 const REQUIRED = ['brief', 'ops', 'timeline'];
 
+/**
+ * RULE (b) FOR RE-EDITS: nothing the user liked was touched.
+ *
+ * A first edit has no equivalent — there is no "before". For a re-edit the
+ * before-timeline IS the thing the user accepted, and any item that changed
+ * without an ask covering it is damage to work they had already approved.
+ *
+ * This is deliberately MECHANICAL and does not call the model: item identity,
+ * timing and track are fields, and a diff over fields is not a judgement. The
+ * model is only asked which asks COVER which items.
+ *
+ * Reports three states, never a bare number:
+ *   MEASURED  both timelines read
+ *   ABSENT    no before-timeline recorded — "left alone" and "never existed"
+ *             are indistinguishable, so nothing is claimed
+ */
+function diffTimelines(before, after) {
+  if (!before || !Array.isArray(before.items)) {
+    return { state: 'ABSENT', why: 'no before-timeline recorded; "left alone" cannot be told from "never existed"', touched: [], kept: 0 };
+  }
+  if (!after || !Array.isArray(after.items)) {
+    return { state: 'ABSENT', why: 'no after-timeline recorded', touched: [], kept: 0 };
+  }
+  const key = it => String(it.id || it.item_id || '');
+  const sig = it => JSON.stringify([it.from ?? it.fromFrame, it.dur ?? it.durationInFrames,
+                                    it.track ?? it.trackAlias, it.kind ?? it.itemType]);
+  const A = new Map(after.items.map(i => [key(i), i]));
+  const touched = [];
+  let kept = 0;
+  for (const b of before.items) {
+    const k = key(b), a = A.get(k);
+    if (!a) { touched.push({ id: k, how: 'REMOVED', was: sig(b) }); continue; }
+    if (sig(a) !== sig(b)) { touched.push({ id: k, how: 'CHANGED', was: sig(b), now: sig(a) }); continue; }
+    kept++;
+  }
+  return { state: 'MEASURED', touched, kept,
+           why: `${kept} item(s) untouched, ${touched.length} changed or removed` };
+}
+
 function extractEvidence(rec) {
   const missing = REQUIRED.filter(k => rec[k] === undefined || rec[k] === null);
   if (missing.length) {
@@ -169,12 +208,26 @@ async function judgeRun(rec) {
     // is a different failure from "missed one" and hiding it inside a rate
     // would make a full edit on a surgical brief read as a perfect score.
     const strict = ['SURGICAL_REEDIT'].includes(rec.request_class) || !!rec.has_constraint;
+    // RULE (b): every before-item that changed must be covered by an ask.
+    // An uncovered change is damage to work the user already accepted, and it
+    // is reported SEPARATELY from did_more_than_asked because the remedy
+    // differs — one is an addition, the other is harm to what was there.
+    const diff = diffTimelines(rec.before_timeline, rec.timeline);
+    const askText = asks.map(a => `${a.text} ${a.class}`).join(' ').toLowerCase();
+    const uncovered = diff.state === 'MEASURED'
+      ? diff.touched.filter(t => !askText.includes(String(t.id).toLowerCase()))
+      : [];
     return {
       state: 'MEASURED', judge_version: JUDGE_VERSION, evidence: ev, asks, unasked,
       honor_rate: +(asks.filter(k => k.verdict === 'HONORED').length / n).toFixed(3),
       silent_drop_rate: +(asks.filter(k => k.verdict === 'DROPPED_SILENTLY').length / n).toFixed(3),
       did_more_than_asked: unasked.length,
-      scope_verdict: (strict && unasked.length) ? 'FAILED_DID_MORE_THAN_ASKED'
+      untouched_state: diff.state,
+      untouched_kept: diff.kept,
+      touched_without_an_ask: diff.state === 'MEASURED' ? uncovered.length : null,
+      touched_detail: diff.state === 'MEASURED' ? diff.touched.slice(0, 8) : diff.why,
+      scope_verdict: (strict && diff.state === 'MEASURED' && uncovered.length) ? 'FAILED_TOUCHED_WHAT_WAS_LIKED'
+        : (strict && unasked.length) ? 'FAILED_DID_MORE_THAN_ASKED'
         : unasked.length ? 'EXTRA_WITHIN_PRESET_LICENCE' : 'IN_SCOPE',
       strict_scope: strict,
     };
@@ -183,7 +236,7 @@ async function judgeRun(rec) {
 }
 
 function cost() { return uIn * PRICE_IN / 1e6 + uOut * PRICE_OUT / 1e6; }
-module.exports = { judgeRun, extractEvidence, cost, JUDGE_VERSION };
+module.exports = { judgeRun, extractEvidence, diffTimelines, cost, JUDGE_VERSION };
 
 if (require.main === module) {
   (async () => {

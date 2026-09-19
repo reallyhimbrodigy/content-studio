@@ -124,7 +124,43 @@ const CASES = [
   if (!cOk) allok = false;
   console.log(`  ${cOk ? 'RED ok ' : 'MISS   '} [green] surgical brief, only the asked change -> ${cv.scope_verdict}, did_more=${cv.did_more_than_asked}`);
 
-  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted drops + 3 scope legs, baseline clean`);
+  // ── RULE (b): NOTHING THE USER LIKED WAS TOUCHED ─────────────────────
+  console.log('\n  RE-EDIT SCOPE — nothing the user liked was touched:');
+  const BEFORE = { items: [
+    { id: 'v1', from: 0,   dur: 300, track: 'V1', kind: 'video' },
+    { id: 'c1', from: 40,  dur: 60,  track: 'V2', kind: 'motion-graphic' },
+    { id: 'z1', from: 150, dur: 30,  track: 'V3', kind: 'effect' },
+  ]};
+  const mk = (after, extra = {}) => ({
+    id: 'rp-reedit', brief: 'Make the captions bigger.',
+    request_class: 'SURGICAL_REEDIT',
+    ops: [{ tool: 'edit_captions', args: { size: 'large' }, why: 'the tweak' }],
+    before_timeline: BEFORE,
+    timeline: { caption_track: true, items: after.items.length, duration_s: 20.4,
+                components: [], audio_tracks: ['dialogue'], ...after },
+    agent_reply: 'Captions are bigger.', ...extra });
+
+  // the tweak alone: every before-item survives unchanged
+  const clean = await judgeRun(mk({ items: BEFORE.items.map(i => ({ ...i })) }));
+  const r1 = clean.untouched_state === 'MEASURED' && clean.touched_without_an_ask === 0;
+  if (!r1) allok = false;
+  console.log(`  ${r1 ? 'RED ok ' : 'MISS   '} [green] only the tweak -> ${clean.scope_verdict}, kept=${clean.untouched_kept}, touched=${clean.touched_without_an_ask}`);
+
+  // a zoom the user already had is silently deleted — the failure rule (b) exists for
+  const harmed = await judgeRun(mk({ items: BEFORE.items.filter(i => i.id !== 'z1').map(i => ({ ...i })) }));
+  const r2 = harmed.touched_without_an_ask >= 1 && harmed.scope_verdict === 'FAILED_TOUCHED_WHAT_WAS_LIKED';
+  if (!r2) allok = false;
+  console.log(`  ${r2 ? 'RED ok ' : 'MISS   '} a zoom the user already had is REMOVED -> ${harmed.scope_verdict}, touched=${harmed.touched_without_an_ask}`);
+  console.log(`           ${JSON.stringify(harmed.touched_detail && harmed.touched_detail[0] || null)}`.slice(0, 118));
+
+  // NO BEFORE-TIMELINE: the judge must say ABSENT, not pass and not fail
+  const blind = await judgeRun(mk({ items: BEFORE.items.map(i => ({ ...i })) }, { before_timeline: null }));
+  const r3 = blind.untouched_state === 'ABSENT' && blind.touched_without_an_ask === null;
+  if (!r3) allok = false;
+  console.log(`  ${r3 ? 'RED ok ' : 'MISS   '} no before-timeline -> untouched_state=${blind.untouched_state}, touched=${JSON.stringify(blind.touched_without_an_ask)}`);
+  console.log(`           not a pass and not a fail: "left alone" and "never existed" are indistinguishable`);
+
+  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted drops + 3 scope legs + 3 re-edit legs`);
   console.error(`judge cost $${cost().toFixed(4)} over 4 runs = $${(cost() / 4).toFixed(4)}/run`);
   process.exit(allok ? 0 : 1);
 })();

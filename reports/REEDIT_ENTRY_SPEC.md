@@ -73,6 +73,46 @@ is damage to work the user had already accepted.
 judge cannot tell "left alone" from "never existed", and that is precisely the
 distinction this rule turns on. One extra `timeline_sample` taken before turn 1.
 
+### The exact shape — this is all the judge reads
+
+Record it under `before_timeline`, in the same shape `timeline_sample` already
+produces. Only four fields per item are compared; anything else you record is
+carried and ignored.
+
+```json
+"before_timeline": {
+  "items": [
+    {"id": "d196b800", "from": 0,   "dur": 335, "track": "V1", "kind": "video"},
+    {"id": "64648857", "from": 565, "dur": 46,  "track": "V2", "kind": "motion-graphic"},
+    {"id": "z1",       "from": 150, "dur": 30,  "track": "V3", "kind": "effect"}
+  ]
+}
+```
+
+`fromFrame` / `durationInFrames` / `trackAlias` / `itemType` are accepted under
+their ChatCut names too — the diff reads either spelling, so the existing
+`timeline_sample` rows can be passed through unchanged.
+
+**IDENTITY IS THE ITEM ID.** The diff is keyed on it; a re-created item with a
+new id reads as REMOVED + unasked-addition, which is the correct reading —
+replacing an item the user accepted is not leaving it alone.
+
+**The judge's three states, never a bare number:**
+
+| | |
+|---|---|
+| `untouched_state: MEASURED` | both timelines read; `untouched_kept` and `touched_without_an_ask` are real |
+| `untouched_state: ABSENT` | no before-timeline — **nothing is claimed**, not a pass and not a fail |
+| `scope_verdict: FAILED_TOUCHED_WHAT_WAS_LIKED` | a before-item changed or vanished with no ask covering it |
+
+RED-proven, three legs: the tweak alone → IN_SCOPE, kept=3, touched=0; a zoom
+the user already had silently removed → FAILED_TOUCHED_WHAT_WAS_LIKED naming the
+item; no before-timeline → ABSENT with `touched_without_an_ask: null`.
+
+The diff is MECHANICAL and calls no model — item identity, timing and track are
+fields, and a diff over fields is not a judgement. The model is only asked which
+asks cover which items.
+
 ## 4. What I am not specifying
 
 The transport, the auth, and where the tweak arrives from — those are the
