@@ -114,17 +114,39 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
   // is CORRECT and a rubric calling it short is the rubric's problem. So this
   // block computes and PRINTS and does nothing else — no threshold, no verdict,
   // no exit code, and __smoke_density_is_not_a_gate.js asserts that.
-  const REFERENCE_PER_25S = { text: 7.28, cut: 4.75, card: 2.35, sfx: 0.82, zoom: 0.35, transition: 0.00 };
-  let densSeconds = 0; const densFam = {};
+  // TWO CORPORA, BECAUSE ONE YARDSTICK DOES NOT FIT BOTH. The talking-head
+  // reference is transcript-derived; holding a screen recording to text 7.28
+  // measures one thing against another thing's ruler. The no-speech table was
+  // measured over 1,463 shipped jobs and differs by 10x on card alone (0.23 vs
+  // 2.35), so the split is not a refinement — an unsplit number is wrong for
+  // whichever half it does not describe.
+  const REF_BY_ROUTE = {
+    speech:    { text: 7.28, cut: 4.75, card: 2.35, sfx: 0.82, zoom: 0.35, transition: 0.00 },
+    no_speech: { text: 0.00, cut: 4.26, card: 0.23, sfx: 0.00, zoom: 0.00, transition: 0.27 },
+  };
+  const REFERENCE_PER_25S = REF_BY_ROUTE.speech;   // the default, named below when used
+  // A record carries `route` ('speech' | 'no_speech') when the harness records
+  // it. UNTIL IT DOES the line says UNSPLIT and names the table it used, rather
+  // than grading a screen recording against a talking head in silence.
+  const byRoute = {};
+  let unrouted = 0;
   for (const r of aRows) {
-    if (typeof r.duration_s === 'number') densSeconds += r.duration_s;
-    for (const [k, v] of Object.entries(r.families || {})) densFam[k] = (densFam[k] || 0) + v;
+    const route = (r.route === 'speech' || r.route === 'no_speech') ? r.route : null;
+    if (!route) unrouted++;
+    const k = route || 'UNROUTED';
+    byRoute[k] = byRoute[k] || { seconds: 0, fam: {} };
+    if (typeof r.duration_s === 'number') byRoute[k].seconds += r.duration_s;
+    for (const [f, v] of Object.entries(r.families || {})) byRoute[k].fam[f] = (byRoute[k].fam[f] || 0) + v;
   }
-  const density = { state: densSeconds > 0 ? 'MEASURED' : 'ABSENT', seconds: densSeconds, per25: {} };
-  if (densSeconds > 0) {
-    for (const fam of Object.keys(REFERENCE_PER_25S)) {
-      density.per25[fam] = +((densFam[fam] || 0) / (densSeconds / 25)).toFixed(2);
-    }
+  const density = { state: 'ABSENT', routes: {}, unrouted, split: unrouted === 0 && Object.keys(byRoute).length > 0 };
+  for (const [k, v] of Object.entries(byRoute)) {
+    if (!(v.seconds > 0)) continue;
+    density.state = 'MEASURED';
+    const table = REF_BY_ROUTE[k] || REF_BY_ROUTE.speech;
+    const per25 = {};
+    for (const fam of Object.keys(table)) per25[fam] = +((v.fam[fam] || 0) / (v.seconds / 25)).toFixed(2);
+    density.routes[k] = { seconds: +v.seconds.toFixed(1), per25,
+                          table: REF_BY_ROUTE[k] ? k : 'speech (DEFAULT — route not recorded)' };
   }
 
   const aAsks = aRows.flatMap(r => (r.asks || []));
@@ -143,8 +165,8 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
     agentic_negotiated_rate: aState === 'MEASURED' ? rate(a => a.verdict === 'NEGOTIATED') : null,
     agentic_why: aWhy,
     agentic_density_state: density.state,
-    agentic_density_seconds: density.state === 'MEASURED' ? +density.seconds.toFixed(1) : null,
-    agentic_density_per25: density.state === 'MEASURED' ? density.per25 : null,
+    agentic_density_split: density.split,
+    agentic_density_routes: density.state === 'MEASURED' ? density.routes : null,
   };
 
   // ── 2. latency (the user's wait; jobs COMPLETED on the day) ───────────
@@ -220,10 +242,18 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
   console.log(`AGENTIC      ${row.agentic_state === 'MEASURED'
     ? `honor ${d(row.agentic_honor_rate, prev && prev.agentic_honor_rate)} · silent-drop ${d(row.agentic_silent_drop_rate, prev && prev.agentic_silent_drop_rate)} · negotiated ${d(row.agentic_negotiated_rate, prev && prev.agentic_negotiated_rate)} · UNCHECKED ${row.agentic_unchecked}/${row.agentic_n_asks} · n=${row.agentic_n_runs}`
     : `EMPTY — ${row.agentic_why}. Not zero: nothing has been measured.`}`);
-  console.log(`DENSITY      ${row.agentic_density_state === 'MEASURED'
-    ? Object.entries(row.agentic_density_per25).map(([f, v]) =>
-        `${f} ${v}/${REFERENCE_PER_25S[f]}`).join(' · ') + `  (${row.agentic_density_seconds}s)`
-    : `EMPTY — no agentic output measured. Not zero.`}   [a number, never a gate]`);
+  if (row.agentic_density_state !== 'MEASURED') {
+    console.log(`DENSITY      EMPTY — no agentic output measured. Not zero.   [a number, never a gate]`);
+  } else {
+    for (const [route, v] of Object.entries(row.agentic_density_routes)) {
+      const table = REF_BY_ROUTE[route] || REF_BY_ROUTE.speech;
+      const cells = Object.entries(v.per25).map(([f, n]) => `${f} ${n}/${table[f]}`).join(' · ');
+      console.log(`DENSITY ${String(route).padEnd(10)} ${cells}  (${v.seconds}s vs ${v.table})   [a number, never a gate]`);
+    }
+    if (!row.agentic_density_split) {
+      console.log(`             UNSPLIT — ${row.agentic_density_routes.UNROUTED ? 'no record carries `route`' : 'some records carry no `route`'}; a no-speech source graded on the talking-head table is measured against the wrong corpus`);
+    }
+  }
   console.log(`LATENCY      p50 ${d(row.latency_p50_s, prev && prev.latency_p50_s, 's')} · p90 ${row.latency_p90_s}s · p99 ${row.latency_p99_s}s · premium p50 ${row.latency_premium_p50_s}s · callback-gap ${row.callback_gap_jobs} · n=${row.latency_n_jobs}`);
   console.log(`EXPORT/CONV  exports ${d(row.exports, prev && prev.exports)} · views ${row.result_views} · export/viewed ${d(row.export_per_viewed, prev && prev.export_per_viewed)} · purchases ${row.purchases}`);
   console.log(`DEFECTS      ${row.defect_rate == null ? 'awaiting Lane 2 harness (column wired)' : row.defect_rate}`);
