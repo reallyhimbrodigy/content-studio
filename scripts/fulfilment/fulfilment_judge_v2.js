@@ -52,7 +52,20 @@ function diffTimelines(before, after) {
     return { state: 'ABSENT', why: 'no after-timeline recorded', touched: [], kept: 0 };
   }
   const key = it => String(it.id || it.item_id || '');
-  const sig = it => JSON.stringify([it.from ?? it.fromFrame, it.dur ?? it.durationInFrames,
+  // DURATION IS DERIVED WHEN ABSENT, and this is not a nicety. ChatCut omits
+  // durationInFrames on an untrimmed item, so comparing the raw field makes an
+  // UNCHANGED row read as CHANGED the moment one of the two reads carries it —
+  // kept=0, touched=every row, and rule (b) fails every re-edit. Measured on
+  // two identical timelines before this was written: 2 of 2 rows false-CHANGED.
+  // Builder-1 derives the same way at the seam, so both sides agree only if
+  // both derive.
+  const dur = it => {
+    const d = it.dur ?? it.durationInFrames;
+    if (d !== undefined && d !== null) return d;
+    const a = it.from ?? it.fromFrame, b = it.to ?? it.toFrame;
+    return (a !== undefined && a !== null && b !== undefined && b !== null) ? b - a : null;
+  };
+  const sig = it => JSON.stringify([it.from ?? it.fromFrame, dur(it),
                                     it.track ?? it.trackAlias, it.kind ?? it.itemType]);
   const A = new Map(after.items.map(i => [key(i), i]));
   const touched = [];

@@ -160,7 +160,40 @@ const CASES = [
   console.log(`  ${r3 ? 'RED ok ' : 'MISS   '} no before-timeline -> untouched_state=${blind.untouched_state}, touched=${JSON.stringify(blind.touched_without_an_ask)}`);
   console.log(`           not a pass and not a fail: "left alone" and "never existed" are indistinguishable`);
 
-  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted drops + 3 scope legs + 3 re-edit legs`);
+  // ── THE DURATION DERIVATION — Builder-1 caught this and it was real ───
+  // ChatCut omits durationInFrames on an untrimmed item. Comparing the raw
+  // field made two IDENTICAL timelines read kept=0, touched=every row, which
+  // would have failed rule (b) on every re-edit. Both sides must derive or
+  // neither can.
+  console.log('\n  DURATION DERIVATION:');
+  const { diffTimelines } = require('./fulfilment_judge_v2.js');
+  const RAW_B = { items: [
+    { id: 'a', fromFrame: 0,   toFrame: 335, trackAlias: 'V1', itemType: 'video' },
+    { id: 'b', fromFrame: 565, toFrame: 611, trackAlias: 'V2', itemType: 'motion-graphic' }] };
+  const RAW_A = { items: [
+    { id: 'a', fromFrame: 0,   toFrame: 335, durationInFrames: 335, trackAlias: 'V1', itemType: 'video' },
+    { id: 'b', fromFrame: 565, toFrame: 611, durationInFrames: 46,  trackAlias: 'V2', itemType: 'motion-graphic' }] };
+  const d1 = diffTimelines(RAW_B, RAW_A);
+  const g1 = d1.kept === 2 && d1.touched.length === 0;
+  if (!g1) allok = false;
+  console.log(`    ${g1 ? 'RED ok ' : 'MISS   '} [green] identical timelines, one read omitting durationInFrames -> kept=${d1.kept}, touched=${d1.touched.length}`);
+
+  const RETIMED = JSON.parse(JSON.stringify(RAW_A));
+  RETIMED.items[1].durationInFrames = 90; RETIMED.items[1].toFrame = 655;
+  const d2 = diffTimelines(RAW_B, RETIMED);
+  const g2 = d2.touched.length === 1 && d2.touched[0].id === 'b';
+  if (!g2) allok = false;
+  console.log(`    ${g2 ? 'RED ok ' : 'MISS   '} a genuinely retimed item is still caught -> ${d2.touched.length} touched (${d2.touched[0] && d2.touched[0].id})`);
+
+  const SHORT = { items: [
+    { id: 'a', from: 0,   dur: 335, track: 'V1', kind: 'video' },
+    { id: 'b', from: 565, dur: 46,  track: 'V2', kind: 'motion-graphic' }] };
+  const d3 = diffTimelines(SHORT, RAW_A);
+  const g3 = d3.touched.length === 0;
+  if (!g3) allok = false;
+  console.log(`    ${g3 ? 'RED ok ' : 'MISS   '} [green] the short-name and ChatCut spellings agree -> ${d3.touched.length} touched`);
+
+  console.log(`RED PROOF: ${allok ? 'PASS' : 'FAIL'} — 3 planted drops + 3 scope + 3 re-edit + 3 duration legs`);
   console.error(`judge cost $${cost().toFixed(4)} over 4 runs = $${(cost() / 4).toFixed(4)}/run`);
   process.exit(allok ? 0 : 1);
 })();
