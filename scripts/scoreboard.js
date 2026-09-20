@@ -102,6 +102,31 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
       aWhy = 'no agentic_fulfilment_scores table and no out/agentic_fulfilment.jsonl';
     }
   }
+  // ── DENSITY: A NUMBER, NEVER A GATE ──────────────────────────────────
+  // Placements per 25s by family, beside the reference corpus's own rates.
+  // This is the honest measure of "few and huge": it says how OFTEN a family
+  // appears, which no honor rate can, because a run that places one perfect
+  // card scores 1.0 and a run that places eight also scores 1.0.
+  //
+  // THE RATES GRADE AND NEVER INSTRUCT. Standing law: they must never reach the
+  // agent as a target, appear in the prompt, or be enforced as a floor at
+  // ruling time. A run that places two zooms because two moments deserved them
+  // is CORRECT and a rubric calling it short is the rubric's problem. So this
+  // block computes and PRINTS and does nothing else — no threshold, no verdict,
+  // no exit code, and __smoke_density_is_not_a_gate.js asserts that.
+  const REFERENCE_PER_25S = { text: 7.28, cut: 4.75, card: 2.35, sfx: 0.82, zoom: 0.35, transition: 0.00 };
+  let densSeconds = 0; const densFam = {};
+  for (const r of aRows) {
+    if (typeof r.duration_s === 'number') densSeconds += r.duration_s;
+    for (const [k, v] of Object.entries(r.families || {})) densFam[k] = (densFam[k] || 0) + v;
+  }
+  const density = { state: densSeconds > 0 ? 'MEASURED' : 'ABSENT', seconds: densSeconds, per25: {} };
+  if (densSeconds > 0) {
+    for (const fam of Object.keys(REFERENCE_PER_25S)) {
+      density.per25[fam] = +((densFam[fam] || 0) / (densSeconds / 25)).toFixed(2);
+    }
+  }
+
   const aAsks = aRows.flatMap(r => (r.asks || []));
   // UNCHECKED is counted from the FIXTURE expectation, not from a verdict: an
   // ask whose `means` could not be gated is unscoreable however it turned out.
@@ -117,6 +142,9 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
     agentic_silent_drop_rate: aState === 'MEASURED' ? rate(a => a.verdict === 'DROPPED_SILENTLY') : null,
     agentic_negotiated_rate: aState === 'MEASURED' ? rate(a => a.verdict === 'NEGOTIATED') : null,
     agentic_why: aWhy,
+    agentic_density_state: density.state,
+    agentic_density_seconds: density.state === 'MEASURED' ? +density.seconds.toFixed(1) : null,
+    agentic_density_per25: density.state === 'MEASURED' ? density.per25 : null,
   };
 
   // ── 2. latency (the user's wait; jobs COMPLETED on the day) ───────────
@@ -192,6 +220,10 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
   console.log(`AGENTIC      ${row.agentic_state === 'MEASURED'
     ? `honor ${d(row.agentic_honor_rate, prev && prev.agentic_honor_rate)} · silent-drop ${d(row.agentic_silent_drop_rate, prev && prev.agentic_silent_drop_rate)} · negotiated ${d(row.agentic_negotiated_rate, prev && prev.agentic_negotiated_rate)} · UNCHECKED ${row.agentic_unchecked}/${row.agentic_n_asks} · n=${row.agentic_n_runs}`
     : `EMPTY — ${row.agentic_why}. Not zero: nothing has been measured.`}`);
+  console.log(`DENSITY      ${row.agentic_density_state === 'MEASURED'
+    ? Object.entries(row.agentic_density_per25).map(([f, v]) =>
+        `${f} ${v}/${REFERENCE_PER_25S[f]}`).join(' · ') + `  (${row.agentic_density_seconds}s)`
+    : `EMPTY — no agentic output measured. Not zero.`}   [a number, never a gate]`);
   console.log(`LATENCY      p50 ${d(row.latency_p50_s, prev && prev.latency_p50_s, 's')} · p90 ${row.latency_p90_s}s · p99 ${row.latency_p99_s}s · premium p50 ${row.latency_premium_p50_s}s · callback-gap ${row.callback_gap_jobs} · n=${row.latency_n_jobs}`);
   console.log(`EXPORT/CONV  exports ${d(row.exports, prev && prev.exports)} · views ${row.result_views} · export/viewed ${d(row.export_per_viewed, prev && prev.export_per_viewed)} · purchases ${row.purchases}`);
   console.log(`DEFECTS      ${row.defect_rate == null ? 'awaiting Lane 2 harness (column wired)' : row.defect_rate}`);
