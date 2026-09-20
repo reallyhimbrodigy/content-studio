@@ -107,6 +107,7 @@ final class ResumableMultipartUploader: NSObject {
     /// without this, and the retry storm is exactly what we are trying to size.
     private var partRetries: [String: Int] = [:]      // uploadId → cumulative retries
     private var taskBytes: [Int: Int64] = [:]         // taskId → bytesSent (for smooth progress)
+    private var msgIdByUpload: [String: String] = [:] // uploadId → message id (the UploadTiming key)
 
     /// In-memory per-transfer state for the ALIVE path (lost on app-kill; the killed
     /// path finalizes via the relaunch reconcile instead).
@@ -180,6 +181,7 @@ final class ResumableMultipartUploader: NSObject {
             partUrls: initResponse.partUrls, sourcePath: fileUrl.path,
             fileSize: size, partSize: partSize, messageId: messageId, chatId: chatId, createdAt: Date())
         saveManifest(manifest)
+        msgIdByUpload[manifest.uploadId] = manifest.messageId
         let ledger = MultipartResumeLedger(uploadId: initResponse.uploadId, key: initResponse.key,
                                            publicUrl: initResponse.publicUrl, fileSize: size, partSize: partSize)
         try? ledger.save(in: ledgerDir)
@@ -198,6 +200,7 @@ final class ResumableMultipartUploader: NSObject {
     private func scheduleRemaining(uploadId: String) {
         guard let manifest = loadManifest(uploadId),
               let ledger = MultipartResumeLedger.load(uploadId: uploadId, in: ledgerDir) else { return }
+        msgIdByUpload[uploadId] = manifest.messageId
 
         // Expired → the part URLs are dead; abort + give up (fall back happens upstream
         // only at init, but here the alive caller just gets an upload failure).
@@ -317,6 +320,14 @@ final class ResumableMultipartUploader: NSObject {
     private func finalize(uploadId: String) async {
         guard let ledger = MultipartResumeLedger.load(uploadId: uploadId, in: ledgerDir),
               let parts = ledger.orderedParts() else { return }
+        // Every part now has an ETag, so the last byte of the FILE has left
+        // the device. Marked before multipartComplete, which is a server
+        // round-trip retried up to maxCompleteAttempts — folding that into
+        // last_byte would charge finalize latency to the transfer stage and
+        // make the breakdown lie about which half to fix.
+        if let mid = msgIdByUpload[uploadId] ?? loadManifest(uploadId)?.messageId {
+            UploadTiming.mark(mid, "last_byte")
+        }
         let wire = parts.map { APIService.MultipartPart(PartNumber: $0.partNumber, ETag: $0.eTag) }
         var attempt = 0
         while attempt < MultipartConfig.maxCompleteAttempts {
@@ -416,6 +427,12 @@ final class ResumableMultipartUploader: NSObject {
         taskBytes[taskId] = totalSent
         guard let state = transfers[ctx.uploadId], state.totalBytes > 0,
               let ledger = MultipartResumeLedger.load(uploadId: ctx.uploadId, in: ledgerDir) else { return }
+        // First byte off the device on the multipart path. `mark` is first-
+        // write-wins, so this fires once per upload despite sitting on a
+        // progress callback. Without it the TRANSFER half of the breakdown is
+        // dark on every clip over the multipart threshold — leaving a total,
+        // which cannot separate staging from transfer.
+        if let mid = msgIdByUpload[ctx.uploadId] { UploadTiming.mark(mid, "first_byte") }
         // Aggregate = confirmed-part bytes + in-flight bytes across live tasks.
         let plan = MultipartChunker.partPlan(fileSize: ledger.fileSize, partSize: ledger.partSize)
         let doneParts = ledger.completedPartNumbers()
@@ -510,6 +527,7 @@ final class ResumableMultipartUploader: NSObject {
     private func cleanupLocalState(uploadId: String) {
         MultipartResumeLedger.clear(uploadId: uploadId, in: ledgerDir)
         try? FileManager.default.removeItem(at: manifestURL(uploadId))
+        msgIdByUpload.removeValue(forKey: uploadId)
         for (tid, c) in partCtx where c.uploadId == uploadId {
             try? FileManager.default.removeItem(atPath: c.chunkPath)
             partCtx.removeValue(forKey: tid)

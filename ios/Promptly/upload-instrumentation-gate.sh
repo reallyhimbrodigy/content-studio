@@ -70,6 +70,59 @@ if 'timeIntervalSince(ledger.createdAt)' not in src:
     bad.append('duration_ms is not measured from ledger.createdAt — a resumed upload '
                'that survived an app kill would report only the final leg')
 
+# ---- STAGE MARKS: a total cannot separate staging from transfer ----
+# upload_completed answers "how long, for how many bytes". It cannot answer WHICH
+# HALF was slow. UploadTiming carries that breakdown, but its transfer marks lived
+# only in BackgroundUploadManager — so on the multipart path first_byte/last_byte
+# were dark and the breakdown collapsed back to a total. Staging a copy nobody
+# needed and a slow transfer are opposite fixes.
+import os
+MARK = lambda st: re.search(r'UploadTiming\.mark\([^)]*"' + st + r'"\)', src)
+for stage in ['first_byte', 'last_byte']:
+    if not MARK(stage):
+        bad.append(f'the multipart path no longer marks `{stage}` — the transfer half '
+                   f'of the breakdown goes dark and upload_timing collapses to a '
+                   f'total, which cannot tell staging from transfer')
+
+# ORDERING, not just presence. last_byte means the last byte of the FILE left the
+# device. multipartComplete is a server round-trip retried up to
+# maxCompleteAttempts; marking after it charges finalize latency to the transfer
+# stage, and the breakdown then lies about which half to fix.
+i_last = MARK('last_byte').start() if MARK('last_byte') else -1
+i_done = src.find('APIService.shared.multipartComplete')
+if i_last >= 0 and i_done >= 0 and i_last > i_done:
+    bad.append('last_byte is marked AFTER multipartComplete, so the finalize '
+               'round-trip and its retries are charged to transfer time')
+
+# first_byte has to sit on the progress callback or it never fires at all.
+i_send = src.find('func didSendBodyData(taskId:')
+i_first = MARK('first_byte').start() if MARK('first_byte') else -1
+if i_first >= 0 and (i_send < 0 or i_first < i_send):
+    bad.append('first_byte is not marked inside didSendBodyData — it would never '
+               'fire on the multipart path')
+
+if 'msgIdByUpload' not in src:
+    bad.append('the uploadId->messageId cache is gone — the ledger carries no '
+               'messageId, so the marks would either not compile or force a disk '
+               'read and JSON decode on every progress callback')
+
+# CONSUMER HALF. Marks that are never finished accumulate and emit nothing, and a
+# never-sent event is indistinguishable from a dropped one: both read as 0 rows.
+try:
+    ed = open('Promptly/Views/EditorView.swift', encoding='utf8').read()
+    if 'UploadTiming.finish(' not in ed:
+        bad.append('nothing calls UploadTiming.finish — every mark is recorded and no '
+                   'upload_timing row is ever emitted')
+except OSError:
+    bad.append('EditorView.swift unreadable; cannot prove UploadTiming.finish is called')
+
+# ...and the server must still accept it, or the rows are dropped on arrival.
+srv = os.path.join('..', '..', 'server.js')
+if os.path.exists(srv):
+    if "'upload_timing'" not in open(srv, encoding='utf8').read():
+        bad.append('upload_timing is not in the server event allowlist — rows would be '
+                   'dropped on arrival and read as "never sent"')
+
 if bad:
     print('upload-instrumentation-gate: FAIL')
     for b in bad: print('  -', b)
