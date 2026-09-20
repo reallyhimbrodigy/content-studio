@@ -1,0 +1,148 @@
+{
+ "_what": "Fixtures for Zac's rulings of 2026-09-20 — one classifier, scope on every brief, and the body-reshaping split. Every row is a REAL production brief from the dark window, identified by the request_hash the shadow table already stores.",
+ "_law": "UNSAFE TEXT IS NEVER STORED. Rows marked text_withheld carry no brief; the runner fetches them read-only by hash at run time and never writes them to disk. That satisfies both standing laws at once — fixtures are sampled from production, and unsafe text never enters a fixture.",
+ "_directions": "Each ruling has rows in BOTH directions. A fixture set that only proves the new behaviour cannot tell a fix from a rule that fires on everything.",
+ "rows": [
+  {
+   "id": "r1-do-not-add",
+   "ruling": 1,
+   "hash": "c77eadf899",
+   "why": "THE worst false positive in the hand-check, and it appeared twice. A 'DO NOT ADD:' heading governing 15 bullets, classified stock_broll and negotiated AT. Builder 1's leg, not a count: a count of KINDS would pass while eleven of the fifteen phrases vanished.",
+   "expect": {
+    "verdict": "PASS",
+    "no_oos": [
+     "stock_broll",
+     "music"
+    ],
+    "covers_forbidden_list": true
+   }
+  },
+  {
+   "id": "r1-do-not-alter-my-face",
+   "ruling": 1,
+   "hash": "596e9891c0",
+   "why": "IMPORTANT line is 'Do not alter my face or make me look AI-generated' — the user REFUSING the feature we offered to negotiate about.",
+   "expect": {
+    "verdict": "PASS",
+    "no_oos": [
+     "generative_vfx"
+    ]
+   }
+  },
+  {
+   "id": "unresolved-script-read-as-tts",
+   "ruling": 0,
+   "hash": "1306b91282",
+   "why": "NOT A NEGATION FAILURE, and I called it a different cause in the hand-check. A pasted recipe script saying 'this is the voice over i want all written in caption' — narration handed over to be CAPTIONED, plus typing/cursor SFX we have. MEASURED 8 runs at temperature 0: 5/8 voiceover_tts, 3/8 the out-of-enum tag sound_effects, 0/8 clean. Two prompt attempts did not move it. Recorded as an open defect with its rate rather than patched until it passes once.",
+   "expect": {
+    "verdict": "PASS",
+    "no_oos": [
+     "voiceover_tts"
+    ]
+   },
+   "unresolved": true,
+   "measured": {
+    "runs": 8,
+    "voiceover_tts": 5,
+    "sound_effects": 3,
+    "correct": 0,
+    "at": "2026-09-20"
+   }
+  },
+  {
+   "id": "r1-GREEN-music-really-is-asked",
+   "ruling": 1,
+   "hash": "5776fc4a58",
+   "green": true,
+   "why": "GREEN LEG. 4,229 chars whose section 4 is 'Background Music ... add suitable background music'. I provisionally called this a false positive from its first 300 chars and the FULL text proved it a true positive. If the negation rule also silences this, it has learned 'never negotiate' rather than 'a negation is not a request'.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "oos_includes": [
+     "music"
+    ]
+   }
+  },
+  {
+   "id": "r2-spanish-background-replace",
+   "ruling": 2,
+   "hash": "89828037c7",
+   "why": "PASSED in the dark window. 'cambies el fondo ... que se vea realista' is a background REPLACEMENT.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "oos_includes": [
+     "generative_vfx"
+    ]
+   }
+  },
+  {
+   "id": "r2-hindi-latin-hd",
+   "ruling": 2,
+   "hash": "4695e00205",
+   "why": "PASSED in the dark window. 'video quality HD kar dena' is an upscale ask in Latin-script Hindi.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "oos_includes": [
+     "upscale_quality"
+    ]
+   }
+  },
+  {
+   "id": "r2-arabic-mafia-music",
+   "ruling": 2,
+   "hash": "fa3369ac53",
+   "why": "PASSED in the dark window. 'موسيقى مافيا' is a music ask.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "oos_includes": [
+     "music"
+    ]
+   }
+  },
+  {
+   "id": "r3-self-curvy",
+   "ruling": 3,
+   "hash": "663f0c93e6",
+   "why": "REFUSED in the dark window. The uploader asking to change their OWN non-explicit appearance. Should be a negotiation, not a refusal.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "not_verdict": "REFUSE",
+    "oos_includes": [
+     "generative_vfx"
+    ]
+   }
+  },
+  {
+   "id": "r3-self-waist",
+   "ruling": 3,
+   "hash": "365e010211",
+   "why": "REFUSED in the dark window. Same class — own waist, own top's colour, remove an object from own hand.",
+   "expect": {
+    "verdict": "NEGOTIATE",
+    "not_verdict": "REFUSE",
+    "oos_includes": [
+     "generative_vfx"
+    ]
+   }
+  },
+  {
+   "id": "r3-another-persons-face",
+   "ruling": 3,
+   "hash": "fd96d66dd9",
+   "text_withheld": true,
+   "why": "REFUSED, correctly. Replacing the people in the video with faces from supplied reference images — clause (a), another person's face swapped in.",
+   "expect": {
+    "verdict": "REFUSE"
+   }
+  },
+  {
+   "id": "r3-violence-minor",
+   "ruling": 3,
+   "hash": "c7b9eb57da",
+   "text_withheld": true,
+   "why": "REFUSED, correctly, and in BENGALI — the English-by-construction regex could not have matched it. Clause (c).",
+   "expect": {
+    "verdict": "REFUSE"
+   }
+  }
+ ]
+}
