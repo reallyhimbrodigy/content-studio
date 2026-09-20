@@ -6,10 +6,13 @@ struct AuthView: View {
     @State private var email = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var otpEmail: String?  // non-nil → present the OTP sheet for this email
+    // non-nil → present the OTP sheet. Carries WHICH PATH MINTED THE CODE,
+    // because that is what decides the verify type and nothing else can
+    // recover it later: by the time the sheet verifies, the session is still
+    // anonymous on BOTH paths, so `isAnonymous` cannot tell them apart.
+    @State private var otpPresentation: OtpPresentation?
     /// True when the code came from an ordinary sign-in rather than a link, so
     /// the verify leg uses the ordinary type.
-    @State private var isRecoveringExistingAccount = false
     @FocusState private var focusedField: Field?
 
     /// Raw nonce stashed between Apple's `onRequest` and `onCompletion`.
@@ -99,12 +102,10 @@ struct AuthView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .fullScreenCover(item: Binding(
-            get: { otpEmail.map { OtpPresentation(email: $0) } },
-            set: { otpEmail = $0?.email }
-        )) { presentation in
-            OtpInputView(email: presentation.email) {
-                otpEmail = nil
+        .fullScreenCover(item: $otpPresentation) { presentation in
+            OtpInputView(email: presentation.email,
+                         codeIsLinkToken: presentation.isLinkToken) {
+                otpPresentation = nil
             }
         }
     }
@@ -113,6 +114,10 @@ struct AuthView: View {
     /// Identifiable to track. The email itself is the identity.
     private struct OtpPresentation: Identifiable {
         let email: String
+        /// TRUE only when `linkEmailIdentity` actually linked, which is the one
+        /// case whose token verifies as `email_change`. The recovery fallback
+        /// mints an ordinary magiclink via `sendOtp`, which verifies as `email`.
+        let isLinkToken: Bool
         var id: String { email }
     }
 
@@ -438,10 +443,13 @@ struct AuthView: View {
                     // a strict link would.
                     try await AuthService.shared.sendOtp(email: trimmed)
                 }
-                isRecoveringExistingAccount = (outcome != .linked)
-                otpEmail = trimmed
+                // THE DISCRIMINATING FACT, recorded where it is known. `.linked`
+                // is the only outcome that minted an email_change token; both
+                // other outcomes fell through to sendOtp and minted a magiclink.
+                otpPresentation = OtpPresentation(email: trimmed,
+                                                  isLinkToken: outcome == .linked)
             } catch {
-                errorMessage = "Couldn't send code. Check your email and try again."
+                errorMessage = String(localized: "Couldn't send code. Check your email and try again.")
             }
             isLoading = false
         }

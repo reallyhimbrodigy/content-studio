@@ -2142,6 +2142,15 @@ struct EditorView: View {
                             materializedSourceUrl = durable
                         }
                         await MainActor.run { pending.fileUrl = materializedSourceUrl }
+                        // STAGED ON THIS PATH TOO. The .stream (iCloud) case marks `staged` at
+                        // its own durable copy; this case materialises earlier — a tmp copy, a
+                        // compress, or the durable fallback — and marked nothing. So on every
+                        // non-iCloud clip `first_byte - staged` had no left operand, and the one
+                        // number that says whether the time went on staging a copy nobody needed
+                        // or on the transfer was computable for only a slice of uploads. Marked
+                        // at the join, after all three materialisation branches, so it means the
+                        // same thing on both paths: the local file is ready to send.
+                        UploadTiming.mark(pending.id.uuidString, "staged")
 
                         // LAYER 2 — backend /validate round-trip on a 5s
                         // sample. Catches incompatible clips the Layer 1

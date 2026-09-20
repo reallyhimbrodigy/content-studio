@@ -14,6 +14,12 @@ import SwiftUI
 ///      can't spam Resend's send quota.
 struct OtpInputView: View {
     let email: String
+    /// Which path minted the code that is about to be typed in. Passed in
+    /// because it CANNOT be re-derived here: on a second device the session is
+    /// anonymous whether the code came from the link flow or from the
+    /// sign-in-to-existing-account fallback, so `isAnonymous` is the same value
+    /// in both cases and cannot discriminate between them.
+    let codeIsLinkToken: Bool
     let onDismiss: () -> Void
 
     @State private var code: String = ""
@@ -22,6 +28,11 @@ struct OtpInputView: View {
     @State private var resendCooldown: Int = 30
     @State private var resendTimer: Timer?
     @State private var isResending = false
+    /// A RESEND always goes through `sendOtp`, which mints a magiclink — so
+    /// after one, the code in the user's inbox is no longer a link token even
+    /// if the first one was. nil = no resend yet, use what was passed in.
+    @State private var resentAsMagicLink: Bool? = nil
+    private var isLinkToken: Bool { resentAsMagicLink.map { !$0 } ?? codeIsLinkToken }
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -220,18 +231,28 @@ struct OtpInputView: View {
 
         Task {
             do {
-                // The code came from the link flow if the session we started from
-                // was anonymous — that token only verifies as `email_change`.
+                // VERIFY WITH THE TYPE THAT MATCHES THE TOKEN THAT WAS MINTED.
+                //
+                // This used to read `currentUser?.isAnonymous == true`. On a
+                // second device that is TRUE on both paths — the device holds an
+                // anonymous session either way, and signing in has not happened
+                // yet — so every second-device sign-in verified a magiclink token
+                // as `email_change` and came back "That code didn't work".
+                // MEASURED 2026-09-20: PUT /auth/v1/user returns 422
+                // error_code=email_exists, the fallback fires, sendOtp mints a
+                // magiclink (verification_type=magiclink, recovery slot), and
+                // that token verifies HTTP 200 as `email` — never as
+                // `email_change`. isAnonymous is a consistent field; which path
+                // sent the code is the discriminating one.
                 try await AuthService.shared.verifyOtp(
-                    email: email, code: code,
-                    linking: AuthService.shared.currentUser?.isAnonymous == true)
+                    email: email, code: code, linking: isLinkToken)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 // AuthService.saveSession() flips isAuthenticated; the
                 // root WindowGroup automatically swaps to AppShell.
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 code = ""
-                errorMessage = "That code didn't work. Try again or resend."
+                errorMessage = String(localized: "That code didn't work. Try again or resend.")
                 focused = true
             }
             isVerifying = false
@@ -246,10 +267,13 @@ struct OtpInputView: View {
         Task {
             do {
                 try await AuthService.shared.sendOtp(email: email)
+                // The live code is now a magiclink regardless of how the first
+                // one was minted; verifying it as email_change would fail.
+                resentAsMagicLink = true
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 startResendCooldown()
             } catch {
-                errorMessage = "Couldn't resend right now. Check your connection."
+                errorMessage = String(localized: "Couldn't resend right now. Check your connection.")
             }
             isResending = false
         }

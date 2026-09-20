@@ -3874,12 +3874,6 @@
     "20 videos a month": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "20 videos a month"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -3896,6 +3890,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "20 Videos im Monat"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 videos a month"
           }
         },
         "es": {
@@ -3951,12 +3951,6 @@
     "200 credits a month — 20 videos": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "200 credits a month — 20 videos"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -3973,6 +3967,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "200 Credits im Monat – 20 Videos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "200 credits a month — 20 videos"
           }
         },
         "es": {
@@ -6007,12 +6007,6 @@
     "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -6029,6 +6023,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Größere Bearbeitungen dauern etwas länger – du kannst die App schließen, wir sagen dir Bescheid, sobald sie fertig ist."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bigger edits take a little longer — you can close the app and we'll let you know when it's ready."
           }
         },
         "es": {
@@ -6728,12 +6728,6 @@
     "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -6750,6 +6744,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ändere ein fertiges Video, ohne es erneut zu senden. Pro macht das möglich – mit 200 Credits im Monat, 20 Videos, und unbegrenzten Chats."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats."
           }
         },
         "es": {
@@ -9192,6 +9192,83 @@
         }
       }
     },
+    "Couldn't resend right now. Check your connection.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّرت إعادة الإرسال الآن. تحقّق من اتصالك."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এখন পুনরায় পাঠানো গেল না। আপনার সংযোগ পরীক্ষা করুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneutes Senden ist gerade nicht möglich. Prüfe deine Verbindung."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't resend right now. Check your connection."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo reenviar ahora. Comprueba tu conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de renvoyer le code pour le moment. Vérifie ta connexion."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अभी दोबारा नहीं भेजा जा सका। अपना कनेक्शन जाँचें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak bisa mengirim ulang sekarang. Periksa koneksi Anda."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今は再送信できませんでした。通信状況を確認してください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिले पुनः पठाउन सकिएन। आफ्नो इन्टरनेट जाँच्नुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível reenviar agora. Verifique sua conexão."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ابھی دوبارہ نہیں بھیجا جا سکا۔ اپنا کنکشن دیکھیں۔"
+          }
+        }
+      }
+    },
     "Couldn't respond. Long-press to try again.": {
       "localizations": {
         "ar": {
@@ -9258,6 +9335,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "جواب نہیں دیا جا سکا۔ دوبارہ کوشش کے لیے دیر تک دبائیں۔"
+          }
+        }
+      }
+    },
+    "Couldn't send code. Check your email and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر إرسال الرمز. تحقّق من بريدك الإلكتروني وحاول مرة أخرى."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কোড পাঠানো গেল না। আপনার ইমেল পরীক্ষা করে আবার চেষ্টা করুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code konnte nicht gesendet werden. Prüfe deine E-Mail-Adresse und versuche es erneut."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't send code. Check your email and try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo enviar el código. Comprueba tu correo e inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'envoyer le code. Vérifie ton adresse e-mail et réessaie."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कोड नहीं भेजा जा सका। अपना ईमेल जाँचें और दोबारा कोशिश करें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kode tidak terkirim. Periksa email Anda dan coba lagi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードを送信できませんでした。メールアドレスを確認して、もう一度お試しください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कोड पठाउन सकिएन। आफ्नो इमेल जाँचेर फेरि प्रयास गर्नुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível enviar o código. Verifique seu e-mail e tente de novo."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کوڈ نہیں بھیجا جا سکا۔ اپنا ای میل دیکھ کر دوبارہ کوشش کریں۔"
           }
         }
       }
@@ -11569,12 +11723,6 @@
     "Every episode into clips": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every episode into clips"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11591,6 +11739,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jede Folge in Clips"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every episode into clips"
           }
         },
         "es": {
@@ -11723,12 +11877,6 @@
     "Every promo cut and captioned": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every promo cut and captioned"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11745,6 +11893,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jede Promo geschnitten und untertitelt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every promo cut and captioned"
           }
         },
         "es": {
@@ -11800,12 +11954,6 @@
     "Every take into a finished cut": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every take into a finished cut"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11822,6 +11970,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jeder Take zum fertigen Schnitt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every take into a finished cut"
           }
         },
         "es": {
@@ -11877,12 +12031,6 @@
     "Every vlog cut and captioned": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every vlog cut and captioned"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -11899,6 +12047,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jeder Vlog geschnitten und untertitelt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every vlog cut and captioned"
           }
         },
         "es": {
@@ -12262,12 +12416,6 @@
     "Everything you made is still here. Go Pro for 200 credits a month — 20 videos.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Everything you made is still here. Go Pro for 200 credits a month — 20 videos."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -12284,6 +12432,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alles, was du erstellt hast, ist noch da. Hol dir Pro für 200 Credits im Monat – 20 Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything you made is still here. Go Pro for 200 credits a month — 20 videos."
           }
         },
         "es": {
@@ -12339,12 +12493,6 @@
     "Everything's unlocked — every feature, no daily cap on chats.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Everything's unlocked — every feature, no daily cap on chats."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -12361,6 +12509,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alles freigeschaltet – jede Funktion, kein Tageslimit für Chats."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything's unlocked — every feature, no daily cap on chats."
           }
         },
         "es": {
@@ -13224,12 +13378,6 @@
     "Free gives you 3 videos a month. Pro gives you 20.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free gives you 3 videos a month. Pro gives you 20."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -13246,6 +13394,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kostenlos: 3 Videos im Monat. Pro: 20."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free gives you 3 videos a month. Pro gives you 20."
           }
         },
         "es": {
@@ -13437,12 +13591,6 @@
     "Free includes 30 credits a month — 3 videos. Pro includes 200 credits — 20 videos.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free includes 30 credits a month — 3 videos. Pro includes 200 credits — 20 videos."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -13459,6 +13607,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kostenlos: 30 Credits im Monat – 3 Videos. Pro: 200 Credits – 20 Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free includes 30 credits a month — 3 videos. Pro includes 200 credits — 20 videos."
           }
         },
         "es": {
@@ -13514,12 +13668,6 @@
     "Free includes a limited number of saved videos. Pro saves and shares every video — plus 200 credits a month and unlimited chats.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free includes a limited number of saved videos. Pro saves and shares every video — plus 200 credits a month and unlimited chats."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -13536,6 +13684,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kostenlos speicherst du begrenzt viele Videos. Pro speichert und teilt jedes Video – plus 200 Credits im Monat und unbegrenzte Chats."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free includes a limited number of saved videos. Pro saves and shares every video — plus 200 credits a month and unlimited chats."
           }
         },
         "es": {
@@ -13591,12 +13745,6 @@
     "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -13613,6 +13761,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kostenlos speicherst du nur wenige Videos. Pro speichert und teilt jedes – mit 200 Credits im Monat, 20 Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos."
           }
         },
         "es": {
@@ -14551,12 +14705,6 @@
     "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -14573,6 +14721,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mehr als die 3 kostenlosen Videos im Monat – Pro gibt dir 200 Credits, 20 Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos."
           }
         },
         "es": {
@@ -17074,12 +17228,6 @@
     "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus 200 credits a month and unlimited chats.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus 200 credits a month and unlimited chats."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -17096,6 +17244,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ändere fertige Edits ohne erneutes Hochladen. Pro schaltet Re-Edit frei – plus 200 Credits im Monat und unbegrenzte Chats."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make changes to finished edits without re-uploading. Pro unlocks the re-edit flow plus 200 credits a month and unlimited chats."
           }
         },
         "es": {
@@ -20999,6 +21153,24 @@
     "Paying on the web needs your account confirmed first. You can pay in-app instead, or try again in a moment.": {
       "extractionState": "manual",
       "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يتطلّب الدفع عبر الويب تأكيد حسابك أولًا. يمكنك الدفع داخل التطبيق، أو المحاولة مرة أخرى بعد قليل."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ওয়েবে পেমেন্ট করতে আগে আপনার অ্যাকাউন্ট নিশ্চিত হওয়া দরকার। আপনি অ্যাপেই পেমেন্ট করতে পারেন, বা একটু পরে আবার চেষ্টা করুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für die Zahlung im Web muss dein Konto zuerst bestätigt sein. Du kannst stattdessen in der App zahlen oder es gleich noch einmal versuchen."
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
@@ -21011,28 +21183,10 @@
             "value": "Para pagar en la web primero hay que confirmar tu cuenta. Puedes pagar en la app o volver a intentarlo en un momento."
           }
         },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Para pagar na web, sua conta precisa ser confirmada primeiro. Você pode pagar no app ou tentar de novo em instantes."
-          }
-        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Payer sur le web nécessite d'abord la confirmation de ton compte. Tu peux payer dans l'app ou réessayer dans un instant."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Für die Zahlung im Web muss dein Konto zuerst bestätigt sein. Du kannst stattdessen in der App zahlen oder es gleich noch einmal versuchen."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pembayaran lewat web perlu akunmu dikonfirmasi dulu. Kamu bisa bayar di aplikasi, atau coba lagi sebentar lagi."
           }
         },
         "hi": {
@@ -21041,10 +21195,16 @@
             "value": "वेब पर भुगतान के लिए पहले आपके खाते की पुष्टि ज़रूरी है। आप ऐप में भुगतान कर सकते हैं, या थोड़ी देर में दोबारा कोशिश करें।"
           }
         },
-        "bn": {
+        "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "ওয়েবে পেমেন্ট করতে আগে আপনার অ্যাকাউন্ট নিশ্চিত হওয়া দরকার। আপনি অ্যাপেই পেমেন্ট করতে পারেন, বা একটু পরে আবার চেষ্টা করুন।"
+            "value": "Pembayaran lewat web perlu akunmu dikonfirmasi dulu. Kamu bisa bayar di aplikasi, atau coba lagi sebentar lagi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ウェブでのお支払いには、まずアカウントの確認が必要です。アプリ内で支払うか、少し時間をおいてもう一度お試しください。"
           }
         },
         "ne": {
@@ -21053,22 +21213,16 @@
             "value": "वेबमा भुक्तानी गर्न पहिले तपाईंको खाता पुष्टि हुनुपर्छ। तपाईं एपमै भुक्तानी गर्न सक्नुहुन्छ, वा केही बेरमा फेरि प्रयास गर्नुहोस्।"
           }
         },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para pagar na web, sua conta precisa ser confirmada primeiro. Você pode pagar no app ou tentar de novo em instantes."
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "ویب پر ادائیگی کے لیے پہلے آپ کے اکاؤنٹ کی تصدیق ضروری ہے۔ آپ ایپ میں ادائیگی کر سکتے ہیں، یا تھوڑی دیر بعد دوبارہ کوشش کریں۔"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "يتطلّب الدفع عبر الويب تأكيد حسابك أولًا. يمكنك الدفع داخل التطبيق، أو المحاولة مرة أخرى بعد قليل."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ウェブでのお支払いには、まずアカウントの確認が必要です。アプリ内で支払うか、少し時間をおいてもう一度お試しください。"
           }
         }
       }
@@ -22647,6 +22801,24 @@
     "Rate Promptly": {
       "extractionState": "manual",
       "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قيّم Promptly"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly রেট করুন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly bewerten"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
@@ -22659,28 +22831,10 @@
             "value": "Valorar Promptly"
           }
         },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avaliar o Promptly"
-          }
-        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Noter Promptly"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Promptly bewerten"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Beri rating Promptly"
           }
         },
         "hi": {
@@ -22689,10 +22843,16 @@
             "value": "Promptly को रेट करें"
           }
         },
-        "bn": {
+        "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Promptly রেট করুন"
+            "value": "Beri rating Promptly"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Promptly を評価"
           }
         },
         "ne": {
@@ -22701,22 +22861,16 @@
             "value": "Promptly लाई रेट गर्नुहोस्"
           }
         },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaliar o Promptly"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "Promptly کو ریٹ کریں"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "قيّم Promptly"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Promptly を評価"
           }
         }
       }
@@ -27473,6 +27627,83 @@
         }
       }
     },
+    "That code didn't work. Try again or resend.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يعمل هذا الرمز. حاول مرة أخرى أو أعد الإرسال."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই কোডটি কাজ করেনি। আবার চেষ্টা করুন বা কোড পুনরায় পাঠান।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Code hat nicht funktioniert. Versuche es erneut oder fordere einen neuen an."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That code didn't work. Try again or resend."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese código no funcionó. Inténtalo de nuevo o pide otro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code n'a pas fonctionné. Réessaie ou demande un nouveau code."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह कोड काम नहीं आया। दोबारा कोशिश करें या नया कोड भेजें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kode itu tidak berfungsi. Coba lagi atau kirim ulang."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコードは使用できませんでした。もう一度入力するか、再送信してください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो कोडले काम गरेन। फेरि प्रयास गर्नुहोस् वा नयाँ कोड पठाउनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse código não funcionou. Tente de novo ou peça outro."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ کوڈ کام نہیں کیا۔ دوبارہ کوشش کریں یا نیا کوڈ بھیجیں۔"
+          }
+        }
+      }
+    },
     "That code doesn't look right. Check the letters and try again.": {
       "extractionState": "manual",
       "localizations": {
@@ -30626,6 +30857,24 @@
     "We couldn't confirm your account": {
       "extractionState": "manual",
       "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر علينا تأكيد حسابك"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আমরা আপনার অ্যাকাউন্ট নিশ্চিত করতে পারিনি"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir konnten dein Konto nicht bestätigen"
+          }
+        },
         "en": {
           "stringUnit": {
             "state": "translated",
@@ -30638,28 +30887,10 @@
             "value": "No pudimos confirmar tu cuenta"
           }
         },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Não conseguimos confirmar sua conta"
-          }
-        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Nous n'avons pas pu confirmer ton compte"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wir konnten dein Konto nicht bestätigen"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kami tidak dapat mengonfirmasi akunmu"
           }
         },
         "hi": {
@@ -30668,10 +30899,16 @@
             "value": "हम आपका खाता सत्यापित नहीं कर सके"
           }
         },
-        "bn": {
+        "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "আমরা আপনার অ্যাকাউন্ট নিশ্চিত করতে পারিনি"
+            "value": "Kami tidak dapat mengonfirmasi akunmu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントを確認できませんでした"
           }
         },
         "ne": {
@@ -30680,22 +30917,16 @@
             "value": "हामीले तपाईंको खाता पुष्टि गर्न सकेनौं"
           }
         },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não conseguimos confirmar sua conta"
+          }
+        },
         "ur": {
           "stringUnit": {
             "state": "translated",
             "value": "ہم آپ کا اکاؤنٹ تصدیق نہیں کر سکے"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "تعذّر علينا تأكيد حسابك"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "アカウントを確認できませんでした"
           }
         }
       }
@@ -33379,12 +33610,6 @@
     "You've used your credits for now. Pro includes 200 credits a month — 20 videos.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You've used your credits for now. Pro includes 200 credits a month — 20 videos."
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -33401,6 +33626,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Deine Credits sind vorerst aufgebraucht. Pro enthält 200 Credits im Monat – 20 Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used your credits for now. Pro includes 200 credits a month — 20 videos."
           }
         },
         "es": {
