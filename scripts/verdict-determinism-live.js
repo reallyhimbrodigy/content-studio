@@ -44,7 +44,19 @@ const RUNS = 8;
         // run of this script did exactly that: 4/4 "STABLE", all converse, all
         // actually reason=decide_failed:gemini_http_401 with enabled()=false.
         // So a run that did not reach the model is UNMEASURED, never passing.
-        if (v && v.reason) { unmeasured.push(`${msg} -> ${v.reason}`); kinds.push('UNMEASURED:' + v.reason); }
+        // WHICH reasons mean "never reached the model" — and it is only two.
+        // decideChatAction attaches a `reason` to EVERY verdict, including the
+        // genuine ones resolveToolCall derives from the model's own answer
+        // (model_text, tool_get_job_status, tool_revise_*, ...). Treating any
+        // reason as a fallback made a working key read as UNMEASURED and would
+        // have kept this leg permanently red — the same over-correction as
+        // reading every empty result as broken.
+        //   trivial          — returns BEFORE the call (chat-actions.js:459)
+        //   decide_failed:*  — the call threw or the provider refused (:488)
+        // Everything else means the model answered and the verdict is real.
+        const r = (v && v.reason) || '';
+        const preModel = r === 'trivial' || r.startsWith('decide_failed:');
+        if (preModel) { unmeasured.push(`${msg} -> ${r}`); kinds.push('UNMEASURED:' + r); }
         else kinds.push(v && v.kind ? v.kind : 'ERROR');
       } catch (e) { unmeasured.push(`${msg} -> threw`); kinds.push('THREW:' + (e && e.message || '').slice(0, 30)); }
     }
