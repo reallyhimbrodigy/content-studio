@@ -57,3 +57,46 @@ as an outage under per-job counting.
   skim past it, and the real finding drowns in the noise. When a check cannot be
   made precise, delete it and ask a tool that can answer exactly (the compiler,
   the database) instead of shipping a heuristic that is wrong five times in six.
+
+## A verdict path pins its temperature AND ledgers its verdict (2026-09-20)
+
+**Any model call that produces a VERDICT runs at `temperature: 0`, and ledgers
+the verdict beside a hash of its input.** Both halves, because they do different
+jobs: the pin PREVENTS drift, the ledger MEASURES it. A pinned call with no
+ledger is deterministic and unfalsifiable.
+
+**How it was found.** Temperature was never set anywhere, so every classifier ran
+at the default 1.0. The same brief returned `unsafe` true, true, false, false,
+true across five runs. Every number quoted off that path — 99 dark decisions, a
+hand-checked false-positive rate, a flip gate set at 5% — was **one sample of a
+distribution rather than a measurement**, and the classifier's own run-to-run
+variance was larger than the bar it was being judged against.
+
+**The tell is the expensive part.** A fixture that passes, then fails, then
+passes with no edit in between reads as flakiness in the HARNESS, so it is
+re-run rather than investigated. On a ROUTING path it is worse: a verdict that
+flips between `converse` and `act` fails nothing — the user gets a plausible
+reply either way and the only trace is a support message saying "it ignored me".
+There is no red leg to re-run because there is no red. That is why the ledger is
+not optional.
+
+**Write the leg, not just the fix.** A static leg over the verdict-producing
+files found two more unpinned call sites the moment it existed — including the
+fulfilment judge, which decides the HONORED / DROPPED_SILENTLY numbers the lane
+reports. The symptom was found in one file; the class lived in four.
+
+**N IDENTICAL VERDICTS IS NOT A SUFFICIENT ASSERTION.** Every early return is
+deterministic by construction: a disabled flag, a missing key, a transport
+failure, a cache hit. With no key an eight-run leg sees eight identical nulls
+and prints PASS on a path that **never reached the model** — "deterministic" and
+"never ran" are the same eight values. A determinism leg needs three assertions:
+the run REACHED the model, the verdicts are IDENTICAL, and they are CORRECT, so
+that stable-and-wrong fails too. (Found by FRONTEND, who hit it and said so; my
+own leg had the identical hole.)
+
+**A verdict without its input is not a measurement.** The only agentic record
+ever scored was judged at temperature 1.0, and its run record no longer exists
+anywhere — so it can never be re-scored or checked. It is excluded from the
+scoreboard rather than counted, and the line reads ABSENT. A hash would not have
+saved the input, but it would have said WHICH input, and that the verdict
+predates the pin.

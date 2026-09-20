@@ -97,7 +97,27 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
       aRows = fs.readFileSync(ajl, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l))
         .filter(r => (r.judged_at || '') >= T0 && (r.judged_at || '') <= T1);
       aState = aRows.length ? 'MEASURED' : 'ABSENT';
-      aWhy = aRows.length ? 'from out/agentic_fulfilment.jsonl (table missing)' : 'JSONL present, no runs on this day';
+      // A VERDICT WITHOUT ITS INPUT AND ITS CONDITIONS IS NOT A MEASUREMENT
+      // (Zac, 2026-09-20). A scored record must carry input_sha and
+      // judge_temperature or it cannot be reproduced, compared, or shown to
+      // have changed — and a verdict drawn at temperature 1.0 is one sample of
+      // a distribution wearing a measurement's clothes.
+      //
+      // This is not hypothetical: the only record that had ever reached this
+      // line was judged at the default temperature, and its run record no
+      // longer exists anywhere, so it can never be re-scored. Counting it would
+      // have made the first AGENTIC line a number nobody could check.
+      const unscorable = aRows.filter(r => !r.input_sha || r.judge_temperature !== 0);
+      if (unscorable.length) {
+        const kept = aRows.length - unscorable.length;
+        aRows = aRows.filter(r => r.input_sha && r.judge_temperature === 0);
+        aWhy = kept
+          ? `${kept} scored record(s); ${unscorable.length} EXCLUDED (no input_sha, or judged before temperature was pinned)`
+          : `${unscorable.length} record(s) EXCLUDED — judged before temperature was pinned and carrying no input_sha, so not a measurement`;
+        if (!aRows.length) aState = 'ABSENT';
+      } else {
+        aWhy = aRows.length ? 'from out/agentic_fulfilment.jsonl (table missing)' : 'JSONL present, no runs on this day';
+      }
     } else {
       aWhy = 'no agentic_fulfilment_scores table and no out/agentic_fulfilment.jsonl';
     }

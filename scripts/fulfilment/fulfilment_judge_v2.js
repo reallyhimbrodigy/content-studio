@@ -15,6 +15,7 @@
 // BEFORE the render — a different event, so it gets a different name rather
 // than the old name quietly widened.
 const fs = require('fs');
+const crypto = require('crypto');
 const ENV = require('./env.js')();
 const KEY = ENV.ANTHROPIC_API_KEY || ENV.CLAUDE_API_KEY;
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -255,7 +256,28 @@ if (require.main === module) {
   (async () => {
     const recs = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse);
     const out = [];
-    for (const r of recs) out.push({ id: r.id, ...(await judgeRun(r)) });
+    for (const r of recs) {
+      // EVERY VERDICT CARRIES ITS INPUT AND THE CONDITIONS IT WAS DRAWN UNDER
+      // (Zac, 2026-09-20). Pinning temperature PREVENTS drift; ledgering the
+      // verdict beside a hash of the input MEASURES it — without this a
+      // judgement cannot be reproduced, compared, or shown to have changed, and
+      // an old verdict is indistinguishable from a current one.
+      //
+      // It is not hypothetical: the single scored record on the scoreboard was
+      // judged at temperature 1.0 and its run record no longer exists anywhere,
+      // so it can never be re-scored or checked. A hash would not have saved the
+      // input, but it would have said WHICH input, and that the verdict predates
+      // the pin.
+      const input_sha = crypto.createHash('sha256').update(JSON.stringify(r)).digest('hex');
+      out.push({
+        id: r.id,
+        input_sha,
+        judge_model: MODEL,
+        judge_temperature: 0,
+        judged_at: new Date().toISOString(),
+        ...(await judgeRun(r)),
+      });
+    }
     console.log(JSON.stringify(out, null, 1));
     console.error(`cost $${cost().toFixed(4)} over ${recs.length} run(s) = $${(cost() / recs.length).toFixed(4)}/run`);
   })();

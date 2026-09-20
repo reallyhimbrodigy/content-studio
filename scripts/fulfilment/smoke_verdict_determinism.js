@@ -74,23 +74,54 @@ function staticLeg() {
     const ENV = require('./env.js')();
     process.env.ANTHROPIC_API_KEY = ENV.ANTHROPIC_API_KEY || ENV.CLAUDE_API_KEY;
     const U = ENV.SUPABASE_URL, K = ENV.SUPABASE_SERVICE_ROLE_KEY;
+    // A CRASH IS NOT A MEASUREMENT. Without credentials this leg cannot fetch a
+    // brief at all, and an unhandled ERR_INVALID_URL reads as a broken harness
+    // rather than as "could not measure" — the runner's failure reported through
+    // the same channel as the check's result.
+    if (!U || !K) { console.log('\nHARNESS FAILURE: no Supabase credentials — the live leg cannot fetch a brief'); process.exit(2); }
     const H = { apikey: K, Authorization: `Bearer ${K}` };
     const { adjudicateRequest } = require(process.env.NEGOTIATION_MODULE || '../../lib/negotiation-classifier.js');
     // THE TWO BRIEFS MEASURED MOST UNSTABLE AT THE DEFAULT. Using a STABLE
     // brief here would make the live leg pass under the mutation and prove
     // nothing — the leg has to be aimed where the variance actually was.
-    const BRIEFS = [['self-waist', '365e010211'], ['self-curvy', '663f0c93e6']];
+    // EACH BRIEF CARRIES ITS EXPECTED VERDICT, so "stable and WRONG" fails.
+    const BRIEFS = [['self-waist', '365e010211', false], ['self-curvy', '663f0c93e6', false],
+                    ['other-face', 'fd96d66dd9', true]];
     const N = 8;
     console.log(`\nLIVE — ${N} runs per brief, verdicts must be identical\n`);
     let bad = 0;
-    for (const [name, h] of BRIEFS) {
+    // N IDENTICAL VERDICTS IS NOT A SUFFICIENT ASSERTION ON ITS OWN (FRONTEND,
+    // 2026-09-20, who walked into this and said so). Every early return in
+    // adjudicateRequest is DETERMINISTIC BY CONSTRUCTION: no key, an empty
+    // brief, a transport failure and an exhausted retry all return the same
+    // thing every time. With no key this leg would have seen unsafe=null eight
+    // times, called it identical, and printed PASS on a path THAT NEVER REACHED
+    // THE MODEL. "Deterministic" and "never ran" read exactly alike — the same
+    // shape as absent-because-fine versus absent-because-nobody-shipped-it.
+    //
+    // So there are three assertions, not one:
+    //   REACHED   every run came back state=MEASURED with a BOOLEAN verdict
+    //   IDENTICAL the eight verdicts agree
+    //   CORRECT   they agree on the RIGHT answer, so stable-and-wrong fails
+    for (const [name, h, want] of BRIEFS) {
       const d = await (await fetch(`${U}/rest/v1/negotiation_decisions?select=client_job_id&request_hash=like.${h}*&limit=1`, { headers: H })).json();
       const j = await (await fetch(`${U}/rest/v1/video_jobs?select=vibe_input&id=eq.${d[0].client_job_id}&limit=1`, { headers: H })).json();
-      const o = [];
-      for (let i = 0; i < N; i++) o.push((await adjudicateRequest(j[0].vibe_input, {})).unsafe);
+      const runs = [];
+      for (let i = 0; i < N; i++) runs.push(await adjudicateRequest(j[0].vibe_input, {}));
+      const unreached = runs.filter(r => r.state !== 'MEASURED' || typeof r.unsafe !== 'boolean');
+      const o = runs.map(r => r.unsafe);
+      if (unreached.length) {
+        bad++;
+        console.log(`  [CANNOT MEASURE] ${name.padEnd(12)} ${unreached.length}/${N} run(s) never reached the model `
+          + `(${unreached[0].state}${unreached[0].why ? ': ' + unreached[0].why : ''}). `
+          + `Identical verdicts here would mean NOTHING.`);
+        continue;
+      }
       const same = new Set(o).size === 1;
-      if (!same) bad++;
-      console.log(`  [${same ? 'ok  ' : 'FAIL'}] ${name.padEnd(12)} ${JSON.stringify(o)}`);
+      const right = same && o[0] === want;
+      if (!right) bad++;
+      console.log(`  [${right ? 'ok  ' : 'FAIL'}] ${name.padEnd(12)} ${JSON.stringify(o)}`
+        + (same ? '' : '  NOT IDENTICAL') + (same && o[0] !== want ? `  STABLE BUT WRONG (wanted ${want})` : ''));
     }
     console.log(`\n  ${BRIEFS.length} brief(s), ${BRIEFS.length - bad} deterministic, ${bad} not`);
     process.exit(unpinned.length || bad ? 1 : 0);

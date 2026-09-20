@@ -19,6 +19,9 @@ FOUR LEGS.
   3. RED    deleting it from EVERY site fails, and reports 0 pinned
   4. RED    an empty call-site population is rc=2 HARNESS FAILURE, not a pass:
             a gate over an empty population asserts nothing, this one included
+  5. RED    the LIVE leg refuses when the model was never reached. Eight
+            identical verdicts prove nothing if every run took an early return —
+            "deterministic" and "never ran" are the same eight values
 
 Each red asserts the leg's OWN WORDS and not merely a non-zero exit — a red for
 another reason is exactly as wrong as a green for another reason.
@@ -101,6 +104,40 @@ def main():
             legs.append(("RED   every site unpinned reports 0 pinned",
                          rc == 1 and "5 pinned" not in out and ", 0 pinned," in out,
                          "rc=%d unpinned=%d" % (rc, n)))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+    # 4b. RED — the live leg must REFUSE when the model was never reached.
+    #     FRONTEND walked into this on 2026-09-20 and named it: every early
+    #     return in the adjudicator is deterministic BY CONSTRUCTION, so with no
+    #     key the leg sees eight identical nulls and calls them stable.
+    #     "Deterministic" and "never ran" read identically, and only a positive
+    #     control separates them. Verified: 8 runs with an empty key return
+    #     [null x8] and set(...) == 1.
+    #
+    #     THE FIRST VERSION OF THIS LEG DID NOT BITE. It blanked
+    #     ANTHROPIC_API_KEY in the subprocess env — and env.js reads the key
+    #     from a FILE, so the smoke re-populated it and the mutation changed the
+    #     environment without changing the behaviour. The mutation must hit the
+    #     thing under test, so it replaces env.js IN THE COPY.
+    d = tree_copy()
+    try:
+        # STRIP ONLY THE MODEL KEY. Returning {} removed the Supabase
+        # credentials too, so the leg crashed on a bad URL before it ever
+        # reached the model — red for the wrong reason, which the phrase
+        # assertion caught. The stub delegates to the REAL env and deletes
+        # exactly the two keys under test.
+        (d / "scripts" / "fulfilment" / "env.js").write_text(
+            "const real = require(%r);\n"
+            "module.exports = () => { const e = { ...real() };"
+            " delete e.ANTHROPIC_API_KEY; delete e.CLAUDE_API_KEY; return e; };\n"
+            % str(ROOT / "scripts" / "fulfilment" / "env.js"), encoding="utf-8")
+        r = subprocess.run(["node", str(d / SMOKE), "--live"], capture_output=True,
+                           text=True, timeout=300, cwd=str(d))
+        out = (r.stdout or "") + (r.stderr or "")
+        legs.append(("RED   live leg refuses when model unreachable",
+                     r.returncode != 0 and "CANNOT MEASURE" in out,
+                     "rc=%d phrase=%s" % (r.returncode, "CANNOT MEASURE" in out)))
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
