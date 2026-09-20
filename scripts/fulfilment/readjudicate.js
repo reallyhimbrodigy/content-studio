@@ -70,7 +70,7 @@ async function call(chunk) {
       r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 8000, system: SYSTEM, tools: [TOOL], tool_choice: { type: 'tool', name: 'adjudicate' }, messages: [{ role: 'user', content: user }] }),
+      body: JSON.stringify({ model: MODEL, temperature: 0, max_tokens: 8000, system: SYSTEM, tools: [TOOL], tool_choice: { type: 'tool', name: 'adjudicate' }, messages: [{ role: 'user', content: user }] }),
       });
     } catch (e) {
       // TRANSPORT ERRORS THROW, THEY DO NOT RETURN A STATUS. The retry only

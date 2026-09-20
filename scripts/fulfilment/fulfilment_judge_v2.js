@@ -192,7 +192,7 @@ async function judgeRun(rec) {
       method: 'POST',
       headers: { 'x-api-key': KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL, max_tokens: 2000, system: SYSTEM,
+        model: MODEL, temperature: 0, max_tokens: 2000, system: SYSTEM,
         tools: [TOOL], tool_choice: { type: 'tool', name: 'record_fulfilment' },
         messages: [{ role: 'user', content: user }],
       }),

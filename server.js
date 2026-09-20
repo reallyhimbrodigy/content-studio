@@ -3121,7 +3121,16 @@ const server = http.createServer((req, res) => {
           request_hash: crypto.createHash('sha256').update(String(vibeInput)).digest('hex'),
           client_job_id: clientJobId || null,
           verdict: negotiationDecision.verdict,
-          classes: negotiationDecision.oos || [],
+          // UNRECOGNISED TAGS RIDE IN classes UNDER A SENTINEL, so a model that
+          // starts inventing a tag is visible as a RATE and not as a comment
+          // (Zac, 2026-09-20). Measured the day this landed: the model emitted
+          // "sound_effects" — not in the enum — on 3 of 8 runs of one brief,
+          // and it flowed through unvalidated because nothing counted it. The
+          // "!" prefix cannot collide with a real class (the enum is
+          // lowercase words) and needs no migration; scoreboard.js reports the
+          // share of rows carrying one.
+          classes: (negotiationDecision.oos || []).concat(
+            (negotiationDecision.oos_unrecognised || []).map(t => '!' + t)),
           sentence: negotiationDecision.sentence || null,
           safety_state: (negotiationDecision.safety && negotiationDecision.safety.state) || 'REVIEW_UNAVAILABLE',
           decider: (negotiationDecision.safety && negotiationDecision.safety.by) || null,
