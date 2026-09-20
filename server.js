@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
+const { signRead, signReadFields } = require('./lib/sign-on-read');
 // One line per failure, cause included — see lib/log-error.js for why a bare
 // object handed to console.error stores a record that ends at `{`.
 const { errLine } = require('./lib/log-error');
@@ -2502,9 +2503,15 @@ const server = http.createServer((req, res) => {
         .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message, credits_debited, credits_refunded_at')
         .eq('id', jobId)
         .maybeSingle()
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           if (data) {
             try {
+              // SIGN ON READ (lib/sign-on-read.js). This snapshot is the first
+              // url a reconnecting client sees. Once the columns hold keys the
+              // stored value is not playable as-is, and ~880 of ~1,000 active
+              // users are on a build that renders this field directly.
+              const _signed = await signReadFields(
+                data, ['rendered_video_url', 'thumbnail_url'], 'sse-snapshot');
               res.write(`data: ${JSON.stringify({
                 // TYPE DISCRIMINATOR (Frontend, 2026-08-31). Every SSE frame
                 // was an untagged status snapshot, so a client had no way to
@@ -2516,11 +2523,11 @@ const server = http.createServer((req, res) => {
                 progress: data.progress || 0,
                 step: data.current_step || '',
                 message: data.step_message || '',
-                videoUrl: data.rendered_video_url || null,
+                videoUrl: _signed.rendered_video_url,
                 // §5 progressive: a client reconnecting mid-render gets the manifest
                 // in the connect snapshot and can resume the preview.
                 hlsManifestUrl: data.hls_manifest_url || null,
-                thumbnailUrl: data.thumbnail_url || null,
+                thumbnailUrl: _signed.thumbnail_url,
                 error: data.error_message || null,
                 // final:true on a terminal snapshot lets a correct client stop
                 // reconnecting the moment it connects to an already-finished job
@@ -7701,6 +7708,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
 
+        // SIGN ON READ (lib/sign-on-read.js). Durable-poll clients read this
+        // response directly; it must stay playable once the columns hold keys.
+        const _signed = await signReadFields(
+          { rendered_video_url: data.rendered_video_url || data.result_url || null,
+            thumbnail_url: data.thumbnail_url || null },
+          ['rendered_video_url', 'thumbnail_url'], 'job-status');
         return sendJson(res, 200, {
           id: data.id,
           status: data.status,
@@ -7708,9 +7721,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           current_step: data.current_step || '',
           step_message: data.step_message || '',
           ask: data.ask || null,
-          rendered_video_url: data.rendered_video_url || data.result_url || null,
+          rendered_video_url: _signed.rendered_video_url,
           hls_manifest_url: data.hls_manifest_url || null,
-          thumbnail_url: data.thumbnail_url || null,
+          thumbnail_url: _signed.thumbnail_url,
           result_url: data.result_url || null,
           error: data.error_message || null,
           error_message: data.error_message || null,
@@ -7841,38 +7854,24 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         if (!job) return sendJson(res, 404, { error: 'Job not found' });
         if (job.user_id !== authUser.id) return sendJson(res, 403, { error: 'Forbidden' });
 
-        // Extract the underlying S3 key from a signed URL by stripping
-        // hostname and query string. Falls back to null for non-S3 URLs
-        // (e.g. legacy Supabase Storage URLs from old renders) — those
-        // get returned as-is since Supabase signed URLs run for 1 year.
-        const extractS3Key = (urlStr) => {
-          if (!urlStr) return null;
-          try {
-            const u = new URL(urlStr);
-            // Only refresh URLs that point at OUR S3 bucket (any endpoint
-            // pattern: regional, accelerate, CloudFront).
-            const isOurBucket =
-              u.hostname.includes(s3.S3_BUCKET) ||
-              (process.env.CLOUDFRONT_DOMAIN && u.hostname.endsWith(process.env.CLOUDFRONT_DOMAIN));
-            if (!isOurBucket) return null;
-            return u.pathname.replace(/^\/+/, '') || null;
-          } catch {
-            return null;
-          }
-        };
-
-        const videoKey = extractS3Key(job.rendered_video_url);
-        const thumbKey = extractS3Key(job.thumbnail_url);
-
-        let videoUrl = job.rendered_video_url || null;
-        let thumbnailUrl = job.thumbnail_url || null;
-
-        if (videoKey) {
-          videoUrl = await s3.createPresignedGetUrl(videoKey, 60 * 60 * 24 * 7);
-        }
-        if (thumbKey) {
-          thumbnailUrl = await s3.createPresignedGetUrl(thumbKey, 60 * 60 * 24 * 7);
-        }
+        // SIGN ON READ. This endpoint is the fleet's recovery path: 100% of the
+        // 2,062 dead links in chats.messages carry a jobId, and build 246 — ~880
+        // of ~1,000 active users — already calls it on a failed pre-flight HEAD
+        // or an AVPlayer 403 during load. So this one handler heals the chat
+        // surface for every shipped client, with no client change and no
+        // migration. That is why it is the first thing fixed.
+        //
+        // It used to derive the key with `new URL(stored)`, which THROWS on a
+        // bare key and fell through to returning the stored value verbatim. The
+        // moment the columns become keys, that would have handed every client a
+        // bare key where a url belongs — the whole fleet, at once. Routing
+        // through the shared chokepoint instead: it takes a key, an unsigned url
+        // or a dead signature, mints a fresh grant, and is idempotent because
+        // the query is stripped before the key is read.
+        const [videoUrl, thumbnailUrl] = await Promise.all([
+          signRead(job.rendered_video_url, 'refresh-urls:video'),
+          signRead(job.thumbnail_url, 'refresh-urls:thumb'),
+        ]);
 
         return sendJson(res, 200, { videoUrl, thumbnailUrl });
       } catch (error) {
