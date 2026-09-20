@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# PRE-COMMIT GATE — the fulfilment lane's checks, by EXIT CODE.
+#
+# WHY THIS EXISTS (2026-09-19): __smoke_density_is_not_a_gate.js was written to
+# stop the density rates from becoming a threshold, and then a commit went in
+# with that very gate FAILING. I read its output, saw two new legs pass, and
+# never read the verdict line. A check whose result is a PRINTOUT is a check
+# somebody reads when they remember to; a check whose result is an EXIT CODE is
+# machinery. Same doctrine as the pre-push quiet window, applied one layer down.
+#
+# Emergency override, loud and never default:
+#     PROMPTLY_SKIP_LANE_GATES=1 git commit ...
+# It prints what it skipped. Use it to land a fix for a gate that is itself
+# broken, never to land work the gate refuses.
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if [ "${PROMPTLY_SKIP_LANE_GATES:-}" = "1" ]; then
+  echo "pre-commit: SKIPPED by PROMPTLY_SKIP_LANE_GATES=1 — the lane gates did not run" >&2
+  exit 0
+fi
+
+# Each is run bare and its status read directly. No pipes: `cmd | tail` reports
+# TAIL's status, which is how two wrong PASS readings got reported in this lane.
+GATES=(
+  "lib/__smoke_density_is_not_a_gate.js"
+  "lib/__smoke_negotiation_classifier.js"
+  "lib/__smoke_negotiation_wiring.js"
+  "scripts/fulfilment/smoke_scoreboard_line.js"
+  "scripts/fulfilment/smoke_retry_law.js"
+)
+fail=0
+for g in "${GATES[@]}"; do
+  [ -f "$g" ] || continue          # a gate not present in this tree is not a pass
+  out=$(node "$g" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "pre-commit: BLOCKED by $g (exit $rc)" >&2
+    echo "$out" | tail -8 >&2
+    fail=1
+  fi
+done
+[ "$fail" -eq 0 ] || { echo "pre-commit: commit refused. Fix the gate or explain the override." >&2; exit 1; }
+exit 0
