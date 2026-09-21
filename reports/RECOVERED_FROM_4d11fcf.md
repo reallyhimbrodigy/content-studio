@@ -76,12 +76,31 @@ means landing that entitlement change first, which is a live billing decision
 and is NOT mine to make unasked — a Max→Pro downgrade whose expiration revokes
 the Pro they still pay for. **Open, and named rather than quietly dropped.**
 
-### The remaining scripts — **not assessed, and saying so**
+### The six operator scripts — **read, assessed, all six LANDED**
 
-`crash-signatures.js`, `verify-sandbox-purchase.js`, `s3_abort_mpu_lifecycle.js`,
-`sentry-pipe-notify.sh` and the two sentry fixtures are operator tooling, not on
-a live request path. They are recoverable from `4d11fcf` and I have not read
-them. Recorded as UNASSESSED rather than implied-refused.
+No longer unassessed. Each read in full and landed on its own merits:
+
+| item | commit | why |
+|---|---|---|
+| `crash-signatures.js` | `5ca259a` | ranks by DISTINCT USERS (Rule 7) and marks the 2026-08-15→28 Sentry blackout NO-DATA instead of zero — two standing rules, in code |
+| `verify-sandbox-purchase.js` | `942e39c` | joins client / webhook / grant; orphans were invisible because nobody joined the legs |
+| `s3_abort_mpu_lifecycle.js` | `4101afd` | abandoned MPU parts are billed forever and absent from the listing. **Tool landed; RUNNING it sets an S3 lifecycle policy and is a separate decision, not taken** |
+| `sentry-pipe-health.js` +88 · 2 fixtures · `sentry-pipe-notify.sh` | `960cf86` | landed as ONE unit — the hook, its data, and its pager are useless apart |
+
+**Two things found by running them rather than reading them.**
+
+The sentry hook works — the fixtures yield different numbers through it (dark
+`accepted=100 rate_limited=9000`, healthy `accepted=150 rate_limited=0`) and the
+live path reads PASS. But **both fixtures carry ABSOLUTE timestamps** (2026-08-20,
+2026-08-30) and now read stale against today, so each exits 2 CANNOT CONFIRM
+rather than exercising its branch. They still prove the hook reads them; they no
+longer prove the verdicts. A fixture frozen in absolute time ages out of the
+thing it was built to test.
+
+And `sentry-pipe-notify.sh` hardcoded `REPO=/Users/zaclibman/content-studio` —
+one machine, and that checkout is **release/256**. The pager would have run the
+health check against a tree that is not deployed and reported its verdict as
+production's. Fixed to derive from the script's own location before landing.
 
 ## The correction this whole list rests on
 
