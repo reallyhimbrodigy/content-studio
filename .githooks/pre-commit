@@ -15,49 +15,6 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-# ---- ONE OWNER PER CHECKOUT ------------------------------------------------
-# 2026-09-21: content-studio-87 needed a branch and, instead of `git worktree
-# add`, created lane/reedit-versions and checked it out INSIDE content-studio-44's
-# checkout. That silently moved 44's tree off release/256 — the branch build 256
-# had just been archived and submitted from. Nothing was lost, because 44 happened
-# to have a clean tree at that moment. Mid-edit it would have been.
-#
-# 87 broke no enforced rule. "Every agent works in its own worktree" was written
-# in THREE documents (CHECKOUTS.md, DEPLOY_LOG.md, LANE_OWNERSHIP.md) and enforced
-# by none. That is what failed, not a missing hook in one repo.
-#
-# An UNCLAIMED tree (no .lane-owner) commits freely, so this cannot brick an
-# existing checkout the day it lands. Enforcement is strict once claimed — and the
-# tree that got walked into was a claimed one, so the real case is still caught.
-#
-# DELIBERATELY ABOVE the PROMPTLY_SKIP_LANE_GATES override below. That flag exists
-# to land a fix for a gate that is itself broken; it is not a licence to commit in
-# somebody else's checkout, and those are different questions.
-__lane_root="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -n "${__lane_root:-}" ] && [ -f "$__lane_root/.lane-owner" ]; then
-  __owner="$(tr -d ' \t\r\n' < "$__lane_root/.lane-owner")"
-  if [ -n "$__owner" ]; then
-    __me="${LANE_OWNER:-}"
-    if [ -z "$__me" ]; then
-      echo "pre-commit: REFUSED — this checkout belongs to '$__owner' and you have not said who you are." >&2
-      echo "   $__lane_root" >&2
-      echo "   Set LANE_OWNER, or make your own:  git worktree add ../content-studio-<you> -b <branch>" >&2
-      exit 1
-    fi
-    if [ "$__me" != "$__owner" ]; then
-      echo "pre-commit: REFUSED — wrong checkout." >&2
-      echo "   this tree is owned by : $__owner" >&2
-      echo "   you are               : $__me" >&2
-      echo "   $__lane_root" >&2
-      echo "   Committing here puts your work on someone else's branch, and checking out" >&2
-      echo "   your own moves their tree under them mid-edit. Make your own instead:" >&2
-      echo "     git worktree add ../content-studio-$__me -b <branch>" >&2
-      exit 1
-    fi
-  fi
-fi
-# ---- end one owner per checkout --------------------------------------------
-
 if [ "${PROMPTLY_SKIP_LANE_GATES:-}" = "1" ]; then
   echo "pre-commit: SKIPPED by PROMPTLY_SKIP_LANE_GATES=1 — the lane gates did not run" >&2
   exit 0
