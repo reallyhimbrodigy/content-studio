@@ -5698,19 +5698,23 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // A deletion that leaves the person named in two tables is not a
         // deletion, and this is the App Store / "delete my account" surface.
         //
-        // KNOWN COST, RULED AND RECORDED RATHER THAN DISCOVERED LATER (Zac
-        // 2026-09-21). free_credit_grants.device_id is the PRIMARY KEY and the
-        // anti-abuse record: install-seen.js looks a device up by it to decide
-        // whether that install has already taken its 30 free credits. Deleting
-        // the row frees the device to claim them again by signing up afresh.
-        // That is the trade this makes deliberately — completeness of deletion
-        // over one re-claim per deleted account — and it is one line to reverse
-        // if the re-claim rate ever shows up in the grant numbers.
+        // GRANTS ARE SCRUBBED, NOT DELETED — and the two are not interchangeable
+        // (Zac 2026-09-21, reversing a first pass that deleted them).
+        // free_credit_grants.device_id is the PRIMARY KEY and the anti-abuse
+        // record: install-seen.js looks a device up by it to decide whether that
+        // install already took its 30 free credits. DELETE the row and the
+        // device claims them again by signing up afresh; NULL the user_id and
+        // the grant history survives without naming a deleted person. The
+        // column was made nullable for exactly this
+        // (migration free_credit_grants_user_id_nullable).
+        //
+        // free_credit_periods IS deleted: it is per-user grant history with no
+        // device column and no anti-abuse role, so nothing survives its removal.
         const deleteResults = await Promise.allSettled([
           supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
           supabaseAdmin.from('chats').delete().eq('user_id', userId),
           supabaseAdmin.from('usage_events').delete().eq('user_id', userId),
-          supabaseAdmin.from('free_credit_grants').delete().eq('user_id', userId),
+          supabaseAdmin.from('free_credit_grants').update({ user_id: null }).eq('user_id', userId),
           supabaseAdmin.from('free_credit_periods').delete().eq('user_id', userId),
           supabaseAdmin.from('profiles').delete().eq('id', userId),
         ]);
