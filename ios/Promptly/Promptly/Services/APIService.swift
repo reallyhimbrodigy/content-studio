@@ -708,6 +708,11 @@ class APIService {
                 message: payload?.message ?? "Re-edit is a Pro feature."
             )
         }
+        // ONE RE-EDIT AT A TIME PER VIDEO, surfaced typed.
+        if let http = response as? HTTPURLResponse, http.statusCode == 409,
+           let inFlight = try? JSONDecoder().decode(ReeditInFlight.self, from: data) {
+            throw APIError.reeditInFlight(inFlight)
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
             throw APIError.jobCreationFailed(body?.error ?? "Re-edit failed")
@@ -718,6 +723,32 @@ class APIService {
             throw APIError.jobCreationFailed("No job ID returned")
         }
         return jobId
+    }
+
+    /// Every completed version of a video, oldest first, latest LAST.
+    ///
+    /// Accepts ANY job id in the tree — the root, a re-edit, or a re-edit of a
+    /// re-edit — and resolves to the root server-side, so the caller never has
+    /// to know which one it is holding.
+    ///
+    /// Urls come back SIGNED ON READ and must not be cached. Caching a
+    /// signature is what produced history rot: 2,062 of 2,643 stored signatures
+    /// were dead when measured. Cache the job_id and ask again.
+    func jobVersions(jobId: String) async throws -> ReeditVersionsResponse {
+        var request = await authorizedRequest("/api/video-jobs/\(jobId)/versions", method: "GET")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await requestData(request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.jobCreationFailed("versions HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+        }
+        let decoded = try JSONDecoder().decode(ReeditVersionsResponse.self, from: data)
+        // The server guarantees these agree, both counting completed rows. If
+        // they ever do not, the switcher renders fewer entries than it claims —
+        // a wrong that looks like a UI glitch and is not.
+        if !decoded.isConsistent {
+            print("[versions] INVARIANT BROKEN job=\(jobId) count=\(decoded.version_count) list=\(decoded.versions.count)")
+        }
+        return decoded
     }
 
     /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
@@ -1917,6 +1948,11 @@ enum APIError: LocalizedError {
     /// conversion is measurable apart from the credit wall — they argue for
     /// different things and blending them makes both unreadable.
     case freeExportSpent
+    /// 409 from re-edit: one re-edit at a time per video. Typed rather than a
+    /// message, because the composer renders different copy for a video that is
+    /// rendering and one parked on an unanswered question, and a string would
+    /// have to be re-parsed to tell them apart.
+    case reeditInFlight(ReeditInFlight)
     /// Server returned 403 `wall_required` — an enforced `.none` account hit a
     /// gated door (post-flip; inert while the wall knob is off). The client
     /// routes to the trial wall (TrialWallView, context .door), never a usable
@@ -1941,6 +1977,13 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .reeditInFlight(let f):
+            // Says WHICH, because "already in progress" on a video parked
+            // waiting for an answer sends the user to look for a render that
+            // is not running.
+            return f.isParkedOnAQuestion
+                ? "This video is waiting on your answer. Reply to that question first."
+                : "This video is already being re-edited. One at a time."
         case .notAuthenticated: return "Please sign in"
         case .jobCreationFailed(let msg): return msg
         case .uploadFailed: return "Upload failed"

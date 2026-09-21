@@ -315,6 +315,28 @@ final class JobDispatchCoordinator {
         }
 
         switch apiError {
+        // ONE RE-EDIT AT A TIME PER VIDEO. A hard stop, not a retry: retrying
+        // 409s again until the in-flight one finishes, so an automatic retry is
+        // a spin with a friendly name. Not a paywall either — nothing is being
+        // sold, the video just has work on it already.
+        //
+        // The copy says WHICH, because a video parked on an unanswered question
+        // is not "being re-edited" in any sense the user recognises, and
+        // telling them to wait sends them to watch a render that is not running.
+        case .reeditInFlight(let inFlight):
+            return .hard(HardFailure(
+                errorCode: "REEDIT_IN_FLIGHT",
+                userMessage: inFlight.isParkedOnAQuestion
+                    ? String(localized: "This video is waiting on your answer. Reply to that question first.")
+                    : String(localized: "This video is already being re-edited. One at a time."),
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: nil,
+                paymentLimit: nil,
+                isCreditsExhausted: false,
+                creditsBalanceKnown: true
+            ))
         // CREDITS: a hard stop, but NOT a paywall presentation. The ruling is
         // that the zero-balance moment is answered in the thread — the user has
         // just sent something, and a sheet slamming over the conversation reads
