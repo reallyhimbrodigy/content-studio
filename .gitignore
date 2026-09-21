@@ -21,3 +21,14 @@ out/
 # Python bytecode — scripts/ now carries the delivery-gate instruments
 __pycache__/
 *.pyc
+
+# LOCAL-ONLY FIXTURES. This used to name four files individually and missed the
+# four companion .jpg thumbnails sitting beside them, so 137 MB read as untracked
+# and kept being offered to whoever ran `git add`. Ignore the DIRECTORY: the next
+# render dropped in here is covered without anyone remembering to add a line.
+ios/Promptly/Fixtures/
+
+# WHO OWNS THIS CHECKOUT. Per-worktree and deliberately untracked — every
+# worktree names its own owner, so a tracked file would fight across them.
+# .githooks/pre-commit reads it; see LANE_OWNERSHIP.md.
+.lane-owner
