@@ -1,0 +1,64 @@
+-- HISTORY ROT: rendered_video_url and thumbnail_url become KEYS, not URLs.
+-- APPLIED 2026-09-21. Recorded here; the rows are already migrated.
+--
+-- THE ROT. Completions stored a CloudFront signature with a 7-day TTL into a
+-- durable column, so a row's usable life was its signature's life. The row kept
+-- holding a url, the UI kept rendering a link, and the link 403'd. 2,062 of
+-- 2,643 signed urls in chats.messages were already dead when measured, across
+-- 1,391 users, ~90 more crossing the line daily. Nothing was ever deleted: an
+-- unsigned url from 2026-06-25 still served 206 from the same distribution.
+-- Only the credential aged out.
+--
+-- A key does not expire. The credential is now minted for the request that
+-- asks — lib/sign-on-read.js, live on main since f59cc7d.
+--
+-- ORDER WAS LOAD-BEARING. Sign-on-read had to ship FIRST. /refresh-urls used to
+-- derive its key with `new URL(stored)`, which THROWS on a bare key and fell
+-- through to returning the stored value verbatim — so migrating first would
+-- have handed every shipped client a bare key where a url belongs, all at once.
+-- ~880 of ~1,000 active users are on build 246, which reads these fields
+-- directly.
+--
+-- WHAT RAN (both guarded by host: stripping a FOREIGN host would mint a
+-- confident url pointing at a key we do not have):
+--
+--   UPDATE video_jobs SET rendered_video_url =
+--     regexp_replace(split_part(rendered_video_url,'?',1), '^https?://[^/]+/', '')
+--   WHERE rendered_video_url LIKE 'http%'
+--     AND substring(rendered_video_url from '^https?://([^/]+)') IN (
+--       'd1iax8jos987n3.cloudfront.net',
+--       'thisismybucketagainwooo.s3.amazonaws.com',
+--       'thisismybucketagainwooo.s3.us-west-2.amazonaws.com');
+--   -- and the identical statement for thumbnail_url
+--
+-- RESULT, verified by END STATE rather than by either statement's return:
+--   rendered_video_url   9,019 urls -> 9,019 keys,  0 urls left
+--   thumbnail_url        4,172 urls -> 4,172 keys,  0 urls left
+--   signatures left 0, query strings left 0
+--   prefixes: renders (6,296), renders-private (2,697), sources (1),
+--             and 25 internal test rows (zoom-ablation, batch-corpus,
+--             micro-sweep, broll-funnel, overlap-arm, arm-confirm)
+--
+-- TWO THINGS THAT NEARLY HID HALF OF IT, both worth keeping:
+--
+--   1. Two data-modifying CTEs updating the SAME TABLE in one statement: a row
+--      claimed by the first is SILENTLY SKIPPED by the second. Running the
+--      video and thumbnail updates as CTEs of one statement reported
+--      "thumb_rows_migrated: 0" while the video update took every row that had
+--      both. The thumbnails needed a separate statement.
+--   2. An UPDATE without RETURNING produces an EMPTY RESULT SET whatever it
+--      did. `[]` is not "0 rows affected" and must not be read as one. Only
+--      re-querying the table settles it, which is why the result above is a
+--      count of the table and not a count from the migration.
+--
+-- IDEMPOTENT: `WHERE ... LIKE 'http%'` skips anything already a key.
+--
+-- PROVEN AFTER, on the values actually in the table, through the live server:
+--   renders/…           refresh-urls 200 -> 206 video/mp4
+--   renders-private/…   refresh-urls 200 -> 206 video/mp4, thumb 206 image/jpeg
+--
+-- NOT IN SCOPE: chats.messages[].renderedVideoUrl. The client reads
+-- /rest/v1/chats from PostgREST directly, so content-studio is not in that path
+-- and nothing can sign it on read. That surface is healed through
+-- /refresh-urls instead — 100% of its dead links carry a jobId, and build 246
+-- already re-signs on a failed pre-flight or an AVPlayer 403.
