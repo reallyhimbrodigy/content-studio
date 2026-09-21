@@ -118,3 +118,101 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_jobs_status_updated
 Supabase is read-only for this lane — no writes, no migrations. Every number
 above is a `SELECT`. The index needs your go-ahead; the autovacuum change and
 the VACUUM I am recommending **against** on the measurement, not deferring.
+
+---
+
+# CORRECTION, before the deploy window is spent
+
+Two corrections to what I reported above, both found by re-reading my own
+instrument rather than by anything downstream. **The plan as ruled would spend
+tonight's window on changes that cannot move the number it will then be measured
+by.** Stated before the edits rather than discovered in the "after".
+
+## Correction 1 — my "87.7% unbounded" was measured loosely
+
+I counted `updated_at` appearing ANYWHERE in the URL as "bounded". PostgREST
+puts it there for a plain `select=` too. Split properly:
+
+| | total | share |
+|---|--:|--:|
+| FILTERED on `updated_at` (`updated_at=gte.` etc.) | 1,484 | 6.1% |
+| `updated_at` only in the select list | 1,510 | 6.2% |
+| absent entirely | 21,446 | 87.7% |
+
+So **93.9% carry no `updated_at` bound**, not 87.7%. Same 24,440 denominator,
+so the cross-check still holds. The direction of my conclusion was right; the
+number was wrong, and it was wrong the way *two numbers with the same name*
+always is — I never said whether I meant a filter or a mention.
+
+## Correction 2 — THE THREE NAMED SWEEPS ARE NOT THE THREE WORST
+
+Every timer sweep, named from its URL signature and checked against its own
+timer (per-pass ≈ 1.0 everywhere, which is how I know the attribution is right):
+
+| sweep | timer | reads/hr | per pass | heavy column |
+|---|---|--:|--:|---|
+| **refund-leg** | 60s | **121.0** | 2.02 | `result` |
+| **agentic sweep** | 60s | **60.5** | 1.01 | `agentic_plan` |
+| **missed-push** (lifecycle-push) | 60s | **60.5** | 1.01 | `result` |
+| completion-reconcile: unprojected | 120s | 30.3 | 1.01 | `result` |
+| completion-reconcile: unhandedover | 120s | 30.3 | 1.01 | — |
+| job-reaper *(already correct)* | 120s | 30.3 | 1.01 | — |
+| orphan-redispatch | 180s | 20.2 | 1.01 | `result,transcript,analysis_data,edit_recipe` |
+| completion-watchdog | 300s | 12.2 | 1.02 | — |
+| chat-attach | 600s | 6.2 | 1.03 | — |
+| **bleed-meter** | 3600s | **0.1** | 0.09 | `result` |
+| **terminal-invariant** | 300s | **0.0** | 0.00 | `result` |
+
+    Zac's named three  60.6/hr    5.7% of all GET
+    measured worst 3  241.9/hr   22.8% of all GET     <-- 4x the prize
+
+**`terminal-invariant` never runs.** `terminal-invariant`, `terminalInvariant`
+and `TERMINAL_INVARIANT` appear ZERO times in `server.js`. It is an unmounted
+module — built, committed, never wired. Its 0 reads are not a quiet sweep, they
+are a sweep that does not exist. Slimming its query would have been an edit to
+dead code, and the edit would have looked completely reasonable in review.
+
+**`bleed-meter` is already free.** It reports once a day at
+`BLEED_REPORT_HOUR_UTC=15` — 2 reads in 23 hours, 0.09 per pass because almost
+every pass returns before querying.
+
+So two of the three named files are no-ops, and the third
+(completion-reconcile, 60.6/hr) is real but fourth-largest.
+
+## Correction 3 — BOUNDING CANNOT MOVE READS/HOUR AT ALL
+
+This is the one that decides the window. Reads/hour is a REQUEST COUNT:
+
+    reads/hour = passes/hour x queries/pass
+
+Every sweep in that table is already at **~1.0 queries per pass** — there is no
+N+1 anywhere. A sweep that scans 12,000 rows and one that scans 12 both cost
+**one** request. So an `updated_at` bound changes rows scanned, bytes returned
+and TOAST detoasted — all real, all worth doing — and changes the edge-log count
+by **zero**.
+
+The only levers on reads/hour are: fewer passes (timers), fewer queries per pass
+(refund-leg is the sole sweep above 1.0, at 2.02 — merging its two queries saves
+~60/hr), or deleting a sweep.
+
+**If we ship the bound-and-slim tonight and re-measure reads/hr after two clean
+hours, the honest result is NO CHANGE — and it will look like the change
+failed.** It will not have; it will have been measured by the wrong instrument.
+
+## What I recommend instead
+
+Split the goal, because it is two goals:
+
+1. **To cut reads/hour** — merge refund-leg's 2 queries into 1 (−60/hr, −5.7%),
+   and decide what to do about the 376/hr of single-row `id=eq.UUID` lookups,
+   which are the largest single bucket at 35% of service_role traffic and are
+   request-path, not sweeps. That is an SSE/caching question, not a sweep fix.
+2. **To cut bytes and DB CPU** — drop `result`/`agentic_plan` from refund-leg,
+   the agentic sweep, missed-push, completion-reconcile and orphan-redispatch,
+   and bound them. Measure it as **bytes and `origin_time`**, not request count.
+3. **Delete or wire `terminal-invariant`.** An unmounted module in the sweep
+   list is how a dead check gets counted as coverage.
+
+The `(status, updated_at)` index still stands on its own merits for the sweeps
+that will then filter on it — but note nothing today filters on `status` +
+`updated_at` together, so it should follow the bound, not lead it.
