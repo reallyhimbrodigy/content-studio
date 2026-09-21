@@ -5651,14 +5651,21 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // 1. Collect S3 keys to clean up post-deletion.
         const { data: jobs, error: jobsErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, video_url, rendered_video_url, thumbnail_url, hls_manifest_url')
+          // result_url RIDES HERE TOO. Five URL columns exist on video_jobs and
+          // this capture read four — every result_url object was left in the
+          // bucket, unattributable, on every account deletion. Latent today
+          // (result_url is NULL on all 12,673 rows) and free to close, which is
+          // exactly when to close it rather than after it starts carrying data.
+          .select('id, video_url, rendered_video_url, thumbnail_url, '
+                  + 'hls_manifest_url, result_url')
           .eq('user_id', userId);
         if (jobsErr) {
           console.error('[account] could not list jobs', jobsErr);
         }
         const s3Keys = [];
         for (const job of jobs || []) {
-          for (const urlStr of [job.video_url, job.rendered_video_url, job.thumbnail_url, job.hls_manifest_url]) {
+          for (const urlStr of [job.video_url, job.rendered_video_url, job.thumbnail_url,
+            job.hls_manifest_url, job.result_url]) {
             if (!urlStr) continue;
             try {
               const u = new URL(urlStr);
@@ -5684,10 +5691,27 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // step 3 fails with a foreign-key violation and the user is left with
         // an account they cannot delete, which is an App Store review problem
         // as much as a product one.
+        // free_credit_grants AND free_credit_periods GO WITH THE ACCOUNT.
+        // Neither has a foreign key to auth.users, so neither is reached by the
+        // auth delete and neither was in this batch: measured 2026-09-21, 12
+        // rows in each still carried the user_id of an account already deleted.
+        // A deletion that leaves the person named in two tables is not a
+        // deletion, and this is the App Store / "delete my account" surface.
+        //
+        // KNOWN COST, RULED AND RECORDED RATHER THAN DISCOVERED LATER (Zac
+        // 2026-09-21). free_credit_grants.device_id is the PRIMARY KEY and the
+        // anti-abuse record: install-seen.js looks a device up by it to decide
+        // whether that install has already taken its 30 free credits. Deleting
+        // the row frees the device to claim them again by signing up afresh.
+        // That is the trade this makes deliberately — completeness of deletion
+        // over one re-claim per deleted account — and it is one line to reverse
+        // if the re-claim rate ever shows up in the grant numbers.
         const deleteResults = await Promise.allSettled([
           supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
           supabaseAdmin.from('chats').delete().eq('user_id', userId),
           supabaseAdmin.from('usage_events').delete().eq('user_id', userId),
+          supabaseAdmin.from('free_credit_grants').delete().eq('user_id', userId),
+          supabaseAdmin.from('free_credit_periods').delete().eq('user_id', userId),
           supabaseAdmin.from('profiles').delete().eq('id', userId),
         ]);
         for (const r of deleteResults) {
