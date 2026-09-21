@@ -482,7 +482,14 @@ struct EditorView: View {
                 // finished while the app was closed) without waiting for the
                 // first heartbeat tick.
                 await reconcileInProgressJobs(includeFailed: true)
+                // Task-local, not @State: it belongs to this poll loop's lifetime
+                // and must not survive the view being torn down and rebuilt.
+                var inFlightSince: Date? = nil
                 while !Task.isCancelled {
+                    // When the CURRENT in-flight stretch began. Reset whenever
+                    // nothing is in flight, so the backoff measures this render
+                    // rather than how long the app has been open — otherwise a
+                    // long session would start every new render already backed off.
                     let hasInFlight = messages.contains { m in
                         guard m.jobId != nil else { return false }
                         return m.jobStatus == "processing" ||
@@ -490,7 +497,42 @@ struct EditorView: View {
                                m.jobStatus == "needs_input" ||   // parked on a question — keep polling
                                m.jobStatus == nil
                     }
-                    let interval: Duration = hasInFlight ? .seconds(5) : .seconds(15)
+                    // POLL CADENCE: fast while the user is watching, backing off
+                    // once they are not. A flat 5s tick spent the same budget on
+                    // second 5 and second 350, and a render averages ~232 polls
+                    // per job at that rate.
+                    //
+                    // 3s for the first minute — the window where the user is
+                    // actually looking at the bar and a stale row is felt — then
+                    // doubling to a 15s CAP. Net is fewer polls over a full
+                    // render AND a more responsive first minute, which is the
+                    // opposite of the usual trade.
+                    //
+                    // THE CAP IS COUPLED TO TricklePacing.overshootMargin AND MUST
+                    // STAY THAT WAY. The bar fills at scheduledCap/estimateSeconds
+                    // = 90/390 ≈ 0.23 pct/s, and may run at most `overshootMargin`
+                    // (12) past the last CONFIRMED backend milestone. A poll gap of
+                    // G seconds delays learning a milestone by up to G, costing
+                    // 0.23·G points of that margin: 15s ≈ 3.5 points, well inside
+                    // 12. Raise this cap past ~50s and the tether starts binding —
+                    // the bar holds still while the render is fine, which is
+                    // exactly the "looks stuck" this cadence change must not cause.
+                    if hasInFlight { if inFlightSince == nil { inFlightSince = Date() } }
+                    else { inFlightSince = nil }
+                    let interval: Duration
+                    if hasInFlight {
+                        let elapsed = Date().timeIntervalSince(inFlightSince ?? Date())
+                        if elapsed < 60 {
+                            interval = .seconds(3)
+                        } else {
+                            // 3 -> 6 -> 12 -> 15 (cap)
+                            let steps = Int((elapsed - 60) / 60)
+                            let secs = min(15.0, 3.0 * pow(2.0, Double(steps + 1)))
+                            interval = .seconds(secs)
+                        }
+                    } else {
+                        interval = .seconds(15)
+                    }
                     try? await Task.sleep(for: interval)
                     if Task.isCancelled { break }
                     await reconcileInProgressJobs(includeFailed: true)
