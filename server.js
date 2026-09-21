@@ -365,8 +365,18 @@ const _creditsBatch = require('./lib/credits-batch');
  * Fails closed: no base URL means no agentic route, however the flag reads. An
  * armed flag pointing at nothing would 500 every render.
  */
+/**
+ * IS THE AGENTIC ROUTE ARMED? One predicate, both call sites — routeForNewJob()
+ * below and the collection sweep's scheduling in the boot block. Hoisted so
+ * there is exactly ONE switch, which is the property the sweep's own comment
+ * was defending when it chose to be dark-by-structure instead of flag-checked.
+ */
+function agenticRouteArmed() {
+  return AGENTIC_ENABLED && Boolean(AGENTIC_BASE_URL);
+}
+
 function routeForNewJob() {
-  return (AGENTIC_ENABLED && AGENTIC_BASE_URL) ? 'agentic' : 'handler';
+  return agenticRouteArmed() ? 'agentic' : 'handler';
 }
 const _refundLeg = require('./lib/refund-leg');
 
@@ -9046,11 +9056,25 @@ if (require.main === module) {
     // this process, which is the entire point: the completion tail once sat
     // behind an in-process await that no deploy survived, and main auto-deploys.
     //
-    // DARK BY STRUCTURE, not by a flag check. The sweep selects on
-    // pipeline='agentic', and nothing carries that value until routeForNewJob()
-    // says so. With AGENTIC_ENABLED unset it reads zero rows and does zero work
-    // — there is no second switch here to forget to arm, and no branch that
-    // behaves differently once the route goes live.
+    // DARK BY STRUCTURE — and "does zero work" WAS MEASURABLY FALSE, which is
+    // why this is now also gated. The sweep selects on pipeline='agentic', and
+    // nothing has ever carried that value: 11,570 rows NULL, 1,101 'handler',
+    // ZERO 'agentic' across the column's whole life. Reading zero ROWS is not
+    // doing zero WORK — the query still plans, scans and filters every pass.
+    // Measured 2026-09-21 from pg_stat_statements: 15,568 calls, 825 shared
+    // buffer blocks PER CALL, 12.8M blocks and 22.8 minutes of database time,
+    // all of it hunting a population that has never had a member. A clean zero
+    // read as a free zero.
+    //
+    // THE ORIGINAL ARGUMENT IS KEPT, because it was right: a second, INDEPENDENT
+    // switch is a switch to forget to arm. So the gate below is not a new one —
+    // it is agenticRouteArmed(), the SAME predicate routeForNewJob() uses to
+    // decide what to write. One predicate, two call sites; arming the route
+    // still arms both, and there is nothing extra to remember.
+    //
+    // It is evaluated at boot, which is when it can change: AGENTIC_ENABLED is
+    // an environment value, and an env flip is not live until a redeploy here
+    // anyway.
     const { sweepAgentic } = require('./lib/agentic-dispatch');
     let agenticBusy = false;
     const runAgenticSweep = async () => {
@@ -9064,8 +9088,15 @@ if (require.main === module) {
         agenticBusy = false;
       }
     };
-    setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
-    setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+    if (agenticRouteArmed()) {
+      setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
+      setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+    } else {
+      console.log('[agentic] route unarmed (AGENTIC_ENABLED/AGENTIC_BASE_URL) '
+        + '— collection sweep NOT scheduled. It scanned for pipeline=agentic '
+        + 'rows that have never existed: 825 shared blocks/call, 22.8 min of DB '
+        + 'time. Arming the route schedules it again, same predicate.');
+    }
 
     // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
     // across 441 users are in NO chat — 140 in the last 7 days — because the
