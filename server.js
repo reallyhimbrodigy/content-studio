@@ -8985,7 +8985,20 @@ if (require.main === module) {
   // open. This is ALSO the runtime drift-guard: a "preserve current values"
   // sweep that drops either secret fails the next boot instead of reopening the
   // door. Deploy note: set both secrets in Render env BEFORE deploying this.
-  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET']) {
+  // MODAL_VALIDATE_SECRET joins the array (2026-09-21). It signs the per-user
+  // /validate token minted on /api/usage, and without it mintValidateToken
+  // returns null — the field vanishes from the snapshot, every shipped client's
+  // validateToken goes nil, and /validate is anonymous again. That is a guard
+  // disabling itself when misconfigured, which is the silent-inert pattern this
+  // array exists to refuse.
+  //
+  // ARMED ONLY AFTER THE SECRET WAS CONFIRMED PRESENT IN RENDER, not before:
+  // /api/health read modal_validate_secret:true at rev f322ce6 first. Adding a
+  // key here while it is unset does not fail closed, it fails to BOOT — a crash
+  // loop, which is why the deploy note above says set the secret first. The
+  // presence boolean on /api/health exists so that is checkable from outside
+  // rather than assumed.
+  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET', 'MODAL_VALIDATE_SECRET']) {
     if (!process.env[k]) {
       console.error(`[boot] FATAL: ${k} not set — refusing to start (fail-closed worker auth).`);
       process.exit(1);
