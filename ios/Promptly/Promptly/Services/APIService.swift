@@ -189,28 +189,64 @@ class APIService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30
-        // One refresh if the snapshot has not landed yet. Validation runs when
-        // the user picks a clip, usually well after launch, so this is normally
-        // a no-op — but a pick in the first seconds of a cold launch would
-        // otherwise send an unauthenticated call for no reason.
-        var workerAuth = await UsageService.shared.validateToken
+        // NEVER UNAUTHENTICATED. The credential is a PRECONDITION of the call,
+        // not a field we attach when it happens to be around.
+        //
+        // This used to send the request either way and simply omit
+        // `_worker_auth` when the snapshot had not landed — so a pick in the
+        // first seconds of a cold launch went out unauthenticated. That is the
+        // worst shape available: the worker cannot tell "no credential" from
+        // "wrong credential" without special-casing, and an unauthenticated
+        // call that happens to succeed teaches us the credential is optional.
+        // The pick now WAITS on the refresh rather than going out without it.
+        //
+        // Note this is NOT the Supabase access token and never was — the worker
+        // sees no user identity from this call, only that the caller holds the
+        // worker credential. Same field name and placement as the server's
+        // workerAuthField(): `_worker_auth` in the body.
+        func currentToken() async -> String? {
+            let t = await UsageService.shared.validateToken
+            if let t, !t.isEmpty { return t }
+            return nil
+        }
+        var workerAuth = await currentToken()
         if workerAuth == nil {
             await UsageService.shared.refresh()
-            workerAuth = await UsageService.shared.validateToken
+            workerAuth = await currentToken()
         }
-        // Same field name and same placement as the server's workerAuthField():
-        // `_worker_auth` in the body. Omitted when unknown, never sent empty —
-        // an empty string is a value the worker would have to special-case.
-        var body: [String: String] = ["sample_url": sampleS3Url]
-        if let workerAuth { body["_worker_auth"] = workerAuth }
-        request.httpBody = try JSONEncoder().encode(body)
+        guard var auth = workerAuth else {
+            // Refused rather than downgraded. The caller surfaces this; it must
+            // not read as a validation verdict, because no validation happened.
+            throw APIError.jobCreationFailed("validate: worker credential unavailable")
+        }
 
-        let (data, response) = try await requestData(request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw APIError.jobCreationFailed("validate HTTP \(status)")
+        // ONE refresh and ONE retry on a 401, then surface. A credential can go
+        // stale between the snapshot and the call; retrying forever on a
+        // credential the worker keeps rejecting is how a refused call becomes a
+        // spin.
+        var refreshedOnce = false
+        while true {
+            var body: [String: String] = ["sample_url": sampleS3Url]
+            body["_worker_auth"] = auth
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await requestData(request)
+            let status = (response as? HTTPURLResponse).map { $0.statusCode } ?? -1
+
+            if status == 401 && !refreshedOnce {
+                refreshedOnce = true
+                await UsageService.shared.refresh()
+                guard let fresh = await currentToken() else {
+                    throw APIError.jobCreationFailed("validate: worker credential unavailable after refresh")
+                }
+                auth = fresh
+                continue
+            }
+            guard (200...299).contains(status) else {
+                throw APIError.jobCreationFailed("validate HTTP \(status)")
+            }
+            return try JSONDecoder().decode(ValidationResponse.self, from: data)
         }
-        return try JSONDecoder().decode(ValidationResponse.self, from: data)
     }
 
     // MARK: - Video Jobs
