@@ -32,7 +32,17 @@ test('stamp: producer identity is present and complete on the minted blob', () =
 
 test('stamp: constants are the pinned values (guards accidental drift)', () => {
   assert.equal(ANALYZER_PRODUCER, 'promptly.app-server.analyze-video');
-  assert.equal(GEMINI_MODEL, 'gemini-2.5-flash');
+  // 'gemini-2.5-flash' was RETIRED and was the 502 on this path for 44 days;
+  // 0ea3d34 deliberately moved to the alias and this pin was never updated, so
+  // the drift guard has been red against a correct, deliberate change ever
+  // since — a guard nobody reads. Pinned to what actually ships.
+  //
+  // AND NOW OFF THE ALIAS. The analyze path rode `gemini-flash-latest` until
+  // 2026-09-11; it is pinned to the same concrete model as chat, verified with a
+  // real generateContent on the production credential first. Two of the three
+  // models this path has used (gemini-2.5-flash, gemini-2.0-flash) now 404,
+  // which is the rotation rate an alias exposed every render's analysis to.
+  assert.equal(GEMINI_MODEL, 'gemini-3.6-flash');
   assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(ANALYZER_VERSION), 'version is a date tag');
 });
 

@@ -1,0 +1,39 @@
+-- 2026-09-14 · APPLIED TO PRODUCTION. The sweep half of the video_jobs I/O.
+--
+-- The 20260914 index took the user_id-filtered 56%. This takes the rest: four
+-- server-side sweeps filtering on status with no user_id, 379M blocks, and the
+-- worst statement on the table.
+--
+-- CARDINALITY SAYS THIS SHOULD NOT WORK, AND IT DOES. status is 70% 'completed'
+-- / 28% 'failed', so for a bare equality filter the planner would seq-scan
+-- regardless. What makes the index pay is the ORDER BY + LIMIT: with
+-- (status, created_at DESC) Postgres walks the index in order and stops at the
+-- LIMIT, which removes BOTH the scan and the top-N sort. Cardinality only
+-- disqualifies an index for pure equality.
+--
+-- Measured on the worst statement (n3: 11,354 calls, 1,370 ms mean):
+--
+--   select result->'analysis'->>'caption_style' from video_jobs
+--   where status = 'completed' order by created_at desc limit 50
+--
+--     before  Seq Scan + top-N heapsort   30,932 buffers   5,491 ms
+--     after   Index Scan, no sort             259 buffers       7.7 ms
+--                                          119x fewer       710x faster
+--
+-- WHERE THE 5.5 SECONDS ACTUALLY WENT: 30,932 buffers is far more than the
+-- 2,518 a plain count of this table reads, because `result->...` DETOASTS the
+-- result JSONB for every one of the 8,421 matching rows. The index does not
+-- just avoid the scan — it avoids 8,371 detoasts by reading only the 50 rows
+-- the LIMIT asks for. That is the real cost centre, and it is invisible if you
+-- reason about row counts instead of buffers.
+--
+-- WRITE COST, taken deliberately: video_jobs absorbs 1,170,844 updates to date
+-- and now carries a third hot index. Accepted because the sweeps run on a fixed
+-- cadence regardless of traffic, so the read saving is continuous while the
+-- write cost is proportional to render volume.
+--
+-- CONCURRENTLY, because the table takes live writes. Verified indisvalid.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_jobs_status_created
+  ON public.video_jobs USING btree (status, created_at DESC);
+
+-- Rollback: DROP INDEX CONCURRENTLY IF EXISTS public.idx_video_jobs_status_created;

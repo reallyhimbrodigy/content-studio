@@ -69,7 +69,22 @@ async function assertSubmittable(version) {
     console.error(`asc-preflight: BLOCK — ${version} is already ${me.s}. This script's premise expired; nothing to submit.`);
     process.exit(1);
   }
-  const decision = vers.find((x) => NEEDS_DECISION.has(x.s));
+  // A rejection on an OLDER version is not an open question — replacing it with
+  // a newer submission IS the decision, and that is the ordinary withdraw-and-
+  // replace path. As written this blocked on ANY needs-decision version at any
+  // age, so a single DEVELOPER_REJECTED wedged every future submission forever:
+  // 1.3.35 withdrawn deliberately would have blocked 1.3.36, 1.3.37 and the rest
+  // until someone edited state by hand. The guard is right that a rejection must
+  // not be stepped over silently, so an older one is NAMED loudly and allowed;
+  // one at or newer than the version being submitted still blocks, because there
+  // the rejection really is about the work in front of you.
+  const decision = vers.find((x) => NEEDS_DECISION.has(x.s) && cmp(x.v, version) >= 0);
+  const olderRejected = vers.filter((x) => NEEDS_DECISION.has(x.s) && cmp(x.v, version) < 0);
+  for (const o of olderRejected) {
+    console.log(`asc-preflight: NOTE — ${o.v} is ${o.s} (older than ${version}). ` +
+      'Treating this submission as the decision about it. If that is NOT why it was ' +
+      'rejected, stop and resolve it before shipping over the top.');
+  }
   if (decision) {
     console.error(`asc-preflight: BLOCK — ${decision.v} is ${decision.s}. A rejection needs a decision about WHY before anything else is submitted.`);
     process.exit(1);

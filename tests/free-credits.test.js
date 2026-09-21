@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   FREE_MONTHLY_ALLOWANCE, periodKey, topUpDelta, decideDeviceClaim, decidePeriodGrant,
-  parseBuild, debitApplies,
+  parseBuild, debitApplies, effectiveDebitFloor, CLIENT_CLAIM_MIN_BUILD,
 } = require('../lib/free-credits');
 
 // ── periodKey ──────────────────────────────────────────────────────────────
@@ -132,13 +132,25 @@ test('parseBuild: null on anything it cannot read', () => {
   for (const v of [null, undefined, '', '1.3.25', 'Promptly', '()', '(abc)'])
     assert.strictEqual(parseBuild(v), null, `expected null for ${JSON.stringify(v)}`);
 });
-test('debitApplies: charges at and above the floor', () => {
-  assert.strictEqual(debitApplies({ build: 244, minBuild: 244 }), true);
-  assert.strictEqual(debitApplies({ build: 250, minBuild: 244 }), true);
+test('debitApplies: charges at and above the EFFECTIVE floor', () => {
+  // The effective floor is max(env, CLIENT_CLAIM_MIN_BUILD). These used to read
+  // `minBuild: 244` and expect 244 to be charged; 244 cannot ask for its grant,
+  // and charging it is the defect this floor now prevents.
+  const C = CLIENT_CLAIM_MIN_BUILD;
+  assert.strictEqual(debitApplies({ build: C, minBuild: 244 }), true);
+  assert.strictEqual(debitApplies({ build: C + 10, minBuild: 244 }), true);
+  // A higher env still wins — the clamp only ever raises.
+  assert.strictEqual(debitApplies({ build: C, minBuild: C + 5 }), false);
+  assert.strictEqual(debitApplies({ build: C + 5, minBuild: C + 5 }), true);
 });
 test('debitApplies: does NOT charge below the floor', () => {
   for (const b of [243, 240, 224])
     assert.strictEqual(debitApplies({ build: b, minBuild: 244 }), false, `build ${b}`);
+  // And not between a too-low env floor and the client floor — the window that
+  // charged 882 users on build 246 who could never be granted.
+  for (let b = 244; b < CLIENT_CLAIM_MIN_BUILD; b += 1)
+    assert.strictEqual(debitApplies({ build: b, minBuild: 244 }), false,
+      `build ${b} sits above the env floor but cannot claim its grant`);
 });
 // FAIL OPEN, both directions. Leaking a free render is recoverable; 402'ing a
 // paying user because a header went missing is not, and it would fail silently
@@ -152,14 +164,30 @@ test('debitApplies: FAILS OPEN when the build is unreadable', () => {
   assert.strictEqual(debitApplies({ build: undefined, minBuild: 244 }), false);
   assert.strictEqual(debitApplies({ build: NaN, minBuild: 244 }), false);
 });
-// The two sides share ONE env var so a build can never be chargeable while
-// being ungrantable — the window that would 402 a user who cannot be granted.
-test('DESIGN: chargeable implies grantable — same floor governs both', () => {
-  const FLOOR = 244;
-  for (const b of [224, 240, 243, 244, 245]) {
-    const chargeable = debitApplies({ build: b, minBuild: FLOOR });
-    const grantable = b >= FLOOR;   // the free-grant endpoint's own check
-    assert.strictEqual(chargeable, chargeable && grantable,
-      `build ${b}: chargeable must never exceed grantable`);
+// CHARGEABLE IMPLIES GRANTABLE — and "grantable" has TWO conditions, not one.
+//
+// This test used to define grantable as `b >= FLOOR`, the free-grant endpoint's
+// own check, on the stated premise that one env var governing both sides made
+// drift impossible. It did not. The env var decides whether the SERVER accepts a
+// claim; whether the CLIENT sends one is a property of the shipped binary, and
+// build 246 was cut 22.6 hours before that caller existed. 882 signed-in users
+// on 246 produced one device claim; seven were refused at the wall on credits
+// they were never given. The premise, not the arithmetic, was wrong.
+test('DESIGN: chargeable implies grantable — server floor AND a client that asks', () => {
+  for (const FLOOR of [224, 240, 244, 247, 260]) {
+    for (let b = 220; b <= 280; b += 1) {
+      const chargeable = debitApplies({ build: b, minBuild: FLOOR });
+      const serverWouldGrant = b >= FLOOR;              // the endpoint's check
+      const clientWouldAsk = b >= CLIENT_CLAIM_MIN_BUILD; // the binary's property
+      assert.strictEqual(chargeable, serverWouldGrant && clientWouldAsk,
+        `build ${b} at floor ${FLOOR}: chargeable must equal grantable on BOTH sides`);
+    }
   }
+});
+test('DESIGN: no env value can lower the floor below the client build', () => {
+  for (const env of [0, 1, 100, 224, 246, 247, 300, 9999]) {
+    assert.ok(effectiveDebitFloor(env) >= CLIENT_CLAIM_MIN_BUILD,
+      `env ${env} produced a floor below the client build — the window is back`);
+  }
+  assert.strictEqual(effectiveDebitFloor(null), null, 'unset still ships dark');
 });

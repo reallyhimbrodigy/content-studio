@@ -1,0 +1,129 @@
+
+==========================================================================
+TEXT   124 placements · 10 videos
+==========================================================================
+  DURATION (beat span, s)   p10 0.9 · median 2.17 · p90 5.57 · max 11.5
+  TO NEAREST SHOT CHANGE    median 0.0s · p90 4.47s · WITHIN 0.25s: 92/124 (74%)
+  BEAT PURPOSE              evidence 33% · claim 24% · turn 12% · close 11% · hook 10%
+  SPEAKER ON SCREEN         67% of placements
+  --- from the control re-read (220 placements, 10 videos) ---
+  WHERE                     middle 61% · lower_third 19% · upper_third 10% · full_frame 8% · corner 1%    [answered 202/220]
+  SIZE                      medium 45% · large 21% · dominant 19% · small 14% · medium to dominant (videos fills half the frame height) 0%    [answered 202/220]
+  HOLD_S                    0.6 8% · 0.4 7% · 1.0 7% · 1.2 7% · 1.6 4%    [answered 182/220]
+  OVER_SUBJECT              over_body 37% · no_subject_visible 26% · clear_of_subject 26% · over_face 11%    [answered 202/220]
+  CASE                      lower 31% · upper 30% · mixed 30% · title 9%    [answered 171/220]
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 3.7s  (beat 3, claim)
+        text: "at 13 years / Zach / Zach Yadegari / built a"
+        cut to talking-head interview establishes the narrator and stamps the subject's name/age as word-by-word
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 11.433s  (beat 5, turn)
+        text: "after"
+        returns to the interview to pivot the story from the first venture to what came next, marked by a single
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 18.367s  (beat 8, payoff)
+        text: "made / $20 / $20,000,000 / in the past year"
+        back on the speaker for the big reveal number, the '$20' card intentionally under-delivers for a half-se
+
+==========================================================================
+CARD   40 placements · 10 videos
+==========================================================================
+  DURATION (beat span, s)   p10 1.07 · median 2.98 · p90 6.1 · max 11.5
+  TO NEAREST SHOT CHANGE    median 0.0s · p90 4.2s · WITHIN 0.25s: 29/40 (72%)
+  BEAT PURPOSE              evidence 45% · close 27% · turn 10% · hook 7% · claim 5%
+  SPEAKER ON SCREEN         20% of placements
+  --- from the control re-read (95 placements, 10 videos) ---
+  WHERE                     middle 47% · full_frame 20% · upper_third 20% · lower_third 13% · corner 1%    [answered 87/95]
+  SIZE                      medium 37% · dominant 25% · large 23% · small 14% · tiny 1%    [answered 87/95]
+  HOLD_S                    1.6 9% · 4.0 9% · 1.0 7% · 1.2 6% · 1.4 5%    [answered 86/95]
+  OVER_SUBJECT              no_subject_visible 49% · over_body 23% · clear_of_subject 20% · over_face 8%    [answered 87/95]
+  CASE                      mixed 31% · upper 29% · lower 22% · title 18%    [answered 51/95]
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    56ba63210cfe4c4da625e0b457cc6703.m @ 6.867s  (beat 4, evidence)
+        text: "Our Traction"
+        Full graphic takeover replaces the speaker to visualize scale/proof ('traction') rather than just assert
+    56ba63210cfe4c4da625e0b457cc6703.m @ 12.233s  (beat 6, evidence)
+        text: "View Our Roles For Your Firm"
+        Cuts to product UI as literal proof of the 'roles' being discussed, letting the interface do the selling
+    56ba63210cfe4c4da625e0b457cc6703.m @ 21.033s  (beat 11, evidence)
+        text: "Nikki G. / Our Powerful Capabilities / 40% Increase in law firm profi
+        Data visualization dump substitutes for spoken proof, letting numbers carry the credibility beat with no
+
+==========================================================================
+CUTAWAY   72 placements · 10 videos
+==========================================================================
+  DURATION (beat span, s)   p10 0.9 · median 2.0 · p90 5.03 · max 11.5
+  TO NEAREST SHOT CHANGE    median 0.0s · p90 2.8s · WITHIN 0.25s: 60/72 (83%)
+  BEAT PURPOSE              evidence 61% · turn 11% · claim 9% · close 5% · payoff 5%
+  SPEAKER ON SCREEN         29% of placements
+  --- from the control re-read (60 placements, 9 videos) ---
+  WHERE                     middle 45% · full_frame 45% · lower_third 8% · upper_third 2%    [answered 40/60]
+  SIZE                      dominant 55% · large 28% · small 12% · medium 5%    [answered 40/60]
+  HOLD_S                    1.6 8% · 1.5 5% · 1.3 5% · 0.6 5% · 4.6 5%    [answered 40/60]
+  OVER_SUBJECT              no_subject_visible 85% · clear_of_subject 10% · over_body 5%    [answered 40/60]
+  CASE                      mixed 50% · lower 50%    [answered 6/60]
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    56ba63210cfe4c4da625e0b457cc6703.m @ 4.2s  (beat 2, claim)
+        text: "Over the last 2yrs"
+        Cuts away from the static intro shot to a working-professional b-roll to visually back the 'experience' 
+    56ba63210cfe4c4da625e0b457cc6703.m @ 5.1s  (beat 3, evidence)
+        text: "I've had the opportunity to work closely"
+        Continues the walking b-roll under a building caption, using physical motion to keep pace while the sent
+    56ba63210cfe4c4da625e0b457cc6703.m @ 6.867s  (beat 4, evidence)
+        text: "Our Traction"
+        Full graphic takeover replaces the speaker to visualize scale/proof ('traction') rather than just assert
+
+==========================================================================
+CUT   81 placements · 9 videos
+==========================================================================
+  DURATION (beat span, s)   p10 0.6 · median 2.17 · p90 5.17 · max 11.5
+  TO NEAREST SHOT CHANGE    median 0.0s · p90 1.97s · WITHIN 0.25s: 70/81 (86%)
+  BEAT PURPOSE              evidence 27% · claim 20% · close 19% · turn 14% · payoff 8%
+  SPEAKER ON SCREEN         69% of placements
+  --- NO control re-read for this family: where/size/hold_s UNMEASURED ---
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 3.7s  (beat 3, claim)
+        text: "at 13 years / Zach / Zach Yadegari / built a"
+        cut to talking-head interview establishes the narrator and stamps the subject's name/age as word-by-word
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 11.433s  (beat 5, turn)
+        text: "after"
+        returns to the interview to pivot the story from the first venture to what came next, marked by a single
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 18.367s  (beat 8, payoff)
+        text: "made / $20 / $20,000,000 / in the past year"
+        back on the speaker for the big reveal number, the '$20' card intentionally under-delivers for a half-se
+
+==========================================================================
+SFX   14 placements · 8 videos
+==========================================================================
+  DURATION (beat span, s)   p10 1.1 · median 4.0 · p90 5.05 · max 8.8
+  TO NEAREST SHOT CHANGE    median 0.0s · p90 9.12s · WITHIN 0.25s: 8/14 (57%)
+  BEAT PURPOSE              hook 35% · close 28% · claim 14% · evidence 7% · turn 7%
+  SPEAKER ON SCREEN         78% of placements
+  --- NO control re-read for this family: where/size/hold_s UNMEASURED ---
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    1e5eb227a1814bc0999fd1e62ebef34e.m @ 39.167s  (beat 15, close)
+        text: "right now \"App\" / @JACKHNEEL"
+        screen dims to near-black and an Instagram icon pulses/glows over the frozen final CTA, visually pushing
+    56ba63210cfe4c4da625e0b457cc6703.m @ 48.6s  (beat 22, close)
+        text: "LEGAL SOFT / @LEGALSOFTHQ"
+        Clean branded end-card with a flash-wipe transition and pulsing Instagram icon closes the video on a fol
+    v12044gd0000d855u57og65j1avugm80.m @ 5.05s  (beat 2, claim)
+        text: "THIS IS DAY 17 (red numeral) / OF THE LIFE OF A STUDENT / VIDEOGRAPHE
+        Series-premise text stacks continuously with no cuts to picture, using red accents only on the proper-no
+
+==========================================================================
+ZOOM   6 placements · 3 videos
+==========================================================================
+  DURATION (beat span, s)   p10 1.97 · median 3.35 · p90 9.63 · max 9.63
+  TO NEAREST SHOT CHANGE    median 2.1s · p90 12.55s · WITHIN 0.25s: 3/6 (50%)
+  BEAT PURPOSE              hook 50% · evidence 50%
+  SPEAKER ON SCREEN         66% of placements
+  --- NO control re-read for this family: where/size/hold_s UNMEASURED ---
+  ANCHOR FRAMES (video @ t_start — what the annotator read):
+    v15044gf0000d7akrh7og65p1f3s1ua0.m @ 14.431s  (beat 7, evidence)
+        text: "With AI Edit / inside the Captions App / I just upload a raw clip / c
+        Green cutting-mat background frames every phone-screen recording like a tutorial insert; captions run co
+    v24044gl0000d2rj4k7og65tcgn43lr0.m @ 11.133s  (beat 9, evidence)
+        text: "and upload our footage. / then going to head over / to our menu / and
+        Extended dimmed screen-recording overlay demonstrates the actual software steps, serif narration caption
+    v24044gl0000d2rj4k7og65tcgn43lr0.m @ 43.133s  (beat 21, evidence)
+        text: "I have to be creative / So if you want"
+        An artistic macro close-up and a color-grading UI shot visually dramatize 'being creative' before pivoti

@@ -1,0 +1,73 @@
+-- 2026-09-14 · APPLIED TO PRODUCTION. The follow-ups from 20260913.
+--
+-- ── 1. video_jobs(user_id, created_at DESC) ────────────────────────────────
+--
+-- WHY, with the denominator. video_jobs carried 6,668,160 sequential scans
+-- reading 5,268,984,090 rows over the 306-day stats window — roughly 96% of all
+-- sequential tuple reads in the database (chats 108M, analytics_events 61M,
+-- profiles 58M). It is the hottest table and it had no plain user_id index, so
+-- every per-user query read all 12,002 rows.
+--
+-- COMPOSITE, not bare (user_id): the dominant PostgREST query orders by
+-- created_at DESC after filtering user_id, so the second column turns a
+-- top-N heapsort into an ordered index read.
+--
+-- Measured on the real query shape, as authenticated, same statement both ways
+-- (the "before" forced down the only path that existed, via enable_indexscan
+-- off, so it is a true counterfactual rather than a remembered number):
+--
+--   select id,status,vibe_input,rendered_video_url,created_at from video_jobs
+--   where user_id = $1 and status = any(...) order by created_at desc limit 20
+--
+--     before   Seq Scan, Rows Removed by Filter 11,955   2,521 buffers   7.300 ms
+--     after    Index Scan using this index                   18 buffers   0.180 ms
+--                                                        140x fewer      40x faster
+--
+-- THIS one is an I/O win. The 20260913 RLS wrap was not — it moved 36.5 ms to
+-- 6.4 ms of CPU while reading the identical 2,518 buffers. Worth keeping the
+-- two straight, because they were flagged together.
+--
+-- CREATE INDEX CONCURRENTLY, because video_jobs takes live writes (1,170,844
+-- updates to date) and a plain CREATE INDEX holds a lock against them.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_jobs_user_created
+  ON public.video_jobs USING btree (user_id, created_at DESC);
+
+-- ── 2. the redundant referrals SELECT policy ───────────────────────────────
+--
+-- Same shape as the video_jobs service-role policy removed on 20260913.
+-- PERMISSIVE policies for one command are OR'd, and
+--   referrals_referrer_progress  USING ((select auth.uid()) = referrer_id)
+-- is a STRICT SUBSET of
+--   referrals_select_own         USING (... = referrer_id OR ... = referred_id)
+-- so it can never admit a row the other does not, while still being evaluated
+-- on every referrals read.
+--
+-- Not argued, measured: counts taken for a referrer, a referred user and an
+-- unrelated user before and after the drop were identical (1 / 1 / 0).
+DROP POLICY IF EXISTS "referrals_referrer_progress" ON public.referrals;
+
+-- ── WHAT THIS DOES NOT FIX, and the evidence ───────────────────────────────
+--
+-- The index addresses the user_id-filtered half of video_jobs I/O. It does
+-- nothing for the other half. Top 8 statements by blocks read, 859,537,437
+-- total, split by predicate:
+--
+--   user_id-filtered  480,229,960 blocks  56%  <- this index
+--     n1 207.9M  user_id + demo + status = ANY, twice (the PostgREST exact-count
+--                subquery repeats the whole predicate for the total)
+--     n2 147.1M  user_id + status = ANY, ORDER BY created_at DESC
+--     n5  77.3M  n1 again   n7 48.0M  n1 again
+--
+--   status-only, NO user_id  379,308,077 blocks  44%  <- NOT this index
+--     n3 145.1M  status = $1 ORDER BY created_at DESC   — 1,370 ms MEAN, the
+--                slowest statement on the table by a wide margin
+--     n4 126.5M  status = ANY + updated_at >= $ + result->$ IS NULL
+--     n6  61.4M  status = $ + rendered_video_url IS NULL + created_at >= $
+--     n8  46.3M  status = ANY
+--
+-- Those four are server-side sweeps, not user traffic. An index on
+-- (status, created_at) would serve n3 and n6 and help n4/n8 — but it is a
+-- second index on a table taking 1.17M updates, so it is a write-cost decision
+-- and is deliberately NOT taken here. Check the status cardinality first: if
+-- most rows are 'completed', the planner will seq-scan for that value anyway
+-- and the index buys only the selective statuses.

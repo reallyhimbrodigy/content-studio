@@ -6,6 +6,10 @@ const path = require('path');
 const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
+const { signRead, signReadFields } = require('./lib/sign-on-read');
+// One line per failure, cause included — see lib/log-error.js for why a bare
+// object handed to console.error stores a record that ends at `{`.
+const { errLine } = require('./lib/log-error');
 const _i18n = require('./lib/i18n');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
@@ -14,7 +18,6 @@ const {
   entitlementTier,
   tierFromEntitlement,
   tierAfterGrant,
-  tierAfterRevoke,
   tierRank,
   grantFromMs,
   unknownPeriodPaid,
@@ -31,7 +34,8 @@ const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField, clientValidateAuth } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm, awaitPrewarmHint, markJobFailed, NO_SPEECH_COPY, workerAuthField } = require('./lib/video-processor/dispatch-to-modal');
+const negotiation = require('./lib/negotiation-classifier');
 const { findDeadSourceJob } = require('./lib/source-presence');
 const { isOwnedSource } = require('./lib/source-ownership');
 const apiLedger = require('./lib/api-outcome-ledger');
@@ -335,6 +339,45 @@ const _darkRefusals = require('./lib/dark-refusals');
 // an explicit env flip, after balances are verified -- not by a merge.
 const CREDITS_DEBIT_ENABLED =
   String(process.env.CREDITS_DEBIT_ENABLED || '').trim() === '1';
+
+// ── THE AGENTIC WIRE, SHIPPED DARK ──────────────────────────────────────────
+// Same posture as web checkout: the whole path lands unarmed and arms itself
+// when the thing it depends on exists. Off, every route decision below resolves
+// to 'handler' and the server is byte-identical to today.
+//
+// AGENTIC_ENABLED=1 arms the route. It is deliberately SEPARATE from the credit
+// switch: the wire can be live and dark-priced (no debit) while
+// CREDITS_DEBIT_ENABLED is off, because the debit is a money decision with its
+// own blast radius and this is a routing decision. Coupling them would mean
+// arming the pipeline required repricing every tier.
+const AGENTIC_ENABLED =
+  String(process.env.AGENTIC_ENABLED || '').trim() === '1';
+const AGENTIC_BASE_URL = String(process.env.AGENTIC_BASE_URL || '').trim();
+const _agenticPlan = require('./lib/agentic-plan');
+const _creditsBatch = require('./lib/credits-batch');
+
+/**
+ * WHICH PIPELINE HANDLES THIS JOB. Trap 2 of the worker contract: the decision
+ * is made HERE, once, from configuration — never inferred later from which plan
+ * column happens to be populated. The value returned is what gets stored on the
+ * row at creation, and the URL chosen is the same fact said a second way.
+ *
+ * Fails closed: no base URL means no agentic route, however the flag reads. An
+ * armed flag pointing at nothing would 500 every render.
+ */
+/**
+ * IS THE AGENTIC ROUTE ARMED? One predicate, both call sites — routeForNewJob()
+ * below and the collection sweep's scheduling in the boot block. Hoisted so
+ * there is exactly ONE switch, which is the property the sweep's own comment
+ * was defending when it chose to be dark-by-structure instead of flag-checked.
+ */
+function agenticRouteArmed() {
+  return AGENTIC_ENABLED && Boolean(AGENTIC_BASE_URL);
+}
+
+function routeForNewJob() {
+  return agenticRouteArmed() ? 'agentic' : 'handler';
+}
 const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
@@ -469,7 +512,26 @@ async function preDispatchNoSpeechGate({ jobId, videoUrl, userId, pushProgressTo
     console.warn('[no-speech-gate] hint resolve failed — fail open:', e && e.message);
     return { gated: false, hint: null };
   }
-  if (hint && hint.word_count === 0) {
+  // A ZERO THAT MEANS TWO THINGS. `word_count: 0` arrives both for a genuinely
+  // speechless clip AND for one whose transcript is simply not cached yet — the
+  // dispatch hint logs pair `transcript_cached: false` with `word_count: 0`
+  // routinely, and `word_count: null` shows up too. Without a second field this
+  // guard cannot tell "there is no speech" from "we have not looked", and it
+  // rejects the second as if it were the first.
+  //
+  // THE CONTRACT ABOVE ALREADY PROMISED THIS. It says a missing or UNKNOWN
+  // word_count returns { gated:false } — the code just had no way to recognise
+  // unknown, because unknown and zero are the same value. `transcript_cached`
+  // is the field that separates them.
+  //
+  // Masked today: nothing has been rejected here in 51 days. It is a live trap
+  // if the routing flag that skips this gate is ever switched off — the gate
+  // would start failing clips whose transcript had not landed yet, which is the
+  // most expensive possible false reject: the user is told their clip has no
+  // speech, and it does.
+  const wordCountKnown = Boolean(hint && hint.transcript_cached)
+    && Number.isInteger(hint.word_count);
+  if (wordCountKnown && hint.word_count === 0) {
     try {
       await markJobFailed(jobId, { errorCode: 'NO_SPEECH', userMessage: NO_SPEECH_COPY, userId, pushProgressToSSE });
       console.log('  [no-speech-gate] 0-word clip rejected PRE-dispatch job=%s user=%s', jobId, userId);
@@ -1849,6 +1911,24 @@ function isProfileSettingsSchemaMissing(err) {
 // on ANY uncertainty (table absent, query error) and the scheduler then does
 // NOT run — an unknown is not a missing row, and running blindly every boot
 // would hammer the judge.
+// ── THE DEBIT FLOOR AND THE CLIENT THAT CAN CLAIM ───────────────────────────
+// An env floor below CLIENT_CLAIM_MIN_BUILD does not under-charge; it charges
+// users who can NEVER be granted, because their binary does not call the grant
+// endpoint. The clamp in free-credits.js makes that harmless, but a floor set
+// below the client's is still a configuration mistake worth naming out loud —
+// silently correcting an operator's number without telling them is how the
+// next person sets it again.
+(() => {
+  const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+  if (!Number.isInteger(env)) return;
+  const client = _freeCredits.CLIENT_CLAIM_MIN_BUILD;
+  if (env >= client) return;
+  console.error(`[ALERT] FREE_CREDITS_MIN_BUILD=${env} is below the first build whose `
+    + `client asks for its grant (${client}). Builds ${env}-${client - 1} can be charged `
+    + `but never granted. The debit floor is clamped to ${client}; set the env to `
+    + `${client} or higher to make the configuration say what it does.`);
+})();
+
 if (String(process.env.SCOREBOARD_SCHEDULER_DISABLED || '') !== '1') {
   try {
     require('./lib/scoreboard-scheduler').startScoreboardScheduler({
@@ -1954,7 +2034,15 @@ const server = http.createServer((req, res) => {
           .map((m) => String(m.name || '').replace('models/', ''));
       } catch (e) { out.models_available = 'list_failed:' + String((e && e.message) || e).slice(0, 80); }
       out.candidate_test = {};
-      for (const m of ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
+      // CANDIDATES MUST INCLUDE WHAT WE ACTUALLY RUN. This list tested four
+      // models and none of them was the one chat is pinned to, nor the one
+      // analyze rides — so the diag could report a clean bill while saying
+      // nothing about either live path. `models_available` is NOT a substitute:
+      // it filters on supportedGenerationMethods, and the failure that took
+      // chat down was a 429 from ZERO PROVISIONED QUOTA on a model that listed
+      // perfectly well. Only a real generateContent distinguishes them.
+      for (const m of ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.0-flash',
+                       'gemini-2.5-flash-latest', 'gemini-2.0-flash-001']) {
         try {
           const cr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -2086,7 +2174,7 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          console.error('[Subscription] fetch error', error);
+          console.error('[Subscription] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 200, { ok: true, plan: 'free' });
         }
 
@@ -2156,7 +2244,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] fetch error', error);
+          console.error('[ProfileSettings] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
         }
 
@@ -2203,7 +2291,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] fetch error', error);
+          console.error('[ProfileSettings] fetch error', errLine(error, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
         }
 
@@ -2211,13 +2299,32 @@ const server = http.createServer((req, res) => {
           ? data.profile_settings
           : {};
         const nextSettings = { ...current, ...safePatch };
+        // Empty string is not an email. An anonymous session has none, and
+        // there is exactly one '' slot in a UNIQUE column — see the upsert.
+        const profileEmail = toPlainString(user.email || user?.user_metadata?.email || '').trim();
 
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('profiles')
           .upsert(
             {
               id: user.id,
-              email: toPlainString(user.email || user?.user_metadata?.email || ''),
+              // EMAIL IS OMITTED WHEN THE SESSION HAS NONE — it is NOT written
+              // as ''. profiles.email carries a plain UNIQUE constraint, and
+              // Postgres exempts NULL from uniqueness but not the empty string.
+              // So `|| ''` meant the FIRST email-less session to save a setting
+              // took the one and only '' slot (row e833de15, 2026-09-08
+              // 05:04:16Z) and every email-less session after it got 23505 on
+              // profiles_email_key — 29 failed saves across the next four days,
+              // and a structurally blocked population of 99 profiles whose
+              // email is NULL. A fallback that turns "unknown" into a real
+              // value is the same class as the ambiguous NULL, pointed the
+              // other way: it makes an absence collide.
+              //
+              // Omitting it is also the correct ownership call. This endpoint
+              // owns profile_settings; email belongs to auth and to the
+              // profile-creation path. An update here must not touch it, and an
+              // insert here should leave it NULL rather than guess.
+              ...(profileEmail ? { email: profileEmail } : {}),
               profile_settings: nextSettings,
               updated_at: new Date().toISOString(),
             },
@@ -2234,7 +2341,7 @@ const server = http.createServer((req, res) => {
             }
             return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
-          console.error('[ProfileSettings] update error', updateError);
+          console.error('[ProfileSettings] update error', errLine(updateError, { user: user.id }));
           return sendJson(res, 500, { ok: false, error: 'profile_settings_update_failed' });
         }
 
@@ -2406,9 +2513,15 @@ const server = http.createServer((req, res) => {
         .select('status, progress, current_step, step_message, rendered_video_url, hls_manifest_url, thumbnail_url, error_message, credits_debited, credits_refunded_at')
         .eq('id', jobId)
         .maybeSingle()
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           if (data) {
             try {
+              // SIGN ON READ (lib/sign-on-read.js). This snapshot is the first
+              // url a reconnecting client sees. Once the columns hold keys the
+              // stored value is not playable as-is, and ~880 of ~1,000 active
+              // users are on a build that renders this field directly.
+              const _signed = await signReadFields(
+                data, ['rendered_video_url', 'thumbnail_url'], 'sse-snapshot');
               res.write(`data: ${JSON.stringify({
                 // TYPE DISCRIMINATOR (Frontend, 2026-08-31). Every SSE frame
                 // was an untagged status snapshot, so a client had no way to
@@ -2420,11 +2533,11 @@ const server = http.createServer((req, res) => {
                 progress: data.progress || 0,
                 step: data.current_step || '',
                 message: data.step_message || '',
-                videoUrl: data.rendered_video_url || null,
+                videoUrl: _signed.rendered_video_url,
                 // §5 progressive: a client reconnecting mid-render gets the manifest
                 // in the connect snapshot and can resume the preview.
                 hlsManifestUrl: data.hls_manifest_url || null,
-                thumbnailUrl: data.thumbnail_url || null,
+                thumbnailUrl: _signed.thumbnail_url,
                 error: data.error_message || null,
                 // final:true on a terminal snapshot lets a correct client stop
                 // reconnecting the moment it connects to an already-finished job
@@ -2981,10 +3094,107 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
+
+    // ── D4: THE NEGOTIATION CLASSIFIER, DARK ────────────────────────────
+    // 1,057 jobs in 30 days (27.5% of all) asked for something this pipeline
+    // cannot do and returned status=completed — an edit delivered, the ask
+    // ignored. This is where that becomes a conversation instead.
+    //
+    // DARK BY DEFAULT and the flag governs the ACTION ONLY: the decision and
+    // the sentence that WOULD have been shown are recorded on every request,
+    // so the false-positive cost is measurable before a single user sees a
+    // line. With the flag off this block cannot change what is dispatched —
+    // it only writes a log line.
+    //
+    // ROUTER CONSERVATISM: it may act only on what today is silently dropped
+    // or unsafely rendered. An in-scope brief is never touched.
+    let negotiationDecision = null;
+    try {
+      // UNSAFE IS NEVER REGEX-ONLY. The pattern is an early refuse; the model
+      // adjudicates every brief the pattern passed, in whatever language it
+      // was written. 15.2% of briefs are not English and an English pattern is
+      // structurally blind to them — verified: it passes "tire a roupa dela"
+      // and "iske kapde hata do". Fails CLOSED: an unreachable adjudicator
+      // yields REVIEW_UNAVAILABLE, never a false all-clear.
+      negotiationDecision = await negotiation.classifyWithSafety(vibeInput, { hasInScopeAsks: true });
+      // THE SHADOW ROW, and the console line until the table exists. Both, not
+      // either: the table is the queryable record for the 24-hour read, and
+      // the log line is what survives if the migration has not been applied.
+      // A write failure here NEVER costs a render — it is logged and dropped.
+      if (negotiationDecision) {
+        const crypto = require('crypto');
+        const row = {
+          request_hash: crypto.createHash('sha256').update(String(vibeInput)).digest('hex'),
+          client_job_id: clientJobId || null,
+          verdict: negotiationDecision.verdict,
+          // UNRECOGNISED TAGS RIDE IN classes UNDER A SENTINEL, so a model that
+          // starts inventing a tag is visible as a RATE and not as a comment
+          // (Zac, 2026-09-20). Measured the day this landed: the model emitted
+          // "sound_effects" — not in the enum — on 3 of 8 runs of one brief,
+          // and it flowed through unvalidated because nothing counted it. The
+          // "!" prefix cannot collide with a real class (the enum is
+          // lowercase words) and needs no migration; scoreboard.js reports the
+          // share of rows carrying one.
+          classes: (negotiationDecision.oos || []).concat(
+            (negotiationDecision.oos_unrecognised || []).map(t => '!' + t)),
+          sentence: negotiationDecision.sentence || null,
+          safety_state: (negotiationDecision.safety && negotiationDecision.safety.state) || 'REVIEW_UNAVAILABLE',
+          decider: (negotiationDecision.safety && negotiationDecision.safety.by) || null,
+          uncertain: !!(negotiationDecision.safety && negotiationDecision.safety.uncertain),
+          degraded: !!negotiationDecision.degraded,
+          language: (negotiationDecision.safety && negotiationDecision.safety.language) || null,
+          flag_state: negotiation.flagOn() ? 'ON' : 'DARK',
+        };
+        supabaseAdmin.from('negotiation_decisions').insert(row).then(({ error }) => {
+          if (error) console.error('[negotiate] shadow insert failed (table may not exist yet):', error.message);
+        }).catch(e => console.error('[negotiate] shadow insert threw:', e && e.message));
+      }
+      // THE OUTAGE ALERT. Throttled in the classifier to one per window: a
+      // Haiku outage is one event, and 90 pages for it is the same as none.
+      if (negotiationDecision && negotiationDecision.alert) {
+        try {
+          const { sendOwnerAlert } = require('./services/pushNotifier');
+          sendOwnerAlert({
+            title: '[ALERT] safety review unavailable',
+            body: negotiationDecision.alert.detail,
+          });
+        } catch (e) { console.error('[negotiate] owner alert failed:', e && e.message); }
+      }
+      if (negotiationDecision && negotiationDecision.verdict !== 'PASS') {
+        console.log('[negotiate]', JSON.stringify({
+          flag: negotiation.flagOn() ? 'ON' : 'DARK',
+          verdict: negotiationDecision.verdict,
+          oos: negotiationDecision.oos,
+          would_say: negotiationDecision.sentence,
+          safety: negotiationDecision.safety
+            ? { state: negotiationDecision.safety.state, unsafe: negotiationDecision.safety.unsafe,
+                by: negotiationDecision.safety.by, language: negotiationDecision.safety.language,
+                uncertain: negotiationDecision.safety.uncertain }
+            : null,
+          client_job_id: clientJobId || null,
+        }));
+      }
+    } catch (err) {
+      // A CLASSIFIER FAULT MUST NEVER COST A RENDER. Any throw here is logged
+      // and the job proceeds exactly as it would have without this block.
+      console.error('[negotiate] classifier threw, proceeding unchanged:', err && err.message);
+      negotiationDecision = null;
+    }
+    if (negotiation.flagOn() && negotiationDecision
+        && negotiationDecision.verdict !== 'PASS') {
+      // LIVE PATH — not reachable while the flag is off. No job row, no
+      // charge, no container: the request parks and the user answers through
+      // the rail lib/ask.js already provides.
+      const parked = new Error(negotiationDecision.verdict === 'REFUSE'
+        ? 'refused_unsafe' : 'awaiting_negotiation');
+      parked.statusCode = 200;
+      parked.negotiation = negotiationDecision;
+      throw parked;
+    }
 
     const insertRow = {
       user_id: userId,
@@ -3004,6 +3214,15 @@ const server = http.createServer((req, res) => {
     if (Number.isInteger(creditsDebited) && creditsDebited > 0) {
       insertRow.credits_debited = creditsDebited;
     }
+    // WHICH PIPELINE, RECORDED AT CREATION (worker contract trap 2). The caller
+    // resolves this from configuration via routeForNewJob() and hands it in;
+    // this function never decides it and never infers it. Left NULL when the
+    // caller did not say, which reads as "predates the column" — deliberately
+    // NOT as 'handler', because a default here would manufacture a fact about
+    // every job that skipped the argument.
+    if (pipeline === 'handler' || pipeline === 'agentic') {
+      insertRow.pipeline = pipeline;
+    }
     // Idempotency keystone (stuck-jobs directive): the CLIENT mints the job
     // UUID at message creation, before upload starts. We insert under that id;
     // a double-submit (retry mashing, network replay) hits the primary-key
@@ -3012,11 +3231,9 @@ const server = http.createServer((req, res) => {
     if (clientJobId) insertRow.id = clientJobId;
     // ON THE INSERT, not in the fire-and-forget provenance patch below: the
     // partial unique index (user_id, client_message_id) only makes create
-    // idempotent if the value is present when the row is written. Deferring it
-    // to an unawaited UPDATE would leave a window in which a duplicate submit
-    // sees no conflict — which is the class this column exists to close.
-    // Safe to inline: the column is live (verified 2026-09-06), and unlike the
-    // provenance stamps it is not racing an unlanded migration.
+    // idempotent if the value is present when the row is written. Deferring
+    // it to an unawaited UPDATE leaves a window in which a duplicate submit
+    // sees no conflict — the exact class this column exists to close.
     if (clientMessageId) insertRow.client_message_id = clientMessageId;
 
     const { data, error } = await supabaseAdmin
@@ -3038,10 +3255,10 @@ const server = http.createServer((req, res) => {
         // The id exists but belongs to someone else — reject, never leak it.
         throw Object.assign(new Error('job_id_conflict'), { statusCode: 409 });
       }
-      // A SECOND unique index can now fire: (user_id, client_message_id). This
-      // is a replay whose message id repeats under a DIFFERENT job id — a
-      // client that re-minted the job uuid while retrying the same message.
-      // It is still one message and must stay one job, one charge.
+      // A SECOND unique index can fire: (user_id, client_message_id). That is a
+      // replay whose message id repeats under a DIFFERENT job id — a client that
+      // re-minted the job uuid while retrying the same message. Still one
+      // message, so it must stay one job and one charge.
       if (clientMessageId && (error.code === '23505' || /duplicate key/i.test(error.message || ''))) {
         const { data: byMsg } = await supabaseAdmin
           .from('video_jobs')
@@ -3714,7 +3931,31 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+/** Why a credits switch reads on/off. Every branch names ONE actionable cause;
+ *  "off" on its own sends an operator looking for a fault that may not exist. */
+function _resolveCreditsSwitch({ envOn, requireDebit }) {
+  const probe = _rcHealthProbe.value;
+  const floorOk = Number.isInteger(parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10));
+  const rcOk = _credits.isConfigured();
+  if (requireDebit && !CREDITS_DEBIT_ENABLED) return { value: 'off', reason: 'debit_disabled' };
+  if (!requireDebit && !envOn) return { value: 'off', reason: 'disabled_by_operator' };
+  if (!rcOk) return { value: 'off', reason: 'revenuecat_unconfigured' };
+  if (requireDebit && !floorOk) return { value: 'off', reason: 'min_build_unset' };
+  // PROBE PENDING IS NOT PROBE FAILED. The probe fires a few seconds after
+  // boot, so this is the normal state right after every deploy — and it is the
+  // one that reads as a fault.
+  if (probe === null || probe === undefined) return { value: 'off', reason: 'probe_pending' };
+  if (probe !== 'ok') return { value: 'off', reason: `probe_failed:${probe}` };
+  return { value: 'on', reason: 'armed' };
+}
+
   if (parsed.pathname === '/api/health' && req.method === 'GET') {
+    const _creditsDisplay = _resolveCreditsSwitch({
+      envOn: /^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim()),
+      requireDebit: false,
+    });
+    const _creditsMeter = _resolveCreditsSwitch({ envOn: true, requireDebit: true });
+
     return sendJson(res, 200, {
       ok: true,
       rev: process.env.RENDER_GIT_COMMIT || null,
@@ -3910,9 +4151,21 @@ const server = http.createServer((req, res) => {
       // Read `revenuecat.probe` below to tell "the operator left it off" from
       // "the project is unreachable" — they render identically here on purpose,
       // because both mean the same thing to a client: do not draw a balance.
-      credits: (/^(1|on|true|yes)$/i.test(String(process.env.CREDITS ?? '').trim())
-                && _rcHealthProbe.value === 'ok')
-        ? 'on' : 'off',
+      credits: _creditsDisplay.value,
+      // WHY IT IS OFF, NOT JUST THAT IT IS. 'off' conflated five different
+      // causes — the operator disabled it, the RC probe has not run yet, the
+      // probe failed, the currency is unconfigured, the build floor is unset —
+      // and an operator reading this cannot act on any of them. I read
+      // `credits: off` on a freshly booted process during this very work and
+      // briefly took it for a fault; it was a probe that had not fired yet.
+      //
+      // Third field today with this shape (after entitlementTiers and the route
+      // ledger): CORRECT, and silently ambiguous about which of two very
+      // different states it reports. The value is untouched for every existing
+      // reader; the reason sits beside it.
+      creditsState: _creditsDisplay.reason,
+      credits_metering: _creditsMeter.value,
+      creditsMeteringState: _creditsMeter.reason,
       // Version awareness (client update prompts, server-driven so copy and
       // thresholds change WITHOUT a release):
       //   latest_version         — what's live on the App Store (soft banner
@@ -4159,9 +4412,41 @@ const server = http.createServer((req, res) => {
           // Which tiers the entitlement map resolved, once anything has asked
           // RC. null = never resolved (or the lookup failed). Missing 'max'
           // here means Max purchases cannot resolve as Max.
+          // NULL MEANT TWO DIFFERENT THINGS AND THE READER COULD NOT TELL.
+          // resolveEntitlementTierMap is LAZY and per-process: it populates on
+          // the first customer sync after a boot. So `null` was both "not asked
+          // yet" (benign, and the normal state for minutes after every deploy)
+          // and "asked and got nothing we recognise" (a renamed lookup_key in
+          // the dashboard, which silently stops a tier resolving and makes
+          // paying users look free).
+          //
+          // Read cold, it looked like the second. It cost an investigation into
+          // whether Max was unsellable — the answer was that nobody had synced
+          // since the restart, and the map resolves ['max','pro'] fine. Same
+          // shape as `credits: on` answering a narrower question than the one
+          // being asked of it.
           entitlementTiers: _rcEntitlementTierMap
             ? [...new Set(Object.values(_rcEntitlementTierMap))].sort() : null,
+          entitlementTiersState: _rcEntitlementTierMap ? 'resolved' : 'not_yet_resolved',
           creditsDebitArmed: CREDITS_DEBIT_ENABLED,
+          // THE FLOOR THAT IS ACTUALLY APPLIED, alongside the two numbers it
+          // comes from — because reading one of them alone is how this went
+          // wrong. `env` is what an operator set; `client` is the first build
+          // whose app asks for its grant at all; `effective` is the max. When
+          // env sits below client, every free user between them is chargeable
+          // and permanently ungrantable, which is exactly what happened at
+          // env=245 with 882 users on 246. Reported as three fields rather
+          // than one so the gap is visible rather than inferable.
+          creditsDebitFloor: (() => {
+            const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+            const envOk = Number.isInteger(env);
+            return {
+              env: envOk ? env : null,
+              client: _freeCredits.CLIENT_CLAIM_MIN_BUILD,
+              effective: _freeCredits.effectiveDebitFloor(envOk ? env : null),
+              envBelowClient: envOk && env < _freeCredits.CLIENT_CLAIM_MIN_BUILD,
+            };
+          })(),
         };
       })(),
       cloudfront: (() => {
@@ -4238,29 +4523,6 @@ const server = http.createServer((req, res) => {
       try {
         if (!body || typeof body.event !== 'string') return;
         const ALLOWED = new Set([
-          // ── MERGE 2026-09-02: the conversion-surface branch's events ────────
-          // Added when app-conversion-surface merged origin/main. The branch
-          // had been developing against a server tree 281 commits stale, so it
-          // shipped 25 client events this allowlist had never learned — and an
-          // unallowlisted event is DROPPED by the SQL mirror, silently, which
-          // is the exact half-blind instrument this gate exists to prevent.
-          // The merge is what surfaced them; nothing was wrong with either side
-          // in isolation, which is why the drift survived this long.
-          'auth_gate_abandoned', 'auth_gate_resume_missing_product', 'auth_gate_resumed',
-          'auth_gate_shown', 'credits_exhausted', 'credits_exhausted_shown',
-          'credits_refund_shown', 'credits_topup_open', 'exit_offer_shown',
-          // Update prompts — three surfaces, one funnel. `update_prompt_tapped`
-          // carries `source` so the dismissible banner, the post-failure strip
-          // and the forced cover stay separable; without it every tap lands in
-          // one bucket and the only readable fact is 'someone updated'.
-          'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
-          'device_id_keychain_write_failed', 'downsell_shown',
-          'downsell_skipped', 'first_run_keychain_write_failed', 'free_export_spent_shown',
-          'instant_question_answered', 'instant_question_shown', 'language_changed',
-          'picker_asset_unrecoverable', 'purchase_blocked_unauthenticated', 'referral_code_entered',
-          'referral_code_entry_rejected', 'referral_code_field_opened', 'reverse_trial_device_id_missing',
-          'reverse_trial_grant_no_duration', 'reverse_trial_granted', 'reverse_trial_ineligible',
-          'reverse_trial_unavailable',
           'paywall_view', 'offerings_loaded', 'offerings_load_failed',
           'purchase_attempt', 'purchase_error', 'trial_start',
           // 1.1.7: funnel head for the re-edit conversion path. Paired with
@@ -4364,6 +4626,15 @@ const server = http.createServer((req, res) => {
           // fires" and "the trigger fires and Apple refuses" look identical,
           // and those two want opposite fixes.
           'review_prompt_shown', 'rate_app_tapped',
+          // A DELIVERED RENDER TOO SHORT TO BE AN EDIT (2026-09-08).
+          // Builder-1 found car_short delivering 0.975s from a 10s source.
+          // The client measures the file it already downloaded for the
+          // export and reports; it does not suppress, because withholding a
+          // render is a product ruling and a genuinely short source should
+          // still come back short. Dropped by the mirror, the question this
+          // exists to answer — how often, and to how many users — cannot be
+          // asked, and a suppression floor would be set from a guess.
+          'render_implausibly_short',
           // `checkout_web_blocked` is the web-checkout link REFUSING to
           // compose because RevenueCat's app_user_id does not yet match the
           // signed-in uid. It should be rare; if it is not, the sign-in
@@ -4415,6 +4686,15 @@ const server = http.createServer((req, res) => {
           // times that refusal fires, which is the only way to tell "anonymous
           // sign-in is covering it" from "it is still happening, silently".
           'upload_no_session',
+          // The never-worse fallback now REFUSES a single PUT above 100 MB
+          // (2026-09-14). Measured over 7 days: 36 uploads degraded to single-PUT
+          // while above the multipart threshold, 13 over 100 MB, one at 1,241 MB
+          // — one request that must survive the whole transfer with no resume
+          // point. This counts the refusals, which is the only way to tell "the
+          // init retry fixed it" from "we are now failing these earlier": a
+          // refusal is a deliberate honest failure, and without the event it is
+          // indistinguishable from the doomed attempt it replaced.
+          'upload_fallback_refused',
           // A render whose jobId never reached the client is now RECOVERED
           // from the dispatch timestamp (2026-09-07). `job_recovery` is the
           // only record of whether that works — outcome splits recovered /
@@ -4539,13 +4819,6 @@ const server = http.createServer((req, res) => {
           // analytics at all, so "how many users saw it" was unanswerable and
           // any zero would have been a reader artifact, not a suppression bug.
           'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
-          // Fifth. The top-up screen's UPGRADE HERO — the purple card that
-          // argues a subscription against a one-time pack at the highest-intent
-          // moment in the app. It carries `source` so the credit wall and the
-          // credit badge stay separable: the same card is a rescue on one path
-          // and an idle tap on the other, and one bucket cannot tell them
-          // apart. Without this row the entire wall→upgrade arm of the funnel
-          // reads as zero, which is indistinguishable from nobody tapping it.
           'credits_topup_upgrade_tap',
 ]);
         if (!ALLOWED.has(body.event)) {
@@ -4795,7 +5068,7 @@ const server = http.createServer((req, res) => {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: chatCaps.chatLimit,
-            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
           });
         }
 
@@ -5019,7 +5292,7 @@ const server = http.createServer((req, res) => {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: streamCaps.chatLimit,
-            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Upgrade to Pro for unlimited.`,
+            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
           });
         }
 
@@ -5318,33 +5591,6 @@ const server = http.createServer((req, res) => {
           // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
           // the live preview even if a manifest arrives.
           progressive_playback_enabled: progressivePlaybackEnabled(),
-          // WORKER AUTH FOR THE CLIENT'S /validate CALL (2026-09-07).
-          //
-          // Layer 2 talking-head validation is the ONE worker endpoint whose
-          // caller is the app itself — there is no server proxy in front of it,
-          // so it sends no `_worker_auth` and 11 of 11 real calls arrive
-          // missing. Until the client carries one, /validate is an
-          // unauthenticated GPU endpoint anyone can bill us for.
-          //
-          // Carried here rather than on /api/health because health is PUBLIC:
-          // putting it there would publish the secret to the world, strictly
-          // worse than sending none. /api/usage is behind requireSupabaseUser,
-          // the client already polls it, and the snapshot is held in memory
-          // only — it never lands in a plist or a backup.
-          //
-          // MODAL_VALIDATE_SECRET FIRST, and it should be a DIFFERENT value
-          // from MODAL_RUN_SECRET. Anything the app can send, someone can
-          // extract; that is unavoidable for a client-called endpoint and the
-          // point here is to stop anonymous use, not to make it unforgeable.
-          // But if it is the same secret run_job uses, extracting it from the
-          // app also buys the ability to dispatch arbitrary GPU renders — a
-          // far larger bill than validate. The fallback exists only so the
-          // client half can ship before the separate secret is provisioned.
-          // Resolved by clientValidateAuth() in dispatch-to-modal.js, beside
-          // workerAuthField, so the secret's selection rule has ONE definition.
-          // Omitted entirely when neither env var is set, so the field never
-          // ships empty.
-          ...(clientValidateAuth() ? { validate_token: clientValidateAuth() } : {}),
           // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
           // The first-run hero offers "Watch Promptly edit this" only when this is
           // on AND a clip is configured. Two flag-selectable modes:
@@ -5753,45 +5999,9 @@ const server = http.createServer((req, res) => {
             };
           }
         } else if (revokesProNow.has(type)) {
-          // ASK WHAT IS STILL ACTIVE before writing 'free'.
-          //
-          // This wrote 'free' unconditionally, and there is a real customer
-          // shape it destroys: a Max subscriber downgrades to Pro, the Pro
-          // grant arrives, the raise-guard correctly keeps 'max' over it — and
-          // then the Max EXPIRATION fires and revokes the Pro they are paying
-          // for, because nothing in the row records that the Pro grant ever
-          // happened. Ordering-dependent, and UNOBSERVABLE today at zero Max
-          // rows: it goes live the day someone buys Max.
-          //
-          // reconcileEntitlementFromRevenueCat mirrors RC's live
-          // active_entitlements — the same call TRANSFER already uses — so it
-          // answers exactly the question the expiration cannot: is anything
-          // else still entitling this user?
-          //
-          // FAILS TOWARD REVOKING. No secret, a throw, or "not active" all fall
-          // to 'free', which is today's behaviour byte for byte. An unreachable
-          // RevenueCat must never make a cancelled subscription permanent.
-          let _revokeTier = 'free';
-          let _revokeReconcile = null;
-          try {
-            _revokeReconcile = await reconcileEntitlementFromRevenueCat(appUserId);
-            _revokeTier = tierAfterRevoke(_revokeReconcile);
-          } catch (_) {
-            _revokeTier = 'free';
-          }
-          if (_revokeTier !== 'free') {
-            // PRINTED, not just decided. A revoke that did NOT revoke is the
-            // single most surprising outcome in this handler, and it must be
-            // greppable the first time it happens rather than inferred from a
-            // tier that failed to change.
-            console.log(`[RevenueCat] revoke ${type} for ${id}: RC still reports `
-              + `'${_revokeTier}' active — keeping it instead of writing free`);
-          }
           update = {
-            tier: _revokeTier,
-            pro_until: _revokeTier === 'free'
-              ? null
-              : ((_revokeReconcile && _revokeReconcile.proUntil) || null),
+            tier: 'free',
+            pro_until: null,
             rc_app_user_id: appUserId,
             rc_product_id: productId,
             rc_period_type: periodType,
@@ -6562,7 +6772,11 @@ const server = http.createServer((req, res) => {
             Number.isInteger(_debitFloor) ? 'debit_skipped:build_below_floor'
                                           : 'debit_INERT:min_build_unset',
             Number.isInteger(_debitFloor)
-              ? `build=${_debitBuild} floor=${_debitFloor}`
+              // The EFFECTIVE floor, not the env one. Reporting `floor=245`
+              // while refusing build 246 reads as a contradiction and sends the
+              // reader to the wrong variable.
+              ? `build=${_debitBuild} floor=${_freeCredits.effectiveDebitFloor(_debitFloor)}`
+                + ` (env=${_debitFloor} client=${_freeCredits.CLIENT_CLAIM_MIN_BUILD})`
               : 'CREDITS_DEBIT_ENABLED=1 but FREE_CREDITS_MIN_BUILD unset — '
                 + 'NOBODY is being debited');
         }
@@ -6585,8 +6799,20 @@ const server = http.createServer((req, res) => {
         // it as a paid tier — metered, it would render down its balance and then
         // be refused forever. Scoped to comp_pro ONLY; see isCompAccount for why
         // "paid with no rc_app_user_id" is the unsafe way to say this.
+        // TIER IS A CONJUNCT, not a separate decision made later. Free and Max
+        // are metered; PRO IS NOT, because all three Pro listings say
+        // "Unlimited" and 200 credits is 20 videos a month — 8 of 27 Pro
+        // subscribers already exceed that in 30 days. Max is metered precisely
+        // BECAUSE its listing already says "100 videos a month", which is
+        // exactly its 1000-credit grant. See lib/credits.js METERED_TIERS for
+        // the measurements. Comp stays excluded on its own line below: it is
+        // exempt for a different reason (no subscription for RC's recurring
+        // grant to hang on), and collapsing two reasons into one condition is
+        // how the next person deletes the wrong half.
+        const _creditTier = _credits.creditTierFor(entitlement.row || {});
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
           && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })
+          && _credits.tierIsMetered(_creditTier)
           && !isCompAccount(entitlement.row);
 
         const wallTier = tierFromEntitlement(entitlement);
@@ -6612,10 +6838,24 @@ const server = http.createServer((req, res) => {
             tier: wallTier,
             enforced: wallEnforce,
             app_usable: wallCaps.appUsable,
+            // 'unlimited' here is TRUE AND NARROW: it describes the DAILY CAP,
+            // which credits retire rather than raise. Left exactly as it was —
+            // scripts/deploy-sanity.js asserts render_limit === 'unlimited' for
+            // a known-Pro account as its standing tier→caps invariant, and
+            // rewriting a truthful field to carry a different fact would break
+            // that check while making this one no clearer.
             render_limit: wallCaps.renderLimit === Infinity ? 'unlimited' : wallCaps.renderLimit,
             concurrency_cap: wallCaps.uploadMax,
             chat_limit: wallCaps.chatLimit === Infinity ? 'unlimited' : wallCaps.chatLimit,
             reedit: wallCaps.reedit,
+            // WHICH LIMITER IS ACTUALLY IN FORCE. Exactly one is, by
+            // construction, and without saying so a reader takes
+            // render_limit:'unlimited' as the whole answer — which is how "Pro
+            // is unlimited" survived into copy after credits started metering it.
+            limiter: creditsAreTheLimiter ? 'credits' : 'daily_cap',
+            credit_allowance: creditsAreTheLimiter
+              ? (_credits.TIER_ALLOWANCE[_creditTier] ?? null) : null,
+            credit_cost_per_render: creditsAreTheLimiter ? _credits.COST_PER_RENDER : null,
           });
         }
 
@@ -6640,16 +6880,11 @@ const server = http.createServer((req, res) => {
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rawClientJobId)
             ? rawClientJobId : null;
 
-        // Client message id (Frontend, 2026-09-06). Recovery was TEMPORAL — a
-        // +/-180s window with a single-candidate rule — because nothing linked a
-        // job to the message that created it. This makes it an equality lookup.
-        //
-        // DELIBERATELY NOT UUID-SHAPED. client_job_id can demand a UUID because
-        // we mint the contract; a message id belongs to the client's own chat
-        // store and may be a nanoid, a ULID, or a prefixed string. The last time
-        // I guessed a client id's charset instead of sampling it, the pattern
-        // rejected 55.6% of real devices. Cap the length, strip control
-        // characters, and otherwise take what the client sends.
+        // THE CLIENT OWNS THIS ID, so do not impose a shape on it. We mint the job
+        // uuid; a message id belongs to the client's own chat store and may be a
+        // nanoid, a ULID or a prefixed string. The last time a client id's charset
+        // was guessed instead of sampled, the pattern rejected 55.6% of real
+        // devices. Cap the length, strip control characters, take the rest as sent.
         const rawClientMsgId = String(body?.client_message_id || '').trim();
         const clientMessageId =
           rawClientMsgId && rawClientMsgId.length <= 200 && !/[\u0000-\u001f\u007f]/.test(rawClientMsgId)
@@ -6816,7 +7051,7 @@ const server = http.createServer((req, res) => {
                 error: 'daily_limit_reached',
                 kind: 'render',
                 limit: wallCaps.renderLimit,
-                message: `You've used your ${wallCaps.renderLimit} free renders today. Upgrade to Pro for unlimited.`,
+                message: `You've used your ${wallCaps.renderLimit} free renders today. Pro includes 200 credits a month — 20 videos.`,
               } };
             }
           }
@@ -6851,11 +7086,31 @@ const server = http.createServer((req, res) => {
             // once per render, and the (user_id, period) PK makes it a no-op for
             // every render after the first of a period. Never throws.
             await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
-            try {
-              await _credits.debit(authUser.id, _credits.COST_PER_RENDER);
-              _creditsDebited = _credits.COST_PER_RENDER;
-            } catch (e) {
-              if (e && e.code === 'INSUFFICIENT') {
+            // ONE SOURCE IS A BATCH OF ONE. Routed through debitSources so the
+            // ten-source path and the single-source path are the SAME code,
+            // exercised on every render today rather than first meeting real
+            // traffic on the day multi-upload ships. It also stops the module
+            // being inert: the reachability check flagged credits-batch.js as
+            // entirely unimported, which it was.
+            //
+            // Behaviour is unchanged. armed:true because this whole block is
+            // already inside `if (creditsAreTheLimiter)`, and debitSources with
+            // one source performs exactly one debit and reports its outcome —
+            // the two failure branches below map 1:1 onto 'insufficient' and
+            // 'unavailable', which it already keeps apart for the same reason
+            // this site does.
+            const _batch = await _creditsBatch.debitSources({
+              userId: authUser.id,
+              sources: [{ client_key: clientJobId || 'single' }],
+              armed: true,
+              debit: (u, amt) => _credits.debit(u, amt),
+              costPerSource: _credits.COST_PER_RENDER,
+            });
+            if (_batch.answered.length === 1) {
+              _creditsDebited = _batch.answered[0].credits_debited;
+            } else {
+              const _why = (_batch.held[0] || {}).reason;
+              if (_why === 'insufficient') {
                 // 402 carries `needed` ONLY. With no pre-read the server never
                 // learns the balance on this path and RC's 422 does not report
                 // it; promising a balance here would be a contract we cannot
@@ -6882,7 +7137,7 @@ const server = http.createServer((req, res) => {
               // UNREACHABLE / RC_ERROR: do NOT spawn and do NOT free-render.
               // A refusal and an outage are different failures and must not be
               // collapsed — one is the user's problem, the other is ours.
-              console.error('  [credits] grant path unavailable:', e && e.code, e && e.message);
+              console.error('  [credits] grant path unavailable: held as', _why);
               return { status: 503, body: {
                 error: 'credits_unavailable', kind: 'credits', retryable: true,
               } };
@@ -6899,6 +7154,8 @@ const server = http.createServer((req, res) => {
             appVersion: clientAppVersion(req),
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
+            // The route decision, stored as a fact rather than inferred later.
+            pipeline: routeForNewJob(),
             creditsDebited: _creditsDebited,
           });
           if (created.__replayed) {
@@ -7030,7 +7287,42 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        await dispatchJobToModal({
+        // ── THE ROUTE, ACTED ON ─────────────────────────────────────────────
+        // routeForNewJob() stored `pipeline` on the row at creation; this is
+        // where that stored fact decides where the job actually goes. Without
+        // this branch the column was a label nobody read — the job was marked
+        // 'agentic' and dispatched to handler anyway, which is worse than not
+        // having the column: a row asserting a pipeline it never used, that a
+        // re-edit would then inherit.
+        //
+        // Reads the value FROM THE ROW rather than calling routeForNewJob()
+        // again. Re-resolving would let a flag flip between creation and
+        // dispatch send a job one way while its row says the other.
+        let _agenticDispatched = false;
+        if (job.pipeline === 'agentic' && AGENTIC_BASE_URL) {
+          try {
+            const { prepareAndDispatchAgentic } = require('./lib/agentic-dispatch');
+            await prepareAndDispatchAgentic({
+              baseUrl: AGENTIC_BASE_URL,
+              jobId: job.id,
+              videoUrl,
+              brief: vibeInput,
+            });
+            _agenticDispatched = true;
+          } catch (e) {
+            // FALL BACK, AND CORRECT THE ROW. The user gets their video either
+            // way; what must not survive is a row that says 'agentic' for a
+            // render handler produced. A wrong label is not cosmetic here — a
+            // later re-edit INHERITS pipeline, so it would take the agentic path
+            // looking for a prior_plan that was never written.
+            console.error(`[agentic] dispatch failed for ${job.id} (${e && e.code}: `
+              + `${e && e.message}) — falling back to handler and relabelling the row`);
+            await supabaseAdmin.from('video_jobs')
+              .update({ pipeline: 'handler' }).eq('id', job.id);
+          }
+        }
+
+        if (!_agenticDispatched) await dispatchJobToModal({
           pushProgressToSSE,
           jobId: job.id,
           videoUrl,
@@ -7264,7 +7556,7 @@ const server = http.createServer((req, res) => {
         // Load the original job — must exist, belong to this user, and have a source URL
         const { data: orig, error: origErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot')
+          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan')
           .eq('id', originalJobId)
           .single();
         if (origErr || !orig) {
@@ -7304,8 +7596,14 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        // Mode resolution: tweak requires a saved edit_recipe; otherwise reinterpret.
-        const hasSavedPlan = orig.edit_recipe && typeof orig.edit_recipe === 'object';
+        // MODE RESOLUTION. This read `orig.edit_recipe && typeof orig.edit_recipe
+        // === 'object'`, which is PRESENCE, not shape. handler's recipe is a
+        // dict and the agentic plan is a list; typeof answers 'object' for
+        // both, so a plan sitting in edit_recipe passed this check, became mode
+        // 'tweak', and dispatched to handler.py carrying a structure it cannot
+        // read — every value legal, nothing thrown, a confidently wrong edit.
+        // isHandlerRecipe excludes arrays explicitly. See lib/agentic-plan.js.
+        const hasSavedPlan = _agenticPlan.isHandlerRecipe(orig.edit_recipe);
         const mode = hasSavedPlan ? 'tweak' : 'reinterpret';
         console.log(`[re-edit] originalJobId=${originalJobId} mode=${mode} changeRequest="${changeRequest.slice(0, 120)}"`);
 
@@ -7317,6 +7615,15 @@ const server = http.createServer((req, res) => {
           videoUrl: orig.video_url,
           vibeInput: orig.vibe_input || 'Re-edit',
           appVersion: clientAppVersion(req),
+          // A DERIVATIVE INHERITS ITS PARENT'S PIPELINE, and inherits it as a
+          // stored fact rather than re-resolving from config. Re-resolving
+          // would let a job created under one route be re-edited under another
+          // the moment the flag flipped, handing an agentic plan to handler or
+          // the reverse. When the parent predates the column (NULL) this stays
+          // NULL rather than guessing — an unknown parent makes an unknown
+          // child, which is true, and the agentic route refuses on it below.
+          pipeline: (orig.pipeline === 'handler' || orig.pipeline === 'agentic')
+            ? orig.pipeline : null,
         });
         console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
 
@@ -7401,7 +7708,7 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          console.error('  ❌ Database error:', error);
+          console.error('[VideoJobStatus] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
@@ -7450,6 +7757,12 @@ const server = http.createServer((req, res) => {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
 
+        // SIGN ON READ (lib/sign-on-read.js). Durable-poll clients read this
+        // response directly; it must stay playable once the columns hold keys.
+        const _signed = await signReadFields(
+          { rendered_video_url: data.rendered_video_url || data.result_url || null,
+            thumbnail_url: data.thumbnail_url || null },
+          ['rendered_video_url', 'thumbnail_url'], 'job-status');
         return sendJson(res, 200, {
           id: data.id,
           status: data.status,
@@ -7457,9 +7770,9 @@ const server = http.createServer((req, res) => {
           current_step: data.current_step || '',
           step_message: data.step_message || '',
           ask: data.ask || null,
-          rendered_video_url: data.rendered_video_url || data.result_url || null,
+          rendered_video_url: _signed.rendered_video_url,
           hls_manifest_url: data.hls_manifest_url || null,
-          thumbnail_url: data.thumbnail_url || null,
+          thumbnail_url: _signed.thumbnail_url,
           result_url: data.result_url || null,
           error: data.error_message || null,
           error_message: data.error_message || null,
@@ -7544,7 +7857,7 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          console.error('[VideoEditor][JobStatus] Database error:', error);
+          console.error('[VideoEditor][JobStatus] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to fetch job status' });
         }
         if (!data) {
@@ -7584,44 +7897,30 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          console.error('[refresh-urls] DB error:', error);
+          console.error('[refresh-urls] DB error', errLine(error, { user: authUser.id, job: jobId }));
           return sendJson(res, 500, { error: 'Failed to load job' });
         }
         if (!job) return sendJson(res, 404, { error: 'Job not found' });
         if (job.user_id !== authUser.id) return sendJson(res, 403, { error: 'Forbidden' });
 
-        // Extract the underlying S3 key from a signed URL by stripping
-        // hostname and query string. Falls back to null for non-S3 URLs
-        // (e.g. legacy Supabase Storage URLs from old renders) — those
-        // get returned as-is since Supabase signed URLs run for 1 year.
-        const extractS3Key = (urlStr) => {
-          if (!urlStr) return null;
-          try {
-            const u = new URL(urlStr);
-            // Only refresh URLs that point at OUR S3 bucket (any endpoint
-            // pattern: regional, accelerate, CloudFront).
-            const isOurBucket =
-              u.hostname.includes(s3.S3_BUCKET) ||
-              (process.env.CLOUDFRONT_DOMAIN && u.hostname.endsWith(process.env.CLOUDFRONT_DOMAIN));
-            if (!isOurBucket) return null;
-            return u.pathname.replace(/^\/+/, '') || null;
-          } catch {
-            return null;
-          }
-        };
-
-        const videoKey = extractS3Key(job.rendered_video_url);
-        const thumbKey = extractS3Key(job.thumbnail_url);
-
-        let videoUrl = job.rendered_video_url || null;
-        let thumbnailUrl = job.thumbnail_url || null;
-
-        if (videoKey) {
-          videoUrl = await s3.createPresignedGetUrl(videoKey, 60 * 60 * 24 * 7);
-        }
-        if (thumbKey) {
-          thumbnailUrl = await s3.createPresignedGetUrl(thumbKey, 60 * 60 * 24 * 7);
-        }
+        // SIGN ON READ. This endpoint is the fleet's recovery path: 100% of the
+        // 2,062 dead links in chats.messages carry a jobId, and build 246 — ~880
+        // of ~1,000 active users — already calls it on a failed pre-flight HEAD
+        // or an AVPlayer 403 during load. So this one handler heals the chat
+        // surface for every shipped client, with no client change and no
+        // migration. That is why it is the first thing fixed.
+        //
+        // It used to derive the key with `new URL(stored)`, which THROWS on a
+        // bare key and fell through to returning the stored value verbatim. The
+        // moment the columns become keys, that would have handed every client a
+        // bare key where a url belongs — the whole fleet, at once. Routing
+        // through the shared chokepoint instead: it takes a key, an unsigned url
+        // or a dead signature, mints a fresh grant, and is idempotent because
+        // the query is stripped before the key is read.
+        const [videoUrl, thumbnailUrl] = await Promise.all([
+          signRead(job.rendered_video_url, 'refresh-urls:video'),
+          signRead(job.thumbnail_url, 'refresh-urls:thumb'),
+        ]);
 
         return sendJson(res, 200, { videoUrl, thumbnailUrl });
       } catch (error) {
@@ -8128,7 +8427,7 @@ const server = http.createServer((req, res) => {
           }, { onConflict: 'token' });
 
         if (error) {
-          console.error('[devices-register] DB error:', error);
+          console.error('[devices-register] DB error', errLine(error, { user: authUser.id, platform }));
           return sendJson(res, 500, { error: 'register_failed' });
         }
         return sendJson(res, 200, { ok: true });
@@ -8750,6 +9049,54 @@ if (require.main === module) {
     };
     setTimeout(runCompletionReconcile, 45 * 1000); // boot pass, offset from the reaper
     setInterval(runCompletionReconcile, 120 * 1000);
+
+    // ── AGENTIC COLLECTION ──────────────────────────────────────────────────
+    // The worker writes its result to a presigned PUT before returning, so this
+    // reads OUR storage at a key derived from the job id. Nothing is held in
+    // this process, which is the entire point: the completion tail once sat
+    // behind an in-process await that no deploy survived, and main auto-deploys.
+    //
+    // DARK BY STRUCTURE — and "does zero work" WAS MEASURABLY FALSE, which is
+    // why this is now also gated. The sweep selects on pipeline='agentic', and
+    // nothing has ever carried that value: 11,570 rows NULL, 1,101 'handler',
+    // ZERO 'agentic' across the column's whole life. Reading zero ROWS is not
+    // doing zero WORK — the query still plans, scans and filters every pass.
+    // Measured 2026-09-21 from pg_stat_statements: 15,568 calls, 825 shared
+    // buffer blocks PER CALL, 12.8M blocks and 22.8 minutes of database time,
+    // all of it hunting a population that has never had a member. A clean zero
+    // read as a free zero.
+    //
+    // THE ORIGINAL ARGUMENT IS KEPT, because it was right: a second, INDEPENDENT
+    // switch is a switch to forget to arm. So the gate below is not a new one —
+    // it is agenticRouteArmed(), the SAME predicate routeForNewJob() uses to
+    // decide what to write. One predicate, two call sites; arming the route
+    // still arms both, and there is nothing extra to remember.
+    //
+    // It is evaluated at boot, which is when it can change: AGENTIC_ENABLED is
+    // an environment value, and an env flip is not live until a redeploy here
+    // anyway.
+    const { sweepAgentic } = require('./lib/agentic-dispatch');
+    let agenticBusy = false;
+    const runAgenticSweep = async () => {
+      if (agenticBusy) return;
+      agenticBusy = true;
+      try {
+        await sweepAgentic(supabaseAdmin);
+      } catch (err) {
+        console.error('[agentic] sweep crashed:', err?.message || err);
+      } finally {
+        agenticBusy = false;
+      }
+    };
+    if (agenticRouteArmed()) {
+      setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
+      setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+    } else {
+      console.log('[agentic] route unarmed (AGENTIC_ENABLED/AGENTIC_BASE_URL) '
+        + '— collection sweep NOT scheduled. It scanned for pipeline=agentic '
+        + 'rows that have never existed: 825 shared blocks/call, 22.8 min of DB '
+        + 'time. Arming the route schedules it again, same predicate.');
+    }
 
     // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
     // across 441 users are in NO chat — 140 in the last 7 days — because the

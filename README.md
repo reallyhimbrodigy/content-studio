@@ -231,3 +231,42 @@ Notes
 - Set `OPENAI_API_KEY` on the host; do not commit it to the repo.
  - Gzip is performed at the app layer; most CDNs will also compress. Response includes `Vary: Accept-Encoding`.
  - For stricter CSP, move remaining inline styles into external CSS and remove `'unsafe-inline'` from `style-src`.
+
+## Hooks — run once per clone
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+Installs two machine-level shims into the repo's **common** hooks dir (one per
+repo, shared by every worktree) and unsets `core.hooksPath`.
+
+**Why not `core.hooksPath=.githooks`.** That path resolves *per worktree*
+against whatever that tree has checked out, so a worktree sitting on a commit
+older than the hook runs the old one. On 2026-09-21 that was proven rather than
+argued: a commit as the wrong owner in a worktree at an older commit was
+ALLOWED, and the tree about to be branched from it would have inherited the same
+gap. Ownership is a property of the machine, not of a branch, so it lives where
+a checkout cannot age it out.
+
+**Two layers:**
+
+| layer | lives in | versions with |
+|---|---|---|
+| ownership (`.lane-owner`) | common hooks dir, installed by this script | the machine |
+| lane gates | `.githooks/`, tracked | the branch |
+
+The shim does the ownership check, then delegates to the branch's own
+`.githooks/pre-commit` and passes its exit code through unchanged. Every other
+tracked hook gets a pure delegating shim — without that, unsetting
+`core.hooksPath` would silently disable `pre-push`, which holds the deploy quiet
+window.
+
+**One owner per checkout.** Each worktree names its owner in an untracked
+`.lane-owner` file; set `LANE_OWNER` in your environment to match. A tree with
+no `.lane-owner` is unclaimed and commits freely, so a fresh clone is never
+bricked. An unset `LANE_OWNER` in a *claimed* tree is refused — "I didn't say
+who I am" must not resolve to "I'm whoever owns this".
+
+Need a branch? `git worktree add ../content-studio-<you> -b <branch>` — never
+`git checkout -b` in someone else's tree.
