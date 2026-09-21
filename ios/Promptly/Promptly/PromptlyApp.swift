@@ -730,6 +730,12 @@ struct PromptlyApp: App {
                 // hypotheses, so an in-memory-only report would be lost exactly
                 // when it matters most.
                 UploadOutcomeReporter.shared.sweepOnLaunch()
+                // Device-id diagnostics, from a call site that is NOT the getter.
+                // Emitting them from inside the getter made it call track(),
+                // which reads the getter — unbounded recursion and a stack
+                // overflow at launch. Safe here: the id is resolved and cached
+                // before either event is sent.
+                Analytics.reportDeviceIdIssuesIfNeeded()
                 #if DEBUG
                 // -unsProof: exercise the terminal emit path end-to-end without
                 // needing a real failing upload on a real network.

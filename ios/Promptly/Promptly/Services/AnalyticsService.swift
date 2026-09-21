@@ -104,25 +104,72 @@ enum Analytics {
     /// "wipe the device"; it does not make it impossible. The DB unique
     /// constraint on device_id is what actually enforces once-per-install — this
     /// just stops the trivial bypass.
-    private static var deviceId: String {
-        if let v = Keychain.get(deviceIdKey) { return v }
+    // RESOLVED ONCE, CACHED, AND THE GETTER NEVER EMITS.
+    //
+    // This getter used to call Analytics.track() when the Keychain write
+    // failed. track() sets enrichedProps["device_id"] = deviceId, so the
+    // getter called the emitter which called the getter: unbounded recursion
+    // and a stack overflow AT LAUNCH, before any UI. Observed as SIGSEGV with
+    // "Could not determine thread index for stack guard region" and 19 frames
+    // of our own binary on the faulting thread.
+    //
+    // It fires only when Keychain.set returns false, which is why it never
+    // showed up in ordinary use: on a healthy unlocked device the write
+    // succeeds. It is reachable when a write cannot happen —
+    // kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly cannot be WRITTEN before
+    // the first unlock after a reboot, and this app can be launched in that
+    // window by a push or a background URLSession completion.
+    //
+    // A getter that emits an event is the bug. The value is resolved once,
+    // cached, and the diagnostic is emitted LATER from a call site that is not
+    // the getter — see reportDeviceIdIssuesIfNeeded().
+    private static let deviceIdLock = NSLock()
+    nonisolated(unsafe) private static var cachedDeviceId: String?
+    nonisolated(unsafe) private static var pendingKeychainWriteFailure = false
+    nonisolated(unsafe) private static var pendingVendorIdMissing = false
 
+    private static var deviceId: String {
+        deviceIdLock.lock(); defer { deviceIdLock.unlock() }
+        if let c = cachedDeviceId { return c }
+        let v = resolveDeviceIdLocked()
+        cachedDeviceId = v
+        return v
+    }
+
+    /// Pure resolution. MUST NOT call track(), log through analytics, or touch
+    /// anything that reads `deviceId` — that is the cycle this exists to break.
+    private static func resolveDeviceIdLocked() -> String {
+        if let v = Keychain.get(deviceIdKey) { return v }
         // Promote an existing UserDefaults id rather than minting over it.
         if let legacy = UserDefaults.standard.string(forKey: deviceIdKey) {
             Keychain.set(legacy, for: deviceIdKey)
             return legacy
         }
-
-        let v = UIDevice.current.identifierForVendor?.uuidString ?? "dev-" + UUID().uuidString
-        let stored = Keychain.set(v, for: deviceIdKey)
+        let vendor = UIDevice.current.identifierForVendor?.uuidString
+        if vendor == nil { pendingVendorIdMissing = true }
+        let v = vendor ?? "dev-" + UUID().uuidString
         // A Keychain write that silently fails is WORSE than never having tried:
         // we would believe the id durable and key a once-per-install grant on
-        // something that resets. Report it rather than assume success.
-        if !stored {
-            Analytics.track("device_id_keychain_write_failed", props: [:], durable: true)
-        }
+        // something that resets. Recorded as a FLAG and reported later, never
+        // emitted from here.
+        if !Keychain.set(v, for: deviceIdKey) { pendingKeychainWriteFailure = true }
         UserDefaults.standard.set(v, forKey: deviceIdKey)   // fast path for later reads
         return v
+    }
+
+    /// Emit the device-id diagnostics, if any. Call from app start AFTER the
+    /// first resolution — never from the getter, and never from inside track().
+    static func reportDeviceIdIssuesIfNeeded() {
+        _ = deviceId                                   // ensure resolved + cached first
+        deviceIdLock.lock()
+        let keychainFailed = pendingKeychainWriteFailure
+        let vendorMissing = pendingVendorIdMissing
+        pendingKeychainWriteFailure = false
+        pendingVendorIdMissing = false
+        deviceIdLock.unlock()
+        // Now safe: deviceId is cached, so track()'s read cannot re-enter.
+        if keychainFailed { track("device_id_keychain_write_failed", props: [:], durable: true) }
+        if vendorMissing { track("device_id_vendor_id_missing", props: [:], durable: true) }
     }
 
     /// The auth-stable device id, for callers outside analytics — the render
