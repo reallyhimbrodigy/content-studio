@@ -3095,7 +3095,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null, parentJobId = null, rootJobId = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -3236,6 +3236,21 @@ const server = http.createServer((req, res) => {
     // it to an unawaited UPDATE leaves a window in which a duplicate submit
     // sees no conflict — the exact class this column exists to close.
     if (clientMessageId) insertRow.client_message_id = clientMessageId;
+    // LINEAGE ON THE INSERT, FOR EXACTLY THE REASON ABOVE. parent_job_id was
+    // being written by the DISPATCH call (dispatchJobToModal({ parentJobId }))
+    // rather than here, which leaves a window where the row exists with no
+    // parent: a versions read in that window places the re-edit as its own
+    // ROOT instead of a version of its parent, and the one-at-a-time guard —
+    // keyed on root_job_id — does not see it under the right root at all.
+    // Same check-then-act shape as client_message_id, closed the same way.
+    //
+    // root_job_id is passed explicitly for a re-edit (the parent's root, so the
+    // ordinal is anchored at the top of the tree and siblings do not collide).
+    // An ORIGINAL passes nothing and a BEFORE INSERT trigger self-roots it to
+    // its own id — the one case that cannot be done from here, because the id
+    // may be minted by the database.
+    if (parentJobId) insertRow.parent_job_id = parentJobId;
+    if (rootJobId) insertRow.root_job_id = rootJobId;
 
     const { data, error } = await supabaseAdmin
       .from('video_jobs')
@@ -7605,7 +7620,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // Load the original job — must exist, belong to this user, and have a source URL
         const { data: orig, error: origErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan')
+          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan, root_job_id')
           .eq('id', originalJobId)
           .single();
         if (origErr || !orig) {
@@ -7673,8 +7688,19 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // child, which is true, and the agentic route refuses on it below.
           pipeline: (orig.pipeline === 'handler' || orig.pipeline === 'agentic')
             ? orig.pipeline : null,
+          // LINEAGE AT CREATION. These used to reach the row only through
+          // dispatchJobToModal's parentJobId, i.e. after the insert.
+          parentJobId: originalJobId,
+          // The parent's ROOT, not the parent's id: lineage is a tree (114
+          // re-edits over 97 parents, 29 of them children of re-edits, up to 4
+          // siblings on one parent), so anchoring at the parent would give two
+          // siblings the same ordinal. orig.root_job_id is backfilled for every
+          // existing row; the fallback to orig.id is for a parent written
+          // before this column, and it is correct there because such a row IS
+          // a root.
+          rootJobId: orig.root_job_id || orig.id,
         });
-        console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
+        console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId} root=${orig.root_job_id || orig.id})`);
 
         await dispatchJobToModal({
           pushProgressToSSE,
