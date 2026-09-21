@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
 const { signRead, signReadFields } = require('./lib/sign-on-read');
+// Last identity-duplication read. null until the boot pass runs — NOT zero,
+// because 'never looked' and 'looked and found none' must not render alike.
+let identityDuplication = null;
 // One line per failure, cause included — see lib/log-error.js for why a bare
 // object handed to console.error stores a record that ends at `{`.
 const { errLine } = require('./lib/log-error');
@@ -4459,7 +4462,8 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // and permanently ungrantable, which is exactly what happened at
           // env=245 with 882 users on 246. Reported as three fields rather
           // than one so the gap is visible rather than inferable.
-          creditsDebitFloor: (() => {
+          identityDuplication,
+        creditsDebitFloor: (() => {
             const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
             const envOk = Number.isInteger(env);
             return {
@@ -9212,6 +9216,61 @@ if (require.main === module) {
     };
     setTimeout(runChatAttachSweep, 75 * 1000); // boot pass, offset from the others
     setInterval(runChatAttachSweep, 10 * 60 * 1000);
+
+    // IDENTITY DUPLICATION (2026-09-21). Second-device sign-in depends on
+    // Supabase's automatic email linking: a Google identity carrying a verified
+    // email that already has an account attaches to THAT account instead of
+    // minting a second one. Measured today: 0 emails on 2+ accounts across
+    // 20,544. Proven for the population, not guaranteed by anything we control.
+    //
+    // If that setting is ever changed the failure is SILENT — a user quietly
+    // gets a second account and finds out when their videos are missing. There
+    // is no error, no 4xx, nothing to alert on. So the invariant is read on a
+    // schedule and becomes a number that moves.
+    //
+    // COUNTS ONLY. The RPC returns no email addresses; this check needs to know
+    // THAT duplication exists, not who, and putting addresses in a log or a
+    // health payload would be a worse trade than the check is worth.
+    let identityDupBusy = false;
+    const runIdentityDuplicationCheck = async () => {
+      if (identityDupBusy || !supabaseAdmin) return;
+      identityDupBusy = true;
+      try {
+        const { data, error } = await supabaseAdmin.rpc('identity_duplication_check');
+        const row = Array.isArray(data) ? data[0] : data;
+        if (error || !row) {
+          // A FAILED READ IS NOT ZERO. Leave the previous value standing and say
+          // so — a check that reports 0 when it could not look is worse than no
+          // check, because it reads as a clean result.
+          identityDuplication = { ...(identityDuplication || {}), ok: false,
+            error: (error && error.message) || 'no row', at: new Date().toISOString() };
+          console.error('[identity-dup] CANNOT READ —', (error && error.message) || 'no row');
+          return;
+        }
+        identityDuplication = {
+          ok: true,
+          duplicateEmails: Number(row.duplicate_emails || 0),
+          worstCount: Number(row.worst_count || 0),
+          usersWithEmail: Number(row.users_with_email || 0),
+          at: new Date().toISOString(),
+        };
+        if (identityDuplication.duplicateEmails > 0) {
+          console.error(`[ALERT] identity duplication: ${identityDuplication.duplicateEmails} email(s) `
+            + `now on 2+ accounts (worst ${identityDuplication.worstCount}) out of `
+            + `${identityDuplication.usersWithEmail}. Automatic email linking may have been turned `
+            + `off — a second-device sign-in would mint a NEW account instead of reaching the `
+            + `existing one, and the user finds out when their videos are missing.`);
+        }
+      } catch (e) {
+        identityDuplication = { ...(identityDuplication || {}), ok: false,
+          error: (e && e.message) || 'threw', at: new Date().toISOString() };
+        console.error('[identity-dup] threw:', e && e.message);
+      } finally {
+        identityDupBusy = false;
+      }
+    };
+    setTimeout(runIdentityDuplicationCheck, 100 * 1000);      // boot pass, offset from the others
+    setInterval(runIdentityDuplicationCheck, 60 * 60 * 1000); // hourly is plenty for a setting change
 
     // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
     // analytics_events once a minute. Before this, the 34 non-job routes had no
