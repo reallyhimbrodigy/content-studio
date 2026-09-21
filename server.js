@@ -353,6 +353,7 @@ const CREDITS_DEBIT_ENABLED =
 const AGENTIC_ENABLED =
   String(process.env.AGENTIC_ENABLED || '').trim() === '1';
 const AGENTIC_BASE_URL = String(process.env.AGENTIC_BASE_URL || '').trim();
+const { mintValidateToken } = require('./lib/validate-token');
 const _agenticPlan = require('./lib/agentic-plan');
 const _creditsBatch = require('./lib/credits-batch');
 
@@ -4329,6 +4330,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
       // worker-auth secret is caught loudly instead of running open.
       modal_run_secret: !!process.env.MODAL_RUN_SECRET,
       modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
+      // Presence only, same contract as the two above. It is here BEFORE the
+      // boot gate requires it, deliberately: the fail-closed array crashes the
+      // process when a secret is missing, so the honest order is ship the
+      // reader, confirm the secret is actually set in Render from outside, then
+      // arm. The existing gate's own deploy note says the same thing.
+      modal_validate_secret: !!process.env.MODAL_VALIDATE_SECRET,
       // CDN SIGNING, PROVEN FROM INSIDE THE PROCESS (2026-08-23).
       //
       // "the env var is set" is NOT the question. cloudfront.js computes
@@ -5591,6 +5598,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
           // the live preview even if a manifest arrives.
           progressive_playback_enabled: progressivePlaybackEnabled(),
+          // WORKER AUTH FOR THE CLIENT'S OWN /validate CALL, under EXACTLY the
+          // name build 256's UsageService decodes (`let validate_token: String?`,
+          // UsageService.swift:50). /validate is the one worker endpoint the app
+          // hits directly, so it cannot carry a server-side secret — and the
+          // producer for this field was never written on ANY branch, which is
+          // why 11 of 11 real calls arrived unauthenticated.
+          //
+          // Per-user and short-lived, never the shared secret: a lifted token is
+          // bound to one user_id and dies within the hour. NULL when
+          // MODAL_VALIDATE_SECRET is unset — the field is then absent, the app's
+          // validateToken stays nil, and /validate is no worse off than today.
+          // It NEVER falls back to MODAL_RUN_SECRET; that would buy an attacker
+          // arbitrary GPU dispatch from any app binary.
+          validate_token: mintValidateToken(u.id),
           // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
           // The first-run hero offers "Watch Promptly edit this" only when this is
           // on AND a clip is configured. Two flag-selectable modes:
