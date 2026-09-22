@@ -317,6 +317,18 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
+            // 60/61 exist to PROVE the 2026-09-22 ruling by rendering it, not by
+            // asserting about it. 60 is the state every real user of 258 is in
+            // until lane/reedit-versions merges: /versions 404s. The correct
+            // appearance is that nothing is visibly wrong — composer live, no
+            // strip, no error. 61 is the same sheet once the endpoint exists, so
+            // the pair shows the difference is a strip and nothing else.
+            case 60: bleed("RE-EDIT — /versions 404: composer live, no strip, NO error") {
+                ReeditSheet(jobId: "posed-parent-job")
+            }
+            case 61: bleed("RE-EDIT — /versions live: the strip, and nothing else changed") {
+                ReeditSheet(jobId: "posed-parent-job")
+            }
             case 59: bleed("CHAT — a real thread: two turns each, plus a video") {
                 EditorView()
                     .task { Self.seedConversationChat() }

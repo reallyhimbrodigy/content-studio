@@ -122,9 +122,39 @@ for path, src in ALL.items():
 check(not hold, "no long-press gesture leads to re-edit",
       f"a hold gesture reaches re-edit ({', '.join(hold)}) — ruled out, the pill is the only entry")
 
+# ── 4b. The sheet's load path must DEGRADE, not fail ────────────────────────
+# VersionsOutcome being correct proves nothing if load() ignores it — that is
+# the inert-half shape this repo keeps paying for. Scoped to load()'s own body:
+# a `.failed` anywhere in this function is the error state the ruling forbids,
+# and it would be the ONLY state real users see until the server half merges.
+SH_ = read('Views/ReeditSheet.swift')
+LOAD = block(SH_, 'private func load() async')
+check(bool(LOAD), "ReeditSheet.load() found", "ReeditSheet.load() is gone")
+check('VersionsOutcome' in LOAD,
+      "load() routes its result through the tested decision",
+      "load() no longer uses VersionsOutcome — the tested rule is not the one running")
+check('.failed' not in LOAD,
+      "load() cannot put the sheet into an error state",
+      "load() can set .failed — a missing /versions would tell the user their video is broken")
+check('composer = .ready' in LOAD,
+      "load() always brings the composer up",
+      "load() does not set the composer ready — a failed fetch would leave it stuck loading")
+
 # ── 5. The stub cannot ship ──────────────────────────────────────────────────
 # The #if DEBUG must WRAP the declaration. Asserting both strings appear
 # somewhere in the file would pass on a stub declared above the guard.
+# BOTH stubs must be unshippable, not just the one that returns data. A failing
+# stub in Release would hide the strip from every user permanently.
+fail_i = SRC.find('struct FailingReeditVersions')
+fail_guards = [(m.start(), m.group()) for m in re.finditer(r'#if DEBUG|#endif', SRC)]
+fail_depth = 0
+for pos, tok in fail_guards:
+    if pos > fail_i: break
+    fail_depth += 1 if tok == '#if DEBUG' else -1
+check(fail_i >= 0 and fail_depth > 0,
+      "FailingReeditVersions is inside #if DEBUG — it cannot ship",
+      "FailingReeditVersions is not DEBUG-guarded — a Release build could hide the strip for everyone")
+
 stub_i = SRC.find('struct StubReeditVersions')
 guards = [(m.start(), m.group()) for m in re.finditer(r'#if DEBUG|#endif', SRC)]
 depth_at_stub = 0

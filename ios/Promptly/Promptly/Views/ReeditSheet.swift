@@ -24,7 +24,6 @@ struct ReeditSheet: View {
 
     @Environment(\.conversionScale) private var k
     @State private var loaded: ReeditVersionsResponse?
-    @State private var loadError: String?
     @State private var selectedId: String?
     @State private var text: String = ""
     @State private var composer: ComposerState = .loading
@@ -180,17 +179,26 @@ struct ReeditSheet: View {
 
     // MARK: - Actions
 
+    /// THE COMPOSER COMES UP EITHER WAY. The only thing a /versions outcome
+    /// decides is whether the strip is drawn — never whether the sheet works.
     private func load() async {
         composer = .loading
+        let outcome: VersionsOutcome
         do {
-            let r = try await ReeditVersionsSource.current.versions(forJobId: jobId)
-            loaded = r
-            selectedId = r.latest?.job_id          // latest is the default
-            composer = .ready
+            outcome = VersionsOutcome.forSuccess(
+                try await ReeditVersionsSource.current.versions(forJobId: jobId))
         } catch {
-            loadError = error.localizedDescription
-            composer = .failed("Couldn't load this video's versions.")
+            // No `.failed` here, on purpose and by ruling. Until the server half
+            // merges this path is a 404 on every launch, and an error state
+            // would tell the user their video is broken when the thing they came
+            // to do still works.
+            outcome = VersionsOutcome.forFailure(error)
         }
+        loaded = outcome.response
+        // `selectedId` nil means the composer targets the job the sheet was
+        // opened for, which is the right target when there is no history.
+        selectedId = outcome.response?.latest?.job_id
+        composer = .ready
     }
 
     private func send() async {

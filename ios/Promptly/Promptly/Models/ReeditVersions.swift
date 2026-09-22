@@ -37,7 +37,7 @@ struct ReeditVersion: Decodable, Identifiable, Equatable {
 }
 
 /// GET /api/video-jobs/:id/versions — accepts ANY job in the tree, not just the root.
-struct ReeditVersionsResponse: Decodable {
+struct ReeditVersionsResponse: Decodable, Equatable {
     let root_job_id: String
     let version_count: Int
     let versions: [ReeditVersion]
@@ -52,6 +52,48 @@ struct ReeditVersionsResponse: Decodable {
     /// Latest LAST, matching the wire order. The default selection is the last
     /// element, not the first.
     var latest: ReeditVersion? { versions.last }
+}
+
+/// WHAT A /versions OUTCOME MEANS FOR THE SHEET (ruled 2026-09-22).
+///
+/// THE STRIP IS AN ENHANCEMENT, NEVER A PRECONDITION. The re-edit sheet's job is
+/// the composer: the pill, the Pro wall, reedit_tap and a POST that has existed
+/// and worked for builds. Version history is additive on top of that. So a
+/// /versions that 404s — which is every build until the server half merges — or
+/// that fails on a flaky network HIDES the strip and changes nothing else.
+///
+/// It must never become an error state. A user who taps re-edit and gets
+/// "Couldn't load this video's versions" has been told their video is broken,
+/// when nothing is broken and the thing they came to do still works. That is a
+/// worse outcome than the feature simply not being there yet.
+///
+/// Pure and Foundation-only on purpose: this is the decision the ruling is
+/// about, so it is the thing that gets tested, rather than being inferred from
+/// a screenshot of a view.
+enum VersionsOutcome: Equatable {
+    /// Show the strip.
+    case strip(ReeditVersionsResponse)
+    /// No strip. The composer stays live regardless of why.
+    case hidden
+
+    /// ANY failure hides. Deliberately not a 404-only rule: a 401, a timeout, a
+    /// malformed body and an endpoint that does not exist are all "no history to
+    /// show", and enumerating the tolerable ones is how the untolerated one
+    /// becomes a dead end for the user.
+    static func forFailure(_ error: Error) -> VersionsOutcome { .hidden }
+
+    /// An EMPTY list hides too. A strip with no chips is furniture that explains
+    /// nothing, and the server returns an empty list for a video with no
+    /// completed versions yet.
+    static func forSuccess(_ response: ReeditVersionsResponse) -> VersionsOutcome {
+        response.versions.isEmpty ? .hidden : .strip(response)
+    }
+
+    /// The response to render, or nil when there is nothing to show.
+    var response: ReeditVersionsResponse? {
+        if case .strip(let r) = self { return r }
+        return nil
+    }
 }
 
 /// The 409 from POST /api/video-jobs/re-edit. Carries `status` so the composer

@@ -158,6 +158,42 @@ for (label, body, expected) in [("create", create200, "new-1"),
     }
 }
 
+// ── /versions MUST DEGRADE, NEVER BLOCK (ruled 2026-09-22) ─────────────────
+// The strip is an enhancement; the composer is the feature. Until the server
+// half merges, this endpoint 404s on every launch, so the failure path is the
+// ONLY path real users will take for the whole of 258.
+struct Stub404: Error {}
+struct StubTimeout: Error {}
+struct StubUnauthorized: Error {}
+
+for (label, err) in [("404", Stub404() as Error),
+                     ("network timeout", StubTimeout() as Error),
+                     ("401", StubUnauthorized() as Error)] {
+    check(VersionsOutcome.forFailure(err) == .hidden,
+          "/versions \(label): strip hidden, nothing else changes",
+          "/versions \(label) does not hide the strip — the sheet would show an error for a missing endpoint")
+    check(VersionsOutcome.forFailure(err).response == nil,
+          "/versions \(label): no response to render",
+          "/versions \(label) yields a response to draw a strip from")
+}
+
+// An empty list is a success that still has nothing to show.
+if let empty = decode(ReeditVersionsResponse.self, #"{"root_job_id":"r","version_count":0,"versions":[]}"#) {
+    check(VersionsOutcome.forSuccess(empty) == .hidden,
+          "an empty versions list hides the strip too",
+          "an empty list draws a strip with no chips")
+} else { check(false, "", "an empty versions body does not decode") }
+
+// And a populated one still shows, or the degradation has eaten the feature.
+if let full = decode(ReeditVersionsResponse.self, bodyVersions) {
+    check(VersionsOutcome.forSuccess(full) == .strip(full),
+          "a populated versions list shows the strip",
+          "a populated list no longer shows the strip — degradation ate the feature")
+    check(VersionsOutcome.forSuccess(full).response?.latest?.job_id == "b",
+          "the shown strip carries the real versions",
+          "the shown strip is not the response that was fetched")
+} else { check(false, "", "the versions body does not decode") }
+
 // ── control ─────────────────────────────────────────────────────────────────
 // A decoder that accepts anything proves nothing, so prove it still rejects.
 check(decode(ReeditVersionsResponse.self, #"{"nope":1}"#) == nil,

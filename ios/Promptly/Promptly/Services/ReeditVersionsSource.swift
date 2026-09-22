@@ -30,6 +30,13 @@ enum ReeditVersionsSource {
     /// The single place the UI resolves its provider.
     static var current: ReeditVersionsProviding {
         #if DEBUG
+        // THE FAILING STUB IS THE ONE THAT MATTERS RIGHT NOW. Until the server
+        // half merges, /versions 404s on every launch, so this is the path every
+        // real user of 258 takes — and the one whose correct behaviour is that
+        // NOTHING visibly happens: no strip, no error, composer live.
+        // `-reeditStub404` makes that reproducible on a device by hand, which a
+        // source assertion cannot do.
+        if ProcessInfo.processInfo.arguments.contains("-reeditStub404") { return FailingReeditVersions() }
         if ProcessInfo.processInfo.arguments.contains("-reeditStub") { return StubReeditVersions() }
         #endif
         return LiveReeditVersions()
@@ -37,6 +44,15 @@ enum ReeditVersionsSource {
 }
 
 #if DEBUG
+/// Simulates the endpoint not being there — which is not a hypothetical: it is
+/// the live state of main until lane/reedit-versions merges.
+struct FailingReeditVersions: ReeditVersionsProviding {
+    struct NotFound: Error {}
+    func versions(forJobId jobId: String) async throws -> ReeditVersionsResponse {
+        throw NotFound()
+    }
+}
+
 /// Returns the POSTED SHAPE verbatim — ascending, latest last, completed rows
 /// only, so `versions.count == version_count` holds exactly as the server
 /// guarantees. Deliberately includes a change_request on the later versions and
