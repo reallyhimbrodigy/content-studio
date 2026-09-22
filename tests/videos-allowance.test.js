@@ -26,24 +26,55 @@ test('the ruled numbers are the ruled numbers', () => {
 });
 
 test('every REAL profile shape maps to the right video allowance', () => {
-  assert.strictEqual(videosLimitFor({ tier: 'free' }), 3);
-  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: FUTURE }), 50);
-  assert.strictEqual(videosLimitFor({ tier: 'max', pro_until: FUTURE }), 200);
-  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }), 3);
-  assert.strictEqual(videosLimitFor({ comp_pro: true }), 50);
+  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: FUTURE }).own, 50);
+  assert.strictEqual(videosLimitFor({ tier: 'max', pro_until: FUTURE }).own, 200);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 3);
+  assert.strictEqual(videosLimitFor({ comp_pro: true }).own, 50);
 });
 
 test('the ENTITLEMENT vocabulary is not the PROFILE vocabulary', () => {
   // This is the bug. 'paid' is what the entitlement layer calls a subscriber;
   // profiles.tier never holds it. A synthesised row reads FREE, silently.
   assert.strictEqual(creditTierFor({ tier: 'paid', pro_until: FUTURE }), 'free');
-  assert.notStrictEqual(videosLimitFor({ tier: 'paid', pro_until: FUTURE }), 50);
+  assert.notStrictEqual(videosLimitFor({ tier: 'paid', pro_until: FUTURE }).own, 50);
 });
 
-test('an unreadable row is ABSENT, not the smallest tier', () => {
+test('videos_limit is an OBJECT, never a scalar', () => {
+  // RULED 2026-09-22. The paywall renders Pro and Max to a user holding
+  // neither, so a scalar — which can only describe the caller — cannot serve
+  // the screen that needs this. This leg is what makes a scalar unsendable.
+  for (const row of [{ tier: 'free' }, { tier: 'max', pro_until: FUTURE }, null]) {
+    const v = videosLimitFor(row);
+    assert.strictEqual(typeof v, 'object', 'must be an object');
+    assert.notStrictEqual(v, null, 'must not be null — absent goes in `own`');
+    assert.ok(!Array.isArray(v), 'must not be an array');
+    assert.deepStrictEqual(Object.keys(v).sort(), ['free', 'max', 'own', 'pro']);
+  }
+});
+
+test('every tier ships every time, at the ruled numbers', () => {
+  const v = videosLimitFor({ tier: 'free' });
+  assert.strictEqual(v.free, 3);
+  assert.strictEqual(v.pro, 50);
+  assert.strictEqual(v.max, 200);
+});
+
+test('own tracks the caller across every REAL profile shape', () => {
+  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: FUTURE }).own, 50);
+  assert.strictEqual(videosLimitFor({ tier: 'max', pro_until: FUTURE }).own, 200);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 3);
+  assert.strictEqual(videosLimitFor({ comp_pro: true }).own, 50);
+});
+
+test('own is ABSENT, not the smallest tier, on an unreadable row', () => {
   // A limit of 3 shown to a Max subscriber is worse than showing none. The
-  // absent-as-zero family, in the field the user reads.
-  assert.strictEqual(videosLimitFor(null), null);
+  // absent-as-zero family, in the field the user reads. The tier map still
+  // ships — only `own` is unknown.
+  const v = videosLimitFor(null);
+  assert.strictEqual(v.own, null);
+  assert.strictEqual(v.pro, 50, 'the tier map is known even when the caller is not');
 });
 
 test('videos_limit is RULED, never credits / cost', () => {

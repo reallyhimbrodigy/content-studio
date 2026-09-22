@@ -7265,7 +7265,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
                   // convert a currency they never agreed to; "you have used all
                   // 50 videos this month" is the promise they recognise.
                   // videos_limit is the RULED constant, not credits / cost.
-                  videos_limit: _credits.VIDEOS_LIMIT[_creditTier] ?? null,
+                  // THE SAME NAME MUST NOT CARRY TWO SHAPES. /api/usage emits
+                  // videos_limit as an OBJECT; emitting a scalar here under the
+                  // identical key is the two-numbers-one-name defect with the
+                  // client as the victim — it would decode on one path and not
+                  // the other. `entitlement.row` is the real profile row, so
+                  // `own` resolves correctly on this path too.
+                  videos_limit: _credits.videosLimitFor(entitlement.row || null),
                   message: (_credits.VIDEOS_LIMIT[_creditTier]
                     ? `You've used all ${_credits.VIDEOS_LIMIT[_creditTier]} videos in your plan this month.`
                     : `You've used all the videos in your plan this month.`),
