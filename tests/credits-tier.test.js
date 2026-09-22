@@ -37,7 +37,7 @@ test('creditTierFor: a COMPED row with tier=free and NO pro_until is pro', () =>
   const comped = { tier: 'free', comp_pro: true, pro_until: null, rc_app_user_id: null };
   assert.strictEqual(isUserPro(comped), true, 'precondition: the server calls this paid');
   assert.strictEqual(creditTierFor(comped), 'pro');
-  assert.strictEqual(TIER_ALLOWANCE[creditTierFor(comped)], 200);
+  assert.strictEqual(TIER_ALLOWANCE[creditTierFor(comped)], 500);
 });
 test('creditTierFor: comp_pro is strict — a truthy value does not comp', () => {
   assert.strictEqual(creditTierFor({ tier: 'free', comp_pro: 1 }), 'free');
