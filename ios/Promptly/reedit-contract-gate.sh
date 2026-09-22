@@ -29,6 +29,31 @@ WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 
 cp Models/ReeditVersions.swift "$WORK/models.swift" || exit 1
 
+# JobCreateResponse lives in Models.swift, which pulls in SwiftUI and cannot be
+# compiled standalone. Lift the struct itself — the SHIPPED source, isolated. A
+# retyped copy here would test the gate's idea of the model, not the model.
+python3 - "$WORK" <<'LIFT'
+import sys, pathlib
+work = pathlib.Path(sys.argv[1])
+src = pathlib.Path('Models/Models.swift').read_text(encoding='utf-8')
+# EXACT, NOT A PREFIX. 'struct JobCreateResponse' is a substring of
+# 'struct JobCreateResponseX', so a renamed struct lifted cleanly and failed as
+# a compiler error instead of this check's own message. Third instance of that
+# blind spot today; match the declaration as it is actually written.
+m = 'struct JobCreateResponse: Codable'
+if m not in src:
+    (work / 'jobcreate.swift').write_text('// MISSING\n'); sys.exit(0)
+i = src.index(m); j = src.index('{', i); d = 0; k = j
+while True:
+    if src[k] == '{': d += 1
+    elif src[k] == '}':
+        d -= 1
+        if d == 0: break
+    k += 1
+(work / 'jobcreate.swift').write_text('import Foundation\n' + src[i:k+1] + '\n', encoding='utf-8')
+LIFT
+grep -q "MISSING" "$WORK/jobcreate.swift" && { echo "  ✗ JobCreateResponse is gone from Models.swift"; echo "reedit-contract-gate: FAIL"; exit 1; }
+
 cat > "$WORK/main.swift" <<'SWIFT'
 import Foundation
 
@@ -112,6 +137,27 @@ if let v = decode(ReeditVersionsResponse.self, bodyVersions) {
     check(v.latest?.job_id == "b", "the latest version is the last entry", "latest is not the last entry")
 } else { check(false, "", "the versions body does NOT decode") }
 
+// ── POST /api/video-jobs/re-edit: `job_id` means THREE different things ─────
+// 200 create → the NEW job; 409 → the job BLOCKING you; 200 ask-resume → the
+// RESUMED job, in a body carrying none of the version fields. The client posts
+// change_request and so should never take the third branch — but "should be
+// unreachable" is exactly how the ReeditInFlight mismatch came to be written,
+// and every one of these decodes behind a `try?` where a miss is a silent nil.
+let create200 = #"{"success":true,"job_id":"new-1","status":"queued","mode":"render_only","parent_job_id":"p","root_job_id":"r","version":3,"version_provisional":true,"version_count":3}"#
+let resume200 = #"{"success":true,"job_id":"same-1","status":"processing","resumed":true}"#
+let minimal200 = #"{"job_id":"bare-1"}"#
+for (label, body, expected) in [("create", create200, "new-1"),
+                                ("ask-resume", resume200, "same-1"),
+                                ("minimal", minimal200, "bare-1")] {
+    if let r = decode(JobCreateResponse.self, body) {
+        check(r.resolvedJobId == expected,
+              "re-edit 200 (\(label)): the job id resolves",
+              "re-edit 200 (\(label)): decoded but resolvedJobId is nil — the caller throws 'No job ID returned'")
+    } else {
+        check(false, "", "re-edit 200 (\(label)) does NOT decode — a silent nil behind try?, and a generic failure")
+    }
+}
+
 // ── control ─────────────────────────────────────────────────────────────────
 // A decoder that accepts anything proves nothing, so prove it still rejects.
 check(decode(ReeditVersionsResponse.self, #"{"nope":1}"#) == nil,
@@ -125,6 +171,6 @@ if failures > 0 {
 print("reedit-contract-gate: PASS — client models decode the server's real bodies")
 SWIFT
 
-OUT=$(cd "$WORK" && swiftc -o probe models.swift main.swift 2>&1 && ./probe 2>&1); RC=$?
+OUT=$(cd "$WORK" && swiftc -o probe models.swift jobcreate.swift main.swift 2>&1 && ./probe 2>&1); RC=$?
 printf '%s\n' "$OUT"
 exit $RC
