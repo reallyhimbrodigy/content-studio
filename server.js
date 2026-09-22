@@ -3324,6 +3324,44 @@ const server = http.createServer((req, res) => {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
 
+  // THE VIDEO ALLOWANCE IS MONTHLY AND THE DAILY CAP IS DAILY; they need
+  // different boundaries and must not share one. Calendar month in UTC, which
+  // matches how Zac ruled the allowance ("per month") — NOT the subscription's
+  // renewal date. Those two differ for every user whose renewal is not the 1st,
+  // and the difference is REAL: RevenueCat refreshes the credit grant on the
+  // RENEWAL cycle while this counter rolls at calendar-month start. Named here
+  // rather than smoothed over, because a user can see videos_used reset while
+  // their spendable balance has not, and the honest fix is a ruling about which
+  // boundary is the promise, not a quiet averaging of the two.
+  function utcMonthStart() {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  }
+
+  async function countMonthUsage(userId, kind) {
+    // Fails CLOSED exactly like countTodayUsage. A count that returns 0 on a
+    // Supabase error would report "0 videos used" to a user who has used fifty,
+    // which is the absent-as-zero defect in the field the user reads.
+    if (!supabaseAdmin) {
+      const err = new Error('usage_count_unavailable');
+      err.statusCode = 503;
+      throw err;
+    }
+    const { count, error } = await supabaseAdmin
+      .from('usage_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('kind', kind)
+      .gte('created_at', utcMonthStart());
+    if (error) {
+      console.error('[usage] month count failed — refusing action', { userId, kind, error: error.message });
+      const wrapped = new Error('usage_count_failed');
+      wrapped.statusCode = 503;
+      throw wrapped;
+    }
+    return Number(count || 0);
+  }
+
   async function countTodayUsage(userId, kind) {
     if (!supabaseAdmin) {
       // Closed by default. If supabase is down we cannot prove the user
@@ -5107,7 +5145,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: chatCaps.chatLimit,
-            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
+            message: `You've used your ${chatCaps.chatLimit} free chat messages today. Pro includes ${_credits.VIDEOS_LIMIT.pro} videos a month.`,
           });
         }
 
@@ -5331,7 +5369,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             error: 'daily_limit_reached',
             kind: 'chat',
             limit: streamCaps.chatLimit,
-            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Pro includes 200 credits a month — 20 videos.`,
+            message: `You've used your ${streamCaps.chatLimit} free chat messages today. Pro includes ${_credits.VIDEOS_LIMIT.pro} videos a month.`,
           });
         }
 
@@ -5564,9 +5602,10 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
       try {
         const u = await requireSupabaseUser(req);
         const ent = await assertProEntitled(u.id);
-        const [renders, chats] = await Promise.all([
+        const [renders, chats, rendersThisMonth] = await Promise.all([
           countTodayUsage(u.id, 'render'),
           countTodayUsage(u.id, 'chat'),
+          countMonthUsage(u.id, 'render'),
         ]);
         // proUntil — when the current entitlement expires (trial end or
         // renewal date). Read straight from profiles so the client can
@@ -5574,6 +5613,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         let proUntil = null;
         let rawTier = ent.isPro ? 'paid' : 'none';
         let createdAt = null;
+        // HOISTED because videos_limit needs the WHOLE ROW, not the tier string.
+        // creditTierFor() calls isUserPro(profile), which reads pro_until,
+        // comp_pro and the rc_* columns — so creditTierFor({tier:'max'})
+        // returns 'free'. Passing a synthesised {tier} object parses, runs, and
+        // reports videos_limit 3 to EVERY user including Max. Measured, not
+        // reasoned: {tier:'max'} -> 'free' -> 3.
+        let profileRow = null;
         if (supabaseAdmin) {
           const { data } = await supabaseAdmin
             .from('profiles')
@@ -5582,6 +5628,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             .maybeSingle();
           proUntil = data?.pro_until || null;
           createdAt = data?.created_at || null;
+          profileRow = data || null;
           rawTier = tierFromEntitlement({ ...ent, row: data || ent.row });
           if (unknownPeriodPaid(data)) {
             console.warn('[entitlement.edge] active_paid_missing_period', { rc_linked: true });
@@ -5619,6 +5666,16 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           used: renders,
           limit: renderLimit,
           resets_at: resetsAt,
+          // VIDEOS — the promise the user was sold, in the unit they were sold
+          // it. videos_limit comes from the RULED constant VIDEOS_LIMIT and is
+          // NEVER credits / COST_PER_RENDER: those agree today at 10 a render
+          // and stop agreeing the moment an AI video costs 20, at which point a
+          // derived field would move silently under the promise.
+          videos_used: rendersThisMonth,
+          // null, never a default, when the row is unreadable: a limit of 3
+          // shown to a Max subscriber is worse than no limit shown at all, and
+          // ABSENT must not render as the smallest tier.
+          videos_limit: _credits.videosLimitFor(profileRow),
           // Routing cert (staged, 1.3.2/218 client). INERT env-driven flags — the
           // backend flips these the moment the routing pipeline can process 5-min
           // videos; the client then raises the picker ceiling 180→300 and moves
@@ -6890,6 +6947,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // exempt for a different reason (no subscription for RC's recurring
         // grant to hang on), and collapsing two reasons into one condition is
         // how the next person deletes the wrong half.
+        // THE RULING AND THE CONSTANT ARE NOT THE SAME EVENT (2026-09-22).
+        // Zac ruled pro -> 500 credits / 50 videos and max -> 2000 / 200. The
+        // paragraph above still describes TIER_ALLOWANCE AS IT STANDS — 200 and
+        // 1000 — because that constant tracks what RevenueCat has actually
+        // GRANTED, not what has been decided. It moves when RC does, together
+        // with __smoke_metered_tiers' expectation, in one commit.
+        //
+        // The measurement above is kept verbatim rather than rewritten: it is
+        // the EVIDENCE, not the conclusion. "8 of 27 exceed 20 videos" stays
+        // true; whether any of them exceeds FIFTY is UNMEASURED, so it no longer
+        // settles the Pro question in either direction.
+        //
+        // videos_limit is ruled SEPARATELY and ships now — it is the promise, in
+        // the unit the user was sold. TIER_ALLOWANCE is the mechanism.
         const _creditTier = _credits.creditTierFor(entitlement.row || {});
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
           && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })
@@ -7132,7 +7203,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
                 error: 'daily_limit_reached',
                 kind: 'render',
                 limit: wallCaps.renderLimit,
-                message: `You've used your ${wallCaps.renderLimit} free renders today. Pro includes 200 credits a month — 20 videos.`,
+                message: `You've used your ${wallCaps.renderLimit} free renders today. Pro includes ${_credits.VIDEOS_LIMIT.pro} videos a month.`,
               } };
             }
           }
@@ -7210,6 +7281,21 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
                   // fact (insufficient, needed 10); the client owns the
                   // treatment.
                   needed: _credits.COST_PER_RENDER,
+                  // THE REFUSAL SPEAKS IN VIDEOS, because that is the unit the
+                  // user was sold. "You have run out of credits" asks them to
+                  // convert a currency they never agreed to; "you have used all
+                  // 50 videos this month" is the promise they recognise.
+                  // videos_limit is the RULED constant, not credits / cost.
+                  // THE SAME NAME MUST NOT CARRY TWO SHAPES. /api/usage emits
+                  // videos_limit as an OBJECT; emitting a scalar here under the
+                  // identical key is the two-numbers-one-name defect with the
+                  // client as the victim — it would decode on one path and not
+                  // the other. `entitlement.row` is the real profile row, so
+                  // `own` resolves correctly on this path too.
+                  videos_limit: _credits.videosLimitFor(entitlement.row || null),
+                  message: (_credits.VIDEOS_LIMIT[_creditTier]
+                    ? `You've used all ${_credits.VIDEOS_LIMIT[_creditTier]} videos in your plan this month.`
+                    : `You've used all the videos in your plan this month.`),
                   // NOT a balance: with no pre-read the server never learns it
                   // on this path, and RC's 422 does not report one.
                   balanceKnown: false,
