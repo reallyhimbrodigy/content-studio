@@ -592,22 +592,23 @@ struct AccountView: View {
     /// screen. Two catalogue gates passed it — the key is present, translated,
     /// and correctly inflected — because both check the CATALOGUE and neither
     /// checked the CALL. `inflection-render-gate.sh` now checks the call.
+    /// "50 videos a month · AI videos count as 2 · re-edits free" (258).
+    ///
+    /// THE CLIENT-SIDE TIER TABLE IS GONE. This resolved the allowance from
+    /// `CreditAllowance.maxMonthly/proMonthly/free` — three constants compiled
+    /// into the binary — so changing what a plan grants meant shipping a build,
+    /// and a server that disagreed could not correct it. The number now comes
+    /// from `videos_limit` on /api/usage, the same field the paywall reads, so
+    /// the account screen and the pitch cannot say different things.
+    ///
+    /// `Text(verbatim:)` because the string is ALREADY localized — handing a
+    /// resolved string to `Text(_:)` would treat it as a LocalizedStringKey and
+    /// look it up a second time. Nil until the field lands, and a nil subtitle
+    /// is simply no line.
     private var creditsSubtitle: Text? {
-        // THE USER'S OWN TIER (Zac, on 248). This preferred the server knob,
-        // which carries one number for everyone, and fell back to a StoreKit
-        // lookup that took the MAX across the offering — so a Pro account read
-        // Max's 1,000. The entitlement decides; the knob is only a fallback for
-        // a tier we cannot resolve.
-        let tierAllowance: Int? = {
-            let sub = SubscriptionService.shared
-            if sub.isMax { return CreditAllowance.maxMonthly }
-            if sub.effectiveIsPro { return CreditAllowance.proMonthly }
-            return CreditAllowance.free
-        }()
-        guard let monthly = tierAllowance ?? onboarding.creditsMonthlyAllowance,
-              monthly > 0 else { return nil }
-        let videos = ProBenefits.monthlyVideos(credits: monthly)
-        return Text("\(monthly) credits a month - about ^[\(videos) video](inflect: true)")
+        guard let line = ProBenefits.capacityLine(videos: UsageService.shared.videosLimitForCurrentTier)
+        else { return nil }
+        return Text(verbatim: line)
     }
 
     // MARK: - Profile row

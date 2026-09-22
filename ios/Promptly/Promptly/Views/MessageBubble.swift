@@ -634,8 +634,11 @@ struct MessageBubble: View {
                     // the conversation stays visible behind it and one tap goes
                     // to top-up. A block in the thread read as a wall and put a
                     // dead end in the transcript the user scrolls past forever.
-                    if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded {
-                        CreditsRefundedMessage(amount: refunded)
+                    // Converted HERE so a refund smaller than one video shows no
+                    // message at all, rather than "0 videos back".
+                    if OnboardingState.shared.creditsEnabled, let refunded = message.creditsRefunded,
+                       refunded / CreditsService.perVideo > 0 {
+                        CreditsRefundedMessage(videos: refunded / CreditsService.perVideo)
                     } else if !SubscriptionService.shared.effectiveIsPro {
                         HStack(spacing: 5 * k) {
                             Image(systemName: "checkmark.circle.fill")

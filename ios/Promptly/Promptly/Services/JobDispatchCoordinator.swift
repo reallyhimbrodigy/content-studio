@@ -352,7 +352,7 @@ final class JobDispatchCoordinator {
         case .insufficientCredits(_, let balanceKnown):
             return .hard(HardFailure(
                 errorCode: "INSUFFICIENT_CREDITS",
-                userMessage: String(localized: "You're out of credits for now"),
+                userMessage: String(localized: "You're out of videos for now"),
                 requiresNewVideo: false,
                 requiresVibeChange: false,
                 isPaymentRequired: false,

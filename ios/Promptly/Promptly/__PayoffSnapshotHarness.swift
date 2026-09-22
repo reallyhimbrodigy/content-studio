@@ -1183,13 +1183,14 @@ private enum HarnessPaywallMock {
     @MainActor
     static var maxLines: [String] {
         PaywallMapping.maxFeatures(products,
-                                   creditsEnabled: OnboardingState.shared.creditsEnabled)
+                                   proVideos: UsageService.shared.videosLimitPro,
+                                   maxVideos: UsageService.shared.videosLimitMax)
     }
 
     @MainActor
     static var shared: [String] {
         PaywallMapping.sharedFeatures(products,
-                                      creditsEnabled: OnboardingState.shared.creditsEnabled)
+                                      proVideos: UsageService.shared.videosLimitPro)
     }
 
     @MainActor
@@ -1208,6 +1209,8 @@ private enum HarnessPaywallMock {
     static var tiers: [PaywallTierOption] {
         PaywallMapping.tierOptions(products,
                                    creditsEnabled: OnboardingState.shared.creditsEnabled,
+                                   proVideos: UsageService.shared.videosLimitPro,
+                                   maxVideos: UsageService.shared.videosLimitMax,
                                    maxEnabled: OnboardingState.shared.maxTierEnabled)
     }
 

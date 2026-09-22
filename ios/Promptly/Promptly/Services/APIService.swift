@@ -371,7 +371,7 @@ class APIService {
             throw APIError.paymentRequired(
                 kind: payload?.kind ?? "render",
                 limit: payload?.limit,
-                message: payload?.message ?? String(localized: "You've used your credits for now. Pro includes 200 credits a month — 20 videos.")
+                message: payload?.message ?? String(localized: "You've used your videos for now. Pro gives you more every month.")
             )
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {

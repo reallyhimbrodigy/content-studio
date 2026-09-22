@@ -127,6 +127,45 @@ enum ProBenefits {
     static let creditsPerVideo = 10
     static func monthlyVideos(credits: Int) -> Int { credits / creditsPerVideo }
 
+    // MARK: - Capacity, stated in videos (258+)
+
+    /// VIDEOS ARE THE ONLY UNIT ANY USER-FACING SURFACE STATES (Zac, on 258).
+    ///
+    /// Credits were an internal accounting unit that leaked into the pitch:
+    /// "200 credits a month — 20 videos" made the reader learn an exchange rate
+    /// to evaluate an offer, and every surface that mentioned it had to keep two
+    /// numbers agreeing. One unit removes the conversion and the drift together.
+    ///
+    /// THE NUMBER IS NOT COMPUTED FROM CREDITS. `monthlyVideos(credits:)` would
+    /// give Pro 20 (200 ÷ 10); the allowance is 50. The figures are no longer a
+    /// function of the meter, so deriving them would silently reintroduce the
+    /// old ones. It comes from `videos_limit` on /api/usage and nowhere else.
+    static func videosAMonth(_ videos: Int) -> String {
+        String(localized: "\(videos) videos a month")
+    }
+
+    /// The two qualifiers that make the allowance evaluable. Separate catalog
+    /// keys, joined at the end — NOT interpolated into a sentence. The first
+    /// version of the Pro capacity claim built one string and let each screen
+    /// interpolate a fragment; that minted keys carrying %@ the catalog did not
+    /// have and would have dropped eleven locales to English. Each of these is
+    /// a whole phrase a translator sees finished.
+    static var aiVideosCountAsTwo: String { String(localized: "AI videos count as 2") }
+    static var reeditsAreFree: String { String(localized: "re-edits free") }
+
+    /// THE FULL CAPACITY ROW — "50 videos a month · AI videos count as 2 ·
+    /// re-edits free". For full-width surfaces: the paywall benefit rows and the
+    /// account screen. The narrow tier card uses `videosAMonth` alone, which is
+    /// what `cardFeatures` has always been for.
+    ///
+    /// nil when the server has not sent the tier's allowance, so the caller
+    /// states no number at all rather than an invented one.
+    static func capacityLine(videos: Int?) -> String? {
+        guard let videos, videos > 0 else { return nil }
+        return [videosAMonth(videos), aiVideosCountAsTwo, reeditsAreFree]
+            .joined(separator: " · ")
+    }
+
     /// The allowance for the user's CURRENT tier, derived from the products
     /// StoreKit returned. nil when they are on free, when no product matches,
     /// or when offerings have not loaded — and nil is the safe answer in all
@@ -160,12 +199,16 @@ enum ProBenefits {
     /// meter is off, the real number once it is on. Shipping the number early
     /// would be false in the other direction, which is the failure mode that is
     /// easy to miss because it reads as conservative.
-    static func headlineVideoClaim(creditsEnabled: Bool, monthlyCredits: Int?) -> Benefit {
-        guard creditsEnabled, let c = monthlyCredits, c > 0 else {
-            return Benefit(icon: "infinity", text: String(localized: "200 credits a month — 20 videos"))
+    static func headlineVideoClaim(videos: Int?) -> Benefit {
+        guard let line = capacityLine(videos: videos) else {
+            // The honest claim while `videos_limit` is absent. Verified against
+            // lib/tier-capabilities.js rather than assumed: with the meter dark
+            // Pro's renderLimit is Infinity, so this is TRUE today. It stops
+            // being true the moment a real allowance lands — which is exactly
+            // when the field arrives and this branch stops being taken.
+            return Benefit(icon: "infinity", text: String(localized: "Unlimited videos, no daily cap"))
         }
-        return Benefit(icon: "infinity",
-                       text: String(localized: "\(monthlyVideos(credits: c)) videos a month"))
+        return Benefit(icon: "infinity", text: line)
     }
 
     /// The paywall SUBTITLE, gated by the same flag as the benefit row.
@@ -208,25 +251,33 @@ enum ProBenefits {
     /// sees the finished sentence.
     ///
     /// So the SENTENCES live here, one catalog key each, translated as units.
+    /// THESE SENTENCES NO LONGER CARRY A NUMBER AT ALL (258).
+    ///
+    /// They used to end "…with 200 credits a month — 20 videos", which was two
+    /// problems in one clause: a credit number on a user-facing surface, and a
+    /// figure hard-written into a translated sentence, so changing the allowance
+    /// meant re-translating the pitch in twelve languages. The capacity claim
+    /// now lives in ONE place — `capacityLine`, fed by the server — and these
+    /// say what the surface is actually about. A sentence with no number in it
+    /// cannot go stale when the allowance moves.
     static func reeditSubtitle() -> String {
-        String(localized: "Change a finished video without sending it again. Pro lets you do that, with 200 credits a month — 20 videos — and unlimited chats.")
+        String(localized: "Change a finished video without sending it again. Pro lets you do that, with unlimited chats.")
     }
 
     static func exportGateSubtitle() -> String {
-        String(localized: "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.")
+        String(localized: "Free lets you save only a few videos. Pro saves and shares every one.")
     }
 
     static func lapsedTrialSubtitle() -> String {
-        String(localized: "Everything you made is still here. Go Pro for 200 credits a month — 20 videos.")
+        String(localized: "Everything you made is still here. Go Pro to pick up where you left off.")
     }
 
     @MainActor
     static var paywallSubtitle: String {
-        let o = OnboardingState.shared
-        guard o.creditsEnabled, let monthly = o.creditsMonthlyAllowance, monthly > 0 else {
-            return String(localized: "Go beyond the free 3 videos a month — Pro gives you 200 credits, 20 videos.")
+        guard let pro = UsageService.shared.videosLimitPro else {
+            return String(localized: "Go beyond the free plan — every feature unlocked.")
         }
-        return String(localized: "\(monthlyVideos(credits: monthly)) videos a month, and every feature unlocked.")
+        return String(localized: "\(pro) videos a month, and every feature unlocked.")
     }
     /// The SHORT form of the same promises, for a tier card roughly 165pt wide.
     ///
@@ -245,10 +296,16 @@ enum ProBenefits {
     /// credits too, and nothing on it converts. While the meter is dark there is
     /// no credit number, so capacity is stated as what is then true.
     @MainActor
-    static func cardFeatures(creditsEnabled: Bool, monthlyCredits: Int?) -> [String] {
+    static func cardFeatures(videos: Int?) -> [String] {
         var out: [String] = []
-        if !creditsEnabled || (monthlyCredits ?? 0) <= 0 {
-            out.append(String(localized: "20 videos a month"))
+        // The capacity row appears only when the server has said what it is.
+        // This used to append a literal "20 videos a month" whenever the meter
+        // was dark — which is every install today, and the figure is now 50, so
+        // the one branch that always ran was the one that was wrong. Omitting
+        // the row costs a line on a narrow card; printing a stale allowance is a
+        // false promise about what money buys.
+        if let v = videos, v > 0 {
+            out.append(videosAMonth(v))
         }
         out += [
             String(localized: "Auto captions and cuts"),
@@ -272,8 +329,7 @@ enum ProBenefits {
     /// there is nothing for Max to be a multiple OF, so the line degrades to the
     /// relationship alone rather than inventing a factor.
     @MainActor
-    static func maxCardList(proAllowance: Int?, maxAllowance: Int?,
-                            creditsEnabled: Bool) -> [String] {
+    static func maxCardList(proVideos: Int?, maxVideos: Int?) -> [String] {
         // "EVERYTHING IN PRO" IS A POINTER, NOT A BENEFIT. It asks the reader to
         // go and look at the other tab, hold five lines in their head, and come
         // back — on the card that has to justify the higher price. It also left
@@ -286,15 +342,16 @@ enum ProBenefits {
         // Pro's own card features rather than retyped, so they cannot drift
         // from what Pro claims — the same discipline `top(_:)` uses, and the
         // reason a claim still exists in exactly one place.
-        var out = Array(cardFeatures(creditsEnabled: creditsEnabled,
-                                     monthlyCredits: maxAllowance).prefix(3))
+        var out = Array(cardFeatures(videos: maxVideos).prefix(3))
         out.append(String(localized: "Early access to our newest features"))
-        // The multiple is DERIVED and disappears with the meter: without credits
-        // there is nothing for Max to be a multiple OF, so the line is dropped
-        // rather than a factor invented.
-        if let m = usageMultiple(proAllowance: proAllowance, maxAllowance: maxAllowance,
-                                 creditsEnabled: creditsEnabled) {
-            out.append(String(localized: "\(m)x usage credits"))
+        // The multiple is DERIVED, and it now derives from the VIDEO allowances
+        // — which changes the number, not just the noun. Against credits Max was
+        // 1000/200 = 5x; against videos it is 200/50 = 4x. Had this kept reading
+        // the credit figures it would have gone on claiming 5x next to a card
+        // stating 50 and 200, and the reader could do that division themselves.
+        // Dropped entirely when either side is unknown, rather than invented.
+        if let m = usageMultiple(proVideos: proVideos, maxVideos: maxVideos) {
+            out.append(String(localized: "\(m)x the videos"))
         }
         return out
     }
@@ -302,9 +359,8 @@ enum ProBenefits {
     /// The usage multiple, DERIVED from the two allowances rather than typed, so
     /// repricing a tier cannot leave a stale multiple on screen. Nil while the
     /// meter is dark: with no credits there is no usage to be a multiple of.
-    static func usageMultiple(proAllowance: Int?, maxAllowance: Int?,
-                              creditsEnabled: Bool) -> Int? {
-        guard creditsEnabled, let p = proAllowance, let m = maxAllowance,
+    static func usageMultiple(proVideos: Int?, maxVideos: Int?) -> Int? {
+        guard let p = proVideos, let m = maxVideos,
               p > 0, m > p else { return nil }
         let times = m / p
         return times >= 2 ? times : nil
@@ -313,10 +369,12 @@ enum ProBenefits {
     /// "200 credits/month" under a tier name. Nil while the meter is dark —
     /// printing a credit number for a meter that is not running is a claim about
     /// something the user cannot yet spend.
-    static func creditsLine(allowance: Int, creditsEnabled: Bool) -> String? {
-        guard creditsEnabled, allowance > 0 else { return nil }
-        return String(localized: "\(allowance) credits/month")
-    }
+    /// RETIRED AS A USER-FACING STRING (258). Credits are an internal accounting
+    /// unit; the tier header states the allowance in videos like everything else.
+    /// Kept as a nil-returning shim so the call sites that composed a header out
+    /// of (creditsLine, videosLine) keep compiling while they collapse to one
+    /// line — the gate below is what stops a credit number coming back.
+    static func creditsLine(allowance: Int, creditsEnabled: Bool) -> String? { nil }
 
     /// The same allowance in videos, small, under the credits headline.
     ///
@@ -350,15 +408,12 @@ enum ProBenefits {
     @MainActor
     static var core: [Benefit] {
         [
-        // Allowance from the SERVER first, then derived from the StoreKit
-        // products actually on offer. The second source is what makes a Max
-        // tier appear the moment Zac configures it — no client build, no
-        // hardcoded third row — and it also means the claim survives a server
-        // field that has not shipped yet. Both nil still falls back to the
-        // unlimited wording rather than inventing a number.
-        headlineVideoClaim(creditsEnabled: OnboardingState.shared.creditsEnabled,
-                           monthlyCredits: OnboardingState.shared.creditsMonthlyAllowance
-                                           ?? storeKitAllowance()),
+        // ONE SOURCE NOW: `videos_limit` on /api/usage. This used to try the
+        // credits knob and then fall back to a StoreKit lookup across the
+        // offering — two sources for one claim, and the StoreKit one returned
+        // the largest allowance on sale rather than the caller's own. Nil falls
+        // back to the unlimited wording rather than inventing a number.
+        headlineVideoClaim(videos: UsageService.shared.videosLimitPro),
         Benefit(icon: "captions.bubble.fill",
                 text: String(localized: "Captions, cuts and graphics — automatic")),
         Benefit(icon: "arrow.uturn.left",

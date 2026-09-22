@@ -48,6 +48,32 @@ final class UsageService: ObservableObject {
         /// behind requireSupabaseUser. Held in memory only — the snapshot is
         /// never written to UserDefaults, so it cannot land in a backup.
         let validate_token: String?
+        /// THE MONTHLY VIDEO ALLOWANCE PER TIER — the one source every
+        /// user-facing capacity claim reads (258+).
+        ///
+        /// A MAP, NOT A SCALAR, and the paywall is why: TwoStepPaywall.tierOptions
+        /// renders the Pro card and the Max card at the same time, to a user who
+        /// holds neither. A field carrying only the caller's own allowance could
+        /// not fill those two rows, so either the paywall would keep client-side
+        /// tier constants — the thing this replaces — or it would show nothing.
+        ///
+        /// Optional at every level so a server that has not shipped it decodes
+        /// exactly as today and every surface falls back to wording that states
+        /// NO number. That is the whole safety property: a missing value can
+        /// never become a false claim about what money buys. Same reason
+        /// `creditsMonthlyAllowance` is nil-gated rather than defaulted.
+        let videos_limit: VideoLimits?
+    }
+
+    /// Per-tier monthly video allowances, server-owned.
+    ///
+    /// Each tier optional on its own: a server that knows Pro and Max but not a
+    /// tier added later still fills the rows it can, and the unknown row states
+    /// no number rather than an invented one.
+    struct VideoLimits: Codable {
+        let free: Int?
+        let pro: Int?
+        let max: Int?
     }
 
     @Published var snapshot: Snapshot?
@@ -73,6 +99,41 @@ final class UsageService: ObservableObject {
 
     var renderLimit: Int? { snapshot?.render_limit }
     var chatLimit: Int? { snapshot?.chat_limit }
+
+    /// THE MONTHLY VIDEO ALLOWANCE PER SOLD TIER. nil until the server sends the
+    /// field, which is what keeps every capacity claim inert rather than wrong.
+    ///
+    /// Deliberately NOT keyed by `EntitlementTier`. That enum describes
+    /// entitlement STATE — none/free/trial/paid/max — and the three tiers we
+    /// SELL are a different concept; keying on it would force an answer for
+    /// `trial` and `none` that the server never sends, which is how a surface
+    /// ends up with its own narrower definition of a tier.
+    ///
+    /// `> 0` is part of the contract, not a nicety: a server that sends 0 for a
+    /// tier it does not sell must read the same as one that omits it, or the
+    /// paywall prints "0 videos a month" as a promise.
+    private func positive(_ v: Int?) -> Int? {
+        guard let v, v > 0 else { return nil }
+        return v
+    }
+    var videosLimitFree: Int? { positive(snapshot?.videos_limit?.free) }
+    var videosLimitPro: Int? { positive(snapshot?.videos_limit?.pro) }
+    var videosLimitMax: Int? { positive(snapshot?.videos_limit?.max) }
+
+    /// The signed-in user's own allowance — the account screen's number.
+    ///
+    /// Tier comes from SubscriptionService, the one definition of entitlement.
+    /// Reading `isMax` BEFORE `effectiveIsPro` matters: a Max subscriber is also
+    /// Pro, so the other order reports Max users their Pro allowance — the same
+    /// shape as the isMax-omitted entitlement bug this codebase has already paid
+    /// for once.
+    @MainActor
+    var videosLimitForCurrentTier: Int? {
+        let sub = SubscriptionService.shared
+        if sub.isMax { return videosLimitMax }
+        if sub.effectiveIsPro { return videosLimitPro }
+        return videosLimitFree
+    }
     var rendersLeft: Int? { snapshot.map { max(0, $0.render_limit - $0.renders_today) } }
     var chatsLeft: Int? { snapshot.map { max(0, $0.chat_limit - $0.chats_today) } }
     // Gate on the COMPOSITE Pro signal (RevenueCat OR server), matching the

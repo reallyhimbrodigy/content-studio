@@ -25,12 +25,14 @@ struct PaywallTierOption: Identifiable, Equatable {
     /// The card's name, with the multiplier folded in for Max ("Max (5x usage)")
     /// when there is a meter to be a multiple of.
     let title: String
-    /// "200 credits/month". Nil while the credits meter is dark — a credit
-    /// number for a meter that is not running is a claim about something the
-    /// user cannot spend.
-    let creditsLine: String?
-    /// The same allowance in videos, small, beneath the credits headline.
-    let videosLine: String?
+    /// "50 videos a month · AI videos count as 2 · re-edits free" (258).
+    ///
+    /// ONE LINE, ONE UNIT. This was two — a credits headline with a videos
+    /// sub-line under it — which put the same quantity on screen twice in two
+    /// currencies and left the reader to know the exchange rate to check they
+    /// agreed. Nil until the server sends this tier's allowance, so the card
+    /// states no capacity rather than a number nobody has confirmed.
+    let capacityLine: String?
     /// This column's own bullets. TWO INDEPENDENT COLUMNS: nothing is shared,
     /// each side is a complete pitch read top to bottom, so a reader can take in
     /// one column and ignore the other. A shared list above the cards made
@@ -228,51 +230,53 @@ enum PaywallMapping {
     /// The benefits both tiers share. From ProBenefits, the one file allowed to
     /// write a promise — a phrasing invented here would be a second copy of the
     /// pitch, the drift benefits-parity-gate exists to catch.
+    /// `proVideos` is the Pro tier's monthly video allowance from /api/usage,
+    /// PASSED IN rather than read here. This enum is pure by contract — no
+    /// store, no singletons — which is what lets the harness pose a paywall and
+    /// the gate reason about it; reaching into UsageService would end that.
     @MainActor
-    static func sharedFeatures(_ products: [PaywallProduct], creditsEnabled: Bool) -> [String] {
-        ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
-                                 monthlyCredits: tierAllowances(products).first)
+    static func sharedFeatures(_ products: [PaywallProduct], proVideos: Int?) -> [String] {
+        ProBenefits.cardFeatures(videos: proVideos)
     }
 
     /// What Max adds, shown immediately above the cards.
     @MainActor
-    static func maxFeatures(_ products: [PaywallProduct], creditsEnabled: Bool) -> [String] {
-        let allowances = tierAllowances(products)
-        guard allowances.count > 1 else { return [] }
-        return ProBenefits.maxCardList(proAllowance: allowances.first,
-                                       maxAllowance: allowances.last,
-                                       creditsEnabled: creditsEnabled)
+    static func maxFeatures(_ products: [PaywallProduct],
+                            proVideos: Int?, maxVideos: Int?) -> [String] {
+        // `tierAllowances` still decides WHETHER there is a Max tier on sale —
+        // that is product identity and stays on the credit figure the product id
+        // carries. Only the claims are in videos.
+        guard tierAllowances(products).count > 1 else { return [] }
+        return ProBenefits.maxCardList(proVideos: proVideos, maxVideos: maxVideos)
     }
 
     @MainActor
     static func tierOptions(_ products: [PaywallProduct], creditsEnabled: Bool,
+                            proVideos: Int? = nil, maxVideos: Int? = nil,
                             maxEnabled: Bool = true) -> [PaywallTierOption] {
         // MAX IS DROPPED AT THE SOURCE when it is not approved, so it cannot
         // appear in the toggle, the CTA, or a percentage computed across tiers.
         // Filtering in the view would leave it in every derived value.
         var allowances = tierAllowances(products)
         if !maxEnabled, allowances.count > 1 { allowances = [allowances[0]] }
-        let proAllowance = allowances.first
         let maxAllowance = allowances.count > 1 ? allowances.last : nil
         return allowances.map { allowance in
             let isMax = allowances.count > 1 && allowance == maxAllowance
             // Claims come from ProBenefits in both cases — the one file allowed
             // Claims from ProBenefits, the one file allowed to write a promise.
+            // The tier's own video allowance. `allowance` still identifies and
+            // ORDERS the tiers (it is the credit figure the product id maps to)
+            // — that stays internal. What the card SAYS comes from the server.
+            let tierVideos = isMax ? maxVideos : proVideos
             let features: [String] = isMax
-                ? ProBenefits.maxCardList(proAllowance: proAllowance,
-                                          maxAllowance: maxAllowance,
-                                          creditsEnabled: creditsEnabled)
-                : ProBenefits.cardFeatures(creditsEnabled: creditsEnabled,
-                                           monthlyCredits: allowance)
+                ? ProBenefits.maxCardList(proVideos: proVideos, maxVideos: maxVideos)
+                : ProBenefits.cardFeatures(videos: tierVideos)
             let title = isMax ? String(localized: "Max") : String(localized: "Pro")
             return PaywallTierOption(
                 allowance: allowance,
                 isMax: isMax,
                 title: title,
-                creditsLine: ProBenefits.creditsLine(allowance: allowance,
-                                                     creditsEnabled: creditsEnabled),
-                videosLine: ProBenefits.videosLine(allowance: allowance,
-                                                   creditsEnabled: creditsEnabled),
+                capacityLine: ProBenefits.capacityLine(videos: tierVideos),
                 features: features,
                 monthlyPrice: cardPrice(productsInTier(products, allowance)))
         }
@@ -703,16 +707,11 @@ struct PaywallLayout: View {
     /// What the tier gives you. Left column on iPad.
     private func tierBenefits(_ tier: PaywallTierOption) -> some View {
         VStack(alignment: .leading, spacing: 0 * k) {
-            if let credits = tier.creditsLine {
-                Text(credits)
-                    .cType(16, .bold)
+            if let capacity = tier.capacityLine {
+                Text(capacity)
+                    .cType(13, .bold)
                     .foregroundColor(.white)
-            }
-            if let videos = tier.videosLine {
-                Text(videos)
-                    .cType(12)
-                    .foregroundColor(.white.opacity(0.5))
-                    .padding(.top, 1 * k)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(alignment: .leading, spacing: 7 * k) {
@@ -1162,6 +1161,8 @@ struct TwoStepPaywall: View {
                 personalisationEnabled: onboarding.exportGatePersonalizationEnabled,
                 personalisedNoun: PaywallView.exportContentNoun(from: onboarding)),
             tiers: PaywallMapping.tierOptions(prods, creditsEnabled: onboarding.creditsEnabled,
+                                              proVideos: UsageService.shared.videosLimitPro,
+                                              maxVideos: UsageService.shared.videosLimitMax,
                                               maxEnabled: onboarding.maxTierEnabled),
             durations: { PaywallMapping.durationOptions(prods, allowance: $0) },
             onClose: { isPresented = false },

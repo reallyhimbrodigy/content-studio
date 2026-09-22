@@ -185,7 +185,7 @@ struct EditorView: View {
                                 Image(systemName: "bolt.slash.fill")
                                     .font(.system(size: 13 * k))
                                     .foregroundColor(Color(hex: "F4E4BC"))
-                                Text("You're out of credits — get more")
+                                Text("You're out of videos — get more")
                                     .font(.system(size: 14 * k, weight: .semibold))
                                     .foregroundColor(.white)
                                     .lineLimit(1)

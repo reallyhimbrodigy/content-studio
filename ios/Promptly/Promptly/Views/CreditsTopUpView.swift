@@ -218,7 +218,7 @@ struct CreditsTopUpView: View {
                                 Image(systemName: "infinity")
                                     .cType(11, .bold)
                                     .foregroundColor(.white.opacity(0.6))
-                                Text("Credits never expire")
+                                Text("Top-ups never expire")
                                     .cType(12, .medium)
                                     .foregroundColor(.white.opacity(0.6))
                             }
@@ -276,8 +276,8 @@ struct CreditsTopUpView: View {
     /// Only nil-safe states say it. Unknown gets the neutral form, because
     /// "add more" is true whatever the number turns out to be.
     private var headline: String {
-        if credits.balance == 0 { return String(localized: "You're out of credits") }
-        return String(localized: "Add more credits")
+        if credits.balance == 0 { return String(localized: "You're out of videos") }
+        return String(localized: "Add more videos")
     }
 
     private var defaultPackId: String? {
@@ -340,8 +340,10 @@ struct CreditsTopUpView: View {
             // system bolt: the same object the chat header and the composer
             // strip draw, so a balance reads as one currency across the app.
             CreditMark(size: 30 * k, isSpent: credits.balance == 0)
-            if let b = credits.balance {
-                Text("^[\(b) credit](inflect: true) left")
+            // VIDEOS, NOT CREDITS (258). `videosRemaining` already existed and
+            // does the division in one place; the strip does not do its own.
+            if let v = credits.videosRemaining {
+                Text("\(v) videos left")
                     .cType(17, .semibold)
                     .foregroundColor(.white)
                     .monospacedDigit()
@@ -386,8 +388,12 @@ struct CreditsTopUpView: View {
 
     @ViewBuilder private var upgradeHero: some View {
         if let tier = heroTier {
-            let allowance = tier.allowance
             let price = tier.price
+            // The tier's allowance IN VIDEOS, from /api/usage. `tier.allowance`
+            // is still the credit figure the product id maps to and still picks
+            // which paywall tier to preselect below — identity, not copy.
+            let tierVideos = tier.isMax ? UsageService.shared.videosLimitMax
+                                        : UsageService.shared.videosLimitPro
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Analytics.track("credits_topup_upgrade_tap", props: ["source": "credit_wall"])
@@ -398,18 +404,31 @@ struct CreditsTopUpView: View {
                                                        : CreditAllowance.proMonthly)
             } label: {
                 VStack(alignment: .leading, spacing: 6 * k) {
-                    if tier.isMax {
-                        Text("Max gives you ^[\(allowance) credit](inflect: true) a month for only \(price)")
+                    if let v = tierVideos, tier.isMax {
+                        Text("Max gives you \(v) videos a month for only \(price)")
                             .cType(16, .semibold)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("Pro gives you ^[\(allowance) credit](inflect: true) a month for only \(price)")
+                    } else if let v = tierVideos {
+                        Text("Pro gives you \(v) videos a month for only \(price)")
                         .cType(16, .semibold)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        // THE HEADLINE MUST EXIST EVEN WITH NO NUMBER. Both
+                        // branches above are conditional on the server field,
+                        // which is absent on every install until it ships — so
+                        // without this the upsell button rendered with no title
+                        // at all. One sentence for both tiers: the tier is named
+                        // by the row it sits in, and inventing an allowance is
+                        // the one thing this change exists to prevent.
+                        Text("Get more videos every month for only \(price)")
+                            .cType(16, .semibold)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if let cmp = perVideoComparison {
                         cmp
@@ -474,7 +493,10 @@ struct CreditsTopUpView: View {
         // English word order — "$1.50" leads the sentence here and does not in
         // German or Japanese — so each translation places its own emphasis and
         // the bold lands on that language's equivalent phrase.
-        return Text("That's **\(a) a video**, against \(b) one-time - plus ^[\(allowance) credit](inflect: true) every month.")
+        guard let monthlyVideos = UsageService.shared.videosLimitPro else {
+            return Text("That's **\(a) a video**, against \(b) one-time.")
+        }
+        return Text("That's **\(a) a video**, against \(b) one-time - plus \(monthlyVideos) videos every month.")
     }
 
     private var proAllowance: Int? {
@@ -543,10 +565,6 @@ struct CreditsTopUpView: View {
                     Text("\(pack.videos) videos")
                         .font(.system(size: 16 * k, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("^[\(pack.credits) credit](inflect: true)")
-                        .font(.system(size: 12 * k))
-                        .foregroundColor(.white.opacity(0.45))
-                        .monospacedDigit()
                 }
                 Spacer(minLength: 8 * k)
                 Text(pack.price)
@@ -642,18 +660,21 @@ struct CreditsTopUpView: View {
         // its price clause — a separate localized key, so the twelve
         // translations each keep their own word order rather than having a
         // number spliced into a sentence built for English.
-        guard let price = maxMonthlyPrice else {
-            return Text("Max is ^[\(allowance) credit](inflect: true) a month.")
+        guard let v = UsageService.shared.videosLimitMax else {
+            return Text("Max gives you more videos every month.")
         }
-        return Text("Max is ^[\(allowance) credit](inflect: true) a month for \(price).")
+        guard let price = maxMonthlyPrice else {
+            return Text("Max is \(v) videos a month.")
+        }
+        return Text("Max is \(v) videos a month for \(price).")
     }
 
     // MARK: Allowance
 
     private var allowanceFooter: some View {
         Group {
-            if let monthly = onboarding.creditsMonthlyAllowance, monthly > 0 {
-                Text("Your plan adds ^[\(monthly) credit](inflect: true) every month.")
+            if let monthly = UsageService.shared.videosLimitForCurrentTier {
+                Text("Your plan adds \(monthly) videos every month.")
                     .font(.system(size: 13 * k))
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
@@ -672,7 +693,7 @@ struct CreditsTopUpView: View {
                       let pkg = (subscription.offerings?.current?.availablePackages ?? [])
                         .first(where: { $0.storeProduct.productIdentifier == pack.id })
                 else { return }
-                if let item = CheckoutRouter.item(for: pkg, tierNoun: String(localized: "credits"), surface: "credits_topup") {
+                if let item = CheckoutRouter.item(for: pkg, tierNoun: String(localized: "videos"), surface: "credits_topup") {
                     checkout = item        // US storefront: the checkout step decides
                     return
                 }

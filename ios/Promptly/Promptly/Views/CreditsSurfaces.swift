@@ -141,21 +141,29 @@ struct CreditBalanceStrip: View {
 /// iterate on everything they have already made.
 struct CreditsRefundedMessage: View {
     @Environment(\.conversionScale) private var k
-    let amount: Int
+    let videos: Int
 
     var body: some View {
         HStack(spacing: 8 * k) {
             Image(systemName: "arrow.uturn.backward.circle.fill")
                 .font(.system(size: 14 * k))
                 .foregroundColor(.green.opacity(0.8))
-            Text("\(amount) credits back. That video didn't count.")
+            // Plural handled by catalog VARIATIONS, not inflection markup.
+            // `inflect:` is resolved by Apple's grammar agreement, which covers
+            // a subset of our twelve languages; the catalog's own plural
+            // variations are what every other counted string here uses.
+            Text("\(videos) videos back. That one didn't count.")
                 .font(.system(size: 14 * k))
                 .foregroundColor(.white.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            Analytics.track("credits_refund_shown", props: ["amount": amount])
+            // KEY RENAMED WITH THE UNIT. Leaving it as "amount" would have kept
+            // a column whose meaning changed from credits to videos with no
+            // mark in the data — every historical row ten times the new ones,
+            // and nothing to tell them apart.
+            Analytics.track("credits_refund_shown", props: ["videos": videos])
         }
     }
 }

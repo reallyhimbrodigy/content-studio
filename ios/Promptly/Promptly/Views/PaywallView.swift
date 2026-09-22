@@ -1190,7 +1190,7 @@ struct ProCelebrationView: View {
                     // spelled here rather than in ProBenefits — the exact
                     // duplication benefits-parity-gate exists to prevent.
                     Text(OnboardingState.shared.creditsEnabled
-                         ? String(localized: "Your plan is active. Create as much as your monthly credits allow.")
+                         ? String(localized: "Your plan is active. Create as much as your monthly videos allow.")
                          : String(localized: "Everything's unlocked — every feature, no daily cap on chats."))
                         .cType(15)
                         .foregroundColor(.white.opacity(0.72))

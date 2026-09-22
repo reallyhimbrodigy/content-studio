@@ -2789,6 +2789,119 @@
         }
       }
     },
+    "%lld videos back. That one didn't count.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تمت إعادة %lld فيديو. ذلك لم يُحتسب."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ভিডিও ফেরত। ওটি গণনা হয়নি।"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Video zurück. Das zählte nicht."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Videos zurück. Das zählte nicht."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video back. That one didn't count."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos back. That one didn't count."
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo devuelto. Ese no contó."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos devueltos. Ese no contó."
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vidéo(s) recréditée(s). Celle-là n’a pas compté."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld वीडियो वापस। वह गिना नहीं गया।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld video dikembalikan. Yang itu tidak dihitung."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画%lld本を返却しました。あれはカウントされません。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld भिडियो फिर्ता। त्यो गनिएन।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vídeo(s) de volta. Esse não contou."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ویڈیو واپس۔ وہ شمار نہیں ہوئی۔"
+          }
+        }
+      }
+    },
     "%lld videos left": {
       "extractionState": "manual",
       "localizations": {
@@ -3569,6 +3682,83 @@
         }
       }
     },
+    "%lldx the videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld أضعاف الفيديوهات"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld গুণ ভিডিও"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx so viele Videos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx the videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx más vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx plus de vidéos"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld गुना वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx lebih banyak video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画が%lld倍"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld गुणा भिडियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldx mais vídeos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld گنا ویڈیوز"
+          }
+        }
+      }
+    },
     "%lldx usage credits": {
       "extractionState": "manual",
       "localizations": {
@@ -4314,6 +4504,83 @@
         }
       }
     },
+    "AI videos count as 2": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فيديوهات الذكاء الاصطناعي تُحتسب باثنين"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI ভিডিও ২টি হিসেবে গণনা হয়"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KI-Videos zählen doppelt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI videos count as 2"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los vídeos con IA cuentan como 2"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les vidéos IA comptent double"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI वीडियो 2 के बराबर गिने जाते हैं"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video AI dihitung 2"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI動画は2本分"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI भिडियो २ बराबर गनिन्छ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vídeos com IA contam como 2"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اے آئی ویڈیوز دو کے برابر شمار ہوتی ہیں"
+          }
+        }
+      }
+    },
     "Account": {
       "localizations": {
         "ar": {
@@ -4603,6 +4870,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "مزید کریڈٹس شامل کریں"
+          }
+        }
+      }
+    },
+    "Add more videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أضف المزيد من الفيديوهات"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আরও ভিডিও যোগ করুন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr Videos hinzufügen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add more videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir más vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter plus de vidéos"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "और वीडियो जोड़ें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambah video lagi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画を追加"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "थप भिडियो थप्नुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar mais vídeos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مزید ویڈیوز شامل کریں"
           }
         }
       }
@@ -6798,6 +7142,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "مکمل ویڈیو دوبارہ بھیجے بغیر بدلیں۔ Pro یہ دیتا ہے — ماہانہ 200 کریڈٹ، 20 ویڈیوز، اور لامحدود چیٹس۔"
+          }
+        }
+      }
+    },
+    "Change a finished video without sending it again. Pro lets you do that, with unlimited chats.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عدّل فيديو جاهزًا دون إرساله من جديد. Pro يتيح لك ذلك، مع محادثات غير محدودة."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "তৈরি ভিডিও আবার না পাঠিয়েই বদলান। Pro এটি করতে দেয়, সীমাহীন চ্যাট সহ।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ändere ein fertiges Video, ohne es erneut zu senden. Mit Pro geht das – inklusive unbegrenzter Chats."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change a finished video without sending it again. Pro lets you do that, with unlimited chats."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia un vídeo terminado sin volver a enviarlo. Pro te lo permite, con chats ilimitados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifiez une vidéo terminée sans la renvoyer. Pro vous le permet, avec des discussions illimitées."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बने हुए वीडियो को दोबारा भेजे बिना बदलें। Pro यह करने देता है, असीमित चैट के साथ।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubah video yang sudah jadi tanpa mengirimnya lagi. Pro memungkinkannya, dengan chat tanpa batas."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成した動画を送り直さずに変更できます。Proなら可能で、チャットも無制限です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तयार भिडियो फेरि नपठाईकन परिवर्तन गर्नुहोस्। Pro ले यो गर्न दिन्छ, असीमित च्याटसहित।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altere um vídeo pronto sem enviá-lo de novo. O Pro permite isso, com chats ilimitados."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مکمل ویڈیو کو دوبارہ بھیجے بغیر تبدیل کریں۔ Pro یہ کرنے دیتا ہے، لامحدود چیٹس کے ساتھ۔"
           }
         }
       }
@@ -12490,6 +12911,83 @@
         }
       }
     },
+    "Everything you made is still here. Go Pro to pick up where you left off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "كل ما أنشأته لا يزال هنا. اشترك في Pro لتكمل من حيث توقفت."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার তৈরি সবকিছু এখনও এখানে আছে। যেখানে থেমেছিলেন সেখান থেকে চালিয়ে যেতে Pro নিন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles, was du erstellt hast, ist noch da. Hol dir Pro und mach dort weiter, wo du aufgehört hast."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything you made is still here. Go Pro to pick up where you left off."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todo lo que creaste sigue aquí. Hazte Pro y continúa donde lo dejaste."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout ce que vous avez créé est toujours là. Passez à Pro pour reprendre où vous en étiez."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका बनाया सब कुछ अब भी यहीं है। Pro लें और वहीं से जारी रखें जहाँ छोड़ा था।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semua yang kamu buat masih ada. Pakai Pro untuk melanjutkan dari tempat terakhir."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "作ったものはすべて残っています。Proなら続きから再開できます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंले बनाएको सबै अझै यहीं छ। जहाँ छोड्नुभएको थियो त्यहींबाट सुरु गर्न Pro लिनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tudo o que você criou continua aqui. Assine o Pro para continuar de onde parou."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا بنایا ہوا سب کچھ اب بھی یہیں ہے۔ جہاں چھوڑا تھا وہیں سے جاری رکھنے کے لیے Pro لیں۔"
+          }
+        }
+      }
+    },
     "Everything's unlocked — every feature, no daily cap on chats.": {
       "extractionState": "manual",
       "localizations": {
@@ -13819,6 +14317,83 @@
         }
       }
     },
+    "Free lets you save only a few videos. Pro saves and shares every one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تتيح لك الخطة المجانية حفظ عدد قليل من الفيديوهات فقط. أما Pro فيحفظ ويشارك كل فيديو."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free-তে আপনি কেবল কয়েকটি ভিডিও সেভ করতে পারেন। Pro প্রতিটি সেভ ও শেয়ার করে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Free kannst du nur wenige Videos speichern. Pro speichert und teilt jedes."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free lets you save only a few videos. Pro saves and shares every one."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free solo te deja guardar unos pocos vídeos. Pro guarda y comparte todos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free ne vous laisse enregistrer que quelques vidéos. Pro les enregistre et les partage toutes."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में आप कुछ ही वीडियो सेव कर सकते हैं। Pro हर वीडियो सेव और शेयर करता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free hanya memungkinkan menyimpan beberapa video. Pro menyimpan dan membagikan semuanya."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freeでは一部の動画しか保存できません。Proならすべて保存・共有できます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा तपाईं केही भिडियो मात्र सेभ गर्न सक्नुहुन्छ। Pro ले हरेक सेभ र सेयर गर्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Free deixa salvar apenas alguns vídeos. O Pro salva e compartilha todos."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری میں آپ صرف چند ویڈیوز محفوظ کر سکتے ہیں۔ Pro ہر ایک محفوظ اور شیئر کرتا ہے۔"
+          }
+        }
+      }
+    },
     "Free processes one video at a time. Upgrade to Pro to run up to 10 in parallel.": {
       "localizations": {
         "ar": {
@@ -14408,6 +14983,83 @@
         }
       }
     },
+    "Get more videos every month for only %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "احصل على المزيد من الفيديوهات كل شهر مقابل %@ فقط"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রতি মাসে আরও ভিডিও পান কেবল %@-তে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeden Monat mehr Videos für nur %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get more videos every month for only %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consigue más vídeos cada mes por solo %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenez plus de vidéos chaque mois pour seulement %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हर महीने और वीडियो पाएँ सिर्फ़ %@ में"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dapatkan lebih banyak video tiap bulan hanya %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "毎月もっと多くの動画がたった%@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हरेक महिना थप भिडियो पाउनुहोस् मात्र %@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba mais vídeos todo mês por apenas %@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ہر ماہ مزید ویڈیوز صرف %@ میں حاصل کریں"
+          }
+        }
+      }
+    },
     "Get notified when it's ready?": {
       "localizations": {
         "ar": {
@@ -14775,6 +15427,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "ماہانہ 3 مفت ویڈیوز سے آگے بڑھیں — Pro دیتا ہے 200 کریڈٹ، 20 ویڈیوز۔"
+          }
+        }
+      }
+    },
+    "Go beyond the free plan — every feature unlocked.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تجاوز الخطة المجانية — كل الميزات مفتوحة."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ফ্রি প্ল্যানের বাইরে যান — সব ফিচার আনলক।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr als der Gratis-Tarif – alle Funktionen freigeschaltet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go beyond the free plan — every feature unlocked."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ve más allá del plan gratuito: todas las funciones desbloqueadas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allez au-delà de l’offre gratuite : toutes les fonctionnalités débloquées."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ्री प्लान से आगे बढ़ें — हर फ़ीचर अनलॉक।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lampaui paket gratis — semua fitur terbuka."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無料プランのその先へ。すべての機能が使えます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नि:शुल्क योजनाभन्दा माथि जानुहोस् — सबै सुविधा अनलक।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vá além do plano gratuito — todos os recursos liberados."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مفت پلان سے آگے بڑھیں — تمام فیچرز اَن لاک۔"
           }
         }
       }
@@ -17827,6 +18556,119 @@
         }
       }
     },
+    "Max gives you %lld videos a month for only %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Max %1$lld فيديو شهريًا مقابل %2$@ فقط"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max আপনাকে মাসে %1$lld ভিডিও দেয় কেবল %2$@-তে"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max gibt dir %1$lld Video im Monat für nur %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max gibt dir %1$lld Videos im Monat für nur %2$@"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max gives you %1$lld video a month for only %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max gives you %1$lld videos a month for only %2$@"
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max te da %1$lld vídeo al mes por solo %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max te da %1$lld vídeos al mes por solo %2$@"
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max vous offre %1$lld vidéos par mois pour seulement %2$@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max आपको हर महीने %1$lld वीडियो सिर्फ़ %2$@ में देता है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max memberi %1$lld video per bulan hanya %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maxなら月%1$lld本の動画がたった%2$@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ले तपाईंलाई महिनामा %1$lld भिडियो दिन्छ मात्र %2$@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max dá %1$lld vídeos por mês por apenas %2$@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max آپ کو ہر ماہ %1$lld ویڈیوز صرف %2$@ میں دیتا ہے"
+          }
+        }
+      }
+    },
     "Max gives you ^[%lld credit](inflect: true) a month for only %@": {
       "extractionState": "manual",
       "localizations": {
@@ -17894,6 +18736,309 @@
           "stringUnit": {
             "state": "translated",
             "value": "Max آپ کو ماہانہ %lld کریڈٹ دیتا ہے، صرف %@ میں"
+          }
+        }
+      }
+    },
+    "Max gives you more videos every month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Max المزيد من الفيديوهات كل شهر."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max প্রতি মাসে আরও ভিডিও দেয়।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max gibt dir jeden Monat mehr Videos."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max gives you more videos every month."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max te da más vídeos cada mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max vous offre plus de vidéos chaque mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max हर महीने और वीडियो देता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max memberi lebih banyak video tiap bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maxなら毎月もっと多くの動画を使えます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ले हरेक महिना थप भिडियो दिन्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max dá mais vídeos todo mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ہر ماہ مزید ویڈیوز دیتا ہے۔"
+          }
+        }
+      }
+    },
+    "Max is %lld videos a month for %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max يمنحك %1$lld فيديو شهريًا مقابل %2$@."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max মানে মাসে %1$lld ভিডিও, %2$@-তে।"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max sind %1$lld Video im Monat für %2$@."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max sind %1$lld Videos im Monat für %2$@."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max is %1$lld video a month for %2$@."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max is %1$lld videos a month for %2$@."
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max son %1$lld vídeo al mes por %2$@."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max son %1$lld vídeos al mes por %2$@."
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max, c’est %1$lld vidéos par mois pour %2$@."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max हर महीने %1$lld वीडियो है, %2$@ में।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max adalah %1$lld video per bulan seharga %2$@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maxは月%1$lld本の動画で%2$@です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max भनेको महिनामा %1$lld भिडियो हो, %2$@ मा।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max são %1$lld vídeos por mês por %2$@."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ہر ماہ %1$lld ویڈیوز ہے، %2$@ میں۔"
+          }
+        }
+      }
+    },
+    "Max is %lld videos a month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max يمنحك %lld فيديو شهريًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max মানে মাসে %lld ভিডিও।"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max sind %lld Video im Monat."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max sind %lld Videos im Monat."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max is %lld video a month."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max is %lld videos a month."
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max son %lld vídeo al mes."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Max son %lld vídeos al mes."
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max, c’est %lld vidéos par mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max हर महीने %lld वीडियो है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max adalah %lld video per bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maxは月%lld本の動画です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max भनेको महिनामा %lld भिडियो हो।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Max são %lld vídeos por mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max ہر ماہ %lld ویڈیوز ہے۔"
           }
         }
       }
@@ -22001,6 +23146,119 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pro فیچر، انلاک کرنے کے لیے ٹیپ کریں"
+          }
+        }
+      }
+    },
+    "Pro gives you %lld videos a month for only %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمنحك Pro %1$lld فيديو شهريًا مقابل %2$@ فقط"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro আপনাকে মাসে %1$lld ভিডিও দেয় কেবল %2$@-তে"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro gibt dir %1$lld Video im Monat für nur %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro gibt dir %1$lld Videos im Monat für nur %2$@"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro gives you %1$lld video a month for only %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro gives you %1$lld videos a month for only %2$@"
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro te da %1$lld vídeo al mes por solo %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Pro te da %1$lld vídeos al mes por solo %2$@"
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro vous offre %1$lld vidéos par mois pour seulement %2$@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro आपको हर महीने %1$lld वीडियो सिर्फ़ %2$@ में देता है"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro memberi %1$lld video per bulan hanya %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proなら月%1$lld本の動画がたった%2$@"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro ले तपाईंलाई महिनामा %1$lld भिडियो दिन्छ मात्र %2$@ मा"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Pro dá %1$lld vídeos por mês por apenas %2$@"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro آپ کو ہر ماہ %1$lld ویڈیوز صرف %2$@ میں دیتا ہے"
           }
         }
       }
@@ -27846,6 +29104,83 @@
         }
       }
     },
+    "That's **%@ a video**, against %@ one-time - plus %lld videos every month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أي **%1$@ للفيديو**، مقابل %2$@ لمرة واحدة — بالإضافة إلى %3$lld فيديو كل شهر."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অর্থাৎ **প্রতি ভিডিও %1$@**, বনাম এককালীন %2$@ — সঙ্গে প্রতি মাসে %3$lld ভিডিও।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind **%1$@ pro Video**, gegenüber %2$@ einmalig – plus %3$lld Videos jeden Monat."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's **%1$@ a video**, against %2$@ one-time - plus %3$lld videos every month."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eso es **%1$@ por vídeo**, frente a %2$@ una sola vez, más %3$lld vídeos cada mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soit **%1$@ la vidéo**, contre %2$@ en une fois — plus %3$lld vidéos chaque mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यानी **%1$@ प्रति वीडियो**, बनाम %2$@ एकमुश्त — साथ में हर महीने %3$lld वीडियो।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Itu **%1$@ per video**, dibanding %2$@ sekali bayar — plus %3$lld video tiap bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1本あたり**%1$@**、一度きりの%2$@と比べて。さらに毎月%3$lld本。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अर्थात् **प्रति भिडियो %1$@**, एकपटकको %2$@ को तुलनामा — साथै हरेक महिना %3$lld भिडियो।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso dá **%1$@ por vídeo**, contra %2$@ uma única vez — mais %3$lld vídeos todo mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یعنی **فی ویڈیو %1$@**، بمقابلہ ایک بار %2$@ — اور ہر ماہ %3$lld ویڈیوز۔"
+          }
+        }
+      }
+    },
     "That's **%@ a video**, against %@ one-time - plus ^[%lld credit](inflect: true) every month.": {
       "extractionState": "manual",
       "localizations": {
@@ -27919,6 +29254,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "یعنی **فی ویڈیو %1$@**، ایک بار کے %2$@ کے مقابلے میں — اور ہر ماہ ^[%3$lld کریڈٹ](inflect: true)۔"
+          }
+        }
+      }
+    },
+    "That's **%@ a video**, against %@ one-time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أي **%1$@ للفيديو**، مقابل %2$@ لمرة واحدة."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অর্থাৎ **প্রতি ভিডিও %1$@**, বনাম এককালীন %2$@।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind **%1$@ pro Video**, gegenüber %2$@ einmalig."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's **%1$@ a video**, against %2$@ one-time."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eso es **%1$@ por vídeo**, frente a %2$@ una sola vez."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soit **%1$@ la vidéo**, contre %2$@ en une fois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यानी **%1$@ प्रति वीडियो**, बनाम %2$@ एकमुश्त।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Itu **%1$@ per video**, dibanding %2$@ sekali bayar."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1本あたり**%1$@**、一度きりの%2$@と比べて。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अर्थात् **प्रति भिडियो %1$@**, एकपटकको %2$@ को तुलनामा।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso dá **%1$@ por vídeo**, contra %2$@ uma única vez."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یعنی **فی ویڈیو %1$@**، بمقابلہ ایک بار %2$@۔"
           }
         }
       }
@@ -28506,6 +29918,83 @@
         }
       }
     },
+    "Top-ups never expire": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الأرصدة الإضافية لا تنتهي صلاحيتها"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "টপ-আপ কখনও মেয়াদোত্তীর্ণ হয় না"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufladungen verfallen nie"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top-ups never expire"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las recargas nunca caducan"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les recharges n’expirent jamais"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टॉप-अप कभी समाप्त नहीं होते"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isi ulang tidak pernah kedaluwarsa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加分は無期限"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टप-अप कहिल्यै म्याद सकिँदैन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As recargas nunca expiram"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹاپ اپ کبھی ختم نہیں ہوتے"
+          }
+        }
+      }
+    },
     "Total": {
       "localizations": {
         "ar": {
@@ -29062,6 +30551,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "لامحدود AI چیٹس"
+          }
+        }
+      }
+    },
+    "Unlimited videos, no daily cap": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فيديوهات غير محدودة، بلا حد يومي"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সীমাহীন ভিডিও, দৈনিক সীমা নেই"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unbegrenzte Videos, kein Tageslimit"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlimited videos, no daily cap"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vídeos ilimitados, sin límite diario"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vidéos illimitées, sans limite quotidienne"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "असीमित वीडियो, कोई दैनिक सीमा नहीं"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video tanpa batas, tanpa batas harian"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画無制限、1日の上限なし"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "असीमित भिडियो, दैनिक सीमा छैन"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vídeos ilimitados, sem limite diário"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لامحدود ویڈیوز، کوئی روزانہ حد نہیں"
           }
         }
       }
@@ -33530,6 +35096,237 @@
         }
       }
     },
+    "You're out of videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم تعد لديك فيديوهات"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ভিডিও শেষ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Videos mehr übrig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te has quedado sin vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous n’avez plus de vidéos"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपके वीडियो ख़त्म हो गए"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video kamu habis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画がなくなりました"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंका भिडियो सकिए"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus vídeos acabaram"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی ویڈیوز ختم ہو گئیں"
+          }
+        }
+      }
+    },
+    "You're out of videos for now": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم تعد لديك فيديوهات في الوقت الحالي"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপাতত আপনার ভিডিও শেষ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorerst keine Videos mehr"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of videos for now"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por ahora te has quedado sin vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous n’avez plus de vidéos pour le moment"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़िलहाल आपके वीडियो ख़त्म हो गए"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video kamu habis untuk saat ini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今は動画がなくなりました"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिलेका लागि तपाईंका भिडियो सकिए"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus vídeos acabaram por enquanto"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فی الحال آپ کی ویڈیوز ختم ہو گئیں"
+          }
+        }
+      }
+    },
+    "You're out of videos — get more": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم تعد لديك فيديوهات — احصل على المزيد"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ভিডিও শেষ — আরও নিন"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Videos mehr – mehr holen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're out of videos — get more"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te has quedado sin vídeos: consigue más"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus de vidéos — en obtenir"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपके वीडियो ख़त्म — और लें"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video habis — tambah lagi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画がなくなりました — 追加する"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंका भिडियो सकिए — थप लिनुहोस्"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus vídeos acabaram — obtenha mais"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی ویڈیوز ختم — مزید حاصل کریں"
+          }
+        }
+      }
+    },
     "You've used today's free video": {
       "extractionState": "manual",
       "localizations": {
@@ -33680,6 +35477,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کے کریڈٹ فی الحال ختم ہو گئے۔ Pro میں ماہانہ 200 کریڈٹ — 20 ویڈیوز۔"
+          }
+        }
+      }
+    },
+    "You've used your videos for now. Pro gives you more every month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لقد استخدمت فيديوهاتك في الوقت الحالي. يمنحك Pro المزيد كل شهر."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপাতত আপনার ভিডিও শেষ। Pro প্রতি মাসে আরও দেয়।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Videos sind vorerst aufgebraucht. Pro gibt dir jeden Monat mehr."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used your videos for now. Pro gives you more every month."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Has usado tus vídeos por ahora. Pro te da más cada mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez utilisé vos vidéos pour le moment. Pro vous en donne plus chaque mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फ़िलहाल आपके वीडियो ख़त्म हो गए हैं। Pro हर महीने और देता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video kamu sudah terpakai untuk saat ini. Pro memberi lebih banyak tiap bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今の動画をすべて使いました。Proなら毎月さらに使えます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अहिलेका लागि तपाईंका भिडियो सकिए। Pro ले हरेक महिना थप दिन्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você usou seus vídeos por enquanto. O Pro dá mais todo mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فی الحال آپ کی ویڈیوز ختم ہو گئی ہیں۔ Pro ہر ماہ مزید دیتا ہے۔"
           }
         }
       }
@@ -34527,6 +36401,119 @@
         }
       }
     },
+    "Your plan adds %lld videos every month.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تضيف خطتك %lld فيديو كل شهر."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার প্ল্যান প্রতি মাসে %lld ভিডিও যোগ করে।"
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Dein Tarif fügt jeden Monat %lld Video hinzu."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Dein Tarif fügt jeden Monat %lld Videos hinzu."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Your plan adds %lld video every month."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Your plan adds %lld videos every month."
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Tu plan añade %lld vídeo cada mes."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Tu plan añade %lld vídeos cada mes."
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre offre ajoute %lld vidéos chaque mois."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका प्लान हर महीने %lld वीडियो जोड़ता है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paketmu menambah %lld video tiap bulan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プランでは毎月%lld本の動画が追加されます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको योजनाले हरेक महिना %lld भिडियो थप्छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano adiciona %lld vídeos todo mês."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا پلان ہر ماہ %lld ویڈیوز شامل کرتا ہے۔"
+          }
+        }
+      }
+    },
     "Your plan adds ^[%lld credit](inflect: true) every month.": {
       "extractionState": "manual",
       "localizations": {
@@ -34671,6 +36658,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "آپ کا پلان فعال ہے۔ ماہانہ کریڈٹس جتنے اجازت دیں اتنا بنائیں۔"
+          }
+        }
+      }
+    },
+    "Your plan is active. Create as much as your monthly videos allow.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خطتك مفعّلة. أنشئ بقدر ما تسمح به فيديوهاتك الشهرية."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার প্ল্যান সক্রিয়। মাসিক ভিডিওর সীমা পর্যন্ত তৈরি করুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Tarif ist aktiv. Erstelle so viel, wie deine monatlichen Videos zulassen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your plan is active. Create as much as your monthly videos allow."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu plan está activo. Crea todo lo que te permitan tus vídeos mensuales."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre offre est active. Créez autant que vos vidéos mensuelles le permettent."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपका प्लान सक्रिय है। अपने मासिक वीडियो की सीमा तक बनाएँ।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paketmu aktif. Berkarya sebanyak yang diizinkan video bulananmu."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プランは有効です。月あたりの動画数の範囲で作成できます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तपाईंको योजना सक्रिय छ। मासिक भिडियोले दिने सीमासम्म बनाउनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano está ativo. Crie o quanto seus vídeos mensais permitirem."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کا پلان فعال ہے۔ اپنی ماہانہ ویڈیوز کی حد تک بنائیں۔"
           }
         }
       }
@@ -37221,6 +39285,83 @@
         }
       }
     },
+    "re-edits free": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة التحرير مجانية"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "পুনঃসম্পাদনা বিনামূল্যে"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachbearbeitungen gratis"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "re-edits free"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "reediciones gratis"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "remontages gratuits"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "री-एडिट मुफ़्त"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "edit ulang gratis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再編集は無料"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पुन: सम्पादन नि:शुल्क"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "reedições grátis"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دوبارہ ایڈٹ مفت"
+          }
+        }
+      }
+    },
     "still working — last update %@ ago": {
       "localizations": {
         "ar": {
@@ -37715,6 +39856,83 @@
           "stringUnit": {
             "state": "translated",
             "value": "پھر %@/%@"
+          }
+        }
+      }
+    },
+    "videos": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فيديوهات"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ভিডিও"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "videos"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vídeos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vidéos"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वीडियो"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "video"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "भिडियो"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vídeos"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ویڈیوز"
           }
         }
       }
