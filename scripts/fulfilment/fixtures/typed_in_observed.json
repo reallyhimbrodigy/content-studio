@@ -1,0 +1,16 @@
+{
+  "_why": "THE DOCUMENTED LIST IS DERIVED FROM TRAFFIC, NOT ASSERTED AT IT (Zac, 2026-09-20). The list in request-taxonomy.js field 8 was hand-written: it named six languages nobody had ever typed (id, ja, ko, nl, zh, ta-en) and omitted seven that people had (fr, fa, bn, he, pl, tr, ur = 9 of 101 rows, 8.9%). A list written from assumption is a prior pointing the model away from what its users actually write.",
+  "_source": "negotiation_decisions, all rows",
+  "_measured_at": "2026-09-20T22:15:00Z",
+  "_rows": 107,
+  "_absent": 0,
+  "_unknown": 0,
+  "_note": "Counts span the vocabulary seam at 5800071 and are normalized to BCP-47 by lib/language-tag.js, so `English` (79) and `en` (6) are ONE bucket of 85.",
+  "_not_closed": "typed_in is {type:'string'}, never an enum. A language not here MUST be written as its own tag rather than forced into one of these — the list is what has been SEEN, not what is allowed.",
+  "tags": {
+    "en": 85, "es": 5, "ar": 2, "fa": 2, "fr": 2, "hi": 2, "hi-Latn": 2,
+    "bn": 1, "he": 1, "pl": 1, "pt": 1, "ru": 1, "tr": 1, "ur": 1
+  },
+  "extra": ["mixed"],
+  "_extra_why": "`mixed` is a real answer the model needs and is not a language, so it sits beside the derived tags rather than inside them."
+}

@@ -88,10 +88,15 @@ the platter offers it with no such steer.
   value, so a three-way shape split would be invented.
 - **cut, sfx and zoom have no control re-read**: their where/size/hold_s are
   unmeasured, not zero.
-- **TWO DENOMINATORS, kept separate.** Timing/purpose/on-screen come from the
-  153-beat index (337 placements, 10 videos). Size/where/hold_s come from the
-  control re-read (463 placements). They are different passes over the same 10
-  videos and their totals do not reconcile.
+- **THE PER-FAMILY PLACEMENT COUNTS IN THIS FILE ARE SUPERSEDED** by
+  `measured/REFERENCE_RATES.json` in the worker repo, which is the one table.
+  They are left in place because the per-family SHAPE readings here (where,
+  size, hold_s, over_subject) are the atlas's own contribution and still stand —
+  but any RATE taken from these counts is superseded, and the reason is bigger
+  than the denominator that was being argued about: the 294 beats are TWO
+  ANNOTATORS with ZERO shared vocabulary, not two readings, so the totals here
+  never could reconcile and averaging them produced rates for families one
+  annotator had no word for.
 - **Provenance caveat, on the record:** the shipped 153-beat index cannot have
   come from the shipped annotator, so its own origin is not fully established.
   The mechanical_cuts are detector output and are solid; the beat purposes and

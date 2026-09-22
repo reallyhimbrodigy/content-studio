@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
 const { signRead, signReadFields } = require('./lib/sign-on-read');
+// Last identity-duplication read. null until the boot pass runs — NOT zero,
+// because 'never looked' and 'looked and found none' must not render alike.
+let identityDuplication = null;
 // One line per failure, cause included — see lib/log-error.js for why a bare
 // object handed to console.error stores a record that ends at `{`.
 const { errLine } = require('./lib/log-error');
@@ -353,6 +356,7 @@ const CREDITS_DEBIT_ENABLED =
 const AGENTIC_ENABLED =
   String(process.env.AGENTIC_ENABLED || '').trim() === '1';
 const AGENTIC_BASE_URL = String(process.env.AGENTIC_BASE_URL || '').trim();
+const { mintValidateToken } = require('./lib/validate-token');
 const _agenticPlan = require('./lib/agentic-plan');
 const _creditsBatch = require('./lib/credits-batch');
 
@@ -365,8 +369,18 @@ const _creditsBatch = require('./lib/credits-batch');
  * Fails closed: no base URL means no agentic route, however the flag reads. An
  * armed flag pointing at nothing would 500 every render.
  */
+/**
+ * IS THE AGENTIC ROUTE ARMED? One predicate, both call sites — routeForNewJob()
+ * below and the collection sweep's scheduling in the boot block. Hoisted so
+ * there is exactly ONE switch, which is the property the sweep's own comment
+ * was defending when it chose to be dark-by-structure instead of flag-checked.
+ */
+function agenticRouteArmed() {
+  return AGENTIC_ENABLED && Boolean(AGENTIC_BASE_URL);
+}
+
 function routeForNewJob() {
-  return (AGENTIC_ENABLED && AGENTIC_BASE_URL) ? 'agentic' : 'handler';
+  return agenticRouteArmed() ? 'agentic' : 'handler';
 }
 const _refundLeg = require('./lib/refund-leg');
 
@@ -3084,7 +3098,7 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null, parentJobId = null, rootJobId = null }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -3225,6 +3239,21 @@ const server = http.createServer((req, res) => {
     // it to an unawaited UPDATE leaves a window in which a duplicate submit
     // sees no conflict — the exact class this column exists to close.
     if (clientMessageId) insertRow.client_message_id = clientMessageId;
+    // LINEAGE ON THE INSERT, FOR EXACTLY THE REASON ABOVE. parent_job_id was
+    // being written by the DISPATCH call (dispatchJobToModal({ parentJobId }))
+    // rather than here, which leaves a window where the row exists with no
+    // parent: a versions read in that window places the re-edit as its own
+    // ROOT instead of a version of its parent, and the one-at-a-time guard —
+    // keyed on root_job_id — does not see it under the right root at all.
+    // Same check-then-act shape as client_message_id, closed the same way.
+    //
+    // root_job_id is passed explicitly for a re-edit (the parent's root, so the
+    // ordinal is anchored at the top of the tree and siblings do not collide).
+    // An ORIGINAL passes nothing and a BEFORE INSERT trigger self-roots it to
+    // its own id — the one case that cannot be done from here, because the id
+    // may be minted by the database.
+    if (parentJobId) insertRow.parent_job_id = parentJobId;
+    if (rootJobId) insertRow.root_job_id = rootJobId;
 
     const { data, error } = await supabaseAdmin
       .from('video_jobs')
@@ -4319,6 +4348,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
       // worker-auth secret is caught loudly instead of running open.
       modal_run_secret: !!process.env.MODAL_RUN_SECRET,
       modal_callback_secret: !!process.env.MODAL_CALLBACK_SECRET,
+      // Presence only, same contract as the two above. It is here BEFORE the
+      // boot gate requires it, deliberately: the fail-closed array crashes the
+      // process when a secret is missing, so the honest order is ship the
+      // reader, confirm the secret is actually set in Render from outside, then
+      // arm. The existing gate's own deploy note says the same thing.
+      modal_validate_secret: !!process.env.MODAL_VALIDATE_SECRET,
       // CDN SIGNING, PROVEN FROM INSIDE THE PROCESS (2026-08-23).
       //
       // "the env var is set" is NOT the question. cloudfront.js computes
@@ -4427,7 +4462,8 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // and permanently ungrantable, which is exactly what happened at
           // env=245 with 882 users on 246. Reported as three fields rather
           // than one so the gap is visible rather than inferable.
-          creditsDebitFloor: (() => {
+          identityDuplication,
+        creditsDebitFloor: (() => {
             const env = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
             const envOk = Number.isInteger(env);
             return {
@@ -5581,6 +5617,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // PROGRESSIVE_PLAYBACK_ENABLED, accepts "1"/"true"; off → client never shows
           // the live preview even if a manifest arrives.
           progressive_playback_enabled: progressivePlaybackEnabled(),
+          // WORKER AUTH FOR THE CLIENT'S OWN /validate CALL, under EXACTLY the
+          // name build 256's UsageService decodes (`let validate_token: String?`,
+          // UsageService.swift:50). /validate is the one worker endpoint the app
+          // hits directly, so it cannot carry a server-side secret — and the
+          // producer for this field was never written on ANY branch, which is
+          // why 11 of 11 real calls arrived unauthenticated.
+          //
+          // Per-user and short-lived, never the shared secret: a lifted token is
+          // bound to one user_id and dies within the hour. NULL when
+          // MODAL_VALIDATE_SECRET is unset — the field is then absent, the app's
+          // validateToken stays nil, and /validate is no worse off than today.
+          // It NEVER falls back to MODAL_RUN_SECRET; that would buy an attacker
+          // arbitrary GPU dispatch from any app binary.
+          validate_token: mintValidateToken(u.id),
           // §4 sample-clip demo (env-driven, inert until SAMPLE_DEMO_ENABLED=1).
           // The first-run hero offers "Watch Promptly edit this" only when this is
           // on AND a clip is configured. Two flag-selectable modes:
@@ -5641,14 +5691,21 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // 1. Collect S3 keys to clean up post-deletion.
         const { data: jobs, error: jobsErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, video_url, rendered_video_url, thumbnail_url, hls_manifest_url')
+          // result_url RIDES HERE TOO. Five URL columns exist on video_jobs and
+          // this capture read four — every result_url object was left in the
+          // bucket, unattributable, on every account deletion. Latent today
+          // (result_url is NULL on all 12,673 rows) and free to close, which is
+          // exactly when to close it rather than after it starts carrying data.
+          .select('id, video_url, rendered_video_url, thumbnail_url, '
+                  + 'hls_manifest_url, result_url')
           .eq('user_id', userId);
         if (jobsErr) {
           console.error('[account] could not list jobs', jobsErr);
         }
         const s3Keys = [];
         for (const job of jobs || []) {
-          for (const urlStr of [job.video_url, job.rendered_video_url, job.thumbnail_url, job.hls_manifest_url]) {
+          for (const urlStr of [job.video_url, job.rendered_video_url, job.thumbnail_url,
+            job.hls_manifest_url, job.result_url]) {
             if (!urlStr) continue;
             try {
               const u = new URL(urlStr);
@@ -5674,10 +5731,31 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // step 3 fails with a foreign-key violation and the user is left with
         // an account they cannot delete, which is an App Store review problem
         // as much as a product one.
+        // free_credit_grants AND free_credit_periods GO WITH THE ACCOUNT.
+        // Neither has a foreign key to auth.users, so neither is reached by the
+        // auth delete and neither was in this batch: measured 2026-09-21, 12
+        // rows in each still carried the user_id of an account already deleted.
+        // A deletion that leaves the person named in two tables is not a
+        // deletion, and this is the App Store / "delete my account" surface.
+        //
+        // GRANTS ARE SCRUBBED, NOT DELETED — and the two are not interchangeable
+        // (Zac 2026-09-21, reversing a first pass that deleted them).
+        // free_credit_grants.device_id is the PRIMARY KEY and the anti-abuse
+        // record: install-seen.js looks a device up by it to decide whether that
+        // install already took its 30 free credits. DELETE the row and the
+        // device claims them again by signing up afresh; NULL the user_id and
+        // the grant history survives without naming a deleted person. The
+        // column was made nullable for exactly this
+        // (migration free_credit_grants_user_id_nullable).
+        //
+        // free_credit_periods IS deleted: it is per-user grant history with no
+        // device column and no anti-abuse role, so nothing survives its removal.
         const deleteResults = await Promise.allSettled([
           supabaseAdmin.from('video_jobs').delete().eq('user_id', userId),
           supabaseAdmin.from('chats').delete().eq('user_id', userId),
           supabaseAdmin.from('usage_events').delete().eq('user_id', userId),
+          supabaseAdmin.from('free_credit_grants').update({ user_id: null }).eq('user_id', userId),
+          supabaseAdmin.from('free_credit_periods').delete().eq('user_id', userId),
           supabaseAdmin.from('profiles').delete().eq('id', userId),
         ]);
         for (const r of deleteResults) {
@@ -7546,7 +7624,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // Load the original job — must exist, belong to this user, and have a source URL
         const { data: orig, error: origErr } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan')
+          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot, pipeline, agentic_plan, root_job_id')
           .eq('id', originalJobId)
           .single();
         if (origErr || !orig) {
@@ -7614,8 +7692,19 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // child, which is true, and the agentic route refuses on it below.
           pipeline: (orig.pipeline === 'handler' || orig.pipeline === 'agentic')
             ? orig.pipeline : null,
+          // LINEAGE AT CREATION. These used to reach the row only through
+          // dispatchJobToModal's parentJobId, i.e. after the insert.
+          parentJobId: originalJobId,
+          // The parent's ROOT, not the parent's id: lineage is a tree (114
+          // re-edits over 97 parents, 29 of them children of re-edits, up to 4
+          // siblings on one parent), so anchoring at the parent would give two
+          // siblings the same ordinal. orig.root_job_id is backfilled for every
+          // existing row; the fallback to orig.id is for a parent written
+          // before this column, and it is correct there because such a row IS
+          // a root.
+          rootJobId: orig.root_job_id || orig.id,
         });
-        console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
+        console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId} root=${orig.root_job_id || orig.id})`);
 
         await dispatchJobToModal({
           pushProgressToSSE,
@@ -8900,7 +8989,20 @@ if (require.main === module) {
   // open. This is ALSO the runtime drift-guard: a "preserve current values"
   // sweep that drops either secret fails the next boot instead of reopening the
   // door. Deploy note: set both secrets in Render env BEFORE deploying this.
-  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET']) {
+  // MODAL_VALIDATE_SECRET joins the array (2026-09-21). It signs the per-user
+  // /validate token minted on /api/usage, and without it mintValidateToken
+  // returns null — the field vanishes from the snapshot, every shipped client's
+  // validateToken goes nil, and /validate is anonymous again. That is a guard
+  // disabling itself when misconfigured, which is the silent-inert pattern this
+  // array exists to refuse.
+  //
+  // ARMED ONLY AFTER THE SECRET WAS CONFIRMED PRESENT IN RENDER, not before:
+  // /api/health read modal_validate_secret:true at rev f322ce6 first. Adding a
+  // key here while it is unset does not fail closed, it fails to BOOT — a crash
+  // loop, which is why the deploy note above says set the secret first. The
+  // presence boolean on /api/health exists so that is checkable from outside
+  // rather than assumed.
+  for (const k of ['MODAL_CALLBACK_SECRET', 'MODAL_RUN_SECRET', 'MODAL_VALIDATE_SECRET']) {
     if (!process.env[k]) {
       console.error(`[boot] FATAL: ${k} not set — refusing to start (fail-closed worker auth).`);
       process.exit(1);
@@ -9046,11 +9148,25 @@ if (require.main === module) {
     // this process, which is the entire point: the completion tail once sat
     // behind an in-process await that no deploy survived, and main auto-deploys.
     //
-    // DARK BY STRUCTURE, not by a flag check. The sweep selects on
-    // pipeline='agentic', and nothing carries that value until routeForNewJob()
-    // says so. With AGENTIC_ENABLED unset it reads zero rows and does zero work
-    // — there is no second switch here to forget to arm, and no branch that
-    // behaves differently once the route goes live.
+    // DARK BY STRUCTURE — and "does zero work" WAS MEASURABLY FALSE, which is
+    // why this is now also gated. The sweep selects on pipeline='agentic', and
+    // nothing has ever carried that value: 11,570 rows NULL, 1,101 'handler',
+    // ZERO 'agentic' across the column's whole life. Reading zero ROWS is not
+    // doing zero WORK — the query still plans, scans and filters every pass.
+    // Measured 2026-09-21 from pg_stat_statements: 15,568 calls, 825 shared
+    // buffer blocks PER CALL, 12.8M blocks and 22.8 minutes of database time,
+    // all of it hunting a population that has never had a member. A clean zero
+    // read as a free zero.
+    //
+    // THE ORIGINAL ARGUMENT IS KEPT, because it was right: a second, INDEPENDENT
+    // switch is a switch to forget to arm. So the gate below is not a new one —
+    // it is agenticRouteArmed(), the SAME predicate routeForNewJob() uses to
+    // decide what to write. One predicate, two call sites; arming the route
+    // still arms both, and there is nothing extra to remember.
+    //
+    // It is evaluated at boot, which is when it can change: AGENTIC_ENABLED is
+    // an environment value, and an env flip is not live until a redeploy here
+    // anyway.
     const { sweepAgentic } = require('./lib/agentic-dispatch');
     let agenticBusy = false;
     const runAgenticSweep = async () => {
@@ -9064,8 +9180,15 @@ if (require.main === module) {
         agenticBusy = false;
       }
     };
-    setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
-    setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+    if (agenticRouteArmed()) {
+      setTimeout(runAgenticSweep, 90 * 1000);   // boot pass, offset from the others
+      setInterval(runAgenticSweep, 60 * 1000);  // an edit finishing waits <=1 min
+    } else {
+      console.log('[agentic] route unarmed (AGENTIC_ENABLED/AGENTIC_BASE_URL) '
+        + '— collection sweep NOT scheduled. It scanned for pipeline=agentic '
+        + 'rows that have never existed: 825 shared blocks/call, 22.8 min of DB '
+        + 'time. Arming the route schedules it again, same predicate.');
+    }
 
     // Chat-attach backstop (SERVER_CHAT_ATTACH_SPEC §3). 498 completed videos
     // across 441 users are in NO chat — 140 in the last 7 days — because the
@@ -9093,6 +9216,61 @@ if (require.main === module) {
     };
     setTimeout(runChatAttachSweep, 75 * 1000); // boot pass, offset from the others
     setInterval(runChatAttachSweep, 10 * 60 * 1000);
+
+    // IDENTITY DUPLICATION (2026-09-21). Second-device sign-in depends on
+    // Supabase's automatic email linking: a Google identity carrying a verified
+    // email that already has an account attaches to THAT account instead of
+    // minting a second one. Measured today: 0 emails on 2+ accounts across
+    // 20,544. Proven for the population, not guaranteed by anything we control.
+    //
+    // If that setting is ever changed the failure is SILENT — a user quietly
+    // gets a second account and finds out when their videos are missing. There
+    // is no error, no 4xx, nothing to alert on. So the invariant is read on a
+    // schedule and becomes a number that moves.
+    //
+    // COUNTS ONLY. The RPC returns no email addresses; this check needs to know
+    // THAT duplication exists, not who, and putting addresses in a log or a
+    // health payload would be a worse trade than the check is worth.
+    let identityDupBusy = false;
+    const runIdentityDuplicationCheck = async () => {
+      if (identityDupBusy || !supabaseAdmin) return;
+      identityDupBusy = true;
+      try {
+        const { data, error } = await supabaseAdmin.rpc('identity_duplication_check');
+        const row = Array.isArray(data) ? data[0] : data;
+        if (error || !row) {
+          // A FAILED READ IS NOT ZERO. Leave the previous value standing and say
+          // so — a check that reports 0 when it could not look is worse than no
+          // check, because it reads as a clean result.
+          identityDuplication = { ...(identityDuplication || {}), ok: false,
+            error: (error && error.message) || 'no row', at: new Date().toISOString() };
+          console.error('[identity-dup] CANNOT READ —', (error && error.message) || 'no row');
+          return;
+        }
+        identityDuplication = {
+          ok: true,
+          duplicateEmails: Number(row.duplicate_emails || 0),
+          worstCount: Number(row.worst_count || 0),
+          usersWithEmail: Number(row.users_with_email || 0),
+          at: new Date().toISOString(),
+        };
+        if (identityDuplication.duplicateEmails > 0) {
+          console.error(`[ALERT] identity duplication: ${identityDuplication.duplicateEmails} email(s) `
+            + `now on 2+ accounts (worst ${identityDuplication.worstCount}) out of `
+            + `${identityDuplication.usersWithEmail}. Automatic email linking may have been turned `
+            + `off — a second-device sign-in would mint a NEW account instead of reaching the `
+            + `existing one, and the user finds out when their videos are missing.`);
+        }
+      } catch (e) {
+        identityDuplication = { ...(identityDuplication || {}), ok: false,
+          error: (e && e.message) || 'threw', at: new Date().toISOString() };
+        console.error('[identity-dup] threw:', e && e.message);
+      } finally {
+        identityDupBusy = false;
+      }
+    };
+    setTimeout(runIdentityDuplicationCheck, 100 * 1000);      // boot pass, offset from the others
+    setInterval(runIdentityDuplicationCheck, 60 * 60 * 1000); // hourly is plenty for a setting change
 
     // API outcome ledger (2026-08-03): every non-2xx, by route and by USER, into
     // analytics_events once a minute. Before this, the 34 non-job routes had no
