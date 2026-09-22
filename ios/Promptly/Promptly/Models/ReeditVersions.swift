@@ -60,8 +60,40 @@ struct ReeditVersionsResponse: Decodable {
 struct ReeditInFlight: Decodable, Equatable {
     let error: String
     let status: String              // "queued" | "processing" | "needs_input"
-    let in_flight_job_id: String
-    let root_job_id: String
+    /// The live job holding the root. The server spells this `job_id`; this
+    /// model spelled it `in_flight_job_id` and the two never met.
+    let jobId: String?
+    let rootJobId: String?
+    /// The ordinal the live job will take if it completes.
+    let version: Int?
+
+    /// EVERY FIELD BUT `status` IS OPTIONAL, ON PURPOSE.
+    ///
+    /// This decoded behind `try?` in APIService — so a shape mismatch did not
+    /// throw, it produced nil, the `if let` fell through, and the caller got a
+    /// generic "Re-edit failed". The typed 409 that the composer's parked and
+    /// rendering states are built on would simply never have been produced, and
+    /// nothing would have said so. Verified against the real body before fixing:
+    ///   keyNotFound "in_flight_job_id" — the server sends `job_id`.
+    ///
+    /// `status` is the only field that changes what the user is told, so losing
+    /// an informational id must never cost the typed error again.
+    init(from decoder: Decoder) throws {
+        let c = try? decoder.container(keyedBy: CodingKeys.self)
+        error  = ((try? c?.decodeIfPresent(String.self, forKey: .error)) ?? nil) ?? "reedit_in_flight"
+        status = ((try? c?.decodeIfPresent(String.self, forKey: .status)) ?? nil) ?? ""
+        // Accept the server's spelling first, then this model's old one, so a
+        // client and a server that disagree still produce a typed error.
+        let id = ((try? c?.decodeIfPresent(String.self, forKey: .job_id)) ?? nil)
+            ?? ((try? c?.decodeIfPresent(String.self, forKey: .in_flight_job_id)) ?? nil)
+        jobId = id
+        rootJobId = ((try? c?.decodeIfPresent(String.self, forKey: .root_job_id)) ?? nil)
+        version = ((try? c?.decodeIfPresent(Int.self, forKey: .version)) ?? nil)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case error, status, job_id, in_flight_job_id, root_job_id, version
+    }
 
     /// needs_input is IN the in-flight set deliberately — 19 rows in production,
     /// every one a re-edit, 17% of all re-edits. A user sitting on an unanswered

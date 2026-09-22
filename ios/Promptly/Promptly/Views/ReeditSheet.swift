@@ -213,10 +213,29 @@ struct ReeditSheet: View {
         } catch let APIError.reeditInFlight(inFlight) {
             // Read the state from the payload rather than inferring it.
             if inFlight.isParkedOnAQuestion {
-                composer = .parked(question: "This video is waiting on an answer before it can be re-edited.",
-                                   retryJobId: inFlight.in_flight_job_id)
+                // THE 409 SAYS PARKED, NOT WHAT WAS ASKED. It carries `status`
+                // and an id, never the question — so fetch the job and park on
+                // the REAL text and the REAL target.
+                //
+                // The previous version used the in-flight id as the retry
+                // target, which is the parked row itself: a row with no
+                // rendered video, because the plan-diff failing to produce a
+                // plan is why it asked. The server's own rule is the parent —
+                // `retryTargetFor` returns parent_job_id and returns null
+                // rather than ever retrying a row against itself.
+                if let live = inFlight.jobId,
+                   let fields = try? await APIService.shared.jobFields(jobId: live),
+                   let q = fields.clarification_question, !q.isEmpty,
+                   let retry = fields.clarification_retry_job_id {
+                    composer = .parked(question: q, retryJobId: retry)
+                } else {
+                    // Parked, but the question could not be read. Say only what
+                    // is known — and offer no reply target rather than a wrong
+                    // one, since a reply to the parked row cannot succeed.
+                    composer = .failed("This video is waiting on an earlier question. Open it from your library to answer that first.")
+                }
             } else {
-                composer = .lockedRendering(inFlightJobId: inFlight.in_flight_job_id)
+                composer = .lockedRendering(inFlightJobId: inFlight.jobId ?? jobId)
             }
         } catch {
             composer = .failed(error.localizedDescription)
