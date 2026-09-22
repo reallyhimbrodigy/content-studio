@@ -72,6 +72,12 @@ func attempt(_ label: String, _ json: String) {
 }
 attempt("absent", "{\\(base)}")
 attempt("object", "{\\(base),\\"videos_limit\\":{\\"free\\":3,\\"pro\\":50,\\"max\\":200}}")
+// THE SHAPE MAIN ACTUALLY EMITS since ca74efee — all four keys, every time.
+// videosLimitFor returns {free, pro, max, own}; `own` is the caller's own
+// allowance and is NULL, not 0 and not the smallest tier, when the profile row
+// is unreadable.
+attempt("live",   "{\\(base),\\"videos_limit\\":{\\"free\\":3,\\"pro\\":50,\\"max\\":200,\\"own\\":50}}")
+attempt("ownnull","{\\(base),\\"videos_limit\\":{\\"free\\":3,\\"pro\\":50,\\"max\\":200,\\"own\\":null}}")
 attempt("scalar", "{\\(base),\\"videos_limit\\":50}")
 attempt("null",   "{\\(base),\\"videos_limit\\":null}")
 attempt("string", "{\\(base),\\"videos_limit\\":\\"fifty\\"}")
@@ -92,7 +98,7 @@ printf '%s\n' "$OUT" | python3 -c '
 import sys
 lines=[l for l in sys.stdin.read().splitlines() if l.startswith(("OK|","THREW|"))]
 fails=[]
-EXPECT={"absent","object","scalar","null","string","array","nested"}
+EXPECT={"absent","object","live","ownnull","scalar","null","string","array","nested"}
 seen=set()
 for l in lines:
     p=l.split("|")
@@ -108,6 +114,26 @@ if missing:
     fails.extend(missing)
 # The scalar must actually be READ, not merely survived: dropping it on the
 # floor would pass a throws-check while still losing the number.
+# THE LIVE SHAPE MUST BE FULLY READ, not merely survived.
+live=[l for l in lines if l.startswith("OK|live|")]
+if live and ("own=50" not in live[0] or "pro=50" not in live[0]):
+    print("  ✗ the live four-key object decodes but own and the tiers are not both read")
+    fails.append("live-values")
+elif live:
+    print("  ✓ live: own AND the per-tier numbers are both read")
+
+# own=null is the unreadable-profile case. The TIERS must survive it — the
+# paywall sells Pro and Max to exactly the user whose own allowance is unknown,
+# so losing them here would blank the screen that matters most. And `own` must
+# stay nil rather than quietly becoming the smallest tier: 3 shown to a Max
+# subscriber is worse than showing nothing.
+onull=[l for l in lines if l.startswith("OK|ownnull|")]
+if onull and ("own=nil" not in onull[0] or "pro=50" not in onull[0]):
+    print("  ✗ own=null either leaks a value or takes the per-tier numbers down with it")
+    fails.append("ownnull-values")
+elif onull:
+    print("  ✓ own=null: stays nil, and the per-tier numbers still read")
+
 scal=[l for l in lines if l.startswith("OK|scalar|")]
 if scal and "own=50" not in scal[0]:
     print("  ✗ scalar decodes but its value is discarded — the account screen would show nothing")
