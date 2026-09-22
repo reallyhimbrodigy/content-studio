@@ -317,6 +317,20 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
+            // 62-65 prove the poster rule by rendering it. Every one of these
+            // states drew a black rectangle before the fix.
+            case 62: bleed("POSTER — uploading: the clip shows, not a black box") {
+                EditorView().task { Self.seedPosterChat(progress: 0, step: "Uploading your clip…", landscape: false, diskOnly: false) }
+            }
+            case 63: bleed("POSTER — rendering ~50%: same card, same poster") {
+                EditorView().task { Self.seedPosterChat(progress: 52, step: "Cutting to the beat…", landscape: false, diskOnly: false) }
+            }
+            case 64: bleed("POSTER — landscape source keeps its shape, no pillarbox") {
+                EditorView().task { Self.seedPosterChat(progress: 52, step: "Cutting to the beat…", landscape: true, diskOnly: false) }
+            }
+            case 65: bleed("POSTER — relaunch mid-render: poster from disk alone") {
+                EditorView().task { Self.seedPosterChat(progress: 37, step: "Picking up where it left off…", landscape: false, diskOnly: true) }
+            }
             case 61: bleed("RE-EDIT — the video, the typed change under it, the new one arriving") {
                 EditorView()
                     .task { Self.seedReeditInFlightChat() }
@@ -698,6 +712,71 @@ struct PayoffSnapshotHarnessView: View {
         msgs.append(SerializedMessage(from: reeditResultMock))
         ChatStore.shared.debugSeed(Chat(id: "store-reedit", title: "Launch clip",
                                         messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// THE POSTER STATES. One seed, four poses.
+    ///
+    /// `diskOnly` is the relaunch case and is the important one: it writes the
+    /// poster to the caches directory under the job id and then hands the card
+    /// NO in-memory image, which is exactly the state after a kill — if the card
+    /// still shows the clip, it read it from disk by job id.
+    @MainActor
+    static func seedPosterChat(progress: Int, step: String, landscape: Bool, diskOnly: Bool) {
+        let jobId = "poster-\(landscape ? "land" : "port")-\(diskOnly ? "disk" : "mem")"
+        let poster = landscape ? Self.posterLandscape() : Self.posterPortrait()
+        if let poster { SourcePoster.save(poster, for: jobId) }
+
+        var msgs: [SerializedMessage] = []
+        var ask = ChatMessage(role: .user, content: "Fast cuts, big captions")
+        ask.isOnboarding = false
+        msgs.append(SerializedMessage(from: ask))
+
+        var working = ChatMessage(role: .assistant, content: "")
+        working.jobId = jobId
+        working.jobStatus = progress == 0 ? "queued" : "processing"
+        working.jobProgress = progress
+        working.stepMessage = step
+        let t = StageTimeline(mode: "full", startWith: progress == 0 ? "upload_local" : "analyze")
+        if progress > 0 { t.receive(stepToken: "render") }
+        working.stageTimeline = t
+        if !diskOnly, let poster {
+            // The ordinary in-process case: the attachment carries the frame.
+            working.videoAttachment = VideoAttachment(localUrl: URL(fileURLWithPath: ""),
+                                                      fileName: "clip.mov", thumbnail: poster)
+        }
+        msgs.append(SerializedMessage(from: working))
+        ChatStore.shared.debugSeed(Chat(id: "store-poster-" + jobId, title: "Launch clip",
+                                        messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// The bundled portrait frame — a real photograph, so the capture shows what
+    /// a user actually sees rather than a synthetic swatch.
+    static func posterPortrait() -> UIImage? {
+        guard let u = Bundle.main.url(forResource: "store-demo-thumb", withExtension: "jpg") else { return nil }
+        return UIImage(contentsOfFile: u.path)
+    }
+
+    /// A landscape poster, drawn rather than bundled: no landscape fixture ships
+    /// in the app, and the claim under test is the CARD's shape, not the image's
+    /// provenance. Diagonal bands so any letterboxing is unmistakable.
+    static func posterLandscape() -> UIImage? {
+        let size = CGSize(width: 1280, height: 720)
+        let r = UIGraphicsImageRenderer(size: size)
+        return r.image { ctx in
+            let colors: [UIColor] = [.systemTeal, .systemIndigo, .systemOrange, .systemPink]
+            for i in 0..<12 {
+                colors[i % colors.count].setFill()
+                let x = CGFloat(i) * (size.width / 12)
+                ctx.cgContext.fill(CGRect(x: x, y: 0, width: size.width / 12, height: size.height))
+            }
+            let text = "LANDSCAPE 16:9" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 90),
+                .foregroundColor: UIColor.white,
+            ]
+            let sz = text.size(withAttributes: attrs)
+            text.draw(at: CGPoint(x: (size.width - sz.width) / 2, y: (size.height - sz.height) / 2), withAttributes: attrs)
+        }
     }
 
     /// THE CONTINUITY ITSELF: a finished video, the change typed under it, and

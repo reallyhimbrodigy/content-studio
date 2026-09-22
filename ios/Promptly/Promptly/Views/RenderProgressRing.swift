@@ -82,6 +82,10 @@ struct RenderProgressRing: View {
     /// UIImage does not, and is what keeps the container from being empty for
     /// most of a render's life.
     var thumbnailUrl: String? = nil
+    /// The job this card belongs to. Used to find the persisted source poster
+    /// after a relaunch, when the in-memory UIImage is gone and the result's own
+    /// poster does not exist yet — which is most of a render's life.
+    var jobId: String? = nil
     var subMessage: String? = nil
     var finishing: Bool = false
     var onCancel: (() -> Void)? = nil
@@ -101,8 +105,22 @@ struct RenderProgressRing: View {
     private var frameWidth: CGFloat {
         208 * k
     }
+    /// THE POSTER'S OWN SHAPE, not a fixed portrait box (ruled 2026-09-19:
+    /// output keeps the source's shape). A landscape clip in a 9:16 frame is
+    /// letterboxed with black on both sides — the same black this card exists to
+    /// stop, just arranged differently. 9:16 remains the default only while no
+    /// poster has resolved, because that is what most footage is.
+    private var posterAspect: CGFloat? {
+        guard let image = resolvedPoster, image.size.height > 0 else { return nil }
+        let a = image.size.width / image.size.height
+        // Clamped so a pathological asset cannot produce a card taller than the
+        // screen or a one-pixel strip.
+        return min(max(a, 0.5), 2.0)
+    }
+
     private var frameHeight: CGFloat {
-        frameWidth * 16 / 9
+        if let a = posterAspect { return frameWidth / a }
+        return frameWidth * 16 / 9
     }
     /// EVERY DIMENSION SCALES (ruled 2026-09-05). The box already did; the
     /// corner, the trace, the status line and the padding did not, so on an
@@ -238,8 +256,17 @@ struct RenderProgressRing: View {
     /// The ground is deliberately plain — no icon, no "no preview" label. A
     /// placeholder graphic in a container this large would announce a missing
     /// image; an empty tone just reads as a frame that has not painted yet.
+    /// In-memory first, then the poster persisted under this job id. The disk
+    /// read is what makes a relaunch mid-render show the clip rather than the
+    /// empty ground; it is cheap and cached by the OS, and nil when absent.
+    private var resolvedPoster: UIImage? {
+        if let t = thumbnail { return t }
+        if let id = jobId { return SourcePoster.load(for: id) }
+        return nil
+    }
+
     @ViewBuilder private var frameContent: some View {
-        if let t = thumbnail {
+        if let t = resolvedPoster {
             BlurredFillImage(image: Image(uiImage: t))
         } else if let u = thumbnailUrl, let url = URL(string: u) {
             AsyncImage(url: url) { phase in

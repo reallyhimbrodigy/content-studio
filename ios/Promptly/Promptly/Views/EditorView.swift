@@ -2612,6 +2612,18 @@ struct EditorView: View {
         processingMsg.jobStatus = "queued"
         processingMsg.jobProgress = 0
         processingMsg.stageTimeline = StageTimeline(mode: "render_only", startWith: "analyze")
+        // A RE-EDIT SHOWS THE VERSION IT IS CHANGING. The poster of the video
+        // this request sits under, carried forward — there is no new source
+        // clip to generate one from, and an empty frame here is the same black
+        // box by another route.
+        if let prior = messages.last(where: { $0.jobId == originalJobId }) {
+            let inherited = SourcePoster.load(for: originalJobId) ?? prior.videoAttachment?.thumbnail
+            processingMsg.videoAttachment = VideoAttachment(
+                localUrl: prior.videoAttachment?.localUrl ?? URL(fileURLWithPath: ""),
+                fileName: prior.videoAttachment?.fileName ?? "",
+                thumbnail: inherited,
+                remoteThumbnailUrl: prior.thumbnailUrl ?? prior.videoAttachment?.remoteThumbnailUrl)
+        }
         messages.append(processingMsg)
         let msgId = processingMsg.id
         persistMessages()
@@ -2626,6 +2638,12 @@ struct EditorView: View {
                 )
                 if let i = idx() {
                     messages[i].jobId = newJobId
+                    // Key the inherited poster to the NEW job so a relaunch
+                    // mid-re-edit finds it by the id the card looks up.
+                    if SourcePoster.inherit(from: originalJobId, to: newJobId) == nil,
+                       let t = messages[i].videoAttachment?.thumbnail {
+                        SourcePoster.save(t, for: newJobId)
+                    }
                     startSSE(jobId: newJobId, messageId: msgId)
                     persistMessages()
                 }
@@ -3530,6 +3548,34 @@ struct EditorView: View {
                     // restored in-flight bubble that cannot resolve is no
                     // longer representable.
                     processingMsg.jobId = UUID().uuidString.lowercased()
+                    // THE CARD THAT DRAWS PROGRESS IS THIS ONE. The picked
+                    // clip's frame was attached only to the user message above,
+                    // so RenderProgressRing got nil for both its image and its
+                    // URL and drew an empty box from pick until the finished
+                    // video's own poster loaded. Same attachment, both messages.
+                    processingMsg.videoAttachment = VideoAttachment(
+                        localUrl: video.fileUrl ?? URL(fileURLWithPath: ""),
+                        fileName: video.fileName,
+                        thumbnail: video.thumbnail)
+                    // Persisted under the JOB id, so a relaunch mid-render finds
+                    // it — the UIImage above dies with the process.
+                    if let jid = processingMsg.jobId {
+                        if let t = video.thumbnail { SourcePoster.save(t, for: jid) }
+                        if let src = video.fileUrl {
+                            let jobId = jid
+                            Task.detached(priority: .utility) {
+                                // A better frame than the Photos cache tile:
+                                // transform-corrected and past any opening black.
+                                if let poster = await SourcePoster.capture(from: src, for: jobId) {
+                                    await MainActor.run {
+                                        if let i = messages.firstIndex(where: { $0.jobId == jobId }) {
+                                            messages[i].videoAttachment?.thumbnail = poster
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     messages.append(processingMsg)
                     pendingMsgIds.append((video, processingMsg.id))
                 }

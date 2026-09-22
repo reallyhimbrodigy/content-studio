@@ -506,6 +506,9 @@ struct MessageBubble: View {
                         // (Models:441) — so this is populated after a
                         // relaunch, where the UIImage above is not.
                         thumbnailUrl: message.videoAttachment?.remoteThumbnailUrl,
+                        // So the card can find the persisted source poster after
+                        // a relaunch, when the UIImage above is gone.
+                        jobId: message.jobId,
                         subMessage: message.stepMessage,
                         finishing: message.isFinishing,
                         onCancel: onCancel
