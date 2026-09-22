@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { installSeen } = require('./lib/install-seen');
 const { signRead, signReadFields } = require('./lib/sign-on-read');
+const _clarification = require('./lib/clarification');
+const _reeditVersions = require('./lib/reedit-versions');
 // Last identity-duplication read. null until the boot pass runs — NOT zero,
 // because 'never looked' and 'looked and found none' must not render alike.
 let identityDuplication = null;
@@ -4555,6 +4557,17 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // paywall_view(reason:reedit) it measures the RACE-1 fix live —
           // free-user re-edit taps that reach a paywall view.
           'reedit_tap',
+          // Parked-clarification funnel. These two are emitted SERVER-side, but
+          // allowlisting them keeps the SQL mirror honest if a client surface
+          // ever mirrors them, and names the pair in one place.
+          //
+          // The rate they exist to measure was previously UNMEASURABLE: resuming
+          // an ask sets `ask: null`, there is no asks_count column, and the
+          // answer path only console.logged — so "has anyone ever answered one?"
+          // had no denominator and a first attempt to read it returned a
+          // confident, wrong zero. 17% of re-edits park on a question; without
+          // these two, a failing mechanism stays invisible.
+          'clarification_answered', 'clarification_expired',
           // 1.2.0 registry — the wall onboarding + activation funnel (audit #1).
           // Same names flow to PostHog from the client dual-sink; this mirror
           // must accept them or the SQL half goes blind. subscription_* names
@@ -7664,6 +7677,89 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           });
         }
 
+        // ── ONE RE-EDIT AT A TIME, PER VIDEO (root), AND THE REPLY THAT
+        //    RELEASES IT ──────────────────────────────────────────────────────
+        // Scoped to the ROOT, not to the job. Two branches off different
+        // versions of the same video are still two renders of one video, and a
+        // per-job check passes both of them.
+        //
+        // ORDER IS THE WHOLE CORRECTNESS HERE. A parked clarification sits at
+        // needs_input and holds the root; answering it posts a NEW re-edit
+        // against the parked row's PARENT — i.e. against this very root. So if
+        // the lock were checked before the park were cleared, answering the
+        // question would 409, and that 409 would name the question as the thing
+        // blocking its own answer. Permanently, because a park never leaves
+        // needs_input on its own. Hence CLEAR, THEN CHECK, in that order.
+        const _rootId = orig.root_job_id || orig.id;
+        let _rootRows = [];
+        try {
+          const { data: _rr } = await supabaseAdmin
+            .from('video_jobs')
+            .select('id, status, created_at, parent_job_id, change_request')
+            .eq('root_job_id', _rootId);
+          _rootRows = Array.isArray(_rr) ? _rr : [];
+        } catch (e) {
+          console.error(`[re-edit] root read failed root=${_rootId}: ${e.message}`);
+        }
+
+        // Clear parked CLARIFICATIONS only. A rendering job is never cancelled
+        // because somebody answered a question — something is actually running
+        // and the user is waiting on it. `result` is read only for the parked
+        // rows: it is p95 40KB and a root can hold several rows, so pulling it
+        // for all of them would cost tens of KB to inspect a state that is 19
+        // rows out of 12,697.
+        for (const _p of _reeditVersions.findParked(_rootRows)) {
+          try {
+            const { data: _pRow } = await supabaseAdmin
+              .from('video_jobs')
+              .select('id, status, parent_job_id, result, created_at')
+              .eq('id', _p.id)
+              .maybeSingle();
+            if (!_clarification.isClarificationPark(_pRow)) continue;  // ask-back park: has its own resume rail
+            // CAS on needs_input so a concurrent expiry sweep or a double
+            // submit cannot cancel twice, and cannot cancel a row that moved on.
+            const { data: _cancelled } = await supabaseAdmin
+              .from('video_jobs')
+              .update({
+                status: 'canceled',
+                current_step: 'clarification_answered',
+                step_message: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', _p.id)
+              .eq('status', 'needs_input')
+              .select('id');
+            if (Array.isArray(_cancelled) && _cancelled.length > 0) {
+              _rootRows = _rootRows.map((r) => (r.id === _p.id ? { ...r, status: 'canceled' } : r));
+              console.log(`[re-edit] cleared parked clarification job=${_p.id} root=${_rootId} — answered`);
+              supabaseAdmin.from('analytics_events').insert({
+                event: 'clarification_answered', platform: 'server',
+                props: { job_id: _p.id, root_job_id: _rootId, parent_job_id: _p.parent_job_id || null },
+              }).then(() => {}).catch(() => {});
+            }
+          } catch (e) {
+            console.error(`[re-edit] parked clear failed job=${_p.id}: ${e.message}`);
+          }
+        }
+
+        // NOW the lock. Anything still holding the root is a genuine concurrent
+        // render, or an ask-back park that owns its own resume path.
+        const _live = _reeditVersions.findInFlight(_rootRows);
+        if (_live) {
+          console.log(`[re-edit] 409 reedit_in_flight root=${_rootId} live=${_live.id} status=${_live.status}`);
+          return sendJson(res, 409, {
+            error: 'reedit_in_flight',
+            job_id: _live.id,
+            // STATUS IS PART OF THE CONTRACT, not a debug field. "parked on a
+            // question" and "already rendering" need different words and a
+            // different next action, and the client types its copy off this
+            // exact value (isParkedOnAQuestion keys on "needs_input").
+            status: _live.status,
+            version: _reeditVersions.versionOf(_rootRows, _live.id),
+            root_job_id: _rootId,
+          });
+        }
+
         // MODE RESOLUTION. This read `orig.edit_recipe && typeof orig.edit_recipe
         // === 'object'`, which is PRESENCE, not shape. handler's recipe is a
         // dict and the agentic plan is a list; typeof answers 'object' for
@@ -7735,11 +7831,96 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           status: newJob.status || 'queued',
           mode,
           parent_job_id: originalJobId,
+          // ADDITIVE — shipped clients ignore what they do not decode.
+          root_job_id: _rootId,
+          // The version this job WILL occupy if it completes. Exact rather than
+          // a guess, and only because of the 409 above: one re-edit at a time
+          // per root means nothing else can complete and take the number first.
+          // If that rule is ever relaxed this becomes a race and must return
+          // null instead of a provisional number.
+          version: _reeditVersions.provisionalVersion(_rootRows),
+          version_provisional: true,
+          version_count: _reeditVersions.versionCount(_rootRows),
         });
       } catch (error) {
         console.error('[re-edit] Error:', error);
         const status = error?.statusCode || 500;
         return sendJson(res, status, { error: error?.message || 'Re-edit failed' });
+      }
+    })();
+    return;
+  }
+
+  // ── GET /api/video-jobs/:id/versions ────────────────────────────────────
+  // "The previous version is still reachable." Accepts ANY job id in the tree
+  // and resolves to the root, so the client can ask with whatever id the bubble
+  // is holding without knowing where in the lineage it sits.
+  //
+  // The ordinal is computed here, not stored. A persisted integer cannot be both
+  // stable and gapless: number every row and a failed re-edit burns a number
+  // (v1, v2, v4); number only the successes and a failure RENUMBERS everything
+  // after it, so a version a user opened as v3 yesterday is v2 today. Dense over
+  // COMPLETED rows gives both, and is safe because terminal states are terminal.
+  const versionsMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/versions$/i);
+  if (versionsMatch && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const jobId = versionsMatch[1];
+        if (!checkRateLimit(res, 'video-job-versions', authUser.id, 120, 60)) return;
+
+        const { data: anchor, error: anchorErr } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, user_id, root_job_id, parent_job_id')
+          .eq('id', jobId)
+          .maybeSingle();
+        if (anchorErr || !anchor) return sendJson(res, 404, { error: 'job_not_found' });
+        if (anchor.user_id !== authUser.id) return sendJson(res, 403, { error: 'not_authorized' });
+
+        // resolveRootId returns null for a re-edit whose root_job_id was never
+        // backfilled, rather than guessing `id` — guessing would make a v3 its
+        // own root and strand v1 and v2. Every row is backfilled today (12,697
+        // of 12,697), so this is a guard against a future row, not a live case.
+        const rootId = _reeditVersions.resolveRootId(anchor);
+        if (!rootId) {
+          console.error(`[versions] unresolvable root for job=${jobId} — parent set, root_job_id null`);
+          return sendJson(res, 409, { error: 'lineage_unresolved', job_id: jobId });
+        }
+
+        const { data: rows, error: rowsErr } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, status, created_at, change_request, rendered_video_url, thumbnail_url')
+          .eq('root_job_id', rootId);
+        if (rowsErr) {
+          console.error('[versions] root read failed:', rowsErr.message);
+          return sendJson(res, 500, { error: 'versions_read_failed' });
+        }
+
+        const list = _reeditVersions.buildVersionList(rows || []);
+        const byId = new Map((rows || []).map((r) => [String(r.id), r]));
+
+        // SIGNED ON READ, never the stored column. The stored value may be a
+        // dead 7-day signature or, post history-rot migration, a bare key —
+        // 2,062 of 2,643 stored grants were already dead when measured. Signing
+        // at read time makes the column hold something permanent and mints the
+        // credential for the request that asked.
+        const versions = await Promise.all(list.map(async (v) => {
+          const row = byId.get(String(v.job_id)) || {};
+          const signed = await signReadFields(row, ['rendered_video_url', 'thumbnail_url'], 'versions');
+          return { ...v, rendered_video_url: signed.rendered_video_url, thumbnail_url: signed.thumbnail_url };
+        }));
+
+        res.setHeader('Cache-Control', 'no-store');
+        return sendJson(res, 200, {
+          root_job_id: rootId,
+          version_count: versions.length,
+          versions,
+        });
+      } catch (error) {
+        console.error('[versions] Error:', error);
+        const status = error?.statusCode || 500;
+        return sendJson(res, status, { error: error?.message || 'versions_failed' });
       }
     })();
     return;
@@ -7780,7 +7961,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, ask, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, ask, parent_job_id, root_job_id, rendered_video_url, hls_manifest_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -7842,6 +8023,35 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           { rendered_video_url: data.rendered_video_url || data.result_url || null,
             thumbnail_url: data.thumbnail_url || null },
           ['rendered_video_url', 'thumbnail_url'], 'job-status');
+        // ── PARKED CLARIFICATION DELIVERY ───────────────────────────────────
+        // The worker asks a real question and writes it to
+        // result.clarification_question. NOTHING returned it: `ask` below is the
+        // TOP-LEVEL column, which this path never writes, so the question has
+        // never once reached a client. 19 rows / 8 users / up to 63 days parked
+        // at 100% on "Need a bit more info...".
+        //
+        // READ ONLY ON THE PARKED BRANCH, DELIBERATELY. This endpoint is polled,
+        // and `result` is p50 2KB / p95 40KB / max 126KB — adding it to the hot
+        // select would put tens of KB on every tick of every job to serve a
+        // state that is 19 rows out of 12,697. Parked rows carry at most 261
+        // bytes, so the extra round trip costs nothing where it actually fires.
+        //
+        // Fail-open: a failed read degrades to today's behaviour (no question)
+        // rather than failing the status poll the whole UI runs on.
+        let _clar = { clarification_question: null, clarification_retry_job_id: null };
+        if (data.status === 'needs_input') {
+          try {
+            const { data: _cRow } = await supabaseAdmin
+              .from('video_jobs')
+              .select('status, parent_job_id, result, created_at')
+              .eq('id', data.id)
+              .maybeSingle();
+            if (_cRow) _clar = _clarification.deliveryFields(_cRow);
+          } catch (e) {
+            console.error(`[clarification] delivery read failed job=${data.id}: ${e.message} (fail open)`);
+          }
+        }
+
         return sendJson(res, 200, {
           id: data.id,
           status: data.status,
@@ -7849,6 +8059,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           current_step: data.current_step || '',
           step_message: data.step_message || '',
           ask: data.ask || null,
+          // The question, and the job to POST the answer against (the parked
+          // row's PARENT — answering is a fresh re-edit with clearer text, not a
+          // resume; the ask-back resume rail loads a partial_state that 0 of
+          // 12,697 rows have ever had).
+          clarification_question: _clar.clarification_question,
+          clarification_retry_job_id: _clar.clarification_retry_job_id,
           rendered_video_url: _signed.rendered_video_url,
           hls_manifest_url: data.hls_manifest_url || null,
           thumbnail_url: _signed.thumbnail_url,
@@ -9072,6 +9288,46 @@ if (require.main === module) {
     };
     setTimeout(runReaper, 30 * 1000); // boot pass
     setInterval(runReaper, 120 * 1000);
+
+    // ── Parked-clarification expiry (Zac's ruling) ──────────────────────────
+    // 24h unanswered -> canceled, releasing the root lock. Answering is the
+    // primary exit and clears the park in the re-edit route; this catches only
+    // the user who walked away.
+    //
+    // SHIPS DARK, AND THE FLAG IS THE WHOLE POINT. Expiry measures "the user saw
+    // the question and did not answer". Today it would measure "we never asked":
+    // the delivery fix in this same commit is server-side, but the CLIENT that
+    // renders the question is not in build 257 — verified against the tag, not
+    // the branch tip (v1.3.37-257 = 7905a2d; the four client commits all landed
+    // after it). So the 19 rows parked right now have never been shown to
+    // anyone, and every one of them is already past 24h. Arming this before the
+    // client build ships would cancel all 19 within one sweep and report
+    // "asked 19 / expired 19" — a clean-looking funnel for a feature nobody ever
+    // saw. Same sequencing as sign-on-read: the read path works first.
+    //
+    // ARM ONLY WHEN a build carrying the clarification card is live.
+    if (String(process.env.CLARIFICATION_EXPIRY_ENABLED || '').trim().toLowerCase()
+        .match(/^(1|true|yes|on)$/)) {
+      const { sweepExpiredClarifications } = require('./lib/clarification-sweep');
+      let clarBusy = false;
+      const runClarificationExpiry = async () => {
+        if (clarBusy) return;
+        clarBusy = true;
+        try {
+          const r = await sweepExpiredClarifications(supabaseAdmin, {});
+          if (r.expired) console.log(`[clarification-expiry] expired=${r.expired} scanned=${r.scanned}`);
+        } catch (err) {
+          console.error('[clarification-expiry] sweep crashed:', err?.message || err);
+        } finally {
+          clarBusy = false;
+        }
+      };
+      setTimeout(runClarificationExpiry, 45 * 1000);
+      setInterval(runClarificationExpiry, 10 * 60 * 1000);
+      console.log('[clarification-expiry] ARMED (24h)');
+    } else {
+      console.log('[clarification-expiry] dark — CLARIFICATION_EXPIRY_ENABLED unset');
+    }
 
     // Orphan re-dispatch (Zac 2026-08-04): RECOVER never-dispatched jobs — rows with
     // modal_call_id NULL past ~11min (a server restart mid-dispatch, or the per-job
