@@ -296,3 +296,115 @@ private struct FlowChips: View {
         }
     }
 }
+
+// MARK: - Clarification card
+
+/// THE OTHER PARKED SHAPE — and, measured, the only one that has ever happened.
+///
+/// `AskCard` above answers a Phase D ask: an `ask` envelope with an `ask_id`,
+/// answered through `/answer-ask`, which resumes the same job. This answers the
+/// re-edit plan-diff's clarification, and almost nothing about it is the same:
+///
+///   • there is no ask envelope — the question lives in
+///     `result.clarification_question`, and the `ask` COLUMN has never been
+///     written in production (0 rows, all time);
+///   • so `/answer-ask` cannot take it. `canAcceptAnswer` rejects a null ask
+///     with `ask_id_mismatch`, which is why all 19 parked rows are unanswerable
+///     today even though the question reached the device in every poll;
+///   • the answer therefore starts a NEW re-edit against the PARENT video, the
+///     reply-as-new-re-edit design. The parked row has no render of its own —
+///     the plan-diff failing to produce a plan is why it asked.
+///
+/// Reusing AskCard with a synthesised payload was the obvious move and is wrong:
+/// the two differ in where the question comes from, what endpoint takes the
+/// answer, and which job the answer belongs to. One card with a hidden mode
+/// switch would be one edit away from posting a clarification to /answer-ask.
+struct ClarificationCard: View {
+    let clarification: ParkedClarification
+    /// Receives the NEW job id, so the bubble can follow the retry rather than
+    /// the row it was parked on. The parked row is not cancelled here — that is
+    /// the server's half and it is not built, so the bubble must move itself.
+    let onAnswered: (String) -> Void
+
+    @State private var text = ""
+    @State private var isSubmitting = false
+    @State private var errorText: String?
+
+    private var hasAnswer: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.78, blue: 0.42), .white],
+                                                    startPoint: .leading, endPoint: .trailing))
+                    .padding(.top, 2)
+                Text(clarification.question)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.white.opacity(0.95))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            TextField("Tell me what to change…", text: $text, axis: .vertical)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .tint(.white)
+                .lineLimit(1...4)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+                .disabled(isSubmitting)
+
+            if let errorText {
+                Text(errorText)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                if isSubmitting {
+                    ProgressView().tint(.white).scaleEffect(0.8)
+                } else {
+                    Button { submit() } label: {
+                        Text("Send")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(hasAnswer ? .black : .white.opacity(0.35))
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .background(Capsule().fill(hasAnswer ? Color.white : Color.white.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasAnswer)
+                }
+            }
+            .padding(.top, 2)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+    }
+
+    private func submit() {
+        let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty, !isSubmitting else { return }
+        isSubmitting = true
+        errorText = nil
+        Task {
+            do {
+                // AGAINST THE PARENT, not the parked job. Verified on every
+                // production row: all 19 carry a parent_job_id.
+                let newJobId = try await APIService.shared.reeditFromJob(
+                    originalJobId: clarification.parentJobId,
+                    changeRequest: answer
+                )
+                await MainActor.run { onAnswered(newJobId) }
+            } catch {
+                await MainActor.run {
+                    errorText = "Couldn't send that — check your connection and try again."
+                    isSubmitting = false
+                }
+            }
+        }
+    }
+}

@@ -76,6 +76,14 @@ struct ChatMessage: Identifiable {
     /// Phase D ask-back: set when the job is parked at needs_input with an ask.
     /// The progress bubble renders the ask card; cleared on answer/skip.
     var ask: AskPayload?
+    /// THE OTHER PARKED SHAPE, and the only one that has ever occurred.
+    ///
+    /// The re-edit plan-diff parks a job by writing `status=needs_input` with
+    /// `result.clarification_question` — it does NOT write the `ask` column, so
+    /// `ask` above stays nil and the ask card never renders. Measured: 19 rows,
+    /// 8 users, 0 with an ask envelope, 0 ever recovered, oldest 62 days. The
+    /// `ask` column has never been written in production at all.
+    var clarification: ParkedClarification?
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
@@ -273,6 +281,7 @@ struct SerializedMessage: Codable, Hashable {
                                   // relaunch rehydrates the bar to TRUE progress instead of 0; the
                                   // immediate durable poll then corrects it (monotonic, only rises).
     var ask: AskPayload?          // Phase D ask-back — persisted so a parked question survives
+    var clarification: ParkedClarification?   // the re-edit clarification, same reason
                                   // background/relaunch and re-shows from the polled row.
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
@@ -351,6 +360,7 @@ struct SerializedMessage: Codable, Hashable {
         self.jobStatus = message.jobStatus
         self.jobProgress = message.jobProgress
         self.ask = message.ask
+        self.clarification = message.clarification
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
@@ -393,6 +403,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.jobStatus = jobStatus
         msg.jobProgress = jobProgress
         msg.ask = ask
+        msg.clarification = clarification
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
@@ -544,6 +555,18 @@ struct JobCreateResponse: Codable {
     let error: String?
 
     var resolvedJobId: String? { job_id ?? jobId }
+}
+
+/// A re-edit parked on a question it asked and never delivered.
+///
+/// `parentJobId` is the answer's TARGET, and it is not the parked job. The
+/// parked row has no rendered video — the plan-diff failing to produce a plan is
+/// why it asked — so the source for the retry is the video being re-edited.
+/// Verified on all 19 production rows: every one has a parent_job_id and a
+/// non-empty question, so every one is answerable.
+struct ParkedClarification: Codable, Equatable, Hashable {
+    let question: String
+    let parentJobId: String
 }
 
 struct ReeditSession: Identifiable, Equatable {

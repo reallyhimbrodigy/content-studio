@@ -49,6 +49,9 @@ struct MessageBubble: View {
     /// Phase D ask-back: called when the user answers or skips the ask, so the
     /// parent flips this bubble back to "processing" and the bar resumes.
     var onAskResolved: (() -> Void)? = nil
+    /// Carries the NEW job id from a clarification answer — the retry is a
+    /// different job from the one the bubble was parked on.
+    var onClarificationAnswered: ((String) -> Void)? = nil
 
     /// SwiftUI-rendered markdown view for chat text.
     ///
@@ -520,6 +523,15 @@ struct MessageBubble: View {
             if message.jobStatus == "needs_input", let ask = message.ask, ask.isRenderable {
                 AskCard(ask: ask, jobId: message.jobId ?? "") {
                     onAskResolved?()
+                }
+                .padding(.top, 8 * k)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if message.jobStatus == "needs_input", let c = message.clarification {
+                // ELSE-IF, not a second `if`. A row cannot hold both shapes, and
+                // rendering two question cards in one bubble would ask the user
+                // the same thing twice with two different Send buttons.
+                ClarificationCard(clarification: c) { newJobId in
+                    onClarificationAnswered?(newJobId)
                 }
                 .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))

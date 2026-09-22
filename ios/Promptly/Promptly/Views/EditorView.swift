@@ -46,7 +46,11 @@ struct EditorView: View {
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
-    @State private var reeditSession: ReeditSession?
+    /// THE RE-EDIT SURFACE (ruled for 258): the pill opens a job-scoped sheet.
+    /// `ReeditSession` is already Identifiable, so the pill's existing handler —
+    /// Pro wall, reedit_tap, deferred-paywall routing out of the UIKit player —
+    /// is unchanged; only what this screen DOES with the session moved.
+    @State private var reeditSheetSession: ReeditSession?
     /// Ask-back ids the user has already answered this session — so a stale
     /// in-flight poll (captured before the answer) can't re-park the same ask.
     @State private var answeredAskIds: Set<String> = []
@@ -124,11 +128,16 @@ struct EditorView: View {
             .background(luxuryBackdrop)
             .safeAreaInset(edge: .bottom, spacing: 0 * k) {
                 // The composer scales with the chat it belongs to.
-                // Tight composer stack: re-edit chip (when active) +
-                // input bar. The static vibe-chip row was removed in
-                // favor of in-bubble ghost-text rotation (see inputBar).
+                //
+                // THE RE-EDIT CHIP IS GONE (258). Re-editing used to arm this
+                // composer — a context chip above the input, and a branch in
+                // send() that dispatched reeditFromJob instead of uploading.
+                // The pill now opens a job-scoped sheet, so nothing could set
+                // that state any more and the whole path was unreachable.
+                // Removed rather than left compiling: an entire second re-edit
+                // implementation, one assignment away from coming back, is the
+                // second path the ruling rules out.
                 VStack(spacing: 0 * k) {
-                    reeditChip
                     // The post-render referral card was REMOVED (ruled 2026-09-05).
                     // The referral offer exists in exactly one place — the
                     // funnel's invite rung — and nowhere else.
@@ -286,6 +295,11 @@ struct EditorView: View {
                 // house rule on error copy — never a bare "something went wrong".
                 Text(String(localized: "We couldn't read it from your library. Pick it again — that usually works."))
             }
+            .sheet(item: $reeditSheetSession) { session in
+                ReeditSheet(jobId: session.originalJobId) {
+                    reeditSheetSession = nil
+                }
+            }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
@@ -362,7 +376,7 @@ struct EditorView: View {
                 ModelService.shared.reconcile(isPro: SubscriptionService.shared.effectiveIsPro)
                 // Pick up any pending re-edit session posted by Library and consume it.
                 if let pending = appState.pendingReedit {
-                    reeditSession = pending
+                    reeditSheetSession = pending
                     appState.pendingReedit = nil
                 }
                 // FOCUS ON A GENUINE APPEARANCE, NOT ON A SHEET CLOSING.
@@ -404,9 +418,12 @@ struct EditorView: View {
             // animation timer needed; the chips are static affordances.
             .onChange(of: appState.pendingReedit) { _, newSession in
                 if let s = newSession {
-                    reeditSession = s
+                    // No focusInput(): the sheet owns the keyboard now, and
+                    // focusing the composer behind it raised a keyboard under
+                    // the sheet — the same bug the onAppear comment above
+                    // records for fullScreenCover.
+                    reeditSheetSession = s
                     appState.pendingReedit = nil
-                    focusInput()
                 }
             }
             // NO FOCUS ON THE POST-AUTH LANDING EITHER. This was the second
@@ -629,7 +646,6 @@ struct EditorView: View {
             return nil
         }
         loadedChatId = newId
-        reeditSession = nil
         // Clear any in-flight vibe-edit routing — the failed-message
         // id we were holding belonged to the OLD chat. Sending in
         // the new chat should behave normally, not try to retry a
@@ -733,7 +749,6 @@ struct EditorView: View {
         sseClients.removeAll()
         messages = []
         conversationHistory = []
-        reeditSession = nil
         inputText = ""
         pendingVideos.forEach { $0.uploadTask?.cancel() }
         pendingVideos = []
@@ -777,61 +792,6 @@ struct EditorView: View {
 
     // MARK: - Re-edit context chip
 
-    @ViewBuilder
-    private var reeditChip: some View {
-        if let session = reeditSession {
-            HStack(spacing: 10 * k) {
-                if let thumbUrl = session.thumbnailUrl, let url = URL(string: thumbUrl) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Color(.tertiarySystemBackground)
-                        }
-                    }
-                    .frame(width: 32 * k, height: 32 * k)
-                    .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
-                } else {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 15 * k, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 32 * k, height: 32 * k)
-                        .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8 * k, style: .continuous))
-                }
-
-                VStack(alignment: .leading, spacing: 2 * k) {
-                    Text("Re-editing")
-                        .font(.system(size: 11 * k, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    Text(session.oldVibe.isEmpty ? "Previous edit" : session.oldVibe)
-                        .font(.system(size: 13 * k))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8 * k)
-
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { reeditSession = nil }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10 * k, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 20 * k, height: 20 * k)
-                        .background(Color.black.opacity(0.6))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 10 * k)
-            .padding(.vertical, 8 * k)
-            .background(Color(.tertiarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
-            .padding(.horizontal, 12 * k)
-            .padding(.bottom, 4 * k)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 
     // MARK: - Empty State
 
@@ -893,7 +853,8 @@ struct EditorView: View {
                             onRetry: retryClosure(for: message),
                             onMakeAnother: { tapAddVideo() },
                             onCancel: cancelClosure(for: message),
-                            onAskResolved: askResolvedClosure(for: message)
+                            onAskResolved: askResolvedClosure(for: message),
+                            onClarificationAnswered: clarificationAnsweredClosure(for: message)
                         )
                         .id(message.id)
                     }
@@ -1109,7 +1070,7 @@ struct EditorView: View {
                 // §1 attach button: images ride the TEXT chat path only, so the
                 // button hides while a video is staged or a re-edit is active
                 // (those paths ignore media — no silent drops by construction).
-                if onboardingState.chatMediaEnabled && pendingVideos.isEmpty && reeditSession == nil {
+                if onboardingState.chatMediaEnabled && pendingVideos.isEmpty {
                     PhotosPicker(selection: $pickedChatImageItem, matching: .images) {
                         Image(systemName: "photo")
                             .font(.system(size: 15 * k, weight: .semibold))
@@ -1131,7 +1092,7 @@ struct EditorView: View {
                     // Static placeholder. The rotating ghost-text was
                     // removed in build 172 — the visible chip row above
                     // now carries the "here are some vibes" message.
-                    if inputText.isEmpty && reeditSession == nil {
+                    if inputText.isEmpty {
                         Text("Tell me the vibe…")
                             // K-SCALED, NOT `.body`. A Dynamic Type style is the
                             // same size on a 13-inch iPad as on a phone, which is
@@ -1650,7 +1611,7 @@ struct EditorView: View {
               FirstInstall.isFirstInstall,
               !UserDefaults.standard.bool(forKey: "first_session_autopicker_fired"),
               messages.filter({ !$0.isOnboarding }).isEmpty,
-              pendingVideos.isEmpty, reeditSession == nil else { return }
+              pendingVideos.isEmpty else { return }
         UserDefaults.standard.set(true, forKey: "first_session_autopicker_fired")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [self] in
             Analytics.track("picker_opened", props: ["source": "auto_first_session"])
@@ -2624,6 +2585,31 @@ struct EditorView: View {
     /// posted to the re-edit rail), optimistically flip this bubble back to
     /// processing and clear the ask so the bar resumes immediately — then poll
     /// to confirm the resumed job (or catch a self-completed one).
+    /// The clarification answer starts a NEW job, so the bubble has to follow it.
+    ///
+    /// Unlike an ask-back — which resumes the same job and therefore needs no
+    /// re-pointing — the retry is a different row. The parked row is NOT
+    /// cancelled by this: that is the server half of reply-as-new-re-edit and it
+    /// is not built. Until it is, the parked row simply stops being polled
+    /// because this bubble no longer carries its id.
+    private func clarificationAnsweredClosure(for message: ChatMessage) -> ((String) -> Void)? {
+        guard message.jobStatus == "needs_input", message.clarification != nil else { return nil }
+        let messageId = message.id
+        return { newJobId in
+            guard let i = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            guard messages[i].jobStatus == "needs_input" else { return }
+            messages[i].jobId = newJobId
+            messages[i].clarification = nil
+            messages[i].jobStatus = "processing"
+            messages[i].stepMessage = "Picking up your answer…"
+            messages[i].jobProgress = 0
+            messages[i].isFinishing = false
+            persistMessages()
+            startSSE(jobId: newJobId, messageId: messageId)
+            Task { @MainActor in await reconcileInProgressJobs(includeFailed: true) }
+        }
+    }
+
     private func askResolvedClosure(for message: ChatMessage) -> (() -> Void)? {
         guard message.jobStatus == "needs_input", message.jobId != nil else { return nil }
         let messageId = message.id
@@ -3293,7 +3279,6 @@ struct EditorView: View {
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
-        let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }
 
         // AUTH SEAM — BEFORE THE MESSAGE IS ACCEPTED.
@@ -3339,7 +3324,7 @@ struct EditorView: View {
         // No video, no re-edit session — route to the lightweight
         // text path that doesn't lock isSending or wait on chat
         // creation. User can send another message immediately.
-        if !hasVideos && !reeditActive {
+        if !hasVideos {
             sendTextChatMessage(text)
             return
         }
@@ -3350,7 +3335,7 @@ struct EditorView: View {
         // a render slot, ask the user for a vibe (and surface the
         // chip suggestions). Re-edit is exempt — it operates on the
         // existing edit recipe so empty text means "no further change."
-        if hasVideos && text.isEmpty && !reeditActive {
+        if hasVideos && text.isEmpty {
             let nudgeText = String(localized: "Tell me the vibe you want and I'll edit it. Try one of the suggestions below — or describe it in your own words.")
             let nudge = ChatMessage(role: .assistant, content: "")
             let nudgeId = nudge.id
@@ -3367,74 +3352,6 @@ struct EditorView: View {
         // cold system dialog here at send.)
 
         // ── Re-edit path — no upload; server loads source from DB
-        if reeditActive, let session = reeditSession {
-            let changeRequest = text.isEmpty ? "Apply the requested changes." : text
-            clearInputField()
-            let activeSession = session
-            reeditSession = nil
-            isSending = true
-
-            var userMsg = ChatMessage(role: .user, content: changeRequest)
-            userMsg.videoAttachment = VideoAttachment(
-                localUrl: URL(fileURLWithPath: ""),
-                fileName: "",
-                thumbnail: nil,
-                remoteThumbnailUrl: activeSession.thumbnailUrl
-            )
-            messages.append(userMsg)
-
-            var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
-            processingMsg.stageTimeline = StageTimeline(mode: "tweak")
-            processingMsg.originalVibe = activeSession.oldVibe.isEmpty ? changeRequest : activeSession.oldVibe
-            messages.append(processingMsg)
-            let msgId = processingMsg.id
-
-            Task { @MainActor in
-                func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
-                _ = await ensureActiveChat()
-                persistMessages()
-
-                do {
-                    let newJobId = try await APIService.shared.reeditFromJob(
-                        originalJobId: activeSession.originalJobId,
-                        changeRequest: changeRequest
-                    )
-                    if let i = idx() {
-                        messages[i].jobId = newJobId
-                        startSSE(jobId: newJobId, messageId: msgId)
-                        persistMessages()
-                    }
-                } catch let APIError.paymentRequired(kind, limit, _) {
-                    // Re-edit is a Pro-only endpoint, but a free user could
-                    // slip through if the client gate was bypassed (or if
-                    // entitlement state was stale at tap time). Remove the
-                    // stub processing+user bubbles and present the paywall.
-                    if let i = idx() {
-                        messages.remove(at: i)  // assistant processing
-                    }
-                    if !messages.isEmpty, messages.last?.role == .user {
-                        messages.removeLast()  // user "change request" stub
-                    }
-                    persistMessages()
-                    if kind == "reedit" {
-                        appState.presentPaywall(.reedit)
-                    } else {
-                        let lim = limit ?? 3
-                        appState.presentPaywall(.dailyRenders(used: lim, limit: lim))
-                    }
-                    await UsageService.shared.refresh()
-                } catch {
-                    if let i = idx() {
-                        messages[i].jobStatus = "failed"
-                        messages[i].error = friendlyError(error)
-                        persistMessages()
-                    }
-                }
-                isSending = false
-            }
-            return
-        }
-
         // PREEMPTIVE PAYWALL (fast path) — uses the cached /api/usage
         // snapshot for an INSTANT paywall when the user is already
         // known to be at the cap (e.g. just opened the app with 3/3
@@ -4312,7 +4229,7 @@ struct EditorView: View {
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
 
-        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message,result") else { return }
+        guard let url = URL(string: "\(supabaseUrl)/rest/v1/video_jobs?id=eq.\(jobId)&select=status,progress,current_step,step_message,ask,rendered_video_url,hls_manifest_url,thumbnail_url,error_message,result,parent_job_id") else { return }
 
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -4322,6 +4239,12 @@ struct EditorView: View {
         struct JobResult: Codable {
             let error_code: String?
             let post_package: PostPackage?   // §6 post package (result.post_package) — tolerant decode
+            /// The re-edit plan-diff's parked question. ALREADY ON THE WIRE in
+            /// every poll since the day it existed — the select below has always
+            /// asked for `result`; nothing ever decoded this key. That is the
+            /// whole defect: 19 rows across 8 users sat parked for up to 62 days
+            /// with the question sitting in a response the client was reading.
+            let clarification_question: String?
         }
         struct JobStatusRow: Codable {
             let status: String?
@@ -4334,6 +4257,7 @@ struct EditorView: View {
             let thumbnail_url: String?
             let error_message: String?
             let result: JobResult?      // carries error_code (e.g. UPLOAD_STALLED)
+            let parent_job_id: String?  // the retry target for a parked clarification
         }
 
         do {
@@ -4508,10 +4432,33 @@ struct EditorView: View {
                     messages[idx].jobStatus = "needs_input"
                     messages[idx].stepMessage = "Lumen has a question"
                     print("[reconcile] \(jobId) → needs_input (ask=\(ask.askId))")
+                } else if let q = row.result?.clarification_question,
+                          !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                          let parent = row.parent_job_id {
+                    // THE RE-EDIT CLARIFICATION. This branch used to defer to
+                    // "the SSE clarification path" and return — and that path is
+                    // unreachable: it keys on `event.status == "needs_clarification"`,
+                    // but the server computes a frame's status purely from pct
+                    // (server.js:2604) and the worker sends pct=100 with this
+                    // step, so the frame says "completed" and the branch has
+                    // never once run. Two halves pointing at each other, and the
+                    // user held at "Finalizing your video…" forever.
+                    messages[idx].clarification = ParkedClarification(question: q, parentJobId: parent)
+                    messages[idx].jobStatus = "needs_input"
+                    messages[idx].stepMessage = "Lumen has a question"
+                    // The SSE frame for this park says status "completed" with
+                    // pct 100, so the bubble has already been driven to a held
+                    // 100% "finishing" state. `isFinishing` has exactly three
+                    // writers in the app and all three set it TRUE — nothing
+                    // clears it — so a parked bubble kept animating a finish
+                    // that was never going to land.
+                    messages[idx].isFinishing = false
+                    print("[reconcile] \(jobId) → needs_input (clarification, parent=\(parent))")
                 } else {
-                    // No renderable ask (legacy re-edit needs_clarification) —
-                    // leave to the SSE clarification path; don't finalize here.
-                    print("[reconcile] \(jobId) → needs_input, no renderable ask — leaving in-flight")
+                    // Parked with nothing to show — no ask envelope, no question.
+                    // Never observed in production (0 of 19), but it must not
+                    // become a bubble asking the user to answer nothing.
+                    print("[reconcile] \(jobId) → needs_input with neither ask nor question — leaving in-flight")
                     return
                 }
             default:
