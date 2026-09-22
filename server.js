@@ -6927,12 +6927,6 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // TIER IS A CONJUNCT, not a separate decision made later. Free and Max
         // are metered; PRO IS NOT, because all three Pro listings say
         // "Unlimited" and 200 credits is 20 videos a month — 8 of 27 Pro
-        // SUPERSEDED 2026-09-22, and the measurement below is kept rather than
-        // rewritten because it is the evidence, not the conclusion: Zac ruled
-        // pro to 500 credits / 50 videos, which is 2.5x the figure those 8 of 27
-        // exceeded. Whether any of them exceeds FIFTY is UNMEASURED — nobody has
-        // re-cut it — so this comment no longer supports leaving Pro unmetered
-        // and does not yet support metering it either.
         // subscribers already exceed that in 30 days. Max is metered precisely
         // BECAUSE its listing already says "100 videos a month", which is
         // exactly its 1000-credit grant. See lib/credits.js METERED_TIERS for
@@ -6940,6 +6934,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // exempt for a different reason (no subscription for RC's recurring
         // grant to hang on), and collapsing two reasons into one condition is
         // how the next person deletes the wrong half.
+        // THE RULING AND THE CONSTANT ARE NOT THE SAME EVENT (2026-09-22).
+        // Zac ruled pro -> 500 credits / 50 videos and max -> 2000 / 200. The
+        // paragraph above still describes TIER_ALLOWANCE AS IT STANDS — 200 and
+        // 1000 — because that constant tracks what RevenueCat has actually
+        // GRANTED, not what has been decided. It moves when RC does, together
+        // with __smoke_metered_tiers' expectation, in one commit.
+        //
+        // The measurement above is kept verbatim rather than rewritten: it is
+        // the EVIDENCE, not the conclusion. "8 of 27 exceed 20 videos" stays
+        // true; whether any of them exceeds FIFTY is UNMEASURED, so it no longer
+        // settles the Pro question in either direction.
+        //
+        // videos_limit is ruled SEPARATELY and ships now — it is the promise, in
+        // the unit the user was sold. TIER_ALLOWANCE is the mechanism.
         const _creditTier = _credits.creditTierFor(entitlement.row || {});
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
           && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })

@@ -85,8 +85,21 @@ test('videos_limit is RULED, never credits / cost', () => {
   for (const tier of ['free', 'pro', 'max']) {
     assert.ok(Number.isInteger(VIDEOS_LIMIT[tier]), `${tier} has a ruled video limit`);
   }
-  // Deliberately NOT asserted: VIDEOS_LIMIT[t] === TIER_ALLOWANCE[t] / COST_PER_RENDER.
-  // Encoding that would make the coincidence a rule and fail the day the rule
-  // is correctly broken. Recorded so the next reader knows it was a choice.
-  assert.ok(TIER_ALLOWANCE.pro === 500 && COST_PER_RENDER === 10);
+  // AND THE TWO HAVE NOW ACTUALLY DIVERGED, so the split stops being an
+  // argument and becomes an observation. Zac ruled pro -> 50 videos; RevenueCat
+  // has not yet granted the 500 credits behind it, so TIER_ALLOWANCE stays 200
+  // — it describes what a subscriber HOLDS, and a server displaying an
+  // allowance nobody has is a lie in the user's favour and still a lie.
+  //
+  //     VIDEOS_LIMIT.pro                    50   the ruled promise
+  //     TIER_ALLOWANCE.pro / COST_PER_RENDER 20   what the balance buys today
+  //
+  // Asserting the INEQUALITY is what stops someone re-deriving one from the
+  // other as a tidy-up: a derived field would read 20 here and move silently
+  // under the promise the moment either number changes.
+  assert.notStrictEqual(
+    VIDEOS_LIMIT.pro, TIER_ALLOWANCE.pro / COST_PER_RENDER,
+    'videos_limit must not be credits/cost — they have deliberately diverged');
+  assert.strictEqual(TIER_ALLOWANCE.pro / COST_PER_RENDER, 20,
+    'TIER_ALLOWANCE tracks RevenueCat, which has not granted 500 yet');
 });
