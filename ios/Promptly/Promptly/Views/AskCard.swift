@@ -399,6 +399,25 @@ struct ClarificationCard: View {
                     changeRequest: answer
                 )
                 await MainActor.run { onAnswered(newJobId) }
+            } catch APIError.reeditInFlight(let f) {
+                // A 409 IS NOT A CONNECTION PROBLEM, and saying so sends the
+                // user to check their wifi over a server decision.
+                //
+                // This cannot fire today — lib/reedit-versions.js is built but
+                // has no caller in server.js, so no 409 exists. It becomes
+                // reachable the moment the versioning half arms, and then it is
+                // reachable in the WORST way: `needs_input` is in that module's
+                // IN_FLIGHT_STATUSES, and the answer targets the parked row's
+                // own root, so the parked question can be returned as the thing
+                // blocking its own answer. Whether that is prevented belongs to
+                // the ordering decision, not here. What belongs here is that if
+                // it happens, the message is true.
+                await MainActor.run {
+                    errorText = f.isParkedOnAQuestion
+                        ? "This video is still waiting on an earlier question. Open it from your library to finish that first."
+                        : "This video is already being re-edited. Give that one a moment to finish."
+                    isSubmitting = false
+                }
             } catch {
                 await MainActor.run {
                     errorText = "Couldn't send that — check your connection and try again."

@@ -113,6 +113,15 @@ check('answerAsk(' not in SUBMIT,
       "the answer does not go to /answer-ask",
       "the answer posts to /answer-ask — canAcceptAnswer 409s on a null ask column, silently re-parking the user")
 
+# A 409 MUST NOT BE REPORTED AS A NETWORK FAULT. No 409 exists yet — the module
+# that would raise it has no caller — but it arms with the versioning half, and
+# `needs_input` is in its IN_FLIGHT_STATUSES, so a parked question can come back
+# as the thing blocking its own answer. If that happens the user must not be
+# told to check their connection.
+check('APIError.reeditInFlight' in SUBMIT,
+      "a 409 is distinguished from a transport failure",
+      "a 409 falls into the generic catch — the user is told to check their connection over a server decision")
+
 # ── 5. The bubble renders it ─────────────────────────────────────────────────
 check('ClarificationCard(' in MB,
       "the bubble renders the clarification card",

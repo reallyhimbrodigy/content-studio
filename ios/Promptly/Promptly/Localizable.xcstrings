@@ -30155,6 +30155,160 @@
         }
       }
     },
+    "This video is already being re-edited. Give that one a moment to finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يجري بالفعل إعادة تحرير هذا الفيديو. امنحه لحظة حتى ينتهي."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ভিডিওটি ইতিমধ্যে পুনঃসম্পাদনা হচ্ছে। শেষ হতে একটু সময় দিন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Video wird bereits bearbeitet. Gib dem Vorgang einen Moment."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video is already being re-edited. Give that one a moment to finish."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo ya se está reeditando. Dale un momento para terminar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette vidéo est déjà en cours de remontage. Laissez-lui un instant pour finir."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस वीडियो का री-एडिट पहले से चल रहा है। उसे पूरा होने में थोड़ा समय दें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video ini sedang diedit ulang. Beri waktu sebentar sampai selesai."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この動画はすでに再編集中です。完了まで少しお待ちください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो भिडियो पहिले नै पुन: सम्पादन हुँदैछ। सकिन केही समय दिनुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo já está sendo reeditado. Aguarde um momento até terminar."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس ویڈیو کی دوبارہ ایڈٹنگ پہلے سے جاری ہے۔ مکمل ہونے کے لیے تھوڑا وقت دیں۔"
+          }
+        }
+      }
+    },
+    "This video is still waiting on an earlier question. Open it from your library to finish that first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يزال هذا الفيديو بانتظار سؤال سابق. افتحه من مكتبتك للإجابة عليه أولًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ভিডিওটি আগের একটি প্রশ্নের অপেক্ষায় আছে। আগে সেটি শেষ করতে লাইব্রেরি থেকে খুলুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Video wartet noch auf eine frühere Frage. Öffne es in deiner Bibliothek, um sie zuerst zu beantworten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video is still waiting on an earlier question. Open it from your library to finish that first."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo aún espera una pregunta anterior. Ábrelo desde tu biblioteca para responderla primero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette vidéo attend encore une question précédente. Ouvrez-la depuis votre bibliothèque pour y répondre d’abord."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस वीडियो पर पहले का एक सवाल बाकी है। उसे पहले पूरा करने के लिए इसे अपनी लाइब्रेरी से खोलें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video ini masih menunggu pertanyaan sebelumnya. Buka dari pustakamu untuk menyelesaikannya dulu."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この動画にはまだ未回答の質問があります。ライブラリから開いて先に回答してください。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो भिडियो अघिको प्रश्नको पर्खाइमा छ। पहिले त्यो पूरा गर्न लाइब्रेरीबाट खोल्नुहोस्।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo ainda aguarda uma pergunta anterior. Abra-o na sua biblioteca para responder primeiro."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ ویڈیو اب بھی پچھلے سوال کی منتظر ہے۔ پہلے اسے مکمل کرنے کے لیے لائبریری سے کھولیں۔"
+          }
+        }
+      }
+    },
     "TikTok": {
       "extractionState": "manual",
       "localizations": {
