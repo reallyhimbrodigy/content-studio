@@ -74,6 +74,53 @@ final class UsageService: ObservableObject {
         let free: Int?
         let pro: Int?
         let max: Int?
+        /// The CALLER'S OWN allowance, when the server sends a bare number
+        /// instead of a per-tier object.
+        let own: Int?
+
+        /// TOLERANT OF BOTH SHAPES, AND IT NEVER THROWS. This is not defensive
+        /// styling; it is an outage this client would otherwise take.
+        ///
+        /// The server work in flight (lane/videos-allowance) sends
+        /// `videos_limit: _credits.videosLimitFor(profileRow)` — a scalar, the
+        /// caller's own limit. This client was written to a per-tier object,
+        /// because the paywall draws the Pro and Max cards at once to someone
+        /// holding neither and a scalar cannot fill those rows.
+        ///
+        /// Optionality does NOT protect against that. `VideoLimits?` covers
+        /// absent and null; a NUMBER where an object is expected is a
+        /// typeMismatch, and one throw anywhere in Snapshot fails the WHOLE
+        /// decode — so `refresh()` returns early and render_limit, chat_limit,
+        /// resets_at and validate_token all go blank with it. Verified against
+        /// the real structs, all three shapes: absent decodes, the object
+        /// decodes, the scalar threw
+        ///   "Expected to decode Dictionary<String, Any> but found number".
+        ///
+        /// So this reads whichever arrives and, failing both, yields all-nil —
+        /// the same inert state as a server that has not shipped the field.
+        /// Whichever shape the contract settles on, this client survives it.
+        init(from decoder: Decoder) throws {
+            if let single = try? decoder.singleValueContainer(),
+               let n = try? single.decode(Int.self) {
+                free = nil; pro = nil; max = nil; own = n
+                return
+            }
+            let c = try? decoder.container(keyedBy: CodingKeys.self)
+            free = (try? c?.decodeIfPresent(Int.self, forKey: .free)) ?? nil
+            pro  = (try? c?.decodeIfPresent(Int.self, forKey: .pro)) ?? nil
+            max  = (try? c?.decodeIfPresent(Int.self, forKey: .max)) ?? nil
+            own  = (try? c?.decodeIfPresent(Int.self, forKey: .own)) ?? nil
+        }
+
+        enum CodingKeys: String, CodingKey { case free, pro, max, own }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeIfPresent(free, forKey: .free)
+            try c.encodeIfPresent(pro, forKey: .pro)
+            try c.encodeIfPresent(max, forKey: .max)
+            try c.encodeIfPresent(own, forKey: .own)
+        }
     }
 
     @Published var snapshot: Snapshot?
@@ -129,6 +176,12 @@ final class UsageService: ObservableObject {
     /// for once.
     @MainActor
     var videosLimitForCurrentTier: Int? {
+        // A scalar IS this value — the server resolved the tier already — so it
+        // wins over a tier lookup that would be nil under that shape. The
+        // per-tier accessors above deliberately do NOT fall back to it: one
+        // number cannot tell the Pro card from the Max card, and filling both
+        // rows from it would print the same allowance on two different tiers.
+        if let own = positive(snapshot?.videos_limit?.own) { return own }
         let sub = SubscriptionService.shared
         if sub.isMax { return videosLimitMax }
         if sub.effectiveIsPro { return videosLimitPro }
