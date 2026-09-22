@@ -321,109 +321,72 @@ private struct FlowChips: View {
 /// switch would be one edit away from posting a clarification to /answer-ask.
 struct ClarificationCard: View {
     let clarification: ParkedClarification
-    /// Receives the NEW job id, so the bubble can follow the retry rather than
-    /// the row it was parked on. The parked row is not cancelled here — that is
-    /// the server's half and it is not built, so the bubble must move itself.
-    let onAnswered: (String) -> Void
+    /// A tapped choice becomes the user's next message on the same root — the
+    /// identical path a typed reply takes, so there is one way an answer
+    /// reaches the editor rather than two that can drift.
+    let onChoose: (String) -> Void
 
-    @State private var text = ""
-    @State private var isSubmitting = false
-    @State private var errorText: String?
-
-    private var hasAnswer: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    @Environment(\.conversionScale) private var k
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10 * k) {
+            HStack(alignment: .top, spacing: 8 * k) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * k, weight: .semibold))
                     .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.78, blue: 0.42), .white],
                                                     startPoint: .leading, endPoint: .trailing))
-                    .padding(.top, 2)
+                    .padding(.top, 2 * k)
                 Text(clarification.question)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 15 * k, weight: .medium))
                     .foregroundColor(.white.opacity(0.95))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            TextField("Tell me what to change…", text: $text, axis: .vertical)
-                .font(.system(size: 14))
-                .foregroundColor(.white)
-                .tint(.white)
-                .lineLimit(1...4)
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-                .disabled(isSubmitting)
-
-            if let errorText {
-                Text(errorText)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.6))
-                    .fixedSize(horizontal: false, vertical: true)
+            // CHOICES WHEN THERE ARE ANY, AND NOTHING WHEN THERE ARE NOT. The
+            // worker sends a bare question today, so this renders as a question
+            // and the user answers in the composer — the same composer that
+            // re-edits the video above. No second reply control to keep in step.
+            if let choices = clarification.choices, !choices.isEmpty {
+                FlowChoices(choices: choices, k: k, onChoose: onChoose)
             }
-
-            HStack(spacing: 8) {
-                if isSubmitting {
-                    ProgressView().tint(.white).scaleEffect(0.8)
-                } else {
-                    Button { submit() } label: {
-                        Text("Send")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(hasAnswer ? .black : .white.opacity(0.35))
-                            .padding(.horizontal, 16).padding(.vertical, 8)
-                            .background(Capsule().fill(hasAnswer ? Color.white : Color.white.opacity(0.08)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!hasAnswer)
-                }
-            }
-            .padding(.top, 2)
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        .padding(14 * k)
+        .background(RoundedRectangle(cornerRadius: 14 * k).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14 * k).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
     }
+}
 
-    private func submit() {
-        let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !answer.isEmpty, !isSubmitting else { return }
-        isSubmitting = true
-        errorText = nil
-        Task {
-            do {
-                // AGAINST THE PARENT, not the parked job. Verified on every
-                // production row: all 19 carry a parent_job_id.
-                let newJobId = try await APIService.shared.reeditFromJob(
-                    originalJobId: clarification.parentJobId,
-                    changeRequest: answer
-                )
-                await MainActor.run { onAnswered(newJobId) }
-            } catch APIError.reeditInFlight(let f) {
-                // A 409 IS NOT A CONNECTION PROBLEM, and saying so sends the
-                // user to check their wifi over a server decision.
-                //
-                // This cannot fire today — lib/reedit-versions.js is built but
-                // has no caller in server.js, so no 409 exists. It becomes
-                // reachable the moment the versioning half arms, and then it is
-                // reachable in the WORST way: `needs_input` is in that module's
-                // IN_FLIGHT_STATUSES, and the answer targets the parked row's
-                // own root, so the parked question can be returned as the thing
-                // blocking its own answer. Whether that is prevented belongs to
-                // the ordering decision, not here. What belongs here is that if
-                // it happens, the message is true.
-                await MainActor.run {
-                    errorText = f.isParkedOnAQuestion
-                        ? "This video is still waiting on an earlier question. Open it from your library to finish that first."
-                        : "This video is already being re-edited. Give that one a moment to finish."
-                    isSubmitting = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorText = "Couldn't send that — check your connection and try again."
-                    isSubmitting = false
-                }
+/// Wrapping row of choice chips.
+private struct FlowChoices: View {
+    let choices: [String]
+    let k: CGFloat
+    let onChoose: (String) -> Void
+
+    var body: some View {
+        FlexibleChips(items: choices, spacing: 8 * k) { choice in
+            Button { onChoose(choice) } label: {
+                Text(choice)
+                    .font(.system(size: 14 * k, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14 * k)
+                    .padding(.vertical, 8 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
             }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Minimal wrapping layout — chips are short and few, so a Layout is overkill.
+private struct FlexibleChips<Item: Hashable, Content: View>: View {
+    let items: [Item]
+    let spacing: CGFloat
+    @ViewBuilder let content: (Item) -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            ForEach(items, id: \.self) { content($0) }
         }
     }
 }

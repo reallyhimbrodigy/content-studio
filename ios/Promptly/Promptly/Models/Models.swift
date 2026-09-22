@@ -567,6 +567,12 @@ struct JobCreateResponse: Codable {
 struct ParkedClarification: Codable, Equatable, Hashable {
     let question: String
     let parentJobId: String
+    /// Tappable answers, when the editor offers them. Optional because the
+    /// worker emits a bare question string today — every one of the 19 measured
+    /// rows has text and no choices — and the real-time relay is what will start
+    /// sending them. Absent means the reply comes from the composer, which is
+    /// the same rail either way.
+    var choices: [String]? = nil
 }
 
 struct ReeditSession: Identifiable, Equatable {

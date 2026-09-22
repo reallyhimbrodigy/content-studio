@@ -725,47 +725,6 @@ class APIService {
         return jobId
     }
 
-    /// Every completed version of a video, oldest first, latest LAST.
-    ///
-    /// Accepts ANY job id in the tree — the root, a re-edit, or a re-edit of a
-    /// re-edit — and resolves to the root server-side, so the caller never has
-    /// to know which one it is holding.
-    ///
-    /// Urls come back SIGNED ON READ and must not be cached. Caching a
-    /// signature is what produced history rot: 2,062 of 2,643 stored signatures
-    /// were dead when measured. Cache the job_id and ask again.
-    /// GET /api/video-jobs/:id — the additive re-edit fields.
-    ///
-    /// Exists because the 409 carries `status` but NOT the question: it says a
-    /// video is parked, not what it was asked. The question and its retry target
-    /// live on the job, so the composer fetches them rather than showing
-    /// placeholder copy and guessing where a reply goes.
-    func jobFields(jobId: String) async throws -> ReeditJobFields {
-        let request = await authorizedRequest("/api/video-jobs/\(jobId)", method: "GET")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw APIError.jobCreationFailed("Couldn't read that video")
-        }
-        return try JSONDecoder().decode(ReeditJobFields.self, from: data)
-    }
-
-    func jobVersions(jobId: String) async throws -> ReeditVersionsResponse {
-        var request = await authorizedRequest("/api/video-jobs/\(jobId)/versions", method: "GET")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await requestData(request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.jobCreationFailed("versions HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-        }
-        let decoded = try JSONDecoder().decode(ReeditVersionsResponse.self, from: data)
-        // The server guarantees these agree, both counting completed rows. If
-        // they ever do not, the switcher renders fewer entries than it claims —
-        // a wrong that looks like a UI glitch and is not.
-        if !decoded.isConsistent {
-            print("[versions] INVARIANT BROKEN job=\(jobId) count=\(decoded.version_count) list=\(decoded.versions.count)")
-        }
-        return decoded
-    }
-
     /// Submit a Phase D ask-back answer on the re-edit rail — resumes the parked
     /// job in place. A 404/409/403 means the job is no longer awaiting THIS input
     /// (already resumed, self-completed on timeout, double-answered, or a stale

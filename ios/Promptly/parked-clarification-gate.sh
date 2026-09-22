@@ -103,24 +103,30 @@ check('isFinishing = false' in NEEDS,
       "isFinishing is not cleared — the bubble holds at 100% under the question")
 
 # ── 4. The answer goes to the re-edit route, never to answer-ask ─────────────
-SUBMIT = block(AC[AC.index('struct ClarificationCard'):], 'private func submit') if 'struct ClarificationCard' in AC else ''
-check(bool(SUBMIT), "ClarificationCard has a submit path",
-      "ClarificationCard.submit is gone — the question cannot be answered")
-check('reeditFromJob(' in SUBMIT and 'parentJobId' in SUBMIT,
-      "the answer starts a new re-edit against the PARENT",
-      "the answer does not target the parent — the parked row has no render to re-edit")
-check('answerAsk(' not in SUBMIT,
+# THE ANSWER MOVED, THE PROPERTIES DID NOT (ruled 2026-09-22). The card used to
+# own a composer and post for itself; re-edit is the chat now, so the reply
+# travels the same send path a typed change does. These assertions follow it to
+# EditorView rather than being dropped with the card — what had to stay true is
+# still true, just somewhere else.
+SEND = block(ED, 'private func sendReedit(')
+check(bool(SEND), "sendReedit is the one place an answer is dispatched",
+      "sendReedit is gone — a parked question cannot be answered")
+check('reeditFromJob(' in SEND and 'originalJobId: originalJobId' in SEND,
+      "the answer starts a new re-edit against the id it was given",
+      "sendReedit no longer posts reeditFromJob against its target")
+check('answerAsk(' not in SEND,
       "the answer does not go to /answer-ask",
       "the answer posts to /answer-ask — canAcceptAnswer 409s on a null ask column, silently re-parking the user")
-
-# A 409 MUST NOT BE REPORTED AS A NETWORK FAULT. No 409 exists yet — the module
-# that would raise it has no caller — but it arms with the versioning half, and
-# `needs_input` is in its IN_FLIGHT_STATUSES, so a parked question can come back
-# as the thing blocking its own answer. If that happens the user must not be
-# told to check their connection.
-check('APIError.reeditInFlight' in SUBMIT,
+check('APIError.reeditInFlight' in SEND,
       "a 409 is distinguished from a transport failure",
       "a 409 falls into the generic catch — the user is told to check their connection over a server decision")
+
+# And the PARENT is what a tapped choice carries, since the parked row itself
+# has no render to re-edit.
+CHOICE = block(ED, 'private func clarificationChoiceClosure()')
+check('parentJobId' in CHOICE and 'sendReedit(' in CHOICE,
+      "a tapped choice is sent against the parked row's PARENT",
+      "a tapped choice no longer targets the parent — the parked row has no video to re-edit")
 
 # ── 5. The bubble renders it ─────────────────────────────────────────────────
 check('ClarificationCard(' in MB,

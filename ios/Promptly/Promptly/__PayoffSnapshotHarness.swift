@@ -317,17 +317,13 @@ struct PayoffSnapshotHarnessView: View {
                     .task { ChatStore.shared.debugSeed(Chat(id: "store-empty", title: "New chat",
                                                             messages: [], createdAt: Date(), updatedAt: Date())) }
             }
-            // 60/61 exist to PROVE the 2026-09-22 ruling by rendering it, not by
-            // asserting about it. 60 is the state every real user of 258 is in
-            // until lane/reedit-versions merges: /versions 404s. The correct
-            // appearance is that nothing is visibly wrong — composer live, no
-            // strip, no error. 61 is the same sheet once the endpoint exists, so
-            // the pair shows the difference is a strip and nothing else.
-            case 60: bleed("RE-EDIT — /versions 404: composer live, no strip, NO error") {
-                ReeditSheet(jobId: "posed-parent-job")
+            case 61: bleed("RE-EDIT — the video, the typed change under it, the new one arriving") {
+                EditorView()
+                    .task { Self.seedReeditInFlightChat() }
             }
-            case 61: bleed("RE-EDIT — /versions live: the strip, and nothing else changed") {
-                ReeditSheet(jobId: "posed-parent-job")
+            case 60: bleed("RE-EDIT — a question in the thread, the tap, the new cut") {
+                EditorView()
+                    .task { Self.seedClarificationChat() }
             }
             case 59: bleed("CHAT — a real thread: two turns each, plus a video") {
                 EditorView()
@@ -701,6 +697,68 @@ struct PayoffSnapshotHarnessView: View {
         msgs.append(SerializedMessage(from: again))
         msgs.append(SerializedMessage(from: reeditResultMock))
         ChatStore.shared.debugSeed(Chat(id: "store-reedit", title: "Launch clip",
+                                        messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// THE CONTINUITY ITSELF: a finished video, the change typed under it, and
+    /// the new version arriving in the SAME thread.
+    ///
+    /// Ends on the in-flight render rather than a second finished video because
+    /// one completed video fills a phone screen and most of an iPad's — two of
+    /// them cannot share a frame, so a capture of the "after" state would show
+    /// only the after. The progress bubble is compact and is the moment the
+    /// ruling is about: the request went in as a message and the answer is
+    /// coming back in place, with nothing opened and nothing navigated.
+    @MainActor
+    static func seedReeditInFlightChat() {
+        var msgs: [SerializedMessage] = []
+        msgs.append(SerializedMessage(from: completedMock))
+        var change = ChatMessage(role: .user, content: "Make the captions bigger")
+        change.isOnboarding = false
+        msgs.append(SerializedMessage(from: change))
+        var working = ChatMessage(role: .assistant, content: "")
+        working.jobId = "snapshot-inflight"
+        working.jobStatus = "processing"
+        working.jobProgress = 42
+        working.stepMessage = "Re-cutting with bigger captions…"
+        msgs.append(SerializedMessage(from: working))
+        ChatStore.shared.debugSeed(Chat(id: "store-reedit-inflight", title: "Launch clip",
+                                        messages: msgs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    /// THE CLARIFICATION, IN THE THREAD (ruled 2026-09-22).
+    ///
+    /// Question renders as an assistant message with tappable choices; a tap
+    /// sends the choice as the user's NEXT MESSAGE on the same root, and the new
+    /// version lands under it. One continuous thread — nothing opens, nothing
+    /// navigates. The seed shows the state AFTER a tap so the whole exchange is
+    /// in one frame: card, the chosen answer as the user's own message, result.
+    @MainActor
+    static func seedClarificationChat() {
+        var msgs: [SerializedMessage] = []
+        var vague = ChatMessage(role: .user, content: "make it better")
+        vague.isOnboarding = false
+        msgs.append(SerializedMessage(from: vague))
+
+        var parked = ChatMessage(role: .assistant, content: "")
+        parked.jobId = "snapshot-parked"
+        parked.jobStatus = "needs_input"
+        parked.stepMessage = "Lumen has a question"
+        parked.clarification = ParkedClarification(
+            question: "Happy to — which part? I can tighten the pacing, punch up the captions, or brighten the whole thing.",
+            parentJobId: "snapshot-completed",
+            choices: ["Tighten the pacing", "Punch up the captions", "Brighten it"])
+        msgs.append(SerializedMessage(from: parked))
+
+        var tapped = ChatMessage(role: .user, content: "Punch up the captions")
+        tapped.isOnboarding = false
+        msgs.append(SerializedMessage(from: tapped))
+        // The thread ENDS on the tapped choice on purpose. The chat scrolls to
+        // its last message, so appending the resulting render would push the
+        // card and the answer off-screen and the capture would show neither —
+        // a screenshot of the thing this state exists to prove, without it.
+
+        ChatStore.shared.debugSeed(Chat(id: "store-clarify", title: "Launch clip",
                                         messages: msgs, createdAt: Date(), updatedAt: Date()))
     }
 

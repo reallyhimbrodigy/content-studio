@@ -46,11 +46,6 @@ struct EditorView: View {
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
-    /// THE RE-EDIT SURFACE (ruled for 258): the pill opens a job-scoped sheet.
-    /// `ReeditSession` is already Identifiable, so the pill's existing handler —
-    /// Pro wall, reedit_tap, deferred-paywall routing out of the UIKit player —
-    /// is unchanged; only what this screen DOES with the session moved.
-    @State private var reeditSheetSession: ReeditSession?
     /// Ask-back ids the user has already answered this session — so a stale
     /// in-flight poll (captured before the answer) can't re-park the same ask.
     @State private var answeredAskIds: Set<String> = []
@@ -295,11 +290,6 @@ struct EditorView: View {
                 // house rule on error copy — never a bare "something went wrong".
                 Text(String(localized: "We couldn't read it from your library. Pick it again — that usually works."))
             }
-            .sheet(item: $reeditSheetSession) { session in
-                ReeditSheet(jobId: session.originalJobId) {
-                    reeditSheetSession = nil
-                }
-            }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: pickerMaxSelection) { videos in
                     handlePickedVideos(videos)
@@ -374,10 +364,13 @@ struct EditorView: View {
                 // model was selected, fall back to Flare so nobody is
                 // stranded on an inaccessible model. No-op for everyone else.
                 ModelService.shared.reconcile(isPro: SubscriptionService.shared.effectiveIsPro)
-                // Pick up any pending re-edit session posted by Library and consume it.
-                if let pending = appState.pendingReedit {
-                    reeditSheetSession = pending
+                // THE PILL PUTS THE CURSOR IN THE COMPOSER. Nothing opens and
+                // nothing navigates (ruled 2026-09-22): re-edit IS the chat, so
+                // the affordance's whole job is to say "type it here". The
+                // request itself is the next message sent under the video.
+                if appState.pendingReedit != nil {
                     appState.pendingReedit = nil
+                    focusInput()
                 }
                 // FOCUS ON A GENUINE APPEARANCE, NOT ON A SHEET CLOSING.
                 // Chat is a composer-first screen: arriving at it should put the
@@ -417,13 +410,9 @@ struct EditorView: View {
             // with always-visible vibe chips above the input. No more
             // animation timer needed; the chips are static affordances.
             .onChange(of: appState.pendingReedit) { _, newSession in
-                if let s = newSession {
-                    // No focusInput(): the sheet owns the keyboard now, and
-                    // focusing the composer behind it raised a keyboard under
-                    // the sheet — the same bug the onAppear comment above
-                    // records for fullScreenCover.
-                    reeditSheetSession = s
+                if newSession != nil {
                     appState.pendingReedit = nil
+                    focusInput()
                 }
             }
             // NO FOCUS ON THE POST-AUTH LANDING EITHER. This was the second
@@ -854,7 +843,7 @@ struct EditorView: View {
                             onMakeAnother: { tapAddVideo() },
                             onCancel: cancelClosure(for: message),
                             onAskResolved: askResolvedClosure(for: message),
-                            onClarificationAnswered: clarificationAnsweredClosure(for: message)
+                            onClarificationChoice: clarificationChoiceClosure()
                         )
                         .id(message.id)
                     }
@@ -2585,13 +2574,101 @@ struct EditorView: View {
     /// posted to the re-edit rail), optimistically flip this bubble back to
     /// processing and clear the ask so the bar resumes immediately — then poll
     /// to confirm the resumed job (or catch a self-completed one).
-    /// The clarification answer starts a NEW job, so the bubble has to follow it.
+    /// A tapped choice is sent exactly like a typed reply: the user's words
+    /// appear as their message, the new version renders under it.
     ///
-    /// Unlike an ask-back — which resumes the same job and therefore needs no
-    /// re-pointing — the retry is a different row. The parked row is NOT
-    /// cancelled by this: that is the server half of reply-as-new-re-edit and it
-    /// is not built. Until it is, the parked row simply stops being polled
-    /// because this bubble no longer carries its id.
+    /// The parked row is NOT repointed or cleared here. It stays needs_input
+    /// until the server expires it — that half is 87's and is being armed — and
+    /// pretending otherwise on the client would show the question as resolved
+    /// while the row still holds the root lock.
+    private func clarificationChoiceClosure() -> ((String, String) -> Void)? {
+        return { choice, parentJobId in
+            guard SubscriptionService.shared.effectiveIsPro else {
+                appState.presentPaywall(.reedit)
+                return
+            }
+            Analytics.track("reedit_tap", props: [
+                "source": "clarification_choice",
+                "isPro": true,
+            ])
+            sendReedit(changeRequest: choice, originalJobId: parentJobId)
+        }
+    }
+
+    /// Dispatch a re-edit and let it land in the thread.
+    ///
+    /// ONE CONTINUOUS THREAD, which is the whole point of the ruling: the user's
+    /// words go in as their message, the new version renders into an assistant
+    /// message right under it, and nothing opens or navigates. This is the same
+    /// job-creation call the pill used to make — only the surface changed.
+    private func sendReedit(changeRequest: String, originalJobId: String) {
+        clearInputField()
+        isSending = true
+
+        let userMsg = ChatMessage(role: .user, content: changeRequest)
+        messages.append(userMsg)
+
+        var processingMsg = ChatMessage(role: .assistant, content: "")
+        processingMsg.jobStatus = "queued"
+        processingMsg.jobProgress = 0
+        processingMsg.stageTimeline = StageTimeline(mode: "render_only", startWith: "analyze")
+        messages.append(processingMsg)
+        let msgId = processingMsg.id
+        persistMessages()
+
+        Task { @MainActor in
+            func idx() -> Int? { messages.firstIndex(where: { $0.id == msgId }) }
+            _ = await ensureActiveChat()
+            do {
+                let newJobId = try await APIService.shared.reeditFromJob(
+                    originalJobId: originalJobId,
+                    changeRequest: changeRequest
+                )
+                if let i = idx() {
+                    messages[i].jobId = newJobId
+                    startSSE(jobId: newJobId, messageId: msgId)
+                    persistMessages()
+                }
+            } catch let APIError.reeditInFlight(inFlight) {
+                // TYPED, NOT GENERIC. "Parked on a question" and "already
+                // rendering" need different words because the user's next
+                // action differs — answer it, or wait.
+                if let i = idx() {
+                    messages[i].jobStatus = "failed"
+                    messages[i].error = inFlight.isParkedOnAQuestion
+                        ? String(localized: "This video is still waiting on an earlier question. Answer that first and I'll pick this up.")
+                        : String(localized: "This video is already being re-edited. Give that one a moment to finish.")
+                    persistMessages()
+                }
+            } catch APIError.paymentRequired {
+                // The wall above covers the ordinary case; this is the server
+                // disagreeing with the client's view of entitlement. Drop the
+                // stub rather than leave a dead bubble, and show the paywall.
+                if let i = idx() { messages.remove(at: i) }
+                persistMessages()
+                appState.presentPaywall(.reedit)
+            } catch {
+                if let i = idx() {
+                    messages[i].jobStatus = "failed"
+                    messages[i].error = friendlyError(error)
+                    persistMessages()
+                }
+            }
+            isSending = false
+        }
+    }
+
+    private func mostRecentFinishedVideoJobId() -> String? {
+        for m in messages.reversed() {
+            guard let jobId = m.jobId else { continue }
+            if m.jobStatus == "completed",
+               m.renderedVideoUrl != nil || m.hlsManifestUrl != nil {
+                return jobId
+            }
+        }
+        return nil
+    }
+
     private func clarificationAnsweredClosure(for message: ChatMessage) -> ((String) -> Void)? {
         guard message.jobStatus == "needs_input", message.clarification != nil else { return nil }
         let messageId = message.id
@@ -3320,8 +3397,37 @@ struct EditorView: View {
             return
         }
 
+        // ── RE-EDIT: the message typed under a finished video ─────────
+        //
+        // RE-EDIT IS THE CHAT (ruled 2026-09-22). There is no sheet, no session
+        // to arm and no chip: a message sent while a finished video sits above
+        // it IS the change request, and the new version arrives as the next
+        // video message in the same thread.
+        //
+        // Ordered BEFORE the text fast path because that path would otherwise
+        // swallow every one of these as chat. Attaching a new clip is what says
+        // "a new video" — that is `hasVideos`, handled below — so the two
+        // intents stay distinguishable without asking the user to declare one.
+        if !hasVideos, !text.isEmpty, let target = mostRecentFinishedVideoJobId() {
+            // The funnel head, on the action that actually starts a re-edit.
+            Analytics.track("reedit_tap", props: [
+                "source": "composer",
+                "isPro": SubscriptionService.shared.effectiveIsPro,
+            ])
+            // Pro wall, unchanged in placement relative to the work: nothing is
+            // dispatched and nothing is appended until entitlement is settled,
+            // so a free user's text stays in the composer for after they buy.
+            guard SubscriptionService.shared.effectiveIsPro else {
+                appState.presentPaywall(.reedit)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                return
+            }
+            sendReedit(changeRequest: text, originalJobId: target)
+            return
+        }
+
         // ── Text-only chat fast path ──────────────────────────────────
-        // No video, no re-edit session — route to the lightweight
+        // No video above and no clip attached — route to the lightweight
         // text path that doesn't lock isSending or wait on chat
         // creation. User can send another message immediately.
         if !hasVideos {
@@ -4245,6 +4351,9 @@ struct EditorView: View {
             /// whole defect: 19 rows across 8 users sat parked for up to 62 days
             /// with the question sitting in a response the client was reading.
             let clarification_question: String?
+            /// Tappable answers. Nil today — the worker sends a bare question —
+            /// and the real-time relay is what will populate it.
+            let clarification_choices: [String]?
         }
         struct JobStatusRow: Codable {
             let status: String?
@@ -4443,7 +4552,9 @@ struct EditorView: View {
                     // step, so the frame says "completed" and the branch has
                     // never once run. Two halves pointing at each other, and the
                     // user held at "Finalizing your video…" forever.
-                    messages[idx].clarification = ParkedClarification(question: q, parentJobId: parent)
+                    messages[idx].clarification = ParkedClarification(
+                        question: q, parentJobId: parent,
+                        choices: row.result?.clarification_choices?.filter { !$0.isEmpty })
                     messages[idx].jobStatus = "needs_input"
                     messages[idx].stepMessage = "Lumen has a question"
                     // The SSE frame for this park says status "completed" with

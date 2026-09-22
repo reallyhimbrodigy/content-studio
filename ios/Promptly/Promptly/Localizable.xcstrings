@@ -30232,6 +30232,83 @@
         }
       }
     },
+    "This video is still waiting on an earlier question. Answer that first and I'll pick this up.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يزال هذا الفيديو بانتظار سؤال سابق. أجب عنه أولًا وسأكمل من هنا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ভিডিওটি আগের একটি প্রশ্নের অপেক্ষায় আছে। আগে সেটির উত্তর দিন, তারপর আমি এটি করব।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Video wartet noch auf eine frühere Frage. Beantworte sie zuerst, dann mache ich hier weiter."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video is still waiting on an earlier question. Answer that first and I'll pick this up."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo aún espera una pregunta anterior. Respóndela primero y sigo con esto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette vidéo attend encore une question précédente. Répondez-y d’abord et je reprends ici."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस वीडियो पर पहले का एक सवाल बाकी है। पहले उसका जवाब दें, फिर मैं यह कर दूँगा।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video ini masih menunggu pertanyaan sebelumnya. Jawab dulu, lalu aku lanjutkan."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この動画にはまだ未回答の質問があります。先に答えていただければ続けます。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो भिडियो अघिको प्रश्नको पर्खाइमा छ। पहिले त्यसको जवाफ दिनुहोस्, अनि म यो गर्छु।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este vídeo ainda aguarda uma pergunta anterior. Responda primeiro e eu continuo daqui."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ ویڈیو اب بھی پچھلے سوال کی منتظر ہے۔ پہلے اس کا جواب دیں، پھر میں یہ کر دوں گا۔"
+          }
+        }
+      }
+    },
     "This video is still waiting on an earlier question. Open it from your library to finish that first.": {
       "extractionState": "manual",
       "localizations": {

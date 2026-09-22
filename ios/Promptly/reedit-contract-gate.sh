@@ -100,43 +100,6 @@ if let f = decode(ReeditInFlight.self, #"{"error":"reedit_in_flight","job_id":"l
           "a statusless 409 claims a state the server never sent")
 } else { check(false, "", "a statusless 409 does not decode at all") }
 
-// ── GET /api/video-jobs/:id — the additive fields ───────────────────────────
-let bodyJob = #"{"id":"p1","status":"needs_input","root_job_id":"root-9","version":null,"version_count":3,"version_provisional":null,"clarification_question":"Just adjust my shirt button","clarification_retry_job_id":"parent-7","ask":null}"#
-if let j = decode(ReeditJobFields.self, bodyJob) {
-    check(j.clarification_question == "Just adjust my shirt button", "the question is read", "the question is not read")
-    check(j.clarification_retry_job_id == "parent-7",
-          "the retry target is read, and it is the PARENT not the parked row",
-          "the retry target is not read — a reply would go to a row with no video")
-    check(j.isParkedOnAQuestion, "a parked job reads as parked", "a parked job does not read as parked")
-} else { check(false, "", "GET /api/video-jobs/:id does not decode") }
-
-// Nulls on every park field is the ordinary case — the server sends the keys
-// always, so a client never branches on presence.
-if let j = decode(ReeditJobFields.self, #"{"clarification_question":null,"clarification_retry_job_id":null}"#) {
-    check(!j.isParkedOnAQuestion, "an unparked job reads as unparked", "nulls read as parked")
-} else { check(false, "", "a null-park body does not decode") }
-
-// BOTH HALVES OF THE DISCRIMINATOR, separately. A retry target with no question
-// must NOT read as parked — that is the original bug's exact shape: a card with
-// somewhere to send a reply and nothing to show the user. And a question with
-// no target must not either, since the reply would have nowhere to go.
-if let j = decode(ReeditJobFields.self, #"{"clarification_question":null,"clarification_retry_job_id":"parent-7"}"#) {
-    check(!j.isParkedOnAQuestion, "a retry target without a question is not parked",
-          "a job with no question reads as parked — that renders a card asking nothing")
-} else { check(false, "", "a target-without-question body does not decode") }
-if let j = decode(ReeditJobFields.self, #"{"clarification_question":"why?","clarification_retry_job_id":null}"#) {
-    check(!j.isParkedOnAQuestion, "a question without a retry target is not parked",
-          "a question with no target reads as parked — the reply would have nowhere to go")
-} else { check(false, "", "a question-without-target body does not decode") }
-
-// ── GET /api/video-jobs/:id/versions ────────────────────────────────────────
-let bodyVersions = #"{"root_job_id":"root-9","version_count":2,"versions":[{"job_id":"a","version":1,"status":"completed","created_at":"2026-09-01T00:00:00Z","change_request":null,"rendered_video_url":"https://x/a.mp4","thumbnail_url":null},{"job_id":"b","version":2,"status":"completed","created_at":"2026-09-02T00:00:00Z","change_request":"brighter","rendered_video_url":"https://x/b.mp4","thumbnail_url":"https://x/b.jpg"}]}"#
-if let v = decode(ReeditVersionsResponse.self, bodyVersions) {
-    check(v.versions.count == 2 && v.isConsistent, "the versions body decodes and is self-consistent",
-          "versions decoded but version_count disagrees with the list")
-    check(v.latest?.job_id == "b", "the latest version is the last entry", "latest is not the last entry")
-} else { check(false, "", "the versions body does NOT decode") }
-
 // ── POST /api/video-jobs/re-edit: `job_id` means THREE different things ─────
 // 200 create → the NEW job; 409 → the job BLOCKING you; 200 ask-resume → the
 // RESUMED job, in a body carrying none of the version fields. The client posts
@@ -158,47 +121,23 @@ for (label, body, expected) in [("create", create200, "new-1"),
     }
 }
 
-// ── /versions MUST DEGRADE, NEVER BLOCK (ruled 2026-09-22) ─────────────────
-// The strip is an enhancement; the composer is the feature. Until the server
-// half merges, this endpoint 404s on every launch, so the failure path is the
-// ONLY path real users will take for the whole of 258.
-struct Stub404: Error {}
-struct StubTimeout: Error {}
-struct StubUnauthorized: Error {}
-
-for (label, err) in [("404", Stub404() as Error),
-                     ("network timeout", StubTimeout() as Error),
-                     ("401", StubUnauthorized() as Error)] {
-    check(VersionsOutcome.forFailure(err) == .hidden,
-          "/versions \(label): strip hidden, nothing else changes",
-          "/versions \(label) does not hide the strip — the sheet would show an error for a missing endpoint")
-    check(VersionsOutcome.forFailure(err).response == nil,
-          "/versions \(label): no response to render",
-          "/versions \(label) yields a response to draw a strip from")
-}
-
-// An empty list is a success that still has nothing to show.
-if let empty = decode(ReeditVersionsResponse.self, #"{"root_job_id":"r","version_count":0,"versions":[]}"#) {
-    check(VersionsOutcome.forSuccess(empty) == .hidden,
-          "an empty versions list hides the strip too",
-          "an empty list draws a strip with no chips")
-} else { check(false, "", "an empty versions body does not decode") }
-
-// And a populated one still shows, or the degradation has eaten the feature.
-if let full = decode(ReeditVersionsResponse.self, bodyVersions) {
-    check(VersionsOutcome.forSuccess(full) == .strip(full),
-          "a populated versions list shows the strip",
-          "a populated list no longer shows the strip — degradation ate the feature")
-    check(VersionsOutcome.forSuccess(full).response?.latest?.job_id == "b",
-          "the shown strip carries the real versions",
-          "the shown strip is not the response that was fetched")
-} else { check(false, "", "the versions body does not decode") }
-
 // ── control ─────────────────────────────────────────────────────────────────
-// A decoder that accepts anything proves nothing, so prove it still rejects.
-check(decode(ReeditVersionsResponse.self, #"{"nope":1}"#) == nil,
-      "control: a body missing required fields is still rejected",
-      "control FAILED: the decoder accepts anything, so every check above is vacuous")
+// THE CONTROL HAD TO CHANGE WITH THE SURFACE. It asserted that a junk body is
+// REJECTED, which was true while a required-field type existed. Every type left
+// here is deliberately tolerant — that is the fix for the silent-nil bug — so
+// "it still rejects" is no longer a property any of them have, and keeping the
+// check would have meant loosening a real assertion to keep a control green.
+//
+// What must still be true is that the decoder READS its input rather than
+// returning a fixture: the same type must produce different answers for
+// different bodies. A decoder that returned a constant would pass every
+// assertion above.
+let probeA = decode(ReeditInFlight.self, #"{"error":"reedit_in_flight","status":"needs_input","job_id":"a"}"#)
+let probeB = decode(ReeditInFlight.self, #"{"error":"reedit_in_flight","status":"processing","job_id":"b"}"#)
+check(probeA?.isParkedOnAQuestion == true && probeB?.isParkedOnAQuestion == false
+        && probeA?.jobId == "a" && probeB?.jobId == "b",
+      "control: the decoder reads its input — two bodies, two different answers",
+      "control FAILED: the decoder returns the same answer regardless of input, so every check above is vacuous")
 
 if failures > 0 {
     print("\nreedit-contract-gate: FAIL (\(failures))")
