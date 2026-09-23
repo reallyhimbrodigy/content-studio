@@ -11,10 +11,17 @@
 -- them, and if the feature is being rolled back they hold only in-flight
 -- quotes, which are worth less than the confusion of leaving them behind.
 
+-- UPDATED 2026-09-23 after the migration was APPLIED. The three tables now
+-- carry `user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE` and RLS
+-- enabled with zero policies. Neither changes this script: DROP TABLE takes
+-- the foreign key, the RLS flag and the policies with it. The cascade points
+-- OUTWARD from auth.users, so dropping these tables cannot reach a user row.
+
 -- ── SAFE: the three tables this migration created ────────────────────────
 DROP INDEX IF EXISTS picked_clips_sweep_idx;
 DROP TABLE IF EXISTS picked_clips;
 
+DROP INDEX IF EXISTS generation_batch_quotes_user_idx;
 DROP TABLE IF EXISTS generation_batch_quotes;
 
 DROP INDEX IF EXISTS generation_quotes_user_idx;
