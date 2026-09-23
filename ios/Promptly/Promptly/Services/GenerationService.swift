@@ -39,7 +39,10 @@ final class GenerationService {
     }
 
     enum BatchConfirmOutcome: Equatable {
-        case dispatched([String])          // job ids, exactly N of them
+        /// Exactly N job ids, IN CLIP ORDER — the nth id belongs to the nth
+        /// clip the user selected, which is what lets the thread show progress
+        /// against the right tile. Plus the balance after the reservation.
+        case dispatched(jobIds: [String], balance: Int?)
         /// Fresh numbers, and NOTHING was dispatched. There are no partial sends.
         case paymentRequired(PaymentRequired)
         case failed(String)
@@ -160,8 +163,17 @@ final class GenerationService {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let ids = obj["job_ids"] as? [String]
         else { return .failed("http \(http.statusCode)") }
+        // ALL-OR-NOTHING, AND THE SERVER SAID SO. If the count came back
+        // different from what we confirmed, that is not a partial send to
+        // paper over — it is a contract violation, and guessing which clips
+        // ran would put wrong progress against the wrong tiles.
+        guard ids.count == count else {
+            Analytics.track("batch_count_mismatch",
+                            props: ["requested": count, "returned": ids.count], durable: true)
+            return .failed("batch returned \(ids.count) of \(count)")
+        }
         Analytics.track("batch_dispatched", props: ["count": ids.count], durable: true)
-        return .dispatched(ids)
+        return .dispatched(jobIds: ids, balance: obj["balance"] as? Int)
     }
 
     // MARK: - Clip picked (the speed rule)
@@ -253,7 +265,7 @@ enum DebugStubs {
 
     static func batchConfirm(_ id: String, _ count: Int) -> GenerationService.BatchConfirmOutcome? {
         guard scenario?.hasPrefix("batch") == true else { return nil }
-        return .dispatched((0..<count).map { "stub-job-\($0)" })
+        return .dispatched(jobIds: (0..<count).map { "stub-job-\($0)" }, balance: 45 - count * 10)
     }
 
     static func clipPicked(_ uploadKey: String) -> String? {

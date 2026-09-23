@@ -159,6 +159,58 @@ M="Promptly/Models/Models.swift"
 seam=0
 sfail() { echo "  FAIL — $1"; seam=1; }
 echo "generation-contract-gate:"
+# ── The cards (structural) ───────────────────────────────────────────────────
+# The contract makes claims the TYPES cannot enforce: an event must fire once
+# per server RESPONSE and never per render; `reason` alone must pick the card;
+# a null ETA must show nothing; and the client must not do arithmetic about
+# money. Each is asserted where it can actually regress — in the view.
+C="Promptly/Views/GenerationCards.swift"
+ui=0
+ufail() { echo "  FAIL — $1"; ui=1; }
+if [ ! -f "$C" ]; then ufail "missing $C"; else
+  # EVENTS ONCE PER RESPONSE. Every Analytics call for this flow lives in the
+  # service, inside the function that received the response. The one impression
+  # event here must be deduped through state, never emitted from a body.
+  if grep -n 'Analytics.track' "$C" | grep -qv 'quote_card_shown'; then
+    ufail "$C tracks something other than the deduped impression — events belong in the service, once per response"
+  else
+    echo "  ok   — the view emits only its deduped impression event"
+  fi
+  grep -Eq 'guard !reportedImpression else \{ return \}' "$C" \
+    && echo "  ok   — the impression is deduped (counts appearances, not redraws)" \
+    || ufail "the impression event is not deduped — it would count redraws"
+
+  # REASON ALONE DECIDES THE CARD. All three must be handled by name.
+  for r in insufficientCredits proRequired dailyCap; do
+    grep -Eq "case \.$r[[:space:]]*:" "$C" && echo "  ok   — 402 $r has its own branch" \
+      || ufail "402 $r has no branch — a reason with no card is a dead end"
+  done
+
+  # NO CLIENT ARITHMETIC ABOUT MONEY.
+  grep -Eq 'batch\.affordableCount' "$C" \
+    && echo "  ok   — the affordable count is read from the server" \
+    || ufail "affordable_count is not read from the server — the client is deriving it"
+  if grep -vE '^[[:space:]]*//' "$C" | grep -E '(balance|credits|shortfall|needed)' | grep -Eq '[^/]/[^/]'; then
+    ufail "$C divides a money field — the client must do no arithmetic beyond formatting"
+  else
+    echo "  ok   — no division on a money field"
+  fi
+
+  # THE SERVER'S LABEL, VERBATIM. Text(_:) would treat it as a LocalizedStringKey.
+  grep -Eq 'Text\(verbatim: state\.quote\.label\)' "$C" \
+    && echo "  ok   — the server label renders verbatim" \
+    || ufail "the server label is not rendered verbatim — Text(_:) would swallow it as a LocalizedStringKey"
+
+  # QUEUE: ONLY ABOVE ZERO, AND NEVER AN INVENTED WAIT.
+  grep -Eq 'state\.position > 0' "$C" \
+    && echo "  ok   — the queue line draws only above position 0" \
+    || ufail "the queue line does not gate on position > 0"
+  grep -Eq 'guard let wait = state\.waitText else \{ return state\.positionText \}' "$C" \
+    && echo "  ok   — a null ETA falls back to the position alone" \
+    || ufail "a null ETA does not fall back to position-only"
+fi
+[ "$ui" = 0 ] || { echo "generation-contract-gate: FAIL (cards)"; exit 1; }
+
 if [ ! -f "$M" ]; then sfail "missing $M"; else
   # in-memory
   grep -Eq '^[[:space:]]*var quote: GenerationQuote\?' "$M" \

@@ -330,6 +330,16 @@ struct PromptlyApp: App {
     /// view body, which is not itself `#if DEBUG`, so a DEBUG-only definition
     /// compiled in Debug and broke the archive. release-build-gate caught it;
     /// Debug passing says nothing about the configuration that ships.
+    /// The generation-cards harness. Its own flag, so it cannot disturb the
+    /// payoff harness or be reached by accident in a release build.
+    private var generationHarnessActive: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-snapshotGen")
+        #else
+        return false
+        #endif
+    }
+
     private var snapshotHarnessActive: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-snapshotPayoff")
@@ -687,7 +697,11 @@ struct PromptlyApp: App {
                 // Snapshot harness (presentations-proven-by-presentations): when
                 // launched with -snapshotPayoff, cover the app with the real §6 /
                 // paywall views on mock data for an external screenshot capture.
-                if snapshotHarnessActive {
+                if generationHarnessActive {
+                    #if DEBUG
+                    GenerationSnapshotHarnessView()
+                    #endif
+                } else if snapshotHarnessActive {
                     PayoffSnapshotHarnessView()
                         // The tier pose has to be applied on THIS path too: the
                         // harness covers the app before the root's .task runs,
