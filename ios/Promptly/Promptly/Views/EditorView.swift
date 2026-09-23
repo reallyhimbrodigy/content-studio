@@ -2178,6 +2178,11 @@ struct EditorView: View {
                         }
                         var materializedSourceUrl: URL
                         do {
+                            // The asset is resolved by here — everything before
+                            // this is fetch, including an iCloud pull, which is
+                            // invisible in the current breakdown and is a prime
+                            // suspect for South Asia's 143s p50.
+                            UploadTiming.mark(pending.id.uuidString, "asset_fetched")
                             if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
                                 let tmp = UploadStorage.newFile()
                                 try FileManager.default.copyItem(at: sourceUrl, to: tmp)
@@ -2186,6 +2191,11 @@ struct EditorView: View {
                             } else {
                                 materializedSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
                                 print("[perf] compressed → tmp")
+                                // Export/transcode, separated from fetch and
+                                // from transfer. Item 2 (send less) cannot be
+                                // judged without knowing what the encode itself
+                                // costs on an older device.
+                                UploadTiming.mark(pending.id.uuidString, "exported")
                             }
                             // A created-but-empty file is a failure, not a success —
                             // the zero-byte class must never reach the uploader.
@@ -2259,6 +2269,12 @@ struct EditorView: View {
                                 pending: pending,
                                 materializedSourceUrl: materializedSourceUrl
                             )
+                            // ON THE CRITICAL PATH, AND SERIAL. The source
+                            // upload gets no presign until a 5s sample has been
+                            // extracted, uploaded and judged by a worker that
+                            // may be cold starting. Marked so the cost is a
+                            // number rather than a suspicion.
+                            UploadTiming.mark(pending.id.uuidString, "validated")
                         } catch is Layer2RejectionSentinel {
                             // User-facing rejection alert was shown
                             // already; bail out cleanly without
@@ -2280,6 +2296,10 @@ struct EditorView: View {
                         async let proxyUrlResp = APIService.shared.getUploadUrl(fileName: "proxy-\(UUID().uuidString).mp4")
                         async let sourceUrlResp = APIService.shared.getUploadUrl(fileName: pending.fileName)
                         let (proxyResp, sourceResp) = try await (proxyUrlResp, sourceUrlResp)
+                        // The paired /api/upload-url POSTs Render sees 2-70ms
+                        // apart are these two, by design. Marked so the grant
+                        // prefetch can be SHOWN to remove them.
+                        UploadTiming.mark(pending.id.uuidString, "presigned")
                         guard let proxyPutUrl = proxyResp.uploadUrl,
                               let proxyPub = proxyResp.publicUrl,
                               let sourcePutUrl = sourceResp.uploadUrl,
