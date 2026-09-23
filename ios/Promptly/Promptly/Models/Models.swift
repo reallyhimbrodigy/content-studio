@@ -84,6 +84,11 @@ struct ChatMessage: Identifiable {
     /// 8 users, 0 with an ask envelope, 0 ever recovered, oldest 62 days. The
     /// `ask` column has never been written in production at all.
     var clarification: ParkedClarification?
+    /// THE QUOTE CARD. The server quotes instead of dispatching, and this is
+    /// what the assistant bubble draws: one label, one price, one button.
+    /// Cleared the moment the quote is confirmed and a job id takes over, so a
+    /// message is never both a quote and a render at the same time.
+    var quote: GenerationQuote?
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
@@ -282,6 +287,7 @@ struct SerializedMessage: Codable, Hashable {
                                   // immediate durable poll then corrects it (monotonic, only rises).
     var ask: AskPayload?          // Phase D ask-back — persisted so a parked question survives
     var clarification: ParkedClarification?   // the re-edit clarification, same reason
+    var quote: GenerationQuote?               // the quote card, same reason
                                   // background/relaunch and re-shows from the polled row.
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
@@ -342,6 +348,14 @@ struct SerializedMessage: Codable, Hashable {
                 || message.jobStatus == "queued") {
             return true
         }
+        // A QUOTE CARD IS THE WHOLE PAYLOAD, and the fallback below would drop
+        // it. An assistant message carrying a quote has empty text, no
+        // attachments and no job yet — nothing has been dispatched, that is the
+        // point of quoting — so every condition above and below says "don't
+        // persist" and the card would vanish the moment the user switched
+        // chats. They tapped nothing and lost the offer, which reads as the app
+        // forgetting what it just said.
+        if message.role == .assistant && message.quote != nil { return true }
         // Otherwise: assistant text bubbles with content but no job.
         return !message.isThinking && message.jobStatus == nil
             && (!message.content.isEmpty || !(message.attachments ?? []).isEmpty)
@@ -361,6 +375,7 @@ struct SerializedMessage: Codable, Hashable {
         self.jobProgress = message.jobProgress
         self.ask = message.ask
         self.clarification = message.clarification
+        self.quote = message.quote
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
@@ -404,6 +419,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.jobProgress = jobProgress
         msg.ask = ask
         msg.clarification = clarification
+        msg.quote = quote
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl
