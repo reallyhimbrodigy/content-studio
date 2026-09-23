@@ -1,0 +1,142 @@
+{
+ "_source": "credit_prices.py in promptly-gpu-worker lane/agentic-builder2 \u2014 generated, do not hand-edit; smoke_credit_prices asserts they agree",
+ "_chatcut_source": "https://chatcut.io/docs/credits-policy",
+ "_read_on": "2026-09-23",
+ "our_per_theirs": 10,
+ "image_floor": 5,
+ "unpriced": {
+  "avatar": "no rate published on the credits-policy page at all",
+  "image": "VARIABLE \u2014 \"By model, output quality, resolution, and image count\"",
+  "motion_graphics": "VARIABLE \u2014 \"Based on the AI model usage required\"",
+  "agent_messages": "VARIABLE \u2014 \"Model, input and output tokens, cached context, conversation length, and project context\"",
+  "top_up": "top-ups exist (Avatar -> Credits history -> Buy Credits) but no price per credit is published on any docs page"
+ },
+ "rates": [
+  {
+   "feature": "music",
+   "model": "AI Music",
+   "resolution": "per song",
+   "their_rate": 0.18,
+   "unit": "per song",
+   "their_words": "0.18 credits per generated song",
+   "our_per_unit": 2
+  },
+  {
+   "feature": "sfx",
+   "model": "AI Sound Effects",
+   "resolution": "per generated second",
+   "their_rate": 0.12,
+   "unit": "per generated second",
+   "their_words": "0.12 credits per generated second",
+   "our_per_unit": 2
+  },
+  {
+   "feature": "video",
+   "model": "Gemini Omni",
+   "resolution": "720p",
+   "their_rate": 0.40544,
+   "unit": "per second",
+   "their_words": "0.40544 per actual generated second",
+   "our_per_unit": 5
+  },
+  {
+   "feature": "video",
+   "model": "Kling 3.0 Pro",
+   "resolution": "1080p",
+   "their_rate": 0.8,
+   "unit": "per second",
+   "their_words": "0.80/sec",
+   "our_per_unit": 8
+  },
+  {
+   "feature": "video",
+   "model": "Kling 3.0 Standard",
+   "resolution": "720p",
+   "their_rate": 0.6,
+   "unit": "per second",
+   "their_words": "0.60/sec",
+   "our_per_unit": 6
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.0",
+   "resolution": "1080p",
+   "their_rate": 1.32,
+   "unit": "per second",
+   "their_words": "1.32/sec",
+   "our_per_unit": 14
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.0",
+   "resolution": "480p",
+   "their_rate": 0.28,
+   "unit": "per second",
+   "their_words": "0.28/sec",
+   "our_per_unit": 3
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.0",
+   "resolution": "720p",
+   "their_rate": 0.6,
+   "unit": "per second",
+   "their_words": "0.60/sec",
+   "our_per_unit": 6
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.0 Fast",
+   "resolution": "480p",
+   "their_rate": 0.165,
+   "unit": "per second",
+   "their_words": "0.165/sec",
+   "our_per_unit": 2
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.0 Fast",
+   "resolution": "720p",
+   "their_rate": 0.36,
+   "unit": "per second",
+   "their_words": "0.36/sec",
+   "our_per_unit": 4
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.5",
+   "resolution": "1080p",
+   "their_rate": 2.2175,
+   "unit": "per second",
+   "their_words": "about 2.2175/sec",
+   "our_per_unit": 23
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.5",
+   "resolution": "480p",
+   "their_rate": 0.3982,
+   "unit": "per second",
+   "their_words": "about 0.3982/sec",
+   "our_per_unit": 4
+  },
+  {
+   "feature": "video",
+   "model": "Seedance 2.5",
+   "resolution": "720p",
+   "their_rate": 0.896,
+   "unit": "per second",
+   "their_words": "0.896/sec",
+   "our_per_unit": 9
+  },
+  {
+   "feature": "voiceover",
+   "model": "AI Voiceover",
+   "resolution": "per 1,000 characters",
+   "their_rate": 0.8,
+   "unit": "per 1,000 characters",
+   "their_words": "Usually 0.28-0.80 credits per 1,000 characters",
+   "our_per_unit": 8
+  }
+ ]
+}
