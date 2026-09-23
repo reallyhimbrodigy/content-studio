@@ -164,8 +164,11 @@ struct QuoteCardView: View {
                        secondary: "Upgrade",
                        secondaryAction: { AppState.shared.presentPaywall(.manual) })
         case .proRequired:
-            // Free tier asking to generate. An upgrade card, never an error.
-            Text("Generating is a Pro feature.")
+            // NAME THE THING THAT IS WALLED, NOT "generating". Free users CAN
+            // generate — an image costs 5 credits — so a blanket "Generating is
+            // a Pro feature" is simply false, and a user who has made images
+            // reads it as the app being broken rather than as an offer.
+            Text(verbatim: "\(Self.subject(of: state.quote.label)) is a Pro feature.")
                 .font(.system(size: 12 * k))
                 .foregroundColor(.white.opacity(0.6))
             primaryButton("Upgrade") { AppState.shared.presentPaywall(.manual) }
@@ -192,6 +195,22 @@ struct QuoteCardView: View {
             .font(.system(size: 12 * k))
             .foregroundColor(.white.opacity(0.6))
         primaryButton("Try again") { Task { await confirm(state.quote) } }
+    }
+
+    /// The subject of the label, for use inside a sentence: "AI video · 5s" →
+    /// "AI video".
+    ///
+    /// THIS IS THE ONE PLACE THE CLIENT TOUCHES THE LABEL, and it is a
+    /// grammatical trim, not a composition — the words are still the server's.
+    /// It is nonetheless the fragile spot in this file: it assumes the
+    /// qualifier follows a "·", which is a typographic convention rather than a
+    /// contract, and a localised label may not separate the same way. Falls
+    /// back to the whole label, which is merely wordy rather than wrong. A
+    /// dedicated field would remove the guess entirely; asked B2 for one.
+    static func subject(of label: String) -> String {
+        let head = label.split(separator: "\u{00B7}", maxSplits: 1).first.map(String.init) ?? label
+        let trimmed = head.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? label : trimmed
     }
 
     // MARK: - Confirm
@@ -268,10 +287,33 @@ struct QuoteCardView: View {
 struct BatchConfirmCard: View {
     @Environment(\.conversionScale) private var k
     let batch: BatchQuote
-    var onDispatched: ([String], Int?) -> Void = { _, _ in }
+    /// The clips this batch is about, in the order the user picked them. Held
+    /// so the card can say which ones did NOT start — a clip the server never
+    /// began is not a failure and must not sit looking stalled.
+    var clipIds: [String] = []
+    var onDispatched: (BatchDispatched) -> Void = { _ in }
 
     @State private var busy = false
     @State private var blocked: PaymentRequired?
+    /// What the server actually started. Present only after a confirm.
+    @State private var started: BatchDispatched?
+
+    init(batch: BatchQuote, clipIds: [String] = [],
+         onDispatched: @escaping (BatchDispatched) -> Void = { _ in }) {
+        self.batch = batch
+        self.clipIds = clipIds
+        self.onDispatched = onDispatched
+    }
+
+    #if DEBUG
+    /// Pose a post-confirm result for a snapshot — same body as the live card.
+    init(batch: BatchQuote, clipIds: [String], posed: BatchDispatched) {
+        self.batch = batch
+        self.clipIds = clipIds
+        self.onDispatched = { _ in }
+        _started = State(initialValue: posed)
+    }
+    #endif
 
     /// The server's own count. NEVER derived here — the client does no
     /// arithmetic about money, and "how many can they afford" is money.
@@ -293,7 +335,33 @@ struct BatchConfirmCard: View {
                     .monospacedDigit()
             }
 
-            if busy {
+            if let result = started {
+                // EVERY JOB HERE IS RUNNING AND ALREADY CHARGED. Whatever the
+                // count, this is not an error state and must never be drawn as
+                // one — an error over paid, in-flight work is the worst thing
+                // this card could say.
+                Text(verbatim: "\(result.jobs.count) started")
+                    .font(.system(size: 12 * k))
+                    .foregroundColor(.white.opacity(0.6))
+                    .monospacedDigit()
+                // And the ones that never began — said plainly, including the
+                // part the user most needs: they were not charged for them.
+                if !notStarted(result).isEmpty {
+                    Text(verbatim: "\(notStarted(result).count) not started · not charged")
+                        .font(.system(size: 12 * k))
+                        .foregroundColor(.white.opacity(0.45))
+                        .monospacedDigit()
+                }
+            }
+
+            if started != nil {
+                // NOTHING TO OFFER ONCE WORK HAS STARTED. Leaving "Generate 10"
+                // on screen after the server began 7 of them invites a second
+                // dispatch and a second charge for clips already running — and
+                // it is the obvious thing to tap, because it looks like the
+                // action that failed. The card is a receipt from here on.
+                EmptyView()
+            } else if busy {
                 HStack(spacing: 8 * k) {
                     ProgressView().tint(.white.opacity(0.7)).scaleEffect(0.8)
                     Text("Starting…").font(.system(size: 14 * k)).foregroundColor(.white.opacity(0.7))
@@ -312,6 +380,11 @@ struct BatchConfirmCard: View {
                 }
             }
         }
+        // FULL WIDTH REGARDLESS OF CONTENT. Once the actions are gone the card
+        // has no full-width child left, so it shrink-wrapped to its text and
+        // the whole card visibly narrowed between states. A receipt should sit
+        // exactly where the offer sat.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14 * k)
         .background(RoundedRectangle(cornerRadius: 14 * k).fill(Color.white.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 14 * k).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
@@ -325,6 +398,13 @@ struct BatchConfirmCard: View {
         return parts.joined(separator: " · ")
     }
 
+    /// Clips the server did not start. Derived by clip_id — never by counting
+    /// or by position, because a subset tells you nothing about WHICH subset.
+    private func notStarted(_ result: BatchDispatched) -> [String] {
+        let ran = Set(result.jobs.map(\.clipId))
+        return clipIds.filter { !ran.contains($0) }
+    }
+
     private func shortfallLine(_ pr: PaymentRequired) -> String {
         if let s = pr.shortfall, let b = pr.balance { return "You have \(b) — \(s) short" }
         return "Not enough credits"
@@ -334,8 +414,9 @@ struct BatchConfirmCard: View {
         busy = true
         defer { busy = false }
         switch await GenerationService.shared.confirmBatch(batch.batchQuoteId, count: count) {
-        case .dispatched(let ids, let balance):
-            onDispatched(ids, balance)
+        case .dispatched(let result):
+            started = result
+            onDispatched(result)
         case .paymentRequired(let pr):
             // Nothing ran. Fresh numbers, and the user chooses again.
             blocked = pr

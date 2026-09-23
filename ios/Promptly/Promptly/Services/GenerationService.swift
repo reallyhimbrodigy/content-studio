@@ -39,11 +39,11 @@ final class GenerationService {
     }
 
     enum BatchConfirmOutcome: Equatable {
-        /// Exactly N job ids, IN CLIP ORDER — the nth id belongs to the nth
-        /// clip the user selected, which is what lets the thread show progress
-        /// against the right tile. Plus the balance after the reservation.
-        case dispatched(jobIds: [String], balance: Int?)
-        /// Fresh numbers, and NOTHING was dispatched. There are no partial sends.
+        /// The jobs the server ACTUALLY started, each paired to its clip_id,
+        /// plus the balance after the reservation. This may be SHORTER than the
+        /// count confirmed — see the note in `confirmBatch`.
+        case dispatched(BatchDispatched)
+        /// A 402: fresh numbers, and NOTHING was dispatched.
         case paymentRequired(PaymentRequired)
         case failed(String)
     }
@@ -160,20 +160,25 @@ final class GenerationService {
             return .paymentRequired(pr)
         }
         guard http.statusCode == 200,
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let ids = obj["job_ids"] as? [String]
+              let result = try? JSONDecoder().decode(BatchDispatched.self, from: data)
         else { return .failed("http \(http.statusCode)") }
-        // ALL-OR-NOTHING, AND THE SERVER SAID SO. If the count came back
-        // different from what we confirmed, that is not a partial send to
-        // paper over — it is a contract violation, and guessing which clips
-        // ran would put wrong progress against the wrong tiles.
-        guard ids.count == count else {
+
+        // A SHORT ARRAY IS A RESULT, NOT A FAILURE — and this is the case worth
+        // being careful about. Every job in `jobs` is RUNNING and has already
+        // been CHARGED. Refusing the whole response because the count surprised
+        // us would show an error over work the user is paying for, and would
+        // orphan jobs that still complete. So: render exactly what the server
+        // started, pair it by clip_id, and say the mismatch out loud instead.
+        //
+        // Clips absent from `jobs` were never started and never charged, which
+        // is what the card tells the user about them — rather than leaving them
+        // looking stalled.
+        if result.jobs.count != count {
             Analytics.track("batch_count_mismatch",
-                            props: ["requested": count, "returned": ids.count], durable: true)
-            return .failed("batch returned \(ids.count) of \(count)")
+                            props: ["requested": count, "returned": result.jobs.count], durable: true)
         }
-        Analytics.track("batch_dispatched", props: ["count": ids.count], durable: true)
-        return .dispatched(jobIds: ids, balance: obj["balance"] as? Int)
+        Analytics.track("batch_dispatched", props: ["count": result.jobs.count], durable: true)
+        return .dispatched(result)
     }
 
     // MARK: - Clip picked (the speed rule)
@@ -265,7 +270,9 @@ enum DebugStubs {
 
     static func batchConfirm(_ id: String, _ count: Int) -> GenerationService.BatchConfirmOutcome? {
         guard scenario?.hasPrefix("batch") == true else { return nil }
-        return .dispatched(jobIds: (0..<count).map { "stub-job-\($0)" }, balance: 45 - count * 10)
+        let jobs = (0..<count).map { "{\"job_id\":\"stub-job-\($0)\",\"clip_id\":\"clip-\($0)\"}" }
+        let json = "{\"jobs\":[\(jobs.joined(separator: ","))],\"balance\":\(45 - count * 10)}"
+        return (decode(json) as BatchDispatched?).map { .dispatched($0) }
     }
 
     static func clipPicked(_ uploadKey: String) -> String? {

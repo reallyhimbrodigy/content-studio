@@ -176,6 +176,32 @@ struct BatchQuote: Decodable, Equatable, Hashable {
     }
 }
 
+/// One dispatched job, paired to the clip it belongs to.
+///
+/// PAIRED BY clip_id, NOT BY POSITION. Ordering was the old contract; an
+/// explicit pairing survives a server that starts a subset, which is exactly
+/// the case that must not put one clip's progress against another's tile.
+struct BatchJob: Decodable, Equatable, Hashable {
+    let jobId: String
+    let clipId: String
+    enum CodingKeys: String, CodingKey { case jobId = "job_id", clipId = "clip_id" }
+}
+
+/// The batch confirm result. `jobs` may be SHORTER than the count confirmed —
+/// see BatchConfirmCard for why that is rendered rather than refused.
+struct BatchDispatched: Decodable, Equatable, Hashable {
+    let jobs: [BatchJob]
+    let balance: Int?
+
+    enum CodingKeys: String, CodingKey { case jobs, balance }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        jobs = try c.decode([BatchJob].self, forKey: .jobs)
+        balance = (try? c.decodeIfPresent(Int.self, forKey: .balance)) ?? nil
+    }
+}
+
 // MARK: - Clip picked
 
 struct ClipPicked: Decodable, Equatable, Hashable {

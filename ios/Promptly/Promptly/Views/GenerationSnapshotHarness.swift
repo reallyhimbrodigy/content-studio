@@ -50,6 +50,15 @@ struct GenerationSnapshotHarnessView: View {
          "expires_at":"2030-01-01T00:00:00Z"}
         """)!
     }
+    static let clips: [String] = (0..<10).map { "clip-\($0)" }
+
+    /// A server that started only SOME of the batch. Every job here is running
+    /// and already charged; the rest were never begun and never charged.
+    static func dispatched(_ n: Int) -> BatchDispatched {
+        let jobs = (0..<n).map { "{\"job_id\":\"j\($0)\",\"clip_id\":\"clip-\($0)\"}" }
+        return decode("{\"jobs\":[\(jobs.joined(separator: ","))],\"balance\":15}")!
+    }
+
     private static func decode<T: Decodable>(_ s: String) -> T? {
         try? JSONDecoder().decode(T.self, from: Data(s.utf8))
     }
@@ -85,8 +94,10 @@ struct GenerationSnapshotHarnessView: View {
         case 4:  PosedQuoteCard(state: .blocked(Self.payment("pro_required", needed: 45, balance: 0, shortfall: 45), Self.quote()))
         case 5:  PosedQuoteCard(state: .blocked(Self.payment("daily_cap", needed: 45, balance: 500, shortfall: 0), Self.quote()))
         case 6:  PosedQuoteCard(state: .offered(Self.quote(credits: 50)))   // the 410's fresh price, in place
-        case 7:  BatchConfirmCard(batch: Self.batch(affordable: 10))
-        case 8:  BatchConfirmCard(batch: Self.batch(affordable: 4))
+        case 7:  BatchConfirmCard(batch: Self.batch(affordable: 10), clipIds: Self.clips)
+        case 8:  BatchConfirmCard(batch: Self.batch(affordable: 4), clipIds: Self.clips)
+        case 11: PosedBatchCard(batch: Self.batch(affordable: 10), clipIds: Self.clips,
+                                started: Self.dispatched(7))   // server began 7 of 10
         case 9:  queuedCard(QueueState(position: 3, etaSeconds: 300))
         case 10: queuedCard(QueueState(position: 3, etaSeconds: nil))
         default: PosedQuoteCard(state: .offered(Self.quote()))
@@ -109,6 +120,7 @@ struct GenerationSnapshotHarnessView: View {
 
     private var caption: String {
         switch stateIndex {
+        case 11: return "11 · BATCH, server started 7 of 10"
         case 2: return "2 · CONFIRMING"
         case 3: return "3 · 402 insufficient_credits"
         case 4: return "4 · 402 pro_required (free tier)"
@@ -130,5 +142,14 @@ struct GenerationSnapshotHarnessView: View {
 private struct PosedQuoteCard: View {
     let state: QuoteCardState
     var body: some View { QuoteCardView(quote: state.quote, posed: state) }
+}
+
+/// The batch card after a confirm, so the started / not-started split can be
+/// photographed. Same view body as the shipping card.
+private struct PosedBatchCard: View {
+    let batch: BatchQuote
+    let clipIds: [String]
+    let started: BatchDispatched
+    var body: some View { BatchConfirmCard(batch: batch, clipIds: clipIds, posed: started) }
 }
 #endif

@@ -201,6 +201,30 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
     && echo "  ok   — the server label renders verbatim" \
     || ufail "the server label is not rendered verbatim — Text(_:) would swallow it as a LocalizedStringKey"
 
+  # THE PRO-REQUIRED COPY NAMES THE THING. Free users CAN generate images, so
+  # a blanket "Generating is a Pro feature" is false — the card must use the
+  # quote's own subject.
+  grep -q 'Generating is a Pro feature' "$C" \
+    && ufail "the pro_required copy still claims generating is Pro — free users can generate images"
+  grep -Eq 'is a Pro feature' "$C" && grep -Eq 'Self\.subject\(of: state\.quote\.label\)' "$C" \
+    && echo "  ok   — pro_required names the quote's own subject" \
+    || ufail "pro_required does not name the subject from the quote label"
+
+  # A SHORT BATCH IS RENDERED, NEVER ERRORED. Those jobs are running and paid.
+  grep -Eq 'not started . not charged' "$C" \
+    && echo "  ok   — clips the server never started are named, and named as uncharged" \
+    || ufail "the batch card does not say which clips never started / were not charged"
+  grep -Eq 'Set\(result\.jobs\.map\(\\\.clipId\)\)' "$C" \
+    && echo "  ok   — not-started clips are derived by clip_id, not by count" \
+    || ufail "not-started clips are not derived by clip_id — a subset says nothing about WHICH subset"
+
+  # NO SECOND DISPATCH AFTER WORK HAS STARTED. Found by LOOKING at the
+  # short-dispatch screenshot: "Generate 10" was still on screen under
+  # "7 started", one tap away from charging for clips already running.
+  grep -Eq 'if started != nil \{' "$C" \
+    && echo "  ok   — the batch actions are gone once work has started" \
+    || ufail "the batch card still offers an action after dispatch — a second tap would double-charge"
+
   # QUEUE: ONLY ABOVE ZERO, AND NEVER AN INVENTED WAIT.
   grep -Eq 'state\.position > 0' "$C" \
     && echo "  ok   — the queue line draws only above position 0" \
@@ -208,6 +232,15 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
   grep -Eq 'guard let wait = state\.waitText else \{ return state\.positionText \}' "$C" \
     && echo "  ok   — a null ETA falls back to the position alone" \
     || ufail "a null ETA does not fall back to position-only"
+fi
+S="Promptly/Services/GenerationService.swift"
+if [ ! -f "$S" ]; then ufail "missing $S"; else
+  grep -Eq 'return \.failed\("batch returned' "$S" \
+    && ufail "$S still FAILS a short batch — those jobs are running and already charged" \
+    || echo "  ok   — a short batch is not turned into a failure"
+  grep -Eq 'Analytics\.track\("batch_count_mismatch"' "$S" \
+    && echo "  ok   — a count mismatch is still reported" \
+    || ufail "a count mismatch is no longer reported"
 fi
 [ "$ui" = 0 ] || { echo "generation-contract-gate: FAIL (cards)"; exit 1; }
 
