@@ -556,6 +556,21 @@ final class SubscriptionService: ObservableObject {
             sfProps["storefront_id"] = sf.id
         }
         Analytics.track("purchase_started", props: sfProps)
+        // ABANDONMENT IS A TERMINAL TOO (259).
+        //
+        // `purchase(package:)` is awaited with no timeout. If it never returns
+        // — the app backgrounded and killed mid-sheet, a sheet the system
+        // dismissed, a continuation lost — then nothing at all was emitted, and
+        // the attempt simply vanished from the funnel. Measured: 48 of 596
+        // attempts in 30 days had NO terminal event, 29 of them on the yearly
+        // row. That is 8% of buying intent that analytics could not see, and
+        // "unaccounted" is the one bucket you cannot act on.
+        //
+        // A pending marker is written BEFORE the await and cleared by whichever
+        // terminal fires. Anything still pending on the next launch was
+        // abandoned, and is reported then with why.
+        PurchaseAbandonment.markPending(sfProps)
+        defer { PurchaseAbandonment.clearPending() }
         do {
             let result = try await Purchases.shared.purchase(package: package)
             applyCustomerInfo(result.customerInfo)

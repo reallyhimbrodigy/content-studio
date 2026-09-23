@@ -76,6 +76,8 @@ struct PaywallDurationOption: Identifiable, Equatable {
     let introBadge: String?
     /// The intro stated as money; replaces the billing line when present.
     let introSubline: String?
+    /// The renewal amount, its own line. Present only with introSubline.
+    let introRenewal: String?
     let isAnnual: Bool
 }
 
@@ -106,6 +108,8 @@ struct PaywallProduct: Equatable {
     let introBadge: String?
     /// The intro stated as money; replaces the billing line when present.
     let introSubline: String?
+    /// What it renews at, on its own line beneath the charge.
+    let introRenewal: String?
 }
 
 enum PaywallPeriodUnit { case year, month, week, other }
@@ -304,6 +308,7 @@ enum PaywallMapping {
                 percentOff: isAnnual ? pct : nil,
                 introBadge: p.introBadge,
                 introSubline: p.introSubline,
+                introRenewal: p.introRenewal,
                 isAnnual: isAnnual)
         }
     }
@@ -531,7 +536,7 @@ struct PaywallLayout: View {
         .conversionColumn(ConversionColumn.content)
     }
 
-    // MARK: Defaults — everything agrees on Pro Year
+    // MARK: Defaults — Pro, monthly
 
     private func applyDefaults() {
         if tierAllowance == nil {
@@ -589,9 +594,22 @@ struct PaywallLayout: View {
     /// annualises to about $571 against $289.99 for the year, on the SKU that
     /// retains worst — a default that costs roughly twice as much is not
     /// neutral.
+    /// MONTHLY IS THE DEFAULT (ruled 2026-09-23). It was annual.
+    ///
+    /// Yearly took 318 purchase attempts in 30 days — 53% of all buying intent,
+    /// because it was preselected and RECOMMENDED — and completed ZERO of them,
+    /// in every storefront measured, with a 90% cancel rate at Apple's sheet.
+    /// Monthly completed 22% and weekly 23% over the same window. Preselecting
+    /// the row nobody finishes sends half the people who decide to pay into a
+    /// dead end.
+    ///
+    /// Falls back to the first row when there is no monthly product, so a tier
+    /// sold only annually still has something selected rather than nothing.
     private func preferredRow(in tier: PaywallTierOption) -> PaywallDurationOption? {
         let rows = durations(tier.allowance)
-        return rows.first(where: { $0.isAnnual }) ?? rows.first
+        return rows.first(where: { $0.id.hasSuffix("_monthly") })
+            ?? rows.first(where: { !$0.isAnnual })
+            ?? rows.first
     }
 
     private var activeTier: PaywallTierOption? {
@@ -808,14 +826,34 @@ struct PaywallLayout: View {
                             .foregroundColor(.white)
                     }
                     if !option.billingLine.isEmpty {
-                        // The yearly-vs-monthly saving reads here now, so the
-                        // intro badge is the only badge on the row.
+                        // THE AMOUNT APPLE WILL CHARGE IS THE PROMINENT PRICE
+                        // (3.1.2, and ruled 2026-09-23).
+                        //
+                        // This line WAS 10pt at 60% opacity while the per-month
+                        // equivalent sat opposite it at 15pt bold. On the Year
+                        // row that read "$29.17/mo" loud and "$289.99 billed
+                        // yearly" quiet — a 10x gap between what the row shows
+                        // and what the sheet asks for. Yearly is 0 completions
+                        // out of 318 attempts across every storefront measured,
+                        // with a 90% cancel rate at Apple's sheet; a user who
+                        // taps expecting $29 and is asked for $289.99 cancels,
+                        // and does so in every market, which is exactly the
+                        // shape of the data.
                         Text(option.introSubline
                              ?? option.percentOff.map {
                                  "\(option.billingLine) · \($0)% cheaper than monthly"
                              } ?? option.billingLine)
-                            .cType(10)
-                            .foregroundColor(.white.opacity(0.6))
+                            .cType(14, .semibold)
+                            .foregroundColor(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    // THE RENEWAL, ON ITS OWN LINE. Secondary to the charge but
+                    // never absent: a row that shows only an intro price hides
+                    // what the subscription actually costs from month two.
+                    if let renewal = option.introRenewal, !renewal.isEmpty {
+                        Text(renewal)
+                            .cType(11)
+                            .foregroundColor(.white.opacity(0.65))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     // The store's own intro terms, stated rather than applied
@@ -837,10 +875,21 @@ struct PaywallLayout: View {
                             .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                    } else {
+                    } else if option.introSubline == nil {
+                        // NO PER-MONTH FIGURE ON AN INTRO ROW (ruled 2026-09-23).
+                        // base / 12 beside an intro charge describes NEITHER
+                        // amount — not what is taken today, not what renews —
+                        // and is the same loud-vs-charged mismatch in a new
+                        // place. Rows without an intro keep it as secondary.
+                        //
+                        // SECONDARY, by ruling. The per-month figure still makes
+                        // the ladder legible — $289.99 beside $35.99 reads as
+                        // ten times dearer when it is in fact cheaper per month
+                        // — but it is a comparison aid, not the price, and it
+                        // must not outrank the amount being charged.
                         Text(option.rate)
-                            .cType(15, .bold)
-                            .foregroundColor(.white)
+                            .cType(12)
+                            .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                             .minimumScaleFactor(0.65)
                     }
@@ -1055,9 +1104,16 @@ struct TwoStepPaywall: View {
             let intro: String? = (onboarding.offerSurfacingEnabled
                                   && (unit == .year || unit == .month))
                 ? ProBenefits.introBadge(for: pkg, isAnnual: unit == .year) : nil
-            let introSub: String? = (onboarding.offerSurfacingEnabled
-                                     && (unit == .year || unit == .month))
-                ? ProBenefits.introSubline(for: pkg, isAnnual: unit == .year) : nil
+            // SPLIT IN TWO (ruled 2026-09-23): the charge leads the row, the
+            // renewal sits on its own line under it. One sentence carrying both
+            // could only be one size, and the amount Apple takes today has to be
+            // the prominent one.
+            let introEligible = onboarding.offerSurfacingEnabled
+                                     && (unit == .year || unit == .month)
+            let introSub: String? = introEligible
+                ? ProBenefits.introChargeLine(for: pkg, isAnnual: unit == .year) : nil
+            let introRen: String? = introEligible
+                ? ProBenefits.introRenewalLine(for: pkg, isAnnual: unit == .year) : nil
             return PaywallProduct(
                 id: sp.productIdentifier,
                 localizedPrice: sp.localizedPriceString,
@@ -1066,7 +1122,8 @@ struct TwoStepPaywall: View {
                 currencyLocale: sp.priceFormatter?.locale,
                 unit: unit,
                 introBadge: intro,
-                introSubline: introSub)
+                introSubline: introSub,
+                introRenewal: introRen)
         }
     }
 

@@ -63,6 +63,35 @@ enum ProBenefits {
             : String(localized: "\(first) for your first month, then \(full)/month")
     }
 
+    /// THE INTRO CHARGE, ALONE — what Apple takes today (ruled 2026-09-23).
+    ///
+    /// Split from `introSubline` because the row now leads with this and states
+    /// the renewal on its own line. A single sentence carrying both could only
+    /// be one size, and the charged amount has to be the prominent one.
+    @MainActor
+    static func introChargeLine(for pkg: Package, isAnnual: Bool) -> String? {
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
+        guard let intro = pkg.storeProduct.introductoryDiscount,
+              intro.paymentMode != .freeTrial else { return nil }
+        let first = intro.localizedPriceString
+        return isAnnual
+            ? String(localized: "\(first) for your first year")
+            : String(localized: "\(first) for your first month")
+    }
+
+    /// What it renews at, on its own line. Same eligibility guard, so a row
+    /// either shows both halves or neither — never a renewal with no intro.
+    @MainActor
+    static func introRenewalLine(for pkg: Package, isAnnual: Bool) -> String? {
+        guard SubscriptionService.shared.isEligibleForIntro(pkg.storeProduct) else { return nil }
+        guard let intro = pkg.storeProduct.introductoryDiscount,
+              intro.paymentMode != .freeTrial else { return nil }
+        let full = pkg.storeProduct.localizedPriceString
+        return isAnnual
+            ? String(localized: "then \(full)/year")
+            : String(localized: "then \(full)/month")
+    }
+
     /// The badge text for a row: "49% OFF FIRST YEAR" / "50% OFF FIRST MONTH".
     @MainActor
     static func introBadge(for pkg: Package, isAnnual: Bool) -> String? {

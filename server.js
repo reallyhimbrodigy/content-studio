@@ -4653,6 +4653,16 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
+          // An attempt that started and never terminated. Without this the SQL
+          // mirror drops it and the 8% of buying intent that ends in no
+          // terminal event stays invisible — which is how it went unnoticed.
+          'purchase_abandoned',
+          // Not mine, and red for the same reason: both are EMITTED by the
+          // client and were never allowlisted, so the mirror has been dropping
+          // them silently. Adding them here because this is the list, and
+          // leaving two known-dropped events in it while editing it is worse
+          // than the small scope increase.
+          'push_softprompt_deferred', 'push_softprompt_reoffered',
           // RETENTION:
           'session_started',
           'save_cta_shown',
