@@ -90,7 +90,17 @@ final class UploadOutcomeReporter {
         r.lastPhase = "picked"
         r.sourcePath = sourcePath
         records.append(r)
-        if records.count > Self.maxRecords { records.removeFirst(records.count - Self.maxRecords) }
+        if records.count > Self.maxRecords {
+            // EVICTION WAS A SILENT EXIT. `removeFirst` dropped the oldest
+            // records with no emit at all, so a heavy user's early picks left
+            // the ledger having produced nothing — one of the ways a started
+            // upload ended in silence. Evicted records are now reported as
+            // terminal before they go, with their own subcode so they are
+            // never confused with a genuine never-started.
+            let overflow = records.count - Self.maxRecords
+            for r in records.prefix(overflow) { emitTerminal(r, outcome: "evicted", reason: "ledger_full") }
+            records.removeFirst(overflow)
+        }
         persist()
     }
 
@@ -118,6 +128,49 @@ final class UploadOutcomeReporter {
         guard let i = index(of: id) else { return }
         records.remove(at: i)
         persist()
+    }
+
+    /// THE UPLOAD DIED IN THIS SESSION, WITH A NAME. Without this the failure
+    /// path resolved nothing: the caller emitted `upload_failed` and left the
+    /// record behind, so the next launch swept the SAME upload again as
+    /// never-started — one upload, two terminals, in different classes. Now the
+    /// record is closed here and the sweep cannot see it.
+    ///
+    /// `reason` is required. A terminal that does not say why is the condition
+    /// this whole reporter exists to end.
+    func recordFailed(id: UUID, reason: String) {
+        resolve(id, outcome: "failed", reason: reason)
+    }
+
+    /// Cancelled — by the user removing the pick, or by the task being torn
+    /// down. Distinct from failed because the fix is different: one is ours,
+    /// the other is a choice.
+    func recordCancelled(id: UUID, reason: String) {
+        resolve(id, outcome: "cancelled", reason: reason)
+    }
+
+    private func resolve(_ id: UUID, outcome: String, reason: String) {
+        guard let i = index(of: id) else { return }
+        emitTerminal(records[i], outcome: outcome, reason: reason)
+        records.remove(at: i)
+        persist()
+    }
+
+    /// ONE TERMINAL, ONE SHAPE, whatever ended the upload. Mirrors the sweep's
+    /// envelope so client and worker rows still union on one key.
+    private func emitTerminal(_ r: PickRecord, outcome: String, reason: String) {
+        Analytics.track("upload_outcome", props: [
+            "outcome": outcome,                 // failed | cancelled | evicted
+            "reason": reason,
+            "error_code": Self.code,
+            "error_subcode": reason,
+            "error_cause": "\(Self.code):\(reason)",
+            "last_phase": r.lastPhase,
+            "had_src_key": r.srcKey != nil,
+            "upload_settled": r.uploadSettledAt != nil,
+            "age_s": Int(Date().timeIntervalSince(r.startedAt)),
+            "app_version": r.appVersion,
+        ], durable: true)
     }
 
     // MARK: - The sweep

@@ -100,6 +100,9 @@ final class ResumableMultipartUploader: NSObject {
     private let ctxStoreKey = "ResumableMultipartUploader.partCtx.v1"
     private var partCtx: [Int: PartContext] = [:]
     private var partAttempts: [String: Int] = [:]     // "uploadId#part" → attempts (in-memory)
+    /// Uploads already given up on. Guards `giveUp` so a multi-part failure
+    /// reports ONCE rather than once per part — see the note there.
+    private var gaveUp: Set<String> = []
     /// CUMULATIVE retries per upload. Distinct from `partAttempts`, which is
     /// cleared the moment a part succeeds — so at completion time it is empty and
     /// cannot answer "how much re-sending did this upload cost". An upload that
@@ -370,6 +373,19 @@ final class ResumableMultipartUploader: NSObject {
     /// Give up on a transfer: abort the S3 multipart (stop the billing), clear local
     /// state, and fail the alive caller (if any) so it surfaces like a failed upload.
     private func giveUp(uploadId: String, reason: String) async {
+        // ONE GIVE-UP PER UPLOAD, NOT ONE PER PART.
+        //
+        // Every part that exhausts its retries calls this for the SAME upload,
+        // so a 24-part file emitted 24 `upload_failed` events and fired 24
+        // multipart aborts. Measured over 7 days: one account showed 353
+        // upload_failed events across just TWO distinct uploads, and another
+        // 111 events in 0.94 seconds — which reads as an uncapped retry storm
+        // and is nothing of the kind. The per-part retry is bounded; the
+        // INSTRUMENT was not, and it inflated this failure class by ~175x.
+        //
+        // First caller wins and names the part; the rest are no-ops.
+        guard !gaveUp.contains(uploadId) else { return }
+        gaveUp.insert(uploadId)
         let ledger = MultipartResumeLedger.load(uploadId: uploadId, in: ledgerDir)
         if let ledger {
             await APIService.shared.multipartAbort(key: ledger.key, uploadId: uploadId)

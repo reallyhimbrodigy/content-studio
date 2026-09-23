@@ -876,7 +876,27 @@ class APIService {
         let (data, response) = try await requestData(request)
         try Self.throwIfWall(response, data)
         try Self.throwIfPaymentRequired(response, data) // 2nd concurrent upload → paywall
-        return try JSONDecoder().decode(UploadUrlResponse.self, from: data)
+
+        // CHECK THE STATUS. There was NO status check here: after the 403 and
+        // 402 probes, every other non-2xx fell straight through to the decoder
+        // — and because UploadUrlResponse is all-optional, a 500/502/429 error
+        // body decodes CLEANLY with uploadUrl nil. The caller then threw the
+        // reason-free `.uploadFailed`, so a server outage and a malformed body
+        // were indistinguishable, and the server's own `error` string was never
+        // read. This is "empty success is not an error", at the upload door.
+        let decoded = try? JSONDecoder().decode(UploadUrlResponse.self, from: data)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            throw APIError.uploadURLRefused(status: status, reason: decoded?.error ?? "")
+        }
+        guard let ok = decoded else {
+            throw APIError.uploadURLRefused(status: status, reason: "unreadable response")
+        }
+        // A 2xx with no URLs is the same refusal wearing a success code.
+        guard ok.uploadUrl != nil, ok.publicUrl != nil else {
+            throw APIError.uploadURLRefused(status: status, reason: ok.error ?? "no upload url in response")
+        }
+        return ok
     }
 
     func uploadToS3(url: String, data videoData: Data, mimeType: String) async throws {
@@ -1903,6 +1923,53 @@ class APIService {
     }
 }
 
+/// STABLE ERROR CODES, BECAUSE THE IMPLICIT ONES MOVED UNDER US.
+///
+/// A Swift enum bridged to NSError takes its `code` from the case's TAG, and
+/// the tag is assigned by declaration order with payload-carrying cases
+/// numbered before payload-free ones. So inserting ONE case silently renumbers
+/// others — `reeditInFlight` landed in 1.3.37 and moved `uploadFailed` from 7
+/// to 8. Seven days of `upload_failed` then carried two different numbers for
+/// ONE error, and reading the enum top-to-bottom gives the wrong answer for
+/// both (it suggests `wallRequired`, a case the server cannot even emit with
+/// wall_enforcement off). That cost most of an investigation.
+///
+/// These codes are explicit and MUST NOT be reused or renumbered. They start at
+/// 1000 so they are unmistakably the new scheme: anything below 1000 in the
+/// historical record is an implicit tag whose meaning depends on the build it
+/// came from, and cannot be compared across versions.
+extension APIError: CustomNSError {
+    static var errorDomain: String { "Promptly.APIError" }
+
+    var errorCode: Int {
+        switch self {
+        case .notAuthenticated:     return 1001
+        case .jobCreationFailed:    return 1002
+        case .uploadFailed:         return 1003
+        case .deleteFailed:         return 1004
+        case .paymentRequired:      return 1005
+        case .insufficientCredits:  return 1006
+        case .freeExportSpent:      return 1007
+        case .reeditInFlight:       return 1008
+        case .wallRequired:         return 1009
+        case .structuredFailure:    return 1010
+        case .validationRejected:   return 1011
+        case .uploadURLRefused:     return 1012
+        }
+    }
+
+    /// The refusal's own detail, so the reason survives into analytics without
+    /// anyone parsing `localizedDescription`.
+    var errorUserInfo: [String: Any] {
+        switch self {
+        case .uploadURLRefused(let status, let reason):
+            return ["http_status": status, "refusal_reason": reason]
+        default:
+            return [:]
+        }
+    }
+}
+
 enum APIError: LocalizedError {
     case notAuthenticated
     case jobCreationFailed(String)
@@ -1932,6 +1999,13 @@ enum APIError: LocalizedError {
     /// routes to the trial wall (TrialWallView, context .door), never a usable
     /// screen. `message` is old-client-safe display text for the rare straggler.
     case wallRequired(message: String)
+    /// THE UPLOAD DOOR REFUSED, AND THIS SAYS WHY. `/api/upload-url` returned a
+    /// non-2xx (or a 2xx with no URLs) and the caller used to throw the bare
+    /// `.uploadFailed`, which names nothing: 187 events over 7 days carried
+    /// "Upload failed", pct 0, no src_key, and a null transport error, on wifi
+    /// and cellular alike. The server's own `error` string was sitting in
+    /// UploadUrlResponse the whole time and nothing read it.
+    case uploadURLRefused(status: Int, reason: String)
     /// Render dispatch returned a structured failure shape: error_code +
     /// user_message + the three behavioural flags (retryable,
     /// requires_new_video, requires_vibe_change). Callers branch on the
@@ -1961,6 +2035,8 @@ enum APIError: LocalizedError {
         case .notAuthenticated: return "Please sign in"
         case .jobCreationFailed(let msg): return msg
         case .uploadFailed: return "Upload failed"
+        case .uploadURLRefused(let status, let reason):
+            return reason.isEmpty ? "Upload failed (\(status))" : reason
         case .deleteFailed: return "Delete failed"
         case .paymentRequired(_, _, let msg): return msg
         case .wallRequired(let message): return message

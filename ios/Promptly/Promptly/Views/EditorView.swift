@@ -2465,6 +2465,25 @@ struct EditorView: View {
                         UploadDiagnostics.lastTransportError = nil
                     }
                     Analytics.track("upload_failed", props: failProps, durable: true)
+                    // CLOSE THE LEDGER RECORD. Without this the record survived
+                    // the failure and the NEXT LAUNCH swept the same upload
+                    // again as never-started — one upload, two terminals, in two
+                    // different classes. Cancellation is separated from failure
+                    // because the fixes differ: one is ours, the other is the
+                    // user changing their mind.
+                    let cancelled = (error is CancellationError)
+                        || (error as NSError).code == NSURLErrorCancelled
+                    await MainActor.run {
+                        if cancelled {
+                            UploadOutcomeReporter.shared.recordCancelled(
+                                id: pending.id,
+                                reason: (failProps["mechanism"] as? String) ?? "cancelled")
+                        } else {
+                            UploadOutcomeReporter.shared.recordFailed(
+                                id: pending.id,
+                                reason: (failProps["mechanism"] as? String) ?? "unknown")
+                        }
+                    }
                     // Clear any eagerly-set URLs so a second Send tap
                     // doesn't reuse a stale public URL pointing at S3
                     // bytes that never arrived — that produced the

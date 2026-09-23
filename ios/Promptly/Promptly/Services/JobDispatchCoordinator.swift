@@ -415,6 +415,22 @@ final class JobDispatchCoordinator {
                 paymentLimit: nil
             ))
 
+        case .uploadURLRefused(let status, let reason):
+            // THE UPLOAD DOOR REFUSED. Retryable rather than fatal: the common
+            // causes are a 5xx or a rate limit, and the user's clip is still
+            // perfectly good — asking them to pick a new video for a server
+            // hiccup is the wrong instruction, which is what the bare
+            // `.uploadFailed` used to produce.
+            return .hard(HardFailure(
+                errorCode: "UPLOAD_URL_REFUSED_\(status)",
+                userMessage: reason.isEmpty ? "Couldn't start the upload. Try again." : reason,
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: nil,
+                paymentLimit: nil
+            ))
+
         case .wallRequired(let message):
             // Enforced `.none` hit a gated door (post-flip; dark today). Treat
             // as a payment-class terminal so the dispatch surfaces it; the UI
