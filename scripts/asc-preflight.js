@@ -43,6 +43,68 @@ const TERMINAL = new Set(['READY_FOR_SALE', 'PENDING_DEVELOPER_RELEASE', 'PENDIN
 const IN_FLIGHT = new Set(['WAITING_FOR_REVIEW', 'IN_REVIEW', 'PENDING_APPLE_RELEASE']);
 // States that need a human decision before anything else is submitted.
 const NEEDS_DECISION = new Set(['REJECTED', 'DEVELOPER_REJECTED', 'METADATA_REJECTED', 'INVALID_BINARY']);
+// WHO rejected it. Apple's verdicts are REJECTED / METADATA_REJECTED /
+// INVALID_BINARY; DEVELOPER_REJECTED is set when WE cancel our own submission.
+// The distinction only matters at the SAME version — see the withdraw-and-
+// replace block below. Everywhere else both are simply "needs a decision".
+const SELF_WITHDRAWN = 'DEVELOPER_REJECTED';
+
+/** Where a human records that Resolution Center was clear when we withdrew. */
+const DECISIONS_FILE = __dirname + '/asc-rejection-decisions.json';
+
+function readConfirmation(version) {
+  try {
+    const all = JSON.parse(fs.readFileSync(DECISIONS_FILE, 'utf8'));
+    return all[version] || null;
+  } catch { return null; }   // absent or unparseable == unconfirmed, which blocks
+}
+
+/**
+ * May a SELF-WITHDRAWN version be resubmitted with a new build?
+ *
+ * PURE ON PURPOSE. Every input is passed in, so the three conditions can be
+ * RED-proved directly instead of by fabricating live App Store state — the
+ * cases that must block (an Apple verdict, a build that does not advance, a
+ * missing confirmation) are exactly the ones that are hard to stage for real.
+ *
+ * All three must hold. Each closes a different hole:
+ *   - state is ours, not Apple's      — an Apple verdict is nobody's decision here
+ *   - the item was REMOVED, not REJECTED — a reviewer never acted on it
+ *   - the build strictly advances     — re-sending one artifact decides nothing
+ *   - a DATED human confirmation      — the one thing the API cannot tell us is
+ *     whether a reviewer wrote to us in Resolution Center before we pulled it.
+ *     It is pinned to the withdrawn BUILD so a confirmation cannot be reused
+ *     for a later withdrawal it was never about.
+ */
+function decideSelfWithdrawn(f) {
+  const no = (reason) => ({ allow: false, reason });
+  if (f.state !== SELF_WITHDRAWN) return no(`${f.version} is ${f.state} — an Apple verdict, not our withdrawal`);
+  if (f.itemState !== 'REMOVED') return no(`the submission item is ${f.itemState}, not REMOVED — a reviewer acted on it`);
+  // A FAILED READ IS NOT BUILD ZERO. Number(null) and Number('') are both 0,
+  // which would sail past the strictly-greater test below as "build 0" and let
+  // an unreadable attached build authorize the submission. Demand real digits
+  // before coercing anything. (Caught by the RED suite: the unreadable-build
+  // case was blocking on the confirmation mismatch instead of on this.)
+  const digits = (x) => /^\d+$/.test(String(x == null ? '' : x).trim());
+  if (!digits(f.buildNum) || !digits(f.attachedBuild)) {
+    return no(`build numbers unreadable (submitting ${JSON.stringify(f.buildNum)}, withdrawn ${JSON.stringify(f.attachedBuild)}); a failed read is not a free slot`);
+  }
+  const next = Number(f.buildNum), withdrawn = Number(f.attachedBuild);
+  if (!(next > withdrawn)) return no(`build ${f.buildNum} does not replace withdrawn build ${f.attachedBuild}`);
+  const c = f.confirmation;
+  if (!c) return no(`no Resolution Center confirmation recorded for ${f.version} in ${DECISIONS_FILE}`);
+  if (String(c.withdrawnBuild) !== String(f.attachedBuild)) {
+    return no(`the recorded confirmation is about build ${c.withdrawnBuild}, but build ${f.attachedBuild} was withdrawn`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(c.confirmedDate || ''))) return no('the recorded confirmation carries no valid date');
+  if (!String(c.confirmedBy || '').trim()) return no('the recorded confirmation names nobody');
+  return {
+    allow: true,
+    line: `we withdrew build ${f.attachedBuild} and build ${f.buildNum} replaces it; ` +
+      `Resolution Center confirmed clear by ${c.confirmedBy} on ${c.confirmedDate}` +
+      (c.resolutionCenter ? ` — "${c.resolutionCenter}"` : ''),
+  };
+}
 
 const cmp = (a, b) => {
   const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
@@ -54,7 +116,7 @@ const cmp = (a, b) => {
 };
 
 /** Throws (exit 1) unless `version` may be submitted right now. */
-async function assertSubmittable(version) {
+async function assertSubmittable(version, buildNum) {
   const j = await get(`/v1/apps/${APP}/appStoreVersions?limit=10&fields[appStoreVersions]=versionString,appStoreState`);
   const vers = (j.data || []).map((d) => ({ v: d.attributes.versionString, s: d.attributes.appStoreState, id: d.id }));
   if (!vers.length) {
@@ -78,7 +140,58 @@ async function assertSubmittable(version) {
   // not be stepped over silently, so an older one is NAMED loudly and allowed;
   // one at or newer than the version being submitted still blocks, because there
   // the rejection really is about the work in front of you.
-  const decision = vers.find((x) => NEEDS_DECISION.has(x.s) && cmp(x.v, version) >= 0);
+  //
+  // ONE EXCEPTION, AT THE SAME VERSION: a submission WE withdrew, being replaced
+  // by a strictly NEWER BUILD. Withdraw-and-replace does not always increment
+  // the version — pulling 1.3.38/258 to ship 1.3.38/259 is the same manoeuvre
+  // the paragraph above already allows, performed on the build instead. The
+  // version state cannot express that, so this read it as an unresolved
+  // rejection and wedged the very replacement it exists to permit.
+  //
+  // Narrow on purpose: `decideSelfWithdrawn` requires ALL of our-withdrawal,
+  // item REMOVED, a strictly higher build, and a DATED human confirmation that
+  // Resolution Center was clear. Called without a build (the bare CLI form) it
+  // cannot know a replacement exists, so it blocks exactly as before.
+  let pass = null;
+  const mine = buildNum == null ? null : vers.find((x) => x.v === version && x.s === SELF_WITHDRAWN);
+  if (mine) {
+    const bj = await get(`/v1/appStoreVersions/${mine.id}/build?fields[builds]=version`);
+    if (!bj.data) {
+      console.error(`asc-preflight: BLOCK — ${version} is ${SELF_WITHDRAWN} and its attached build could not be read.`);
+      console.error('   A failed read is not a free slot.');
+      process.exit(2);
+    }
+    // The item state is the discriminating field: REMOVED is us pulling it,
+    // REJECTED is a reviewer. A failed read must not read as REMOVED.
+    const sj = await get(`/v1/reviewSubmissions?filter[app]=${APP}&limit=10&include=items`);
+    let itemState = null;
+    for (const sub of (sj.data || [])) {
+      const ij = await get(`/v1/reviewSubmissions/${sub.id}/items?limit=10&include=appStoreVersion`);
+      for (const it of (ij.data || [])) {
+        const rel = it.relationships && it.relationships.appStoreVersion;
+        if (rel && rel.data && rel.data.id === mine.id) itemState = it.attributes.state;
+      }
+      if (itemState) break;
+    }
+    if (!itemState) {
+      console.error(`asc-preflight: BLOCK — ${version} is ${SELF_WITHDRAWN} and its submission item state could not be read.`);
+      process.exit(2);
+    }
+    const d = decideSelfWithdrawn({
+      version, buildNum, state: mine.s,
+      attachedBuild: bj.data.attributes.version,
+      itemState,
+      confirmation: readConfirmation(version),
+    });
+    if (!d.allow) {
+      console.error(`asc-preflight: BLOCK — ${version} is ${SELF_WITHDRAWN}, and ${d.reason}.`);
+      process.exit(1);
+    }
+    pass = d;
+    console.log(`asc-preflight: NAMED — ${version}: ${d.line}. That replacement IS the decision.`);
+  }
+  const decision = vers.find((x) => NEEDS_DECISION.has(x.s) && cmp(x.v, version) >= 0
+    && !(pass && x.v === version && x.s === SELF_WITHDRAWN));
   const olderRejected = vers.filter((x) => NEEDS_DECISION.has(x.s) && cmp(x.v, version) < 0);
   for (const o of olderRejected) {
     console.log(`asc-preflight: NOTE — ${o.v} is ${o.s} (older than ${version}). ` +
@@ -104,7 +217,7 @@ async function assertSubmittable(version) {
   return vers;
 }
 
-module.exports = { assertSubmittable, get, jwt, APP };
+module.exports = { assertSubmittable, get, jwt, APP, decideSelfWithdrawn, readConfirmation, SELF_WITHDRAWN };
 
 if (require.main === module) {
   const v = process.argv[2];

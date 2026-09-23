@@ -62,7 +62,7 @@ async function decide() {
 }
 
 async function ship(version, buildNum) {
-  await assertSubmittable(version);                       // blocks on a stale premise
+  await assertSubmittable(version, buildNum);             // blocks on a stale premise
 
   const b = await get(`/v1/builds?filter[app]=${APP}&sort=-uploadedDate&limit=20&fields[builds]=version,processingState`);
   // NOTE: /v1/builds?filter[app]&sort=-uploadedDate — the apps-scoped limit=10
