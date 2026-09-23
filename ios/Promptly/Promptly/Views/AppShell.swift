@@ -130,6 +130,21 @@ struct AppShell: View {
         //
         // It presents the REAL ladder through the REAL flag, so what is
         // reviewed is what ships; only the trigger is short-circuited.
+        // -showPaywall: the same short-circuit as -showLadder, for the paywall.
+        //
+        // WHY IT EXISTS. Confirming what the paywall states about the live
+        // allowance needed the real screen on a real /api/usage response, and
+        // there was no way to reach it without a human tap: no launch argument
+        // presented it, the scheme is not configured for the test action, and
+        // no tap automation is installed. So a claim about what the paywall
+        // says could only be made from reading the code. This makes it
+        // observable — the REAL paywall on the REAL usage snapshot, with only
+        // the trigger short-circuited, exactly as -showLadder does.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-showPaywall") else { return }
+            try? await Task.sleep(for: .milliseconds(1200))
+            appState.presentPaywall(.manual)
+        }
         .task {
             guard ProcessInfo.processInfo.arguments.contains("-showLadder") else { return }
             try? await Task.sleep(for: .milliseconds(900))
