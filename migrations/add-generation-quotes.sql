@@ -61,7 +61,23 @@ CREATE TABLE IF NOT EXISTS picked_clips (
   upload_key  text NOT NULL,
   duration_s  numeric,
   used_at     timestamptz,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  -- IDEMPOTENT ON upload_key (ruled 2026-09-23). The same key returns the
+  -- SAME clip_id with a 200 and starts no second import. The uniqueness has
+  -- to be in the CONSTRAINT rather than in a check-then-insert: two taps
+  -- arriving together both find no row and both import, which is the same
+  -- TOCTOU shape as a balance check and costs an upload instead of credits.
+  --
+  --   INSERT INTO picked_clips (clip_id, user_id, upload_key, duration_s)
+  --   VALUES ($1, $2, $3, $4)
+  --   ON CONFLICT (user_id, upload_key) DO UPDATE SET upload_key = EXCLUDED.upload_key
+  --   RETURNING clip_id, (xmax = 0) AS inserted;
+  --
+  -- DO UPDATE rather than DO NOTHING, because DO NOTHING returns no row and
+  -- the caller cannot tell "already exists" from "insert failed" — the second
+  -- would then read as a fresh pick. `inserted` says which happened, so the
+  -- import fires exactly once.
+  UNIQUE (user_id, upload_key)
 );
 -- Unused picks are discarded after 30 minutes. A sweep, not a trigger: a
 -- delete that runs on write would race the send that is about to use it.

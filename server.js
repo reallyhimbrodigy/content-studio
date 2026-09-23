@@ -4726,6 +4726,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           'escape_fallback_shown', 'fallback_retry', 'fallback_copy',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
+          // THE GENERATION AND BATCH CONTRACT (2026-09-23). Six events, and
+          // they are three PAIRS: each way a quote can end has a name, so the
+          // funnel has a denominator on both sides rather than a count of
+          // successes and a silence where the refusals were.
+          //   quote_confirmed / quote_payment_required  — the quote card
+          //   batch_dispatched / batch_payment_required — the batch card
+          //   quote_expired                             — the requote path,
+          //     which the client shows as a fresh price and never as an error,
+          //     so WITHOUT this event a requote is invisible in every surface
+          //   clip_picked_ack                           — the speed rule; it
+          //     is the only evidence the parallel import started before the
+          //     user typed, which is the whole point of that endpoint
+          'quote_confirmed', 'quote_payment_required', 'quote_expired',
+          'batch_dispatched', 'batch_payment_required', 'clip_picked_ack',
           // 260: THE CREDIT BADGE, BOTH HALVES. `shown` is the denominator —
           // without it a tap rate cannot be computed at all, only a tap COUNT,
           // and a count rises with traffic whether or not the badge works.
