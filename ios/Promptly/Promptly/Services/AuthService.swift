@@ -554,6 +554,12 @@ class AuthService {
         Task { @MainActor in
             ChatStore.shared.clearForSignOut()
         }
+        // The credit balance is the same class of leak: it is read per-account
+        // from RevenueCat, so leaving it in memory shows the next person on this
+        // device the previous account's credits.
+        Task { @MainActor in
+            CreditsService.shared.clearForSignOut()
+        }
         // Detach the RevenueCat identity. Otherwise the next user that
         // signs in on this device starts a session aliased to the
         // previous user's app_user_id, which corrupts both attribution

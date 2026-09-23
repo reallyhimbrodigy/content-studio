@@ -93,6 +93,18 @@ final class CreditsService: ObservableObject {
         if (200...299).contains(http.statusCode) || http.statusCode == 409 { await refresh() }
     }
 
+    /// THE OTHER HALF OF NEVER BLANKING A BALANCE. Once `refresh()` stopped
+    /// assigning nil on an unresolved currency, nothing cleared the balance at
+    /// all — and that assignment had been doing this job by accident. Without
+    /// an explicit reset the next person to sign in on this device would read
+    /// the previous account's credits, which is the VideoCache/ChatStore
+    /// mistake in a different currency. `signOut` calls this.
+    func clearForSignOut() {
+        balance = nil
+        lastReadFailed = false
+        claimAttempted = false   // a new account on this device must claim again
+    }
+
     func refresh() async {
         #if DEBUG
         // A posed balance is for a capture; the real read would immediately
@@ -104,8 +116,22 @@ final class CreditsService: ObservableObject {
         do {
             Purchases.shared.invalidateVirtualCurrenciesCache()
             let vc = try await Purchases.shared.virtualCurrencies()
-            balance = vc[Self.currencyCode]?.balance
-            lastReadFailed = (balance == nil)
+            if let fresh = vc[Self.currencyCode]?.balance {
+                balance = fresh
+                lastReadFailed = false
+            } else {
+                // A CALL THAT RETURNED WITHOUT OUR CURRENCY IS A FAILED READ.
+                // It used to assign nil here, which blanked a balance we had
+                // already shown — the badge would vanish mid-session for a user
+                // who genuinely holds credits. The catch below was careful to
+                // leave the last known value alone; this path was not, and it
+                // is the same mistake wearing a success branch.
+                //
+                // `claimed_not_landed` (11 users in 30d) is exactly this shape:
+                // the server granted, RevenueCat has not caught up, and the
+                // currency resolves to nothing for a moment.
+                lastReadFailed = true
+            }
         } catch {
             // A failed read is NOT a zero balance. Leave the last known value
             // in place and mark the failure — this project has already paid for

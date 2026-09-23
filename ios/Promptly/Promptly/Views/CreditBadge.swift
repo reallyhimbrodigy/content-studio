@@ -41,12 +41,17 @@ struct CreditBadge: View {
     @State private var shown: Int?
     @State private var pulse = false
     @State private var refunding = false
+    /// Dedup for the impression event. SwiftUI re-runs a body freely, so an
+    /// untracked `track()` would count redraws rather than appearances. Reset
+    /// when the badge goes away, so signing out and back in counts again.
+    @State private var reportedShown = false
 
     var body: some View {
         Group {
-            if onboarding.creditsEnabled, let value = shown {
+            if let value = visibleBalance {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Analytics.track("credit_badge_tap", props: ["balance": value])
                     onTap()
                 } label: {
                     HStack(spacing: 5 * k) {
@@ -109,7 +114,24 @@ struct CreditBadge: View {
         // holds and spends the currency. The figure and the label agree — both
         // are credits — which was the property that mattered either way.
         .onChange(of: credits.balance) { old, new in apply(old: old, new: new) }
+        // THIS SURFACE HAD NO TELEMETRY AT ALL. Nothing in production could say
+        // whether the badge had ever drawn for anyone — and `credits_topup_open`
+        // does not answer it, because that fires only from AccountView with
+        // source=account. The two conditions here are the same two the body
+        // draws on, so the event means "a user saw a balance", not "the code
+        // ran": a nil balance or a dark flag is silence, exactly as on screen.
+        .onChange(of: visibleBalance) { _, new in
+            guard let value = new else { reportedShown = false; return }
+            guard !reportedShown else { return }
+            reportedShown = true
+            Analytics.track("credit_badge_shown", props: ["balance": value])
+        }
     }
+
+    /// What the badge is actually showing, or nil when it is not drawing —
+    /// the single expression the body and the impression event both read, so
+    /// they cannot drift apart.
+    private var visibleBalance: Int? { onboarding.creditsEnabled ? shown : nil }
 
     /// Read the balance and show it without animating — the first read is not a
     /// change, and animating it would show a decrement from nothing on launch.
