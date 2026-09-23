@@ -1,22 +1,32 @@
 {
   "_README": [
     "Human decisions about App Store rejections. asc-preflight reads this and will",
-    "NOT submit over a self-withdrawn version without a matching entry here.",
+    "NOT submit over a self-withdrawn version without a CONFIRMED entry here.",
     "",
     "This file exists because one thing is invisible to the App Store Connect API:",
     "whether a REVIEWER wrote to us in Resolution Center before we pulled a",
     "submission. DEVELOPER_REJECTED and an item state of REMOVED prove only that",
     "the withdrawal was OURS, not why we made it. A person has to look and say so.",
     "",
+    "'status' is the whole point: only \"confirmed\" authorizes a submission.",
+    "\"pending\" records that the check has been ASKED FOR and not yet answered,",
+    "which is not the same thing and must never read as the same thing.",
+    "",
     "'withdrawnBuild' pins the entry to the build it is actually about, so a",
     "confirmation can never be reused for a later withdrawal it never covered.",
-    "Add an entry only after someone has genuinely checked Resolution Center."
+    "",
+    "Quote a person only where they actually spoke. An attestation that",
+    "paraphrases someone into a confirmation they did not give is worse than no",
+    "attestation, because it reads as evidence."
   ],
   "1.3.38": {
+    "status": "pending",
     "withdrawnBuild": "258",
-    "confirmedBy": "Zac (relayed to FRONTEND)",
-    "confirmedDate": "2026-09-23",
-    "resolutionCenter": "No reviewer message. 258 was withdrawn by us, on instruction, solely to replace it with build 259.",
-    "replacementBuild": "259"
+    "replacementBuild": "259",
+    "confirmedBy": "",
+    "confirmedDate": "",
+    "attestation": "Advisor ruling relayed; Zac's personal Resolution Center check pending.",
+    "knownFromTheAPI": "Version state DEVELOPER_REJECTED and submission item REMOVED (not REJECTED), which establishes the withdrawal was ours. It does NOT establish that no reviewer messaged us first.",
+    "submittedAnyway": "Build 259 was submitted 2026-09-23T07:10:45Z (submission 20d013b9-75de-4e98-8c76-d066cbd6bfc1) on the relayed ruling, before this check was answered. If Zac reports a reviewer message, pull it."
   }
 }

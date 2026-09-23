@@ -93,6 +93,14 @@ function decideSelfWithdrawn(f) {
   if (!(next > withdrawn)) return no(`build ${f.buildNum} does not replace withdrawn build ${f.attachedBuild}`);
   const c = f.confirmation;
   if (!c) return no(`no Resolution Center confirmation recorded for ${f.version} in ${DECISIONS_FILE}`);
+  // ASKED FOR IS NOT ANSWERED. A record may exist while the human check is still
+  // outstanding — that is the honest state to be in, and it must not read as a
+  // confirmation. Fail closed: anything that is not exactly "confirmed",
+  // including a record predating this field, is not one.
+  if (c.status !== 'confirmed') {
+    return no(`the recorded Resolution Center check is "${c.status || 'unset'}", not confirmed` +
+      (c.attestation ? ` — ${c.attestation}` : ''));
+  }
   if (String(c.withdrawnBuild) !== String(f.attachedBuild)) {
     return no(`the recorded confirmation is about build ${c.withdrawnBuild}, but build ${f.attachedBuild} was withdrawn`);
   }

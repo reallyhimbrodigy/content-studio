@@ -19,10 +19,10 @@ const BASE = {
   attachedBuild: '258',
   itemState: 'REMOVED',
   confirmation: {
+    status: 'confirmed',
     withdrawnBuild: '258',
-    confirmedBy: 'Zac (relayed to FRONTEND)',
+    confirmedBy: 'Zac',
     confirmedDate: '2026-09-23',
-    resolutionCenter: 'No reviewer message.',
   },
 };
 
@@ -53,6 +53,12 @@ const cases = [
     f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedDate: '' } }, allow: false, because: 'no valid date' },
   { name: 'confirmation with a malformed date blocks',
     f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedDate: 'yesterday' } }, allow: false, because: 'no valid date' },
+  { name: 'a PENDING Resolution Center check blocks',
+    f: { ...BASE, confirmation: { ...BASE.confirmation, status: 'pending', confirmedBy: '', confirmedDate: '' } },
+    allow: false, because: 'not confirmed' },
+  { name: 'a record with no status at all blocks (fails closed)',
+    f: { ...BASE, confirmation: { withdrawnBuild: '258', confirmedBy: 'Zac', confirmedDate: '2026-09-23' } },
+    allow: false, because: 'not confirmed' },
   { name: 'confirmation naming nobody blocks',
     f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedBy: '  ' } }, allow: false, because: 'names nobody' },
 ];
@@ -77,9 +83,16 @@ for (const c of cases) {
 const live = readConfirmation('1.3.38');
 if (!live) { console.log('FAIL  live confirmation for 1.3.38 is missing from disk'); failed++; }
 else {
+  // THE ON-DISK RECORD IS PENDING BY DESIGN. Zac's personal Resolution Center
+  // check has been asked for and not answered, so the live file must NOT
+  // authorize anything — 259 went out on the relayed ruling ahead of it.
+  // When he answers "clear", this flips to confirmed and this assertion
+  // inverts; that is the point of asserting it either way rather than not at all.
   const d = decideSelfWithdrawn({ ...BASE, confirmation: live });
-  console.log(`${d.allow ? 'PASS' : 'FAIL'}  the confirmation ON DISK admits 1.3.38/259`);
-  if (!d.allow) { console.log(`        ${d.reason}`); failed++; }
+  const pending = live.status !== 'confirmed';
+  console.log(`${d.allow === !pending ? 'PASS' : 'FAIL'}  the ON-DISK record (status=${live.status}) ${pending ? 'does NOT authorize' : 'authorizes'} 1.3.38/259`);
+  if (d.allow !== !pending) { console.log(`        ${d.reason || d.line}`); failed++; }
+  else if (pending) console.log(`        blocked because: ${d.reason}`);
   const stale = decideSelfWithdrawn({ ...BASE, buildNum: '260', attachedBuild: '259', confirmation: live });
   console.log(`${stale.allow ? 'FAIL' : 'PASS'}  the ON-DISK confirmation does NOT carry over to a future withdrawal`);
   if (stale.allow) failed++;
