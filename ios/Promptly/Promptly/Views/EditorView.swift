@@ -2183,7 +2183,34 @@ struct EditorView: View {
                             // invisible in the current breakdown and is a prime
                             // suspect for South Asia's 143s p50.
                             UploadTiming.mark(pending.id.uuidString, "asset_fetched")
-                            if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
+                            // SEND LESS, WHEN THE FLAG SAYS SO. Dark by default;
+                            // a failure here is non-fatal by construction —
+                            // `shrunk` stays nil and the original uploads, so a
+                            // bad export can cost speed but never the upload.
+                            var shrunk: URL?
+                            if onboardingState.uploadShrinkEnabled {
+                                let tShrink = Date()
+                                let decision = await SourceShrinker.decide(for: AVURLAsset(url: sourceUrl))
+                                UploadTiming.meta(pending.id.uuidString, "shrink_reason", decision.reason)
+                                UploadTiming.meta(pending.id.uuidString, "src_short_side", decision.shortSide)
+                                if decision.shouldShrink {
+                                    shrunk = try? await SourceShrinker.shrink(sourceUrl)
+                                    UploadTiming.mark(pending.id.uuidString, "shrunk")
+                                    UploadTiming.meta(pending.id.uuidString, "shrink_ms",
+                                                      Int(Date().timeIntervalSince(tShrink) * 1000))
+                                    if let shrunk,
+                                       let after = (try? FileManager.default
+                                            .attributesOfItem(atPath: shrunk.path)[.size] as? Int64) {
+                                        // Both numbers, so the saving is read
+                                        // from one event rather than joined.
+                                        UploadTiming.meta(pending.id.uuidString, "bytes_before", sourceSize)
+                                        UploadTiming.meta(pending.id.uuidString, "bytes_after", after)
+                                    }
+                                }
+                            }
+                            if let shrunk {
+                                materializedSourceUrl = shrunk
+                            } else if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
                                 let tmp = UploadStorage.newFile()
                                 try FileManager.default.copyItem(at: sourceUrl, to: tmp)
                                 materializedSourceUrl = tmp

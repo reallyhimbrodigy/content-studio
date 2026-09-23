@@ -45,6 +45,8 @@ final class OnboardingState: ObservableObject {
     /// Credits meter — read/display half only (the client cannot debit;
     /// RevenueCat Virtual Currencies is read-only on device, SDK 5.75.0).
     @Published private(set) var creditsEnabled = false
+    /// Server-controlled, default OFF. The 1080p HEVC source shrink.
+    @Published private(set) var uploadShrinkEnabled = false
     /// Monthly credit allowance for the CURRENT tier, served alongside the
     /// credits flag. nil while the meter is dark or the server has not said —
     /// and nil is what keeps the paywall honest: `headlineVideoClaim` falls back
@@ -264,6 +266,11 @@ final class OnboardingState: ObservableObject {
             // now. `credits_metering` conjoins everything that must be true for
             // a debit to actually happen; older builds keep reading `credits`
             // unchanged, so this is additive on the server.
+            // UPLOAD SHRINK (dark). Changes the bytes of every upload, so it
+            // arms per-account first, then by percentage, measured against
+            // control on the upload_timing spans. Default OFF: an absent field
+            // must never read as enabled.
+            uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"
             creditsEnabled = (obj?["credits_metering"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
             #if DEBUG

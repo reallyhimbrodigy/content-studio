@@ -116,6 +116,31 @@ grep -Fq 'assetLocalIdentifier: pending.assetLocalIdentifier' "$E" \
   && echo "  ok   — the library identity is recorded at pick time" \
   || note "recordPick does not persist the asset identifier — nothing to recover from once the temp copy is gone"
 
+# ── 4c. THE SHRINK SHIPS DARK, AND FAILS SOFT ───────────────────────────────
+# It changes the bytes of every upload, so it must default OFF and an absent
+# server field must never read as enabled. And a failed optimisation must never
+# cost someone their upload — the original has to survive a bad export.
+O="Promptly/Services/OnboardingState.swift"
+S2="Promptly/Services/SourceShrinker.swift"
+if [ ! -f "$O" ] || [ ! -f "$S2" ]; then note "missing shrink files"; else
+  grep -Eq '^[[:space:]]*@Published private\(set\) var uploadShrinkEnabled = false' "$O" \
+    && echo "  ok   — the shrink flag defaults OFF" \
+    || note "uploadShrinkEnabled does not default to false — an absent field could arm it"
+  grep -Fq 'uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"' "$O" \
+    && echo "  ok   — it arms only on an explicit \"on\"" \
+    || note "the shrink flag arms on something other than an explicit \"on\""
+  # try? , not try: a throw must leave `shrunk` nil so the ORIGINAL uploads.
+  grep -Fq 'shrunk = try? await SourceShrinker.shrink(sourceUrl)' "$E" \
+    && echo "  ok   — a failed shrink falls back to the original, never fails the upload" \
+    || note "the shrink is not fail-soft — a bad export would cost the user their upload"
+  sed -n '/static func shrink/,/^    }/p' "$S2" | grep -Fq 'AVAssetExportPresetHEVC1920x1080' \
+    && echo "  ok   — HEVC 1080p, the target B1 confirmed both ways" \
+    || note "the shrink is not exporting HEVC 1080p"
+  sed -n '/static func shrink/,/^    }/p' "$S2" | grep -Fq 'AVVideoTransferFunction_ITU_R_709_2' \
+    && echo "  ok   — HDR is tone-mapped in the same pass" \
+    || note "no tone-mapping — an HDR source would land grey and washed out"
+fi
+
 # ── 5. ERROR CODES MUST BE STABLE ACROSS BUILDS ─────────────────────────────
 # Implicit enum tags renumber when a case is inserted; that is why one error
 # read as 7 on 1.3.34 and 8 on 1.3.37 and cost most of an investigation.
