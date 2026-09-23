@@ -4738,8 +4738,20 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           //   clip_picked_ack                           — the speed rule; it
           //     is the only evidence the parallel import started before the
           //     user typed, which is the whole point of that endpoint
+          //   quote_card_shown                          — THE DENOMINATOR.
+          //     quote_confirmed and quote_payment_required count the two ways
+          //     a quote ENDS; without this one there is no count of quotes
+          //     that started, so an abandoned card is indistinguishable from a
+          //     card that was never drawn, and every rate below is a rate over
+          //     an unknown base.
+          //   batch_count_mismatch                      — the client asked for
+          //     N and the server dispatched a different N. It should be zero
+          //     forever; a zero with no event behind it is the same zero as a
+          //     counter nobody wired, which is why it gets a name rather than
+          //     an assumption.
           'quote_confirmed', 'quote_payment_required', 'quote_expired',
           'batch_dispatched', 'batch_payment_required', 'clip_picked_ack',
+          'quote_card_shown', 'batch_count_mismatch',
           // 260: THE CREDIT BADGE, BOTH HALVES. `shown` is the denominator —
           // without it a tap rate cannot be computed at all, only a tap COUNT,
           // and a count rises with traffic whether or not the badge works.
