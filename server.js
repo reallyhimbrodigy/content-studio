@@ -4726,6 +4726,16 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           'escape_fallback_shown', 'fallback_retry', 'fallback_copy',
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
+          // 260: THE CREDIT BADGE, BOTH HALVES. `shown` is the denominator —
+          // without it a tap rate cannot be computed at all, only a tap COUNT,
+          // and a count rises with traffic whether or not the badge works.
+          // `tap` is the only evidence anyone reads it rather than sees it.
+          // Allowlisted BEFORE 260 ships: an event the mirror drops is one
+          // PostHog keeps, and the SQL half then goes blind for that cohort
+          // while looking healthy — the class that bit not_talking_head
+          // _rejected, and the bleed meter's "paywalls N" reading zero for
+          // every current install.
+          'credit_badge_shown', 'credit_badge_tap',
           'purchase_started', 'purchase_completed', 'purchase_failed',
           // 259: THE PURCHASE NOBODY FINISHED. purchase_started minus
           // completed minus failed is NOT abandonment — it is abandonment
