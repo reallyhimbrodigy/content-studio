@@ -4678,6 +4678,16 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // these on the allowlist the SQL mirror silently drops them (the same
           // class that bit not_talking_head_rejected); PostHog gets them regardless.
           'too_short_rejected', 'too_long_rejected', 'push_softprompt',
+          // 259: THE TWO HALVES OF A DEFERRED SOFT-PROMPT. `push_softprompt`
+          // alone says the prompt was shown and nothing else — a user who
+          // said "not now" and a user who was never asked again look the
+          // same in SQL. `_deferred` is the decline, `_reoffered` is the
+          // second ask, and only the pair makes "does re-offering work?"
+          // a question that can be asked at all. Allowlisted BEFORE 259
+          // ships, because an event the mirror drops is one PostHog keeps
+          // and the SQL half goes blind for that whole cohort — the same
+          // class as not_talking_head_rejected above.
+          'push_softprompt_deferred', 'push_softprompt_reoffered',
           // 1.3.4 (222) instruments — the upload/no-token blind spots + true
           // activation. MUST be here or the SQL mirror (the DB our upload/no-token
           // analysis queries) drops them while PostHog keeps them — half-blind.
@@ -4717,6 +4727,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // UPGRADE:
           'free_limit_hit', 'upgrade_wall_viewed', 'plan_selected',
           'purchase_started', 'purchase_completed', 'purchase_failed',
+          // 259: THE PURCHASE NOBODY FINISHED. purchase_started minus
+          // completed minus failed is NOT abandonment — it is abandonment
+          // plus every sheet that errored without reporting, plus every
+          // client that died mid-flow. A residual computed by subtraction
+          // carries all three and is quoted as one, which is how a funnel
+          // number becomes a guess. This is the explicit record.
+          'purchase_abandoned',
           // RETENTION:
           'session_started',
           'save_cta_shown',
