@@ -3441,6 +3441,30 @@ const server = http.createServer((req, res) => {
   }
 
   // ── Presigned S3 upload URL ──
+  // ── /api/upload-url REFUSALS ARE LOGGED, ALL OF THEM ──────────────────
+  // Render's app log showed "POST /api/upload-url" and nothing else: no
+  // status, no reason. So roughly 30 people a day hit "Upload failed" and the
+  // server could not say which door closed on them — and the client was
+  // ignoring non-2xx anyway, so neither end knew. Two blind ends is why this
+  // lasted.
+  //
+  // FIVE EXITS COLLAPSED INTO ONE CATCH. requireSupabaseUser throwing a 401,
+  // a malformed body, S3 unconfigured, a presign failure and the wall denial
+  // all left through `error?.statusCode || 500`, which made an auth problem
+  // and an S3 outage the same line. A reason code per exit is the difference
+  // between "the route fails" and a cause.
+  //
+  // NO PII, DELIBERATELY: status, reason and stage only. No user id, no file
+  // name, no key. A terminal buffer gets pasted into issues and chats, and
+  // none of those three fields is worth less for being anonymous — the
+  // question is WHICH REFUSAL fires 30 times a day, and that is a histogram
+  // over reason codes, not over people.
+  const logUploadRefusal = (status, reason, stage) => {
+    try {
+      console.log(`[upload-url] REFUSED status=${status} reason=${reason} stage=${stage}`);
+    } catch (_) { /* a log must never be the thing that fails the request */ }
+  };
+
   if (parsed.pathname === '/api/upload-url' && req.method === 'POST') {
     (async () => {
       try {
@@ -3456,11 +3480,16 @@ const server = http.createServer((req, res) => {
         if (String(_preBody?.purpose || '') === 'chat_media') {
           const cm = require('./lib/chat-media');
           const s3 = require('./services/s3');
-          if (!s3.isConfigured()) return sendJson(res, 500, { error: 'Storage not configured' });
+          if (!s3.isConfigured()) {
+            logUploadRefusal(500, 'storage_unconfigured', 'chat_media');
+            return sendJson(res, 500, { error: 'Storage not configured' });
+          }
           let key;
           try {
             key = cm.buildKey(authUser.id, _preBody?.mime, _preBody?.fileName);
           } catch (e) {
+            // The message can carry a file name; the REASON never does.
+            logUploadRefusal(e.statusCode || 400, 'chat_media_rejected', 'build_key');
             return sendJson(res, e.statusCode || 400, {
               error: e.message,
               allowed: Array.from(cm.ALLOWED_MIME),
@@ -3485,12 +3514,18 @@ const server = http.createServer((req, res) => {
         // Upload door (wall N+1) — see /api/upload. Knob OFF short-circuits.
         if (wallEnabled() || clientFreemium(req.headers)) {
           const dec = await leanWallDecision(authUser.id, req);
-          if (!dec.allow) return sendUploadDenial(res, dec, 'upload-url', authUser.id);
+          if (!dec.allow) {
+            // The wall's own reason, not a generic "denied" — a paywall hit
+            // and a rate limit are different products of this one branch.
+            logUploadRefusal(dec.status || 402, `wall_denied:${dec.reason || 'unknown'}`, 'wall');
+            return sendUploadDenial(res, dec, 'upload-url', authUser.id);
+          }
         }
         const body = _preBody;
         const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
         const s3 = require('./services/s3');
         if (!s3.isConfigured()) {
+          logUploadRefusal(500, 'storage_unconfigured', 'video');
           return sendJson(res, 500, { error: 'Storage not configured' });
         }
         const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
@@ -3515,7 +3550,23 @@ const server = http.createServer((req, res) => {
         warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
         return sendJson(res, 200, { uploadUrl, publicUrl, key });
       } catch (error) {
-        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
+        // THE CATCH-ALL IS WHERE THE SIGNAL WAS LOST, so it classifies rather
+        // than shrugging. An auth failure and an S3 outage arriving as the
+        // same 500 is what made this route unreadable for a week.
+        const status = error?.statusCode || 500;
+        const m = String(error?.message || '');
+        const reason = status === 401 || /auth|jwt|token|unauthor/i.test(m) ? 'no_auth'
+          : /json|body|parse/i.test(m) ? 'bad_json'
+            : /presign|s3|storage|bucket|credential/i.test(m) ? 'presign_failed'
+              : 'unhandled';
+        logUploadRefusal(status, reason, 'catch');
+        if (reason === 'unhandled') {
+          // An unclassified failure prints its message ONCE, without the body
+          // it came from — otherwise the next unknown cause is invisible in
+          // exactly the way this whole change exists to fix.
+          console.log(`[upload-url] unclassified: ${m.slice(0, 200)}`);
+        }
+        return sendJson(res, status, { error: error?.message || 'Failed to generate upload URL' });
       }
     })();
     return;
@@ -4752,6 +4803,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           'quote_confirmed', 'quote_payment_required', 'quote_expired',
           'batch_dispatched', 'batch_payment_required', 'clip_picked_ack',
           'quote_card_shown', 'batch_count_mismatch',
+          // upload_outcome — the client now retries non-2xx instead of
+          // ignoring them, and a retry against a failing route is a storm
+          // rather than a fix. This is the only field that says whether the
+          // retry ENDED in an upload; without it the server sees more
+          // requests and cannot tell recovery from amplification.
+          'upload_outcome',
           // 260: THE CREDIT BADGE, BOTH HALVES. `shown` is the denominator —
           // without it a tap rate cannot be computed at all, only a tap COUNT,
           // and a count rises with traffic whether or not the badge works.
