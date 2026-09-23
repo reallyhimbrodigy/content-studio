@@ -1,3 +1,9 @@
+// NOTE 2026-09-22: NOTHING RUNS THIS FILE — verified by grepping lib/, .github/
+// and package.json for its name, which returns nothing. Its sibling
+// tests/free-credits.test.js IS gated, through lib/__smoke_grant_cohort.js, so the
+// two files in this directory differ on whether they are checks at all. The
+// constants here are gated by lib/__smoke_free_tier_limits.js; do not add a NEW
+// assertion here expecting it to guard anything.
 'use strict';
 // The VIDEO allowance — the unit the user was actually sold.
 //   node --test tests/videos-allowance.test.js
@@ -22,14 +28,14 @@ const PAST = '2020-01-01T00:00:00Z';
 // own copy proves the copy.
 
 test('the ruled numbers are the ruled numbers', () => {
-  assert.deepStrictEqual(VIDEOS_LIMIT, { free: 3, pro: 50, max: 200 });
+  assert.deepStrictEqual(VIDEOS_LIMIT, { free: 1, pro: 50, max: 200 });
 });
 
 test('every REAL profile shape maps to the right video allowance', () => {
-  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 1);
   assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: FUTURE }).own, 50);
   assert.strictEqual(videosLimitFor({ tier: 'max', pro_until: FUTURE }).own, 200);
-  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 1);
   assert.strictEqual(videosLimitFor({ comp_pro: true }).own, 50);
 });
 
@@ -55,16 +61,16 @@ test('videos_limit is an OBJECT, never a scalar', () => {
 
 test('every tier ships every time, at the ruled numbers', () => {
   const v = videosLimitFor({ tier: 'free' });
-  assert.strictEqual(v.free, 3);
+  assert.strictEqual(v.free, 1);
   assert.strictEqual(v.pro, 50);
   assert.strictEqual(v.max, 200);
 });
 
 test('own tracks the caller across every REAL profile shape', () => {
-  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'free' }).own, 1);
   assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: FUTURE }).own, 50);
   assert.strictEqual(videosLimitFor({ tier: 'max', pro_until: FUTURE }).own, 200);
-  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 3);
+  assert.strictEqual(videosLimitFor({ tier: 'pro', pro_until: PAST }).own, 1);
   assert.strictEqual(videosLimitFor({ comp_pro: true }).own, 50);
 });
 
@@ -85,21 +91,27 @@ test('videos_limit is RULED, never credits / cost', () => {
   for (const tier of ['free', 'pro', 'max']) {
     assert.ok(Number.isInteger(VIDEOS_LIMIT[tier]), `${tier} has a ruled video limit`);
   }
-  // AND THE TWO HAVE NOW ACTUALLY DIVERGED, so the split stops being an
-  // argument and becomes an observation. Zac ruled pro -> 50 videos; RevenueCat
-  // has not yet granted the 500 credits behind it, so TIER_ALLOWANCE stays 200
-  // — it describes what a subscriber HOLDS, and a server displaying an
-  // allowance nobody has is a lie in the user's favour and still a lie.
+  // NEITHER EQUALITY NOR INEQUALITY IS ASSERTED, AND I GOT THAT WRONG ONCE IN
+  // EACH DIRECTION BEFORE WRITING IT DOWN.
   //
-  //     VIDEOS_LIMIT.pro                    50   the ruled promise
-  //     TIER_ALLOWANCE.pro / COST_PER_RENDER 20   what the balance buys today
+  // First this said "they agree today and that is a coincidence, so do not
+  // encode it". Right. Then RevenueCat lagged the ruling, pro went 50 promised
+  // against 20 held, and I replaced the note with assert.notStrictEqual —
+  // encoding the DIVERGENCE as the rule. That broke the moment RC flipped and
+  // 500/10 came back to 50, which is the same mistake with the sign changed:
   //
-  // Asserting the INEQUALITY is what stops someone re-deriving one from the
-  // other as a tidy-up: a derived field would read 20 here and move silently
-  // under the promise the moment either number changes.
-  assert.notStrictEqual(
-    VIDEOS_LIMIT.pro, TIER_ALLOWANCE.pro / COST_PER_RENDER,
-    'videos_limit must not be credits/cost — they have deliberately diverged');
-  assert.strictEqual(TIER_ALLOWANCE.pro / COST_PER_RENDER, 20,
-    'TIER_ALLOWANCE tracks RevenueCat, which has not granted 500 yet');
+  //     before the flip   VIDEOS_LIMIT.pro 50   TIER_ALLOWANCE.pro/COST 20
+  //     after  the flip   VIDEOS_LIMIT.pro 50   TIER_ALLOWANCE.pro/COST 50
+  //
+  // The relationship between them is a FACT ABOUT A MOMENT — how far RevenueCat
+  // has caught up with a ruling — and a check that pins a moment is wrong on
+  // either side of it. What is durable is that VIDEOS_LIMIT is a LITERAL nobody
+  // computes: the promise is stated, not derived, so it cannot move when the
+  // mechanism does.
+  //
+  // So: assert the values and the independence, and say why the obvious
+  // assertion is a trap, because the next reader will see two numbers that
+  // agree and reach for exactly it.
+  assert.deepStrictEqual(VIDEOS_LIMIT, { free: 1, pro: 50, max: 200 },
+    'the ruled promise, stated and not derived');
 });

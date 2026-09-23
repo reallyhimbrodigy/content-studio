@@ -1,3 +1,10 @@
+// THIS FILE IS GATED, via lib/__smoke_grant_cohort.js, which execs
+// `node --test tests/credits-tier.test.js tests/free-credits.test.js`. I asserted
+// the opposite — that nothing ran it — and the deploy gate refuted me by going RED
+// on these very assertions. The smoke that runs the tests was two directories away
+// from the tests, and grepping .github/ and package.json for a test runner missed
+// it because the runner is a smoke. Its sibling tests/videos-allowance.test.js is
+// NOT in that list and really is dark.
 'use strict';
 // The free-tier credit decisions, every branch a test.
 //   node --test tests/free-credits.test.js
@@ -30,12 +37,12 @@ test('periodKey: sorts and compares correctly as text', () => {
 
 // ── topUpDelta ─────────────────────────────────────────────────────────────
 test('topUpDelta: tops UP to the allowance', () => {
-  assert.strictEqual(topUpDelta(0), 30);
-  assert.strictEqual(topUpDelta(10), 20);
-  assert.strictEqual(topUpDelta(29), 1);
+  assert.strictEqual(topUpDelta(0), 10);
+  assert.strictEqual(topUpDelta(4), 6);
+  assert.strictEqual(topUpDelta(9), 1);
 });
 test('topUpDelta: already at the allowance grants nothing', () => {
-  assert.strictEqual(topUpDelta(30), 0);
+  assert.strictEqual(topUpDelta(10), 0);
 });
 // THE CONFISCATION GUARD. A user above the allowance is holding credits they
 // BOUGHT as a top-up, or Pro credits from before a lapse. A flat "add 30" would
@@ -46,17 +53,17 @@ test('topUpDelta: NEVER negative — a purchased top-up is never confiscated', (
   assert.ok(topUpDelta(500) >= 0);
 });
 test('topUpDelta: garbage balance is treated as 0, not NaN', () => {
-  assert.strictEqual(topUpDelta(undefined), 30);
-  assert.strictEqual(topUpDelta(null), 30);
-  assert.strictEqual(topUpDelta(NaN), 30);
-  assert.strictEqual(topUpDelta('nonsense'), 30);
+  assert.strictEqual(topUpDelta(undefined), 10);
+  assert.strictEqual(topUpDelta(null), 10);
+  assert.strictEqual(topUpDelta(NaN), 10);
+  assert.strictEqual(topUpDelta('nonsense'), 10);
 });
 test('topUpDelta: honours a custom allowance', () => {
   assert.strictEqual(topUpDelta(0, 200), 200);
   assert.strictEqual(topUpDelta(250, 200), 0);
 });
 test('FREE_MONTHLY_ALLOWANCE is 30', () => {
-  assert.strictEqual(FREE_MONTHLY_ALLOWANCE, 30);
+  assert.strictEqual(FREE_MONTHLY_ALLOWANCE, 10);
 });
 
 // ── decideDeviceClaim ──────────────────────────────────────────────────────
@@ -116,8 +123,8 @@ test('DESIGN: one device, two accounts — the second is refused', () => {
   assert.strictEqual(decideDeviceClaim({ row: { user_id: U1 }, userId: U2 }).action, 'conflict');
 });
 test('DESIGN: a spent-down user rolls to exactly the allowance next period', () => {
-  // Spent 25 of 30 in September, nothing carried: October tops back up to 30.
-  assert.strictEqual(topUpDelta(5), 25);
+  // Spent 7 of 10 in September, nothing carried: October tops back up to 10.
+  assert.strictEqual(topUpDelta(3), 7);
   const oct = decidePeriodGrant({ periodRow: null, period: '2026-10', currentPeriod: '2026-10' });
   assert.strictEqual(oct.action, 'grant');
 });
