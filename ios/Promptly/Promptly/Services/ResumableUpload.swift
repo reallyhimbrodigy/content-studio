@@ -68,7 +68,19 @@ enum MultipartChunker {
     /// a short middle part, and halves the bytes any single stalled connection
     /// is holding. Paired with 3 connections (see MultipartUploader's session)
     /// this is 24 MB in flight rather than 96.
-    static let defaultPartSize: Int64 = 8 * 1024 * 1024
+    /// 5 MiB — S3's MINIMUM part size, and deliberately the floor.
+    ///
+    /// A STALLED PART RESTARTS FROM ZERO, so the part size is the unit of work
+    /// we re-pay on every stall. Measured: 272 `-1001 timed out` across ~28
+    /// users, all on multipart parts. At our p10 throughput of 0.05 MB/s an
+    /// 8 MiB part needs ~160s of uninterrupted transfer to land; one stall and
+    /// the whole 160s is spent again, which is the doubling users report. At
+    /// 5 MiB the same stall costs ~105s instead, and there are more, smaller
+    /// checkpoints between failures.
+    ///
+    /// It cannot go lower: S3 rejects any non-final part under 5 MiB, which is
+    /// why this equals `s3MinPartSize` rather than undercutting it.
+    static let defaultPartSize: Int64 = s3MinPartSize
     /// Server cap on part count [Contract 2] (S3's own limit is 10,000; ours is lower).
     static let maxParts = 1000
 

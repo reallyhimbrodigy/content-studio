@@ -2264,30 +2264,38 @@ struct EditorView: View {
                         // errors (network blip, Modal cold-start, etc) —
                         // we'd rather upload a borderline clip than
                         // block on a flaky validation service.
-                        do {
-                            try await runLayer2Validate(
-                                pending: pending,
-                                materializedSourceUrl: materializedSourceUrl
-                            )
-                            // ON THE CRITICAL PATH, AND SERIAL. The source
-                            // upload gets no presign until a 5s sample has been
-                            // extracted, uploaded and judged by a worker that
-                            // may be cold starting. Marked so the cost is a
-                            // number rather than a suspicion.
-                            UploadTiming.mark(pending.id.uuidString, "validated")
-                        } catch is Layer2RejectionSentinel {
-                            // User-facing rejection alert was shown
-                            // already; bail out cleanly without
-                            // marking uploadFailed (we want the tile
-                            // to come off, not show an error state).
-                            await MainActor.run {
-                                withAnimation(.easeOut(duration: 0.18)) {
-                                    pendingVideos.removeAll { $0.id == pending.id }
-                                }
+                        // VALIDATION NEVER GATES THE UPLOAD.
+                        //
+                        // This was `await`ed here, so no source presign was even
+                        // requested until a 5s sample had been extracted,
+                        // uploaded, and judged by a Modal worker that may be
+                        // cold starting. It bought nothing: under 223 zero-
+                        // reject the server validate is ADVISORY — its own code
+                        // says "No alert, no sentinel throw — fall through so
+                        // the upload proceeds." Every upload in the product paid
+                        // a serial round trip for a verdict that is only logged.
+                        //
+                        // Detached, it still runs and still logs, and its
+                        // warning can surface mid-upload. Because it cannot
+                        // reject, there is no ordering risk in letting the bytes
+                        // go first. On the ChatCut path it disappears entirely —
+                        // ChatCut takes any video.
+                        Task { [pending] in
+                            let tValidate = Date()
+                            do {
+                                try await runLayer2Validate(
+                                    pending: pending,
+                                    materializedSourceUrl: materializedSourceUrl
+                                )
+                            } catch {
+                                print("[layer2] advisory validate ended: \(error.localizedDescription)")
                             }
-                            return
-                        } catch {
-                            print("[layer2] non-fatal error (continuing): \(error.localizedDescription)")
+                            // Measured so the saving is a number. It no longer
+                            // sits on the critical path, so this span is now
+                            // concurrent-with rather than ahead-of the transfer.
+                            UploadTiming.mark(pending.id.uuidString, "validated")
+                            UploadTiming.meta(pending.id.uuidString, "validate_ms",
+                                              Int(Date().timeIntervalSince(tValidate) * 1000))
                         }
 
                         // Get TWO presigned upload URLs in parallel —
@@ -2339,13 +2347,26 @@ struct EditorView: View {
                             proxyFile = nil
                         }
 
-                        // Parallel uploads. Proxy is best-effort (any
-                        // failure leaves proxyUploadedUrl nil so the
-                        // dispatcher omits proxy_video_url); source is
-                        // load-bearing (failure must abort the whole
-                        // task so the render doesn't 404 the worker).
+                        // THE SOURCE GOES FIRST, ALONE.
+                        //
+                        // These ran concurrently, so a ~6.6 MB proxy (480p30,
+                        // ~2.4 Mbps — about 8% of a p50 80 MB source) competed
+                        // with the real file for the same uplink. At the
+                        // measured p50 of 0.37 MB/s that is ~18s stolen from
+                        // the number we are trying to get under 8.
+                        //
+                        // It bought nothing, and the consumer gate is why:
+                        // JobDispatchCoordinator waits for
+                        // `sourceUploadCompleted && proxyUploadFinished` before
+                        // dispatching, so the worker cannot read the proxy
+                        // before the source has fully landed anyway. Sending it
+                        // early was paying for parallelism the dispatcher
+                        // refuses to use.
+                        //
+                        // `proxyAfterSource` starts it once the source is done —
+                        // still before dispatch, so nothing downstream changes.
                         let uploadStart = Date()
-                        async let proxyUpload: Void = {
+                        let proxyAfterSource: @Sendable () async -> Void = {
                             // Always flip proxyUploadFinished on exit (success
                             // OR failure OR skip) so the dispatcher can stop
                             // waiting. proxyUploadedUrl distinguishes which:
@@ -2379,7 +2400,7 @@ struct EditorView: View {
                                 try? FileManager.default.removeItem(at: proxyFile)
                                 print("[perf] proxy upload FAILED (non-fatal): \(error.localizedDescription)")
                             }
-                        }()
+                        }
 
                         async let sourceUpload: String = {
                             // 226 item 7b: resumable multipart on a background URLSession,
@@ -2418,11 +2439,14 @@ struct EditorView: View {
                             return resolvedPub
                         }()
 
-                        // proxyUpload swallows its own errors so await
-                        // is non-throwing here — only the source upload
-                        // can fail the whole task.
-                        _ = await proxyUpload
+                        // SOURCE FIRST, THEN THE PROXY. Only the source can
+                        // fail the whole task; the proxy swallows its own
+                        // errors, so this await is non-throwing and a proxy
+                        // failure still leaves the dispatcher free to omit
+                        // proxy_video_url and let the worker encode its own.
                         let resolvedSourcePub = try await sourceUpload
+                        UploadTiming.mark(pending.id.uuidString, "source_landed")
+                        await proxyAfterSource()
                         print(String(format: "[perf] both-uploads-done %.2fs", Date().timeIntervalSince(uploadStart)))
                         publicUrl = resolvedSourcePub
 

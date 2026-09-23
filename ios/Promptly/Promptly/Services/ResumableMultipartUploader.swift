@@ -140,7 +140,16 @@ final class ResumableMultipartUploader: NSObject {
         // 90s, not 30 minutes: an idle timeout that never fires cannot tell a
         // slow connection from a dead one, and a dead part should be retried
         // rather than held open to the resource cap.
-        config.timeoutIntervalForRequest = 90
+        //
+        // 90 -> 45 (retry a stalled part AT ONCE rather than waiting it out).
+        // This is an IDLE timeout, so it only fires after N seconds with ZERO
+        // bytes moving — which means the 272 `-1001 timed out` measured across
+        // ~28 users are genuinely DEAD parts, not slow ones. A slow part at our
+        // p10 of 0.05 MB/s still moves bytes continuously and never trips this.
+        // Nothing is gained by holding a dead connection open for another 45
+        // seconds; the part has to be redone either way, and every second spent
+        // waiting is added to the wait the user is already complaining about.
+        config.timeoutIntervalForRequest = 45
         // WAS 6. Six concurrent 16 MiB parts = 96 MB in flight on one uplink;
         // they starved each other into the idle timeout. 3 x 8 MiB = 24 MB.
         config.httpMaximumConnectionsPerHost = 3   // parallel parts
