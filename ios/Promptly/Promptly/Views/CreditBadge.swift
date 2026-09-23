@@ -77,7 +77,7 @@ struct CreditBadge: View {
                     .scaleEffect(pulse ? 1.06 : 1.0)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("\(value) videos left"))
+                .accessibilityLabel(Text("^[\(value) credit](inflect: true)"))
                 .accessibilityHint(Text("Get more"))
             } else {
                 // A ZERO-SIZE NODE, NOT EmptyView. The condition above depends
@@ -103,10 +103,12 @@ struct CreditBadge: View {
         .onChange(of: onboarding.creditsEnabled) { _, on in
             if on { Task { await seed() } }
         }
-        // Driven by VIDEOS, not the raw balance (258). The badge draws what it
-        // says: a label reading "video" over a credit figure would be the same
-        // quantity in two units, which is the defect this change removes.
-        .onChange(of: credits.videosRemaining) { old, new in apply(old: old, new: new) }
+        // CREDITS AGAIN (259). 258 drew this in videos because credits were
+        // barred from every user-facing surface; that ruling now exempts the
+        // credits button and the top-up screen, which are the two places a user
+        // holds and spends the currency. The figure and the label agree — both
+        // are credits — which was the property that mattered either way.
+        .onChange(of: credits.balance) { old, new in apply(old: old, new: new) }
     }
 
     /// Read the balance and show it without animating — the first read is not a
@@ -119,7 +121,7 @@ struct CreditBadge: View {
             // claimed its grant (the 1.3.27 case). Claim, then read again.
             await credits.claimFreeGrantIfNeeded()
         }
-        shown = credits.videosRemaining
+        shown = credits.balance
     }
 
     /// THE SHARED MARK, with this surface's refund flare on top.

@@ -94,5 +94,16 @@ else
   say "✓" "every VideoLimits tier is optional"
 fi
 
+# THE FLAG RACES THE BADGE'S TASK. seed() bails when creditsEnabled is still
+# false, and /api/health fills it asynchronously — so without a re-seed on the
+# flag the badge draws nothing for the whole session on any launch where health
+# is slow. Observed on a fresh install with the flag ON and claims healthy.
+B=$(strip Promptly/Views/CreditBadge.swift)
+if has "$B" 'onChange(of: onboarding.creditsEnabled)'; then
+  say "✓" "the badge re-seeds when the credits flag lands"
+else
+  say "✗" "nothing re-seeds the badge when the flag arrives late — it stays blank all session"; fail=1
+fi
+
 [ "$fail" -ne 0 ] && { echo "credits-metering-gate: FAIL"; exit 1; }
 echo "credits-metering-gate: PASS"

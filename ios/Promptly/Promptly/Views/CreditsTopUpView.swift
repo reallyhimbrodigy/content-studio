@@ -118,6 +118,7 @@ struct CreditsTopUpView: View {
     private static let accent = Color(hex: "6C5CE7")
 
     @ObservedObject private var credits = CreditsService.shared
+    @ObservedObject private var usage = UsageService.shared
     @ObservedObject private var onboarding = OnboardingState.shared
     @ObservedObject private var subscription = SubscriptionService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -276,8 +277,8 @@ struct CreditsTopUpView: View {
     /// Only nil-safe states say it. Unknown gets the neutral form, because
     /// "add more" is true whatever the number turns out to be.
     private var headline: String {
-        if credits.balance == 0 { return String(localized: "You're out of videos") }
-        return String(localized: "Add more videos")
+        if credits.balance == 0 { return String(localized: "You're out of credits") }
+        return String(localized: "Add more credits")
     }
 
     private var defaultPackId: String? {
@@ -340,10 +341,10 @@ struct CreditsTopUpView: View {
             // system bolt: the same object the chat header and the composer
             // strip draw, so a balance reads as one currency across the app.
             CreditMark(size: 30 * k, isSpent: credits.balance == 0)
-            // VIDEOS, NOT CREDITS (258). `videosRemaining` already existed and
-            // does the division in one place; the strip does not do its own.
-            if let v = credits.videosRemaining {
-                Text("\(v) videos left")
+            // CREDITS ON THE CREDITS SCREEN (259). This is where the currency
+            // is held and spent, so it is stated in the unit it is spent in.
+            if let b = credits.balance {
+                Text("^[\(b) credit](inflect: true) left")
                     .cType(17, .semibold)
                     .foregroundColor(.white)
                     .monospacedDigit()
@@ -565,9 +566,26 @@ struct CreditsTopUpView: View {
                     Text("\(pack.videos) videos")
                         .font(.system(size: 16 * k, weight: .semibold))
                         .foregroundColor(.white)
+                    // THE SERVER'S CREDIT PRICE, WHEN IT SENDS ONE (259).
+                    //
+                    // Present -> the row states what the pack costs in credits,
+                    // from `credit_prices` on /api/usage. Absent -> nothing is
+                    // drawn at all; there is no literal to fall back to, which
+                    // is the point. main does not send the field today, so the
+                    // live state is hidden.
+                    if let cp = usage.creditPrices.first(where: { $0.credits == pack.credits }),
+                       let credits = cp.credits {
+                        Text("^[\(credits) credit](inflect: true)")
+                            .font(.system(size: 12 * k))
+                            .foregroundColor(.white.opacity(0.55))
+                            .monospacedDigit()
+                    }
                 }
                 Spacer(minLength: 8 * k)
-                Text(pack.price)
+                // The server's price string wins when present — it knows the
+                // storefront. StoreKit's own string is the fallback, and both
+                // are formatted by whoever knows the currency. Never computed.
+                Text(usage.creditPrices.first(where: { $0.credits == pack.credits })?.price ?? pack.price)
                     .font(.system(size: 16 * k, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)

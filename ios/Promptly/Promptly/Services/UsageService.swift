@@ -63,6 +63,37 @@ final class UsageService: ObservableObject {
         /// never become a false claim about what money buys. Same reason
         /// `creditsMonthlyAllowance` is nil-gated rather than defaulted.
         let videos_limit: VideoLimits?
+        /// WHAT A TOP-UP COSTS, FROM THE SERVER (259). Absent today — main does
+        /// not send it — so the top-up screen shows no prices at all rather
+        /// than a literal. Optional at every level, on the same rule as
+        /// videos_limit: a shape we cannot read must never take the whole
+        /// snapshot down with it.
+        let credit_prices: [CreditPrice]?
+    }
+
+    /// One purchasable credit amount and what it costs, storefront-formatted by
+    /// whoever knows the storefront — never computed or written out here.
+    struct CreditPrice: Codable, Equatable, Hashable {
+        let credits: Int?
+        /// Display string, already localized. NOT a number: formatting a price
+        /// on the client means guessing a currency, and a guessed currency on a
+        /// price is how a user is quoted an amount nobody will charge.
+        let price: String?
+
+        init(from decoder: Decoder) throws {
+            let c = try? decoder.container(keyedBy: CodingKeys.self)
+            credits = ((try? c?.decodeIfPresent(Int.self, forKey: .credits)) ?? nil)
+            price = ((try? c?.decodeIfPresent(String.self, forKey: .price)) ?? nil)
+        }
+        enum CodingKeys: String, CodingKey { case credits, price }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeIfPresent(credits, forKey: .credits)
+            try c.encodeIfPresent(price, forKey: .price)
+        }
+        /// Renderable only with both halves — a count with no price, or a price
+        /// with no count, is not a row anyone can act on.
+        var isRenderable: Bool { (credits ?? 0) > 0 && !(price ?? "").isEmpty }
     }
 
     /// Per-tier monthly video allowances, server-owned.
@@ -163,6 +194,12 @@ final class UsageService: ObservableObject {
         guard let v, v > 0 else { return nil }
         return v
     }
+    /// The server's credit prices, renderable ones only. Empty when the field
+    /// is absent, which is the live state — so the caller hides the section.
+    var creditPrices: [CreditPrice] {
+        (snapshot?.credit_prices ?? []).filter { $0.isRenderable }
+    }
+
     var videosLimitFree: Int? { positive(snapshot?.videos_limit?.free) }
     var videosLimitPro: Int? { positive(snapshot?.videos_limit?.pro) }
     var videosLimitMax: Int? { positive(snapshot?.videos_limit?.max) }

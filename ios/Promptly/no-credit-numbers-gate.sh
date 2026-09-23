@@ -3,37 +3,17 @@
 # no-credit-numbers-gate.sh — makes a credit number on a user-facing surface
 # impossible to ship.
 #
-# RULED 2026-09-21 (Zac, for 258): videos are the only unit any user-facing
-# surface states. Credits remain the internal accounting unit — the meter, the
-# ledger, the product ids — but the word never reaches a reader.
+# RULED 2026-09-21 (Zac, for 258): videos are the only unit that any
+# user-facing surface states.
 #
-# WHY A GATE AND NOT A SWEEP. Converting the copy took two manual passes over
-# the tree and they DISAGREED: the first found eight strings, the second found
-# nineteen. The difference was not carelessness, it was the regex — the first
-# looked for "N credits" and missed "Credits never expire", `tierNoun:
-# "credits"`, and every `^[\(n) credit](inflect: true)`. A list of places to
-# look is only ever as good as the sweep that built it, which is the failure
-# CLAUDE.md names: a gate scoped to remembered locations reports green about the
-# part it happened to check.
+# AMENDED 2026-09-23 (for 259): two surfaces are exempt — the credits button and
+# the top-up screen. They are where the currency is HELD and SPENT, and a person
+# buying credits has to be told how many they are buying. Everywhere else the
+# unit is still videos, which is the part that mattered: a capacity claim, a
+# paywall, an allowance, a cap message.
 #
-# So this enumerates what is FORBIDDEN — the word, in any casing, as a whole
-# word — and applies it to every .swift in the app target. A surface written
-# tomorrow is covered by this gate written today.
-#
-# WHAT COUNTS AS USER-FACING. Only literals handed to a constructor that renders
-# or localizes: Text(...), String(localized:), LocalizedStringKey(...),
-# .accessibilityLabel/.accessibilityHint(...), Label(...), Button(...) titles.
-# An analytics event name, a knob key, a product id and a log line are NOT user
-# copy and must not fail this — a gate that cries wolf trains you to skim past
-# it, and the real finding drowns.
-#
-# Snake_case identifiers are excluded for free: \b in Python treats _ as a word
-# character, so "credits_topup" contains no whole word "credits".
-#
-# Comments are stripped BEFORE matching. The prose above this line explains the
-# credits history at length and must not fail the gate that enforces its removal
-# — the same blind spot that let device-id-no-recursion pass on its own comment.
-# ─────────────────────────────────────────────────────────────────────────────
+# The exemption is BY FILE and listed here, not by a flag or a regex someone can
+# widen. Adding a file to it should require arguing for it.
 set -uo pipefail
 cd "$(dirname "$0")/Promptly" || exit 1
 
@@ -74,8 +54,11 @@ def decomment(src: str) -> str:
 # renderer, which is how every user-facing string in this codebase is written.
 LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
+# The two surfaces where credits ARE the unit: held, and spent.
+EXEMPT = {"Views/CreditBadge.swift", "Views/CreditsTopUpView.swift"}
+
 violations = []
-scanned = files = 0
+scanned = files = exempted = 0
 for path in sorted(pathlib.Path('.').rglob('*.swift')):
     files += 1
     src = decomment(path.read_text(encoding='utf-8', errors='replace'))
@@ -93,9 +76,19 @@ for path in sorted(pathlib.Path('.').rglob('*.swift')):
             before = line[:m.start()]
             if not re.search(RENDERERS + r'[^"]*$', before):
                 continue
+            if str(path) in EXEMPT:
+                exempted += 1
+                continue
             violations.append((str(path), lineno, body.strip()))
 
-print(f"[no-credit-numbers] scanned {scanned} string literals across {files} files")
+print(f"[no-credit-numbers] scanned {scanned} string literals across {files} files "
+      f"({exempted} on the two exempt surfaces)")
+# THE EXEMPTION MUST BE LOAD-BEARING, not decorative. If those files stop
+# stating credits the exemption is stale and should be removed rather than
+# left as a licence nobody is using.
+if exempted == 0:
+    print("  ✗ the exempt surfaces state no credits at all — remove the exemption")
+    sys.exit(1)
 
 # POSITIVE CONTROL. A detector that finds nothing because it is looking in the
 # wrong place, or because decomment ate the source, reports exactly what a clean
@@ -118,7 +111,7 @@ if violations:
     print(f"\nFAIL — {len(violations)} user-facing credit string(s):\n")
     for f, l, t in violations:
         print(f"  {f}:{l}\n      {t[:100]}")
-    print("\nVideos are the only unit a user-facing surface states (Zac, 258).")
+    print("\nVideos are the unit everywhere except the credits button and top-up (259).")
     sys.exit(1)
 
 print("[no-credit-numbers] PASS — no user-facing surface states credits")
