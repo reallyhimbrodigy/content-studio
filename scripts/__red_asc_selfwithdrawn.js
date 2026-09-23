@@ -53,6 +53,8 @@ const cases = [
     f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedDate: '' } }, allow: false, because: 'no valid date' },
   { name: 'confirmation with a malformed date blocks',
     f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedDate: 'yesterday' } }, allow: false, because: 'no valid date' },
+  { name: 'an ISO timestamp is a valid date (the form Zac\'s answer will take)',
+    f: { ...BASE, confirmation: { ...BASE.confirmation, confirmedDate: '2026-09-23T08:15:00Z' } }, allow: true },
   { name: 'a PENDING Resolution Center check blocks',
     f: { ...BASE, confirmation: { ...BASE.confirmation, status: 'pending', confirmedBy: '', confirmedDate: '' } },
     allow: false, because: 'not confirmed' },

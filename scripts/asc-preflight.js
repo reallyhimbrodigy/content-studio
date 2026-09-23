@@ -104,7 +104,12 @@ function decideSelfWithdrawn(f) {
   if (String(c.withdrawnBuild) !== String(f.attachedBuild)) {
     return no(`the recorded confirmation is about build ${c.withdrawnBuild}, but build ${f.attachedBuild} was withdrawn`);
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(c.confirmedDate || ''))) return no('the recorded confirmation carries no valid date');
+  // A date, or a full ISO timestamp. Anchored to YYYY-MM-DD alone this would
+  // reject the very confirmation it is waiting for, since the answer is meant
+  // to be recorded with its timestamp.
+  if (!/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?Z?)?$/.test(String(c.confirmedDate || ''))) {
+    return no('the recorded confirmation carries no valid date');
+  }
   if (!String(c.confirmedBy || '').trim()) return no('the recorded confirmation names nobody');
   return {
     allow: true,
