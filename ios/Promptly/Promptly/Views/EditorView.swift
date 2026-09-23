@@ -282,6 +282,27 @@ struct EditorView: View {
             // toolbar bought nothing once the title was gone. Plain HStack on the
             // unified black: hamburger · pill · new-chat.
             .toolbar(.hidden, for: .navigationBar)
+            // THE UPLOAD WE LOST, OFFERED BACK. Shown only when recovery needs
+            // the user's nod — re-materializing a library asset can pull from
+            // iCloud over their connection. When the staged file survived we
+            // restart silently instead of asking, because there is nothing to
+            // decide and they already chose this clip once.
+            .alert(String(localized: "Continue uploading your video?"),
+                   isPresented: Binding(get: { pendingOrphanRecovery != nil },
+                                        set: { if !$0 { pendingOrphanRecovery = nil } })) {
+                Button(String(localized: "Continue")) {
+                    let orphan = pendingOrphanRecovery
+                    pendingOrphanRecovery = nil
+                    Analytics.track("upload_orphan_resume_accepted", props: [:], durable: true)
+                    if let id = orphan?.assetLocalIdentifier { resumeOrphanFromLibrary(id) }
+                }
+                Button(String(localized: "Not now"), role: .cancel) {
+                    Analytics.track("upload_orphan_resume_declined", props: [:], durable: true)
+                    pendingOrphanRecovery = nil
+                }
+            } message: {
+                Text(String(localized: "It stopped when the app closed. Nothing was charged."))
+            }
             .alert(String(localized: "Couldn't open that video"), isPresented: $showPickerError) {
                 Button(String(localized: "Try again")) { showVideoPicker = true }
                 Button(String(localized: "Not now"), role: .cancel) {}
@@ -1652,7 +1673,19 @@ struct EditorView: View {
             messages[i].jobId == nil
                 && (messages[i].jobStatus == "processing" || messages[i].jobStatus == "uploading")
         }
-        guard !stuck.isEmpty else { return }
+        // REPORTING IS NOT RECOVERING.
+        //
+        // This used to return here when no message was stuck, and that is the
+        // common shape for an app killed mid-upload: the ledger holds the pick,
+        // the orphan reconcile reports it correctly, and the user gets nothing
+        // back. 94 people lost an upload that way in one week and had to pick
+        // the clip and wait through the transfer all over again.
+        //
+        // A recoverable orphan with nowhere to attach is offered back instead.
+        if stuck.isEmpty {
+            offerOrphanRecovery(stale.filter { $0.isRetryable })
+            return
+        }
 
         for i in stuck {
             if anyRetryable, let retry = retryClosure(for: messages[i]) {
@@ -1672,6 +1705,68 @@ struct EditorView: View {
             }
         }
         persistMessages()
+    }
+
+    /// A recoverable orphan that needs the user's nod before we re-materialize
+    /// it (an iCloud pull costs them data). nil when there is nothing to offer.
+    @State private var pendingOrphanRecovery: UploadOutcomeReporter.StaleUpload?
+
+    /// Give a killed upload back to the user.
+    ///
+    /// AUTOMATIC WHEN WE CAN, ONE TAP WHEN WE CANNOT. If the staged file
+    /// survived, nothing needs asking — the bytes are on disk, the user already
+    /// chose this clip, and re-uploading silently is what they wanted. If only
+    /// the LIBRARY copy remains we must re-materialize, which for an iCloud
+    /// asset means a download over their connection — so that one asks first
+    /// rather than spending someone's cellular data on a decision they did not
+    /// make.
+    private func offerOrphanRecovery(_ recoverable: [UploadOutcomeReporter.StaleUpload]) {
+        guard let orphan = recoverable.first else { return }
+        Analytics.track("upload_orphan_recoverable", props: [
+            "needs_rematerialize": orphan.needsRematerialize,
+            "count": recoverable.count,
+        ], durable: true)
+
+        if !orphan.needsRematerialize, let path = orphan.sourcePath {
+            // The staged bytes are still here. Restart without asking.
+            Analytics.track("upload_orphan_auto_restarted", props: [:], durable: true)
+            restartUpload(fromStagedFile: URL(fileURLWithPath: path))
+            return
+        }
+        // Library-only: one tap, because re-materializing may pull from iCloud.
+        pendingOrphanRecovery = orphan
+    }
+
+    /// Re-stage a recovered file as a fresh pick so it re-enters the ordinary
+    /// upload path — ledger record included, so a second death is reported the
+    /// same way rather than being special-cased.
+    private func restartUpload(fromStagedFile url: URL) {
+        guard FileManager.default.isReadableFile(atPath: url.path) else { return }
+        // localFile, not asset: the staged copy IS the bytes, and the ordinary
+        // pipeline already knows how to upload from it (that is the path a
+        // limited-permission pick takes).
+        let recovered = PickedVideo(identifier: "recovered-\(UUID().uuidString)",
+                                    asset: nil,
+                                    localFile: url,
+                                    duration: 0)
+        addPendingVideoAndStartUpload(recovered)
+    }
+
+    /// Re-materialize from Photos and re-enter the ordinary upload path. The
+    /// asset may be iCloud-only, which is exactly why this is behind a tap.
+    private func resumeOrphanFromLibrary(_ localIdentifier: String) {
+        let fetched = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        guard let asset = fetched.firstObject else {
+            // The video was deleted from the library since. Say so plainly
+            // rather than spinning on something that can never resolve.
+            Analytics.track("upload_orphan_asset_gone", props: [:], durable: true)
+            return
+        }
+        let recovered = PickedVideo(identifier: localIdentifier,
+                                    asset: asset,
+                                    localFile: nil,
+                                    duration: asset.duration)
+        addPendingVideoAndStartUpload(recovered)
     }
 
     private func registerEditorHooks() {
@@ -1984,8 +2079,12 @@ struct EditorView: View {
         // 473 of 593 stuck users came to emit nothing at all.
         // The staged file goes in the record too: a reconcile on the next launch
         // can only retry from something that is still on disk.
+        // The Photos identifier rides along: the staged copy can be cleared by
+        // the OS between launches, and that is precisely the launch on which we
+        // want to recover. The original never left the library.
         UploadOutcomeReporter.shared.recordPick(id: pending.id, sizeMB: nil,
-                                                sourcePath: pending.fileUrl?.path)
+                                                sourcePath: pending.fileUrl?.path,
+                                                assetLocalIdentifier: pending.assetLocalIdentifier)
 
         // Thumbnail comes from the Photos cache immediately — local, no
         // iCloud bytes needed. Tile shows up the instant the picker

@@ -63,6 +63,13 @@ final class UploadOutcomeReporter {
         /// from something that is still on disk, so the path has to survive the
         /// launch that lost the upload.
         var sourcePath: String?
+        /// THE PHOTOS ASSET, so a lost upload can be restarted from the
+        /// LIBRARY when the staged copy is gone. The staged file lives in a
+        /// temp directory the OS may clear between launches — which is exactly
+        /// the moment we most want to recover — and the user's video is still
+        /// sitting in Photos the whole time. Without this, a cleared temp
+        /// directory made an orphan permanently unrecoverable.
+        var assetLocalIdentifier: String?
         /// Set when the source bytes actually landed in the bucket.
         var uploadSettledAt: Date?
         /// Last phase the pipeline reported, for records that never settled.
@@ -78,12 +85,14 @@ final class UploadOutcomeReporter {
 
     /// A user picked a clip and the pipeline started. Called where
     /// `upload_started` is emitted, so the ledger and that event always agree.
-    func recordPick(id: UUID, sizeMB: Double?, sourcePath: String? = nil) {
+    func recordPick(id: UUID, sizeMB: Double?, sourcePath: String? = nil,
+                    assetLocalIdentifier: String? = nil) {
         var r = PickRecord(pickID: id.uuidString,
                            sessionID: sessionID,
                            startedAt: Date(),
                            sizeMB: sizeMB,
                            srcKey: nil,
+                           assetLocalIdentifier: assetLocalIdentifier,
                            uploadSettledAt: nil,
                            lastPhase: "picked",
                            appVersion: Self.appVersion)
@@ -180,11 +189,19 @@ final class UploadOutcomeReporter {
     /// One stale upload, classified so the caller can act on it.
     struct StaleUpload {
         let id: UUID
-        /// The staged file, if it is still readable. nil means nothing to retry
-        /// from — the upload is terminal and the job must be failed, not left
-        /// hanging.
+        /// The staged file, if it is still readable.
         let sourcePath: String?
-        var isRetryable: Bool { sourcePath != nil }
+        /// The Photos asset it came from, if we still know it. RECOVERY'S
+        /// SECOND CHANCE: the staged copy can be cleared by the OS between
+        /// launches, but the user's video has not moved.
+        let assetLocalIdentifier: String?
+        /// Recoverable from EITHER source. It used to mean "the staged file is
+        /// still there", which wrote off every orphan whose temp copy the OS had
+        /// reclaimed — while the original sat in the library untouched.
+        var isRetryable: Bool { sourcePath != nil || assetLocalIdentifier != nil }
+        /// True when only the library copy remains, so the caller knows it must
+        /// re-materialize (and that an iCloud asset may need a download).
+        var needsRematerialize: Bool { sourcePath == nil && assetLocalIdentifier != nil }
     }
 
     /// REPORTING IS NOT RECONCILING (ruled 2026-09-06).
@@ -224,7 +241,9 @@ final class UploadOutcomeReporter {
             let path = r.sourcePath.flatMap {
                 FileManager.default.isReadableFile(atPath: $0) ? $0 : nil
             }
-            return StaleUpload(id: UUID(uuidString: r.pickID) ?? UUID(), sourcePath: path)
+            return StaleUpload(id: UUID(uuidString: r.pickID) ?? UUID(),
+                               sourcePath: path,
+                               assetLocalIdentifier: r.assetLocalIdentifier)
         }
         records.removeAll { $0.sessionID != sessionID }
         persist()

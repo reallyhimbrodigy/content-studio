@@ -98,6 +98,24 @@ else
   note "getUploadUrl does not check status — an all-optional error body decodes cleanly as success"
 fi
 
+# ── 4b. REPORTING IS NOT RECOVERING ─────────────────────────────────────────
+# The orphan reconcile correctly REPORTED killed uploads and gave the user
+# nothing back: 94 people re-picked and re-waited in one week. Recovery must
+# survive the two things that actually happen — no stuck message to attach to,
+# and a staged file the OS reclaimed between launches.
+sed -n '/private func reconcileStaleUploads/,/^    }/p' "$E" | grep -Fq 'offerOrphanRecovery' \
+  && echo "  ok   — a recoverable orphan with no stuck message is still offered back" \
+  || note "reconcileStaleUploads returns without offering recovery — it reports the loss and stops"
+grep -Fq 'var isRetryable: Bool { sourcePath != nil || assetLocalIdentifier != nil }' "$R" \
+  && echo "  ok   — recoverable means staged file OR library asset" \
+  || note "retryability is staged-file-only — an OS-cleared temp copy writes off a video still in the library"
+sed -n '/private func offerOrphanRecovery/,/^    }/p' "$E" | grep -Fq 'needsRematerialize' \
+  && echo "  ok   — auto-restart when staged, ask first when it costs an iCloud pull" \
+  || note "recovery does not distinguish a staged restart from an iCloud re-materialize"
+grep -Fq 'assetLocalIdentifier: pending.assetLocalIdentifier' "$E" \
+  && echo "  ok   — the library identity is recorded at pick time" \
+  || note "recordPick does not persist the asset identifier — nothing to recover from once the temp copy is gone"
+
 # ── 5. ERROR CODES MUST BE STABLE ACROSS BUILDS ─────────────────────────────
 # Implicit enum tags renumber when a case is inserted; that is why one error
 # read as 7 on 1.3.34 and 8 on 1.3.37 and cost most of an investigation.
