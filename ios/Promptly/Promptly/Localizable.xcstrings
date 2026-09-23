@@ -14317,6 +14317,160 @@
         }
       }
     },
+    "Free includes a video a month and no re-edits. Pro gives you more, and re-edits are free.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تشمل الخطة المجانية فيديو واحدًا شهريًا وبدون إعادة تحرير. أما Pro فيمنحك المزيد، وإعادة التحرير مجانية."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free-তে মাসে একটি ভিডিও, পুনঃসম্পাদনা নেই। Pro আরও দেয়, আর পুনঃসম্পাদনা বিনামূল্যে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free enthält ein Video pro Monat und keine Nachbearbeitungen. Pro gibt dir mehr, und Nachbearbeitungen sind gratis."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free includes a video a month and no re-edits. Pro gives you more, and re-edits are free."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free incluye un vídeo al mes y sin reediciones. Pro te da más, y las reediciones son gratis."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free comprend une vidéo par mois et aucun remontage. Pro vous en donne plus, et les remontages sont gratuits."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में महीने में एक वीडियो है और री-एडिट नहीं। Pro ज़्यादा देता है, और री-एडिट मुफ़्त हैं।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free mencakup satu video per bulan dan tanpa edit ulang. Pro memberi lebih banyak, dan edit ulang gratis."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freeは月に1本、再編集はできません。Proならもっと使えて、再編集は無料です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free मा महिनामा एउटा भिडियो हुन्छ, पुन: सम्पादन हुँदैन। Pro ले थप दिन्छ, र पुन: सम्पादन नि:शुल्क छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Free inclui um vídeo por mês e sem reedições. O Pro dá mais, e as reedições são grátis."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری میں مہینے میں ایک ویڈیو ہے اور دوبارہ ایڈٹ نہیں۔ Pro زیادہ دیتا ہے، اور دوبارہ ایڈٹ مفت ہیں۔"
+          }
+        }
+      }
+    },
+    "Free is %lld videos a month and no re-edits. Pro gives you %lld, and re-edits are free.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الخطة المجانية %1$lld فيديو شهريًا وبدون إعادة تحرير. أما Pro فيمنحك %2$lld، وإعادة التحرير مجانية."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free মানে মাসে %1$lld ভিডিও, পুনঃসম্পাদনা নেই। Pro দেয় %2$lld, আর পুনঃসম্পাদনা বিনামূল্যে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free sind %1$lld Videos im Monat und keine Nachbearbeitungen. Pro gibt dir %2$lld, und Nachbearbeitungen sind gratis."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free is %lld videos a month and no re-edits. Pro gives you %lld, and re-edits are free."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free son %1$lld vídeos al mes y sin reediciones. Pro te da %2$lld, y las reediciones son gratis."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free, c'est %1$lld vidéos par mois et aucun remontage. Pro vous en donne %2$lld, et les remontages sont gratuits."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free में महीने में %1$lld वीडियो हैं और री-एडिट नहीं। Pro %2$lld देता है, और री-एडिट मुफ़्त हैं।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free adalah %1$lld video per bulan dan tanpa edit ulang. Pro memberi %2$lld, dan edit ulang gratis."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freeは月に%1$lld本で、再編集はできません。Proなら%2$lld本、再編集は無料です。"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free भनेको महिनामा %1$lld भिडियो हो, पुन: सम्पादन हुँदैन। Pro ले %2$lld दिन्छ, र पुन: सम्पादन नि:शुल्क छ।"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Free são %1$lld vídeos por mês e sem reedições. O Pro dá %2$lld, e as reedições são grátis."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فری میں مہینے میں %1$lld ویڈیوز ہیں اور دوبارہ ایڈٹ نہیں۔ Pro %2$lld دیتا ہے، اور دوبارہ ایڈٹ مفت ہیں۔"
+          }
+        }
+      }
+    },
     "Free lets you save only a few videos. Pro saves and shares every one, with 200 credits a month — 20 videos.": {
       "extractionState": "manual",
       "localizations": {

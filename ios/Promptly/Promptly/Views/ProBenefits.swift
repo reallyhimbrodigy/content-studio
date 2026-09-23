@@ -264,6 +264,22 @@ enum ProBenefits {
         String(localized: "Change a finished video without sending it again. Pro lets you do that, with unlimited chats.")
     }
 
+    /// "Free is 1 video a month and no re-edits. Pro gives you 50." — both
+    /// numbers from `videos_limit`, never written out (ruled 2026-09-23).
+    ///
+    /// NO RE-EDIT ON FREE is stated here because the cap encounter is where a
+    /// free user is deciding, and re-edit is the thing they will reach for next.
+    /// Falls back to a sentence with no number when the server has not sent the
+    /// field, on the same rule as every other capacity claim.
+    @MainActor
+    static func freeVsProSubtitle() -> String {
+        let usage = UsageService.shared
+        guard let free = usage.videosLimitFree, let pro = usage.videosLimitPro else {
+            return String(localized: "Free includes a video a month and no re-edits. Pro gives you more, and re-edits are free.")
+        }
+        return String(localized: "Free is \(free) videos a month and no re-edits. Pro gives you \(pro), and re-edits are free.")
+    }
+
     static func exportGateSubtitle() -> String {
         String(localized: "Free lets you save only a few videos. Pro saves and shares every one.")
     }

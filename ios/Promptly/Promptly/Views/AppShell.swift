@@ -134,10 +134,11 @@ struct AppShell: View {
             guard ProcessInfo.processInfo.arguments.contains("-showLadder") else { return }
             try? await Task.sleep(for: .milliseconds(900))
             guard !SubscriptionService.shared.effectiveIsPro else { return }
-            appState.showInviteRung = true
+            ExitOffer.record("debug_show_ladder")
+            appState.showExitOffer = true
         }
         #endif
-        .fullScreenCover(isPresented: $appState.showInviteRung) {
+        .fullScreenCover(isPresented: $appState.showExitOffer) {
             // THE COMMENT HERE USED TO CLAIM TWO RUNGS AND THE CODE HAD ONE:
             // decline dismissed the cover outright, so the credit wall's ladder
             // ended on a refusal and the invite rung — the whole point of a
@@ -145,10 +146,10 @@ struct AppShell: View {
             // need it. A comment describing behaviour the code does not have is
             // worse than no comment: it survives review by being read instead of
             // the code.
-            // PAYWALL -> DISMISS -> INVITE (ruled 2026-09-06). The reveal rung
-            // and its three-firing budget are deleted; the monthly downsell it
-            // carried is on the Month row.
-            ReferralCatchBeat(onSkip: { appState.showInviteRung = false })
+            // PAYWALL -> DISMISS -> OFFER -> (decline) INVITE. Restored
+            // 2026-09-23: the intro offer is its own screen, reached on decline
+            // or dismiss, never conjoined with the paywall rows.
+            ExitOfferLadder(onFinish: { appState.showExitOffer = false })
         }
         .sheet(isPresented: $appState.showCredits) {
             CreditsTopUpView {
@@ -255,7 +256,7 @@ struct AppShell: View {
             if !was && now { EditorView.dismissKeyboard() }
             if was && !now { appState.noteSheetDismissed() }
         }
-        .onChange(of: appState.showInviteRung) { was, now in
+        .onChange(of: appState.showExitOffer) { was, now in
             if !was && now { EditorView.dismissKeyboard() }
             if was && !now { appState.noteSheetDismissed() }
         }

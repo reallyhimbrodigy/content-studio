@@ -94,39 +94,58 @@ if [ "$checked" -eq 0 ]; then
 fi
 
 
-# ── THE OFFER REVEAL IS GONE, NOT DARK (ruled 2026-09-06) ────────────────────
-# The funnel is paywall -> dismiss -> invite. A view that still compiles behind a
-# flag is a screen someone can turn back on, and the monthly downsell it carried
-# now lives on the Month row — two places quoting the same offer is how they
-# drift apart.
+# ── THE OFFER REVEAL IS ITS OWN SCREEN (ruled 2026-09-23) ────────────────────
+# INVERTED, NOT DELETED, NOT BYPASSED. This block asserted the collapse — that
+# OfferRevealView, ExitOfferLadder, the firing budget and exit_offer_shown were
+# gone. The ruling reversed the collapse: the paywall stands alone and the
+# introductory offer is a separate screen reached on decline or dismiss. So the
+# same four symbols are asserted PRESENT, by the same method.
+#
+# Keeping the block inverted rather than removing it is the point. A gate that
+# is deleted when the decision changes leaves nothing to stop the next
+# accidental collapse; a gate that flips keeps the decision enforced in whatever
+# direction it currently points, and its RED case proves which way it is facing.
 REVEAL_FAIL=0
 for sym in OfferRevealView ExitOfferLadder exit_offer_shown ExitOffer; do
-  # CODE, not prose. A comment recording that something was deleted is not the
-  # thing coming back, and failing on it teaches people to delete the history.
+  # CODE, not prose — unchanged from the version that asserted the absence. A
+  # comment mentioning a symbol is not that symbol being wired up, and counting
+  # it would let a tree full of history pass with no screen in it.
   hits=$(grep -rl --include='*.swift' "$sym" Promptly/ 2>/dev/null \
          | while read -r f; do grep -vE '^[[:space:]]*(//|///|\*)' "$f" \
              | grep -q "$sym" && echo "$f"; done | tr '\n' ' ')
-  if [ -n "$hits" ]; then
-    echo "  $sym is still referenced: $hits"; REVEAL_FAIL=1
+  if [ -z "$hits" ]; then
+    echo "  $sym is gone — the offer reveal was collapsed back into the paywall"; REVEAL_FAIL=1
   fi
 done
-if [ -f Promptly/Views/Onboarding/OfferRevealView.swift ]; then
-  echo "  OfferRevealView.swift still exists"; REVEAL_FAIL=1
+if [ ! -f Promptly/Views/Onboarding/OfferRevealView.swift ]; then
+  echo "  OfferRevealView.swift is missing from disk"; REVEAL_FAIL=1
 fi
-if grep -q "OfferRevealView" Promptly.xcodeproj/project.pbxproj 2>/dev/null; then
-  echo "  OfferRevealView is still in the Xcode project"; REVEAL_FAIL=1
+if ! grep -q "OfferRevealView" Promptly.xcodeproj/project.pbxproj 2>/dev/null; then
+  echo "  OfferRevealView is not in the Xcode project — it would not compile in"; REVEAL_FAIL=1
 fi
-# and the intro survives as a badge, with the arithmetic intact
+# PRESENT IS NOT THE SAME AS REACHED. The file existing and compiling proves
+# nothing about a user ever seeing it; the ladder has to be raised from the two
+# surfaces that own the decline path, or this is a screen with no door.
+if ! grep -vE '^[[:space:]]*(//|///|\*)' Promptly/Views/AppShell.swift | grep -q "ExitOfferLadder("; then
+  echo "  AppShell does not raise ExitOfferLadder — dismissing the paywall reaches nothing"; REVEAL_FAIL=1
+fi
+if ! grep -vE '^[[:space:]]*(//|///|\*)' Promptly/Views/Onboarding/OnboardingV2Flow.swift | grep -q "ExitOfferLadder("; then
+  echo "  the funnel does not raise ExitOfferLadder — onboarding skips the offer"; REVEAL_FAIL=1
+fi
+# NOT CONJOINED. The ruling is that these are two screens; the reveal must not
+# be drawn from inside the paywall's own body.
+if grep -vE '^[[:space:]]*(//|///|\*)' Promptly/Views/TwoStepPaywall.swift | grep -q "OfferRevealView("; then
+  echo "  TwoStepPaywall constructs OfferRevealView — that is the conjoined screen again"; REVEAL_FAIL=1
+fi
+# The intro arithmetic stayed in ProBenefits through the collapse and stays here:
+# one definition, whichever screen shows it.
 if ! grep -q "static func introPercentOff" Promptly/Views/ProBenefits.swift; then
-  echo "  the intro percentage arithmetic did not survive the delete"; REVEAL_FAIL=1
-fi
-if ! grep -q "introBadge" Promptly/Views/TwoStepPaywall.swift; then
-  echo "  the paywall rows lost the intro badge"; REVEAL_FAIL=1
+  echo "  the intro percentage arithmetic is gone"; REVEAL_FAIL=1
 fi
 if [ "$REVEAL_FAIL" -ne 0 ]; then
   echo "reachability-gate: FAIL — offer reveal"
   exit 1
 fi
-echo "reachability-gate: offer reveal deleted; the intro rides the rows as a badge."
+echo "reachability-gate: the offer reveal is its own screen, raised from both decline paths."
 
 echo "reachability-gate: PASS — every View under $VIEWS_DIR has at least one caller."

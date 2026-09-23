@@ -98,6 +98,15 @@ NEEDS = NEEDS[:NEEDS.find('default:')] if 'default:' in NEEDS else NEEDS
 check('ParkedClarification(' in NEEDS,
       "a parked clarification is surfaced to the bubble",
       "the needs_input branch no longer builds a ParkedClarification — the user sees nothing again")
+# RETRACTION: a withdrawn question must clear the card, not sit there.
+# AND, NOT OR. The first version accepted either the log line or the
+# assignment, so deleting the assignment left the log string satisfying it —
+# a gate green on a card that never clears. Assert the WRITE, which is the
+# behaviour; the log line is not evidence of anything.
+check('messages[idx].clarification = nil' in NEEDS,
+      "a withdrawn question retracts the card",
+      "a cleared question leaves the card on screen with nothing to answer")
+
 check('isFinishing = false' in NEEDS,
       "a parked bubble stops animating a finish it will never reach",
       "isFinishing is not cleared — the bubble holds at 100% under the question")

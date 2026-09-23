@@ -4612,10 +4612,23 @@ struct EditorView: View {
                     messages[idx].isFinishing = false
                     print("[reconcile] \(jobId) → needs_input (clarification, parent=\(parent))")
                 } else {
-                    // Parked with nothing to show — no ask envelope, no question.
-                    // Never observed in production (0 of 19), but it must not
-                    // become a bubble asking the user to answer nothing.
-                    print("[reconcile] \(jobId) → needs_input with neither ask nor question — leaving in-flight")
+                    // RETRACTION. Parked with nothing to show — the question was
+                    // cleared while the row stayed needs_input.
+                    //
+                    // This used to return without touching the message, which
+                    // left a card on screen asking something the server had
+                    // withdrawn, with no way to answer it. 258 can only retract
+                    // by ALSO moving the row off needs_input; this closes the
+                    // other half so a cleared question retracts on its own.
+                    if messages[idx].clarification != nil || messages[idx].ask != nil {
+                        messages[idx].clarification = nil
+                        messages[idx].ask = nil
+                        messages[idx].stepMessage = nil
+                        persistMessages()
+                        print("[reconcile] \(jobId) → needs_input, question withdrawn — card retracted")
+                    } else {
+                        print("[reconcile] \(jobId) → needs_input with neither ask nor question — leaving in-flight")
+                    }
                     return
                 }
             default:

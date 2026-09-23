@@ -605,10 +605,11 @@ final class AppState: ObservableObject {
     /// The credit wall never constructs `UpgradePaywall` — it goes in-thread
     /// bubble -> `showCredits` -> CreditsTopUpView — so the catch that lives in
     /// UpgradePaywall cannot reach it. This is the independent trigger.
-    /// The invite rung, shown when someone dismisses the paywall. Was
-    /// Renamed from the old exit-offer flag when the reveal rung was deleted;
-    /// this presents the invite directly.
-    @Published var showInviteRung: Bool = false
+    /// Raises the exit-offer ladder: the intro offer on its OWN screen, then
+    /// the invite rung on decline. RESTORED 2026-09-23 — the name says which
+    /// screen it raises, which is why it was renamed when that screen was
+    /// deleted and renamed back when it came home.
+    @Published var showExitOffer: Bool = false
 
     /// The explicit post-auth navigation reset (build 217, the "ALWAYS" rule):
     /// every successful sign-in lands on the chat surface with the composer

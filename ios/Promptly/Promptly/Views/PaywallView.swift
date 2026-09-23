@@ -211,7 +211,12 @@ struct PaywallView: View {
         // `lim` was the DAILY render cap. Credits are the limiter now, so the
         // daily number is no longer the thing being bought against.
         case .dailyRenders:
-            return String(localized: "Free gives you 3 videos a month. Pro gives you 20.")
+            // BOTH FIGURES WERE STALE AND HARDCODED — Free 3, Pro 20, when the
+            // ruled numbers are 1 and 50. A sentence carrying two literals is
+            // two claims to keep in step with the server; this reads the same
+            // `videos_limit` the rest of the app does, and states no number at
+            // all when the field is absent rather than inventing one.
+            return ProBenefits.freeVsProSubtitle()
         case .dailyChats(_, let lim):
             return String(localized: "Free includes \(lim) AI chat messages per day. Upgrade for unlimited.")
         case .reedit:
