@@ -45,11 +45,30 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
 
 (async () => {
   // ── 1. fulfillment: incremental judge, then aggregate the day ─────────
-  if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) {
+  // ── THE JUDGE IS OPT-IN NOW (2026-09-24), and off on every automatic path.
+  //
+  // It was spawned here on every scoreboard run. On Render that meant every
+  // ten minutes, on every instance, for five days — and each run walked the
+  // whole completed history of video_jobs: the heaviest statement on the
+  // table, 652 s of database time in under four hours [MEASURED].
+  //
+  // What it produced there was NOTHING. The judge persists to
+  // out/fulfillment_scores.jsonl on Render's ephemeral disk, and the loader
+  // that moves JSONL into the fulfillment_scores table is a hand-run script.
+  // The table's newest judgment is 2026-08-11 — 43 days of runs that wrote to
+  // a file nobody ever read, and it made LLM calls to do it.
+  //
+  // It stays runnable BY HAND (`node scripts/scoreboard.js --day X --judge`,
+  // or the judge directly), because as a lane analysis tool it is fine. What
+  // it may not be is a thing the web service does to itself on a timer.
+  if (!process.argv.includes('--judge')) {
+    console.error('[scoreboard] incremental judge NOT run (pass --judge to run it). '
+      + 'fulfillment_* reflects the fulfillment_scores table as it stands.');
+  } else if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) {
     try {
       execFileSync('node', [path.join(__dirname, 'fulfillment-judge.js'), '--since', T0], { stdio: 'inherit', timeout: 20 * 60 * 1000 });
     } catch (e) { console.error(`[scoreboard] judge incremental run failed (continuing): ${e.message.slice(0, 120)}`); }
-  } else console.error('[scoreboard] no LLM key in env — skipping incremental judge; fulfillment fields will reflect existing judgments only');
+  } else console.error('[scoreboard] --judge given but no LLM key in env — skipping incremental judge; fulfillment fields will reflect existing judgments only');
 
   let fRows = [];
   const fr = await fetch(`${URL_}/rest/v1/fulfillment_scores?select=*&created_at=gte.${T0}&created_at=lte.${T1}`, { headers: H });
@@ -228,26 +247,61 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
 
   // ── 4. defect rate placeholder ───────────────────────────────────────
   const row = { day: DAY, ...fulfillment, ...agentic, ...latency, ...exportConv, defect_rate: null, defect_n: null };
+  let writeFailed = false;
 
   // ── persist: upsert into daily_scoreboard; JSONL+print fallback ──────
   // --dry-run computes and PRINTS without writing. Added so the fulfilment lane
   // (Supabase read-only) can show the digest line it added without performing
   // the upsert. It skips persistence only — every number above is computed the
   // same way, so a dry run is the real reading, not a mock of one.
+  // ── A KEY THE TABLE HAS NO COLUMN FOR REJECTS THE WHOLE ROW ──────────
+  //
+  // That is what happened on 2026-09-19: nine `agentic_*` keys were added to
+  // `row` (a122697) and daily_scoreboard has columns for none of them, so
+  // PostgREST 400'd every upsert from that commit onward. The last row the
+  // scoreboard ever wrote is 2026-09-18. Because the failure was logged to a
+  // stream the parent discarded and this script exited 0 anyway, the in-process
+  // scheduler read "missing" forever and re-ran the whole thing every ten
+  // minutes for five days.
+  //
+  // So the row is narrowed to the columns the table actually has, and every
+  // dropped key is NAMED. A number that cannot be stored must not be able to
+  // take the other twenty with it — and it must not be able to vanish quietly
+  // either.
+  let writable = row, dropped = [];
+  try {
+    const sr = await fetch(`${URL_}/rest/v1/`, { headers: { ...H, Accept: 'application/openapi+json' } });
+    const schema = await sr.json();
+    const cols = Object.keys(((schema.definitions || {}).daily_scoreboard || {}).properties || {});
+    if (cols.length) {
+      dropped = Object.keys(row).filter((k) => !cols.includes(k));
+      writable = Object.fromEntries(Object.entries(row).filter(([k]) => cols.includes(k)));
+    } else console.error('[scoreboard] could not read daily_scoreboard columns from the PostgREST schema — writing the full row unfiltered');
+  } catch (e) {
+    console.error(`[scoreboard] column probe failed (${e.message.slice(0, 80)}) — writing the full row unfiltered`);
+  }
+  if (dropped.length) {
+    console.error(`[scoreboard] ${dropped.length} field(s) HAVE NO COLUMN and were dropped from the write: ${dropped.join(', ')}`
+      + ' — apply supabase/migrations/20260924_daily_scoreboard_agentic.sql to store them.');
+  }
+
   if (process.argv.includes('--dry-run')) {
     console.error('[scoreboard] DRY RUN — computed and printed, nothing written');
   } else {
   const up = await fetch(`${URL_}/rest/v1/daily_scoreboard?on_conflict=day`, {
     method: 'POST',
     headers: { ...H, 'content-type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(row),
+    body: JSON.stringify(writable),
   });
   if (up.ok) console.log(`[scoreboard] row upserted for ${DAY}`);
   else {
     const err = await up.text();
     fs.mkdirSync(path.join(__dirname, '..', 'out'), { recursive: true });
     fs.appendFileSync(path.join(__dirname, '..', 'out', 'daily_scoreboard.jsonl'), JSON.stringify(row) + '\n');
-    console.error(`[scoreboard] TABLE WRITE FAILED (${up.status}: ${err.slice(0, 120)}) — row appended to out/daily_scoreboard.jsonl. Apply supabase/migrations/20260810_daily_scoreboard.sql.`);
+    console.error(`[scoreboard] TABLE WRITE FAILED (${up.status}: ${err.slice(0, 200)}) — row appended to out/daily_scoreboard.jsonl (EPHEMERAL on Render; nothing reads it there).`);
+    // EXIT CODE FOLLOWS THE WRITE. Exiting 0 on a failed write is how a caller
+    // came to log "written" about a row that does not exist.
+    writeFailed = true;
   }
 
   }
@@ -277,4 +331,9 @@ const pctl = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y
   console.log(`LATENCY      p50 ${d(row.latency_p50_s, prev && prev.latency_p50_s, 's')} · p90 ${row.latency_p90_s}s · p99 ${row.latency_p99_s}s · premium p50 ${row.latency_premium_p50_s}s · callback-gap ${row.callback_gap_jobs} · n=${row.latency_n_jobs}`);
   console.log(`EXPORT/CONV  exports ${d(row.exports, prev && prev.exports)} · views ${row.result_views} · export/viewed ${d(row.export_per_viewed, prev && prev.export_per_viewed)} · purchases ${row.purchases}`);
   console.log(`DEFECTS      ${row.defect_rate == null ? 'awaiting Lane 2 harness (column wired)' : row.defect_rate}`);
+
+  // The digest above is computed either way — a failed WRITE does not make the
+  // numbers wrong. But the exit code is the only thing a parent can read, so it
+  // says what happened to the row.
+  if (writeFailed) process.exit(3);
 })().catch(e => { console.error('FATAL', e.message); process.exit(1); });

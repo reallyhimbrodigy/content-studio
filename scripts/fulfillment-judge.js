@@ -43,36 +43,124 @@ const JUDGE_VERSION = 2;
 const PRICE_IN = 1.0, PRICE_OUT = 5.0;
 
 // ── data pulls ──────────────────────────────────────────────────────────
-async function pageAll(pathq) {
-  const out = [];
-  for (let off = 0; ; off += 1000) {
-    const r = await fetch(`${URL_}/rest/v1/${pathq}&limit=1000&offset=${off}`, { headers: H });
-    const rows = await r.json();
-    if (!Array.isArray(rows)) throw new Error(JSON.stringify(rows).slice(0, 300));
-    out.push(...rows);
-    if (rows.length < 1000) break;
-  }
-  return out;
+//
+// KEYSET, NEVER OFFSET (2026-09-24). What this replaced was the single
+// heaviest statement on video_jobs: 244 calls, 2,674 ms mean, 7,375 ms max,
+// 652 s total and 14.7M buffer hits in under four hours [MEASURED,
+// pg_stat_statements since the 01:21 UTC reset] — OFFSET-paginated 0..9000
+// over TOASTed jsonb, ~90 MB a pass, several passes an hour, running straight
+// through the outage. OFFSET re-reads and discards every skipped row, so page
+// N costs N pages of work and the walk gets slower forever as history grows
+// (average page time had already risen 2.1s -> 3.2s over one day, max 11.9s).
+//
+// A keyset watermark reads only the rows it returns. `created_at` is NOT
+// unique, so the cursor is the PAIR (created_at, id): a bare `created_at.gt`
+// cursor silently DROPS every row sharing a timestamp with the last row of a
+// page — data loss that looks exactly like a correct run.
+const PAGE = 1000;
+// Client-side, and labelled as such. A server-side statement_timeout is a
+// role/RPC change and is Zac's to apply; this is what this process can enforce
+// on itself today, so a wedged read cannot hold a worker open indefinitely.
+const REQ_TIMEOUT_MS = 20000;
+
+async function getJson(url) {
+  const r = await fetch(url, { headers: H, signal: AbortSignal.timeout(REQ_TIMEOUT_MS) });
+  const body = await r.json();
+  if (!Array.isArray(body)) throw new Error(`${r.status} ${JSON.stringify(body).slice(0, 300)}`);
+  return body;
 }
+
+/** Page `pathq` by (created_at, id) keyset. `pathq` carries no order/limit. */
+async function pageKeyset(pathq, { after = null } = {}) {
+  const out = [];
+  let cur = after && after.created_at && after.id ? after : null;
+  for (;;) {
+    const cursor = cur
+      ? '&' + new URLSearchParams({
+          or: `(created_at.gt."${cur.created_at}",and(created_at.eq."${cur.created_at}",id.gt.${cur.id}))`,
+        }).toString()
+      : '';
+    const rows = await getJson(
+      `${URL_}/rest/v1/${pathq}${cursor}&order=created_at.asc,id.asc&limit=${PAGE}`);
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+    const last = rows[rows.length - 1];
+    cur = { created_at: last.created_at, id: last.id };
+  }
+  if (out.length) {
+    const last = out[out.length - 1];
+    cur = { created_at: last.created_at, id: last.id };
+  }
+  return { rows: out, cursor: cur };
+}
+
+// RECIPE LOCATION MOVED 2026-08-04 [MEASURED]: <=08-03 recipes live in the
+// edit_recipe COLUMN; >=08-04 they live in result.edit_recipe (jsonb). The
+// column is NULL on every completion since. SELECTED ONCE, NOT TWICE: pulling
+// both on every run doubled the TOASTed payload to fetch a column that has
+// been NULL for seven weeks. The legacy column is requested only when the
+// window actually reaches back into the era that still has it.
+const RECIPE_COLUMN_DEAD_FROM = '2026-08-04';
+function cohortSelect(sinceIso) {
+  const legacy = (!sinceIso || sinceIso < RECIPE_COLUMN_DEAD_FROM) ? 'edit_recipe,' : '';
+  return `id,created_at,vibe_input,change_request,${legacy}` +
+         `er2:result->edit_recipe,notes:result->capability_notes,route:result->>route`;
+}
+
 async function pullCohort(sinceIso) {
-  // RECIPE LOCATION MOVED 2026-08-04 [MEASURED]: <=08-03 recipes live in the
-  // edit_recipe COLUMN; >=08-04 they live in result.edit_recipe (jsonb). The
-  // column is NULL on all 2,459 completions since. Coalesce both.
   const since = sinceIso ? `&created_at=gte.${sinceIso}` : '';
-  const rows = await pageAll(
-    `video_jobs?status=eq.completed${since}` +
-    `&select=id,created_at,vibe_input,change_request,edit_recipe,er2:result->edit_recipe,notes:result->capability_notes,route:result->>route&order=created_at.asc`
-  );
+  const { rows } = await pageKeyset(
+    `video_jobs?status=eq.completed${since}&select=${cohortSelect(sinceIso)}`);
   return rows
     .map(r => ({ ...r, edit_recipe: r.edit_recipe || r.er2 || null }))
     .filter(r => r.edit_recipe);
 }
 
 // ── preset detection (code, not LLM): any vibe string used by >=20 jobs ──
-function detectPresets(jobs) {
-  const c = {};
-  for (const j of jobs) { const v = (j.vibe_input || '').trim(); c[v] = (c[v] || 0) + 1; }
-  return new Set(Object.entries(c).filter(([, n]) => n >= 20).map(([v]) => v));
+//
+// THIS is what the full-corpus walk existed for — a histogram of one short
+// text column, and nothing else. It read `edit_recipe` twice and
+// `result->capability_notes` on ~9,000 rows to compute it.
+//
+// Now: one narrow column, keyset, NEW ROWS ONLY, aggregate cached between
+// runs. Counts are monotonic — a completed job's vibe_input never changes —
+// so merging new rows into a saved histogram gives the same answer as
+// re-reading history, at the cost of the rows that are actually new.
+const PRESET_CACHE = path.join(OUT_DIR, 'preset_counts.json');
+const PRESET_MIN_USES = 20;
+
+function loadPresetCache() {
+  try {
+    const c = JSON.parse(fs.readFileSync(PRESET_CACHE, 'utf8'));
+    if (c && c.counts && typeof c.counts === 'object') return c;
+  } catch (_) { /* absent or unreadable — rebuild from scratch */ }
+  return { watermark: null, counts: {} };
+}
+
+/** {presets:Set, n_new, n_total} — the counts carry their own denominator. */
+async function presetCounts() {
+  const cache = loadPresetCache();
+  const { rows, cursor } = await pageKeyset(
+    'video_jobs?status=eq.completed&select=id,created_at,vibe_input',
+    { after: cache.watermark });
+  for (const r of rows) {
+    const v = (r.vibe_input || '').trim();
+    cache.counts[v] = (cache.counts[v] || 0) + 1;
+  }
+  if (cursor) cache.watermark = cursor;
+  try {
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+    fs.writeFileSync(PRESET_CACHE, JSON.stringify(cache));
+  } catch (e) {
+    console.error(`  preset cache NOT SAVED (${e.message}) — the next run re-reads from the same watermark`);
+  }
+  const presets = new Set(
+    Object.entries(cache.counts).filter(([, n]) => n >= PRESET_MIN_USES).map(([v]) => v));
+  return {
+    presets,
+    n_new: rows.length,
+    n_total: Object.values(cache.counts).reduce((a, b) => a + b, 0),
+  };
 }
 
 // ── evidence extraction — BOTH recipe shapes, compact for the prompt ────
@@ -274,8 +362,9 @@ function report() {
   console.log('pulling cohort…');
   let jobs = await pullCohort(sinceIso);
   console.log(`cohort: ${jobs.length} completed recipe-bearing jobs${sinceIso ? ` since ${sinceIso}` : ''}`);
-  const presets = detectPresets(await pullCohort(null));   // presets detected on the FULL corpus always
-  console.log(`preset strings (>=20 uses): ${presets.size}`);
+  const pc = await presetCounts();
+  const presets = pc.presets;
+  console.log(`preset strings (>=${PRESET_MIN_USES} uses): ${presets.size}  [incremental: +${pc.n_new} new rows, ${pc.n_total} counted]`);
 
   if (args.includes('--rejudge-cutzoom')) {
     // v2 correction pass: re-judge ONLY full-editorial jobs whose zoom evidence
