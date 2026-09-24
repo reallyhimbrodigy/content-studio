@@ -2260,7 +2260,19 @@ const server = http.createServer((req, res) => {
         const settings = data?.profile_settings && typeof data.profile_settings === 'object'
           ? data.profile_settings
           : {};
-        return sendJson(res, 200, { ok: true, settings });
+        // PER-ACCOUNT UPLOAD FLAGS RIDE THE AUTHENTICATED READ. /api/health is
+        // unauthenticated and therefore cannot answer a per-account question;
+        // this is the endpoint that already knows who is asking.
+        //
+        // "on" OR ABSENT, NEVER "off" — the client treats absence as off, and
+        // a third value would be a third code path on a knob whose whole point
+        // is that it has two states.
+        const upload_flags = {};
+        for (const f of ['upload_shrink']) {
+          const r = await uploadFlags.resolve(f, user.id, supabaseAdmin);
+          if (r.on) upload_flags[f] = 'on';
+        }
+        return sendJson(res, 200, { ok: true, settings, upload_flags });
       } catch (err) {
         const status = err.statusCode || 500;
         if (status !== 401) {
@@ -2924,6 +2936,34 @@ const server = http.createServer((req, res) => {
   // is a comma-separated list; absent, it is OWNER_USER_ID — the same
   // constant lifecycle-push and the reaper already use, so "set it to Zac's
   // account" needs no dashboard change and no redeploy to take effect.
+  // GET /api/upload-flags — the per-account knob values, authenticated.
+  //
+  // It exists alongside the copy on /api/profile/settings for one reason: a
+  // flag read that has to ride another endpoint's response is a flag read that
+  // breaks when that endpoint changes for unrelated reasons. `?flags=a,b`
+  // takes any name, including one that does not exist in code yet, so a new
+  // knob is a client change and a dashboard row rather than a deploy.
+  if (parsed.pathname === '/api/upload-flags' && req.method === 'GET') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        const asked = String(parsed.query.flags || 'upload_shrink')
+          .split(',').map((x) => x.trim()).filter(Boolean).slice(0, 12);
+        const out = {};
+        const why = {};
+        for (const f of asked) {
+          const r = await uploadFlags.resolve(f, authUser.id, supabaseAdmin);
+          if (r.on) out[f] = 'on';
+          why[f] = `${r.source}/${r.from}`;   // WHICH RULE ANSWERED, for the canary
+        }
+        return sendJson(res, 200, { ok: true, flags: out, resolved_by: why });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { ok: false, error: 'upload_flags_failed' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/internal/ops-alert' && req.method === 'POST') {
     (async () => {
       if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
