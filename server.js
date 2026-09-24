@@ -32,6 +32,7 @@ const {
 } = require('./lib/entitlement');
 const { capabilities } = require('./lib/tier-capabilities');
 const { resolveEnforce, effectiveTier, clientWallCapable, clientFreemium, wallEnabled, gateDecision, uploadDecision } = require('./lib/wall-enforcement');
+const _monthlyCap = require('./lib/free-monthly-cap');
 const { wallRequiredMessage, sourceMissingMessage } = require('./lib/failure-copy');
 const { phCapture, phShutdown } = require('./lib/posthog-sink');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
@@ -561,8 +562,21 @@ async function assertProEntitled(userId, opts = {}) {
     // `row` rides on every return so the wall gates can compute the tier from
     // the SAME read that decided isPro — tierFromEntitlement(entitlement) needs
     // it, and a missing row must never make a Pro user read as tier 'none'.
-    return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable };
+    return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable, rcCheck: 'NOT_NEEDED' };
   }
+  // ── THE STATE OF THE RC CHECK, NOT JUST ITS VALUE (Zac 2026-09-24) ──────
+  //
+  // Every free-tier refusal below this point reads `isPro === false`. That one
+  // boolean is three different facts wearing one costume: RC said no, RC was
+  // never asked, or RC COULD NOT BE REACHED. A refusal site that can only see
+  // the value refuses a user who may have paid thirty seconds ago because a
+  // dependency was down — and calls it their problem.
+  //
+  // This is the MEASURED / ABSENT / FAILED law, one system over: return a
+  // state, and make FAILED fail differently. lib/free-monthly-cap.js
+  // refusalForRcState turns FAILED into a retryable 503, never a 402 and never
+  // a 500.
+  let _rcCheck = 'SKIPPED_THROTTLED';
 
   // SELF-HEAL — the guarantee that a paying user is NEVER denied, even if the
   // webhook was missed, delayed, or (as happened) silently 401'd. The DB says
@@ -584,12 +598,18 @@ async function assertProEntitled(userId, opts = {}) {
   if ((_hasSubscriptionHistory(entitlement.row) || opts.forceRcCheck === true) && _selfHealDue(userId)) {
     try {
       const healed = await reconcileEntitlementFromRevenueCat(userId);
+      _rcCheck = 'NEGATIVE';
       if (healed && healed.isPro) {
         // Definitive POSITIVE: we granted + persisted pro_until, so the next
         // read short-circuits before self-heal. Full-window throttle is fine.
         _markSelfHeal(userId, false);
         console.log('[entitlement] self-heal granted Pro from RevenueCat', { userId });
-        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', row: entitlement.row || null, sourceTable: entitlement.sourceTable };
+        // GRANTED covers pro AND max. lib/entitlement.js resolves a customer
+        // holding ONLY the `max` entitlement (it does not imply `pro`), and
+        // TIER_RANK already ranks max above pro — so the narrow "is it pro"
+        // check that bit the client cannot bite here. Pinned by
+        // __smoke_free_monthly_cap's max-only leg.
+        return { isPro: true, reason: 'RC_SELF_HEAL', plan: decision.plan, status: 'active', row: entitlement.row || null, sourceTable: entitlement.sourceTable, rcCheck: 'GRANTED' };
       }
       // RC says NOT active — but for a user WITH subscription history this is
       // NOT a definitive negative right after a conversion/renewal. RC's REST
@@ -609,10 +629,13 @@ async function assertProEntitled(userId, opts = {}) {
       // still bounding calls during an outage. Grant-only → never wrongly
       // revokes; we just couldn't upgrade this instant.
       _markSelfHeal(userId, true);
+      // FAILED, not NEGATIVE. RC being unreachable is OUR outage; treating it
+      // as "RC says free" is how a paying customer gets a 402.
+      _rcCheck = 'FAILED';
       console.warn('[entitlement] self-heal reconcile failed (non-fatal)', { userId, error: e?.message });
     }
   }
-  return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable };
+  return { ...decision, row: entitlement.row || null, sourceTable: entitlement.sourceTable, rcCheck: _rcCheck };
 }
 
 /**
@@ -3605,6 +3628,59 @@ const server = http.createServer((req, res) => {
     }
     console.error('[usage] claim_usage_slot failed — refusing action', { userId, kind, error: error.message });
     const e = new Error('usage_claim_failed'); e.statusCode = 503; throw e;
+  }
+
+  // Atomically claim one CALENDAR-MONTH slot. Same shape and the same
+  // fail-closed contract as claimDailyUsage — with one deliberate difference:
+  // THERE IS NO RACY FALLBACK.
+  //
+  // claimDailyUsage falls back to count-then-insert when the RPC is absent,
+  // because losing the lock on a 3/day cap costs at most a couple of extra
+  // renders. Losing it on a 1/MONTH cap costs a whole month, and the fallback
+  // would be a silent un-capping of the exact cohort this exists to cap. So a
+  // missing function is a 503, loudly, not a quiet return to unlimited.
+  async function claimMonthlyUsage(userId, kind, monthlyLimit) {
+    if (!supabaseAdmin || !userId) {
+      const e = new Error('usage_claim_unavailable'); e.statusCode = 503; throw e;
+    }
+    const { data, error } = await supabaseAdmin.rpc('claim_monthly_slot', {
+      p_user: userId, p_kind: kind, p_monthly_limit: monthlyLimit,
+    });
+    if (!error) return { ok: data === true };
+    if (error.code === 'PGRST202'
+        || /claim_monthly_slot.*does not exist/i.test(error.message || '')) {
+      console.error('[usage] claim_monthly_slot IS NOT DEPLOYED — apply '
+        + 'supabase/migrations/20260924_claim_monthly_slot.sql. Refusing rather than '
+        + 'falling back to an uncapped free tier.');
+      const e = new Error('monthly_claim_unavailable'); e.statusCode = 503; throw e;
+    }
+    console.error('[usage] claim_monthly_slot failed — refusing action', { userId, kind, error: error.message });
+    const e = new Error('monthly_claim_failed'); e.statusCode = 503; throw e;
+  }
+
+  // Give a claimed month back. Called when the render does not happen after the
+  // claim landed — our failure must not cost a free user their only video of
+  // the month. Returns the RELEASED state, never a bare boolean, because "no
+  // row was removed" and "the call errored" are different and only one of them
+  // needs looking at.
+  async function releaseMonthlyUsage(userId, kind) {
+    if (!supabaseAdmin || !userId) return 'UNAVAILABLE';
+    try {
+      const { data, error } = await supabaseAdmin.rpc('release_monthly_slot', {
+        p_user: userId, p_kind: kind,
+      });
+      if (error) {
+        console.error('[usage] release_monthly_slot FAILED — a free user may have lost '
+          + `their month to our failure: ${error.message}`);
+        return 'FAILED';
+      }
+      const state = data === true ? 'RELEASED' : 'NOTHING_TO_RELEASE';
+      console.log(`[usage] monthly slot ${state} user=${userId} kind=${kind}`);
+      return state;
+    } catch (e) {
+      console.error('[usage] release_monthly_slot threw:', e && e.message);
+      return 'FAILED';
+    }
   }
 
   // ── Presigned S3 upload URL ──
@@ -7438,6 +7514,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             }
           }
 
+          // Declared here, across the whole limiter chain, so the unwind
+          // paths below can see whether a month was claimed. A claim that no
+          // later path can find is a claim nobody can give back.
+          let _monthlyState = 'NOT_EVALUATED';
+          let _monthlyClaimed = false;
+
           if (isDemo) {
             // §4 demo: quota-exempt (source-matched above) — NO usage_events write,
             // so it never touches the render meter or the free-render cap. Capped
@@ -7495,6 +7577,52 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
                 limit: wallCaps.renderLimit,
                 message: `You've used your ${wallCaps.renderLimit} free renders today. Pro includes ${_credits.VIDEOS_LIMIT.pro} videos a month.`,
               } };
+            }
+
+            // ── THE MONTHLY CAP (Zac 2026-09-24) ──────────────────────────
+            // A daily cap is not a monthly one. Free tier on builds below the
+            // client-claim floor had 3/day and NOTHING per month: 808 users,
+            // 918 completed videos, 0 debited this month [MEASURED]. Credits
+            // cannot limit them — a build that cannot claim a device can never
+            // hold a balance — so the limiter has to be a count.
+            //
+            // AFTER the entitlement read, deliberately: a user who paid thirty
+            // seconds ago has already been healed from RevenueCat by
+            // assertProEntitled above (grant-only, and it admits `max` as well
+            // as `pro`), so _creditTier is 'pro'/'max' by the time we get here
+            // and capState returns NOT_FREE. The race cannot reach this line
+            // with a stale tier unless RC itself could not be reached — which
+            // is the rcCheck branch below.
+            _monthlyState = _monthlyCap.capState({
+              isFree: _creditTier === 'free',
+              build: _debitBuild,
+              claimMinBuild: _freeCredits.CLIENT_CLAIM_MIN_BUILD,
+            });
+            if (_monthlyState === 'APPLIES') {
+              const _lim = _monthlyCap.monthlyLimit();
+              const _mClaim = await claimMonthlyUsage(
+                authUser.id, _monthlyCap.USAGE_KIND, _lim);
+              if (!_mClaim.ok) {
+                // A REFUSAL AND AN OUTAGE ARE DIFFERENT FAILURES. If RC could
+                // not be reached we do not know this user is free, so we do
+                // not charge them for it: refusalForRcState turns that into a
+                // retryable 503 rather than a 402 against someone who may have
+                // paid, and never a 500.
+                const _r = _monthlyCap.refusalForRcState(
+                  entitlement.rcCheck,
+                  _monthlyCap.refusalBody({ limit: _lim, proVideos: _credits.VIDEOS_LIMIT.pro }));
+                console.log('  [paywall] %d monthly cap userId=%s build=%s rc=%s',
+                  _r.status, authUser.id, _debitBuild, entitlement.rcCheck);
+                return _r;
+              }
+              _monthlyClaimed = true;
+            } else if (_monthlyState !== 'NOT_FREE' && _monthlyState !== 'HAS_CLAIM_PATH') {
+              // DISABLED and BUILD_UNKNOWN both let a free render through, and
+              // they are not the same fact. Named separately so an inert cap
+              // cannot hide inside the expected case — the exact shape that
+              // made `debit_armed: true` debit nobody for weeks.
+              console.log('  [paywall] monthly cap NOT applied: %s (build=%s)',
+                _monthlyState, _debitBuild);
             }
           }
 
@@ -7601,7 +7729,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             }
           }
 
-          const created = await createQueuedVideoJob({
+          // THE CLAIM IS ALREADY SPENT BY THE TIME WE GET HERE. If the insert
+          // throws, the request 500s and — without this — the user has paid a
+          // month for a video that does not exist. Our failure, their month.
+          let created;
+          try {
+          created = await createQueuedVideoJob({
             userId: authUser.id,
             videoUrl,
             vibeInput,
@@ -7615,6 +7748,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             pipeline: routeForNewJob(),
             creditsDebited: _creditsDebited,
           });
+          } catch (e) {
+            if (_monthlyClaimed) {
+              await releaseMonthlyUsage(authUser.id, _monthlyCap.USAGE_KIND);
+              _monthlyClaimed = false;
+            }
+            throw e;
+          }
           if (created.__replayed) {
             // Cross-instance race: another request inserted this UUID between
             // our fast-path check and the insert. Unwind the charge we just
@@ -7648,6 +7788,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
               } catch (e) {
                 console.warn('  [idempotency] replay charge-unwind failed (non-fatal):', e?.message);
               }
+            }
+            // ONE JOB, ONE MONTH. A replay that kept the monthly claim would
+            // spend a free user's only video of the month on a job that was
+            // never created.
+            if (_monthlyClaimed) {
+              await releaseMonthlyUsage(authUser.id, _monthlyCap.USAGE_KIND);
+              _monthlyClaimed = false;
             }
             return { job: created, replayed: true };
           }
@@ -7928,10 +8075,18 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // rescued post-flip rather than false-402'd.
           const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
           if (!entitlement.isPro) {
-            return sendJson(res, 402, {
+            // THE NEW-SUBSCRIBER RACE REACHES THIS DOOR FIRST. The client auto-
+            // sends a free user's KEPT RE-EDIT the instant StoreKit confirms
+            // Pro — this endpoint, before anything else. assertProEntitled has
+            // already re-checked RevenueCat (grant-only, and `max` counts), so
+            // a landed purchase is admitted here with no webhook. What must not
+            // happen is refusing someone who may have paid because RC itself
+            // was unreachable: that is a retry, not their problem.
+            const _r = _monthlyCap.refusalForRcState(entitlement.rcCheck, {
               error: 'pro_required', kind: 'reedit',
               message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
             });
+            return sendJson(res, _r.status, _r.body);
           }
 
           // A picked choice must be one the parked ask actually offered.
@@ -8046,11 +8201,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           return sendJson(res, 403, { error: 'wall_required', route: 'wall', message: wallRequiredMessage() });
         }
         if (!reeditCaps.reedit) {
-          return sendJson(res, 402, {
+          // Same race, the main re-edit door. See the ask-answer gate above.
+          const _r = _monthlyCap.refusalForRcState(entitlement.rcCheck, {
             error: 'pro_required',
             kind: 'reedit',
             message: 'Re-edit is a Pro feature. Upgrade to make changes to finished edits.',
           });
+          return sendJson(res, _r.status, _r.body);
         }
 
         // MODE RESOLUTION. This read `orig.edit_recipe && typeof orig.edit_recipe
