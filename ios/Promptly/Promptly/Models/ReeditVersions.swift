@@ -72,3 +72,45 @@ struct ReeditInFlight: Decodable, Equatable {
     var isRendering: Bool { status == "queued" || status == "processing" }
 }
 
+
+/// AN OFFER OF REFINEMENT, POSTED AFTER THE VIDEO IS DELIVERED.
+///
+/// NOT a ParkedClarification, and the difference is the whole design. A parked
+/// clarification is a job STOPPED at `needs_input`, waiting to be unblocked —
+/// the question gates the work. This is its opposite: B1's capture shows the
+/// agent asking at the END of its turn (blocks 16/26 and 24/38), after the work
+/// is done, as an offer — "Captions are now live… Would you like any emphasis
+/// added to specific words?" The video is already delivered and keeps its
+/// delivered state whatever the user does.
+///
+/// Because they are opposites, they cannot share a render path: the existing
+/// ClarificationCard draws only when `jobStatus == "needs_input"`, which a
+/// delivered job never is. Reusing it would have shown nothing at all.
+struct RefinementOffer: Codable, Equatable, Hashable {
+    /// The question, verbatim from the agent. Rendered as ordinary assistant
+    /// prose, not as a card with a Send button — it is a message, not a form.
+    let question: String
+    /// The job row this is about. PAIRED BY ROW, never by text or position, so
+    /// a superseding re-edit can retract exactly this one.
+    let jobId: String
+    /// The version delivered when the question was asked. A question about v2
+    /// must never appear under v3.
+    let versionId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case question, jobId = "job_id", versionId = "version_id"
+    }
+
+    init(question: String, jobId: String, versionId: String? = nil) {
+        self.question = question
+        self.jobId = jobId
+        self.versionId = versionId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        question = try c.decode(String.self, forKey: .question)
+        jobId = try c.decode(String.self, forKey: .jobId)
+        versionId = (try? c.decodeIfPresent(String.self, forKey: .versionId)) ?? nil
+    }
+}

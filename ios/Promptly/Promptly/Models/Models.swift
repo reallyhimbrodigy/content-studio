@@ -89,6 +89,10 @@ struct ChatMessage: Identifiable {
     /// Cleared the moment the quote is confirmed and a job id takes over, so a
     /// message is never both a quote and a render at the same time.
     var quote: GenerationQuote?
+    /// A question the agent asked AFTER delivering this job's video. The video
+    /// stays delivered; this is an offer, not a gate. Cleared atomically when a
+    /// re-edit supersedes it, so a question about v2 never sits under v3.
+    var refinement: RefinementOffer?
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?
@@ -288,6 +292,7 @@ struct SerializedMessage: Codable, Hashable {
     var ask: AskPayload?          // Phase D ask-back — persisted so a parked question survives
     var clarification: ParkedClarification?   // the re-edit clarification, same reason
     var quote: GenerationQuote?               // the quote card, same reason
+    var refinement: RefinementOffer?          // the post-delivery question, same reason
                                   // background/relaunch and re-shows from the polled row.
     var renderedVideoUrl: String?
     var hlsManifestUrl: String?
@@ -356,6 +361,10 @@ struct SerializedMessage: Codable, Hashable {
         // chats. They tapped nothing and lost the offer, which reads as the app
         // forgetting what it just said.
         if message.role == .assistant && message.quote != nil { return true }
+        // Same reason for a refinement offer: it has no job of its own and no
+        // attachments, so every other branch says don't persist and the
+        // question would vanish on a chat switch — having been asked once.
+        if message.role == .assistant && message.refinement != nil { return true }
         // Otherwise: assistant text bubbles with content but no job.
         return !message.isThinking && message.jobStatus == nil
             && (!message.content.isEmpty || !(message.attachments ?? []).isEmpty)
@@ -376,6 +385,7 @@ struct SerializedMessage: Codable, Hashable {
         self.ask = message.ask
         self.clarification = message.clarification
         self.quote = message.quote
+        self.refinement = message.refinement
         self.renderedVideoUrl = message.renderedVideoUrl
         self.hlsManifestUrl = message.hlsManifestUrl
         self.thumbnailUrl = message.thumbnailUrl
@@ -420,6 +430,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.ask = ask
         msg.clarification = clarification
         msg.quote = quote
+        msg.refinement = refinement
         msg.renderedVideoUrl = renderedVideoUrl
         msg.hlsManifestUrl = hlsManifestUrl
         msg.thumbnailUrl = thumbnailUrl

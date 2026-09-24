@@ -2828,9 +2828,54 @@ struct EditorView: View {
     /// words go in as their message, the new version renders into an assistant
     /// message right under it, and nothing opens or navigates. This is the same
     /// job-creation call the pill used to make — only the surface changed.
+    /// POST A QUESTION UNDER A DELIVERED VIDEO.
+    ///
+    /// Rule 1: the question never gates delivery. This is called only after the
+    /// video is on screen, and it appends a SEPARATE assistant message rather
+    /// than attaching a card to the video's own row — the capture shows these
+    /// arriving as ordinary conversational offers, and that is how they read.
+    /// The video's message is not touched at all, which is what makes "job
+    /// still delivered" true by construction rather than by care.
+    func postRefinementOffer(_ offer: RefinementOffer) {
+        // Never two open questions for one job: a second offer replaces the
+        // first rather than stacking, or the thread asks twice about one video.
+        retractRefinementOffers(forJob: offer.jobId)
+        var msg = ChatMessage(role: .assistant, content: offer.question)
+        msg.refinement = offer
+        messages.append(msg)
+        persistMessages()
+        Analytics.track("refinement_offer_posted", props: ["job_id": offer.jobId], durable: true)
+    }
+
+    /// Remove every open question for a job. Idempotent, and safe to call when
+    /// there are none — which is the common case.
+    func retractRefinementOffers(forJob jobId: String) {
+        let before = messages.count
+        messages.removeAll { $0.refinement?.jobId == jobId }
+        if messages.count != before {
+            persistMessages()
+            Analytics.track("refinement_offer_retracted",
+                            props: ["job_id": jobId, "removed": before - messages.count], durable: true)
+        }
+    }
+
     private func sendReedit(changeRequest: String, originalJobId: String) {
         clearInputField()
         isSending = true
+
+        // RETRACT ANY OPEN QUESTION ABOUT THIS JOB, ATOMICALLY WITH THE SEND.
+        //
+        // The agent asks its question AFTER delivering — "Captions are now
+        // live… would you like emphasis on specific words?" — so an unanswered
+        // question can still be on screen when the user asks for something else
+        // entirely. Left there, it would sit under a NEWER version offering to
+        // refine one that has been superseded, and tapping it would re-edit the
+        // wrong version.
+        //
+        // Done here, in the same synchronous step as appending the send, so
+        // there is no frame in which both the old question and the new request
+        // are live. Paired BY JOB ROW — never by text, never by position.
+        retractRefinementOffers(forJob: originalJobId)
 
         let userMsg = ChatMessage(role: .user, content: changeRequest)
         messages.append(userMsg)
