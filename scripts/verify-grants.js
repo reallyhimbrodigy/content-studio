@@ -120,31 +120,64 @@ async function currencyConfig() {
   }
   for (const vc of items) {
     console.log(`  ${vc.code || vc.id}  name=${JSON.stringify(vc.name || '')}`);
+
+    // ── VERBATIM FIRST, INTERPRETATION SECOND ────────────────────────────
+    // The CRD config's keys literally included `product_grants` and this
+    // script printed "no grant-shaped node" anyway: findGrants() looks for an
+    // object carrying BOTH an amount-ish key and a currency-ish key, and
+    // whatever shape product_grants uses does not match that guess. The data
+    // was in the payload the whole time and the PARSER refused it.
+    //
+    // That is the payload-versus-configuration confusion one level down, and
+    // it is the third time this script has made it. So anything grant-shaped
+    // by NAME is dumped RAW before any verdict runs. A reader that can only
+    // recognise shapes it expected will keep refusing the one it did not.
+    for (const k of Object.keys(vc)) {
+      if (/grant|allowance|award|credit/i.test(k)) {
+        console.log(`      ${k} (VERBATIM):`);
+        console.log('        ' + JSON.stringify(vc[k], null, 2).split('\n').join('\n        '));
+      }
+    }
+
     const grants = findGrants(vc);
     if (grants.length) {
-      for (const g of grants) console.log(`      grant: ${g.amount} ${g.code}  (at ${g.path})`);
+      for (const g of grants) console.log(`      parsed: ${g.amount} ${g.code}  (at ${g.path})`);
     } else {
-      // The keys are printed rather than "no grants" asserted — the whole
-      // reason this script was wrong the first time.
-      console.log(`      no grant-shaped node. keys: ${JSON.stringify(Object.keys(vc))}`);
+      // NOT "no grants" — "this parser recognised nothing", which is a fact
+      // about the parser. The verbatim dump above is the actual evidence.
+      console.log(`      parser recognised no grant shape. All keys: ${JSON.stringify(Object.keys(vc))}`);
+      console.log('      ^ if a grant-named key is printed above, the DUMP is the answer');
+      console.log('        and this line is only saying the matcher did not fit it.');
     }
   }
+  // AND THE WHOLE OBJECT, ONCE, for the currency the app actually spends.
+  // Truncated reads are how a subset gets read as a total; this one is small.
+  console.log('\n  FULL virtual-currency payload, verbatim:');
+  console.log('  ' + JSON.stringify(items, null, 2).split('\n').join('\n  ').slice(0, 6000));
   return items;
 }
 
-// ── TRANSACTIONS: PROBE, DO NOT GUESS ───────────────────────────────────────
-// The first path returned 405 Method Not Allowed, which says the resource
-// exists and the verb is wrong — NOT that there are no transactions. Guessing
-// a second path and reporting its miss as a result is exactly how three
-// invented key names each got recorded as "measured, empty". So this tries a
-// short list and REPORTS WHAT EACH ONE ANSWERED, and a 405 or 404 is printed
-// as a probe result rather than folded into the history.
-const TX_PROBES = [
-  ['GET',  '/customers/%s/virtual_currencies/transactions?limit=10'],
-  ['GET',  '/customers/%s/virtual_currency_transactions?limit=10'],
-  ['GET',  '/customers/%s/transactions?limit=10'],
-  ['POST', '/customers/%s/virtual_currencies/transactions/list'],
-];
+// ── TRANSACTION HISTORY IS NOT EXPOSED BY THE API. THAT IS THE ANSWER. ──────
+// Three probes returned 405/404. 405 says the verb is wrong; 404 says the path
+// is wrong; neither says "no transactions". So rather than guess a fourth, the
+// DOCUMENTATION was read, and it settles it:
+//
+//   RevenueCat API v2 publishes SEVEN virtual-currency endpoints, and all
+//   seven manage currency DEFINITIONS — list, create, retrieve, update,
+//   delete, archive, unarchive. There is no endpoint for a customer's
+//   virtual-currency transaction history or ledger.
+//   https://www.revenuecat.com/docs/api-v2/virtual-currency
+//
+// The customer BALANCE read we already use
+// (GET /customers/{id}/virtual_currencies) lives under the Customer resource
+// and does work — which is why a balance is readable and a history is not.
+//
+// So "how did this user come to hold 120" is NOT answerable from the API, and
+// no amount of probing will make it so. The balance is the reliable number;
+// the grant CONFIG (above) is where the cadence question gets settled; and
+// the dashboard is where a per-customer history can be read by a human.
+// Recording this so the next person does not spend another session probing.
+const TX_HISTORY_SUPPORTED = false;
 
 async function productTable() {
   // THE STORE LIVES ON THE APP. Resolve it once rather than guessing per row.
@@ -310,21 +343,16 @@ async function subscriberReadback() {
     // The transaction history is what says WHERE the credits came from. The
     // path is not one I have observed returning, so its status is printed
     // rather than its absence being read as "no transactions".
-    let tx = null;
-    for (const [method, tpl] of TX_PROBES) {
-      if (method !== 'GET') continue;      // only GET is safe in a read-only script
-      const path = tpl.replace('%s', encodeURIComponent(p.id));
-      const r = await get(path, { raw: true });
-      console.log(`    probe ${method} ${path.split('?')[0]} -> HTTP ${r.status}`);
-      if (r.status < 300) { tx = r; break; }
-    }
-    if (!tx) {
-      console.log('    transactions: NO PROBE RETURNED 200. That is a fact about the '
-        + 'PATH, not about the account — none of these reads saw a history, and');
-      console.log('    "no transactions" is NOT what this observed. The balance above '
-        + 'is the reliable number.');
-      tx = { status: 599, json: null, body: '' };
-    }
+    // NOT PROBED. See TX_HISTORY_SUPPORTED above: the API publishes no
+    // transaction-history endpoint, so a request here could only ever produce
+    // another 404 to misread.
+    console.log('    transactions: NOT EXPOSED BY THE REVENUECAT API — all seven '
+      + 'documented virtual-currency');
+    console.log('      endpoints manage currency definitions, none reads a customer '
+      + 'ledger. The balance');
+    console.log('      above is the reliable number; read a per-customer history in '
+      + 'the dashboard.');
+    const tx = { status: 599, json: null, body: '' };
     if (tx.status >= 300) {
       // kept for shape; the probe loop already reported each status
     } else {
