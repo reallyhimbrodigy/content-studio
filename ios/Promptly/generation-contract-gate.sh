@@ -232,6 +232,57 @@ check("...and no balance figure is available to render", unknownBal?.balance == 
 let plainShort: PaymentRequired? = dec("{\"reason\":\"insufficient_credits\",\"needed\":5,\"balance\":2,\"shortfall\":3}")
 check("a plain insufficient body is unchanged", plainShort?.effectiveReason == .insufficientCredits)
 
+// ── THE NULL-BALANCE PATH MUST RECOVER CLEANLY ─────────────────────────────
+// Unknown is allowed to be optimistic ONLY because this recovers: the card
+// quotes, the user taps, the server says short, and the card becomes Get
+// credits with the words still kept and no second charge attempt.
+struct Attempt: Equatable { var words: String; var key: String }
+var attempts: [Attempt] = []
+var keptWords: String? = "make the captions punchier"
+var keptKey = "K-orig"
+var keptDispatched = false
+var cardReason: PaymentRequired.Reason? = nil
+
+func tapUseCredits() {                       // mirrors resendKeptReedit
+    guard keptWords != nil, !keptDispatched else { return }
+    attempts.append(Attempt(words: keptWords!, key: keptKey))
+}
+func serverAnswers(_ body: String) {
+    if let pr: PaymentRequired = dec(body) { cardReason = pr.effectiveReason }
+}
+
+// 1. Unknown balance: the card quotes.
+let optimistic: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5}")
+cardReason = optimistic?.effectiveReason
+check("with an unknown balance the card quotes a price", cardReason == .capReached)
+
+// 2. The user taps. Exactly one attempt, under the ORIGINAL key.
+tapUseCredits()
+check("tapping sends ONE attempt", attempts.count == 1)
+check("...under the key minted when the words were queued", attempts.first?.key == "K-orig")
+
+// 3. The server answers insufficient.
+serverAnswers("{\"reason\":\"insufficient_credits\",\"needed\":5,\"balance\":2,\"shortfall\":3}")
+check("the card becomes Get credits", cardReason == .insufficientCredits)
+check("...and the words are STILL kept", keptWords == "make the captions punchier")
+
+// 4. No second charge attempt: tapping again re-uses the same key, and once
+//    dispatched the path is closed entirely.
+tapUseCredits()
+check("a second tap does not mint a new key",
+      Set(attempts.map { $0.key }) == ["K-orig"])
+keptDispatched = true
+tapUseCredits()
+check("once dispatched, no further attempt is made", attempts.count == 2)
+
+// 5. After topping up, the retry is still the same intent.
+keptDispatched = false
+tapUseCredits()
+check("the post-top-up retry carries the original key too", attempts.last?.key == "K-orig")
+check("...so the server sees ONE intent throughout",
+      Set(attempts.map { $0.key }).count == 1)
+
+
 
 
 // ── 7. 410 expiry carries a fresh quote ──────────────────────────────────────
@@ -335,7 +386,7 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
   [ "$n" = 0 ] && echo "  ok   — blockedBody delegates; the reasons are rendered in ONE place" \
                || ufail "blockedBody switches on reason itself ($n branches) — a second payment UI"
   # No client-side price. Every figure on that card is the server's.
-  if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -qE '[0-9]+ credits'; then
+  if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -vE '^[[:space:]]*(//|///)' | grep -qE '[0-9]+ credits'; then
     ufail "a hardcoded credit figure is on the payment card — it must come from the 402 body"
   else
     echo "  ok   — no hardcoded credit figure on the payment card"

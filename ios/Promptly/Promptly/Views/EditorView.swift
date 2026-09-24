@@ -865,7 +865,8 @@ struct EditorView: View {
                             onMakeAnother: { tapAddVideo() },
                             onCancel: cancelClosure(for: message),
                             onAskResolved: askResolvedClosure(for: message),
-                            onClarificationChoice: clarificationChoiceClosure()
+                            onClarificationChoice: clarificationChoiceClosure(),
+                            onPaymentResolved: { resendKeptReedit() }
                         )
                         .id(message.id)
                     }
@@ -3088,6 +3089,19 @@ struct EditorView: View {
         messages.removeAll { $0.id == q.messageId }
         Analytics.track("reedit_queue_released", props: [:], durable: true)
         sendReedit(changeRequest: q.request, originalJobId: q.originalJobId)
+    }
+
+    /// ACCEPTING A QUOTED PRICE. Re-sends the kept words under the key minted
+    /// when they were first queued, so however many times this path is taken
+    /// the server sees ONE intent and charges once. If the balance is actually
+    /// short, the 402 comes back and the card becomes Get credits — with the
+    /// words still kept, because `claim()` is not called here.
+    private func resendKeptReedit() {
+        guard let r = PendingProReedit.shared.record, !r.dispatched else { return }
+        Analytics.track("reedit_price_accepted", props: [:], durable: true)
+        sendReedit(changeRequest: r.request,
+                   originalJobId: r.originalJobId,
+                   idempotencyKey: r.idempotencyKey)
     }
 
     private func sendReedit(changeRequest: String, originalJobId: String,

@@ -329,7 +329,12 @@ struct PaymentRequiredCard: View {
                 }
                 if let price = payment.nextPrice {
                     line("This one costs \(price) credits.")
-                    primary("Use \(price) credits") { AppState.shared.showCredits = true }
+                    // SPEND, DO NOT SHOP. The label says "Use 5 credits", so
+                    // the tap must SEND the change — it was opening the top-up
+                    // screen, which is a different promise from the one the
+                    // button makes. If the balance turns out to be short the
+                    // server says so and this card becomes Get credits.
+                    primary("Use \(price) credits") { onResolved() }
                 } else {
                     // No price quoted: do not invent one.
                     primary("Get credits") { AppState.shared.showCredits = true }

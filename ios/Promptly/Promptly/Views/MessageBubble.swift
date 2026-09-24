@@ -53,6 +53,10 @@ struct MessageBubble: View {
     /// travels as the user's next message on the same root, exactly as a typed
     /// reply does — one rail, not two.
     var onClarificationChoice: ((String, String) -> Void)? = nil
+    /// The user accepted a quoted price. Re-sends the SAME intent under the
+    /// SAME idempotency key — never a second charge, even if the first
+    /// somehow registered.
+    var onPaymentResolved: (() -> Void)? = nil
 
     /// SwiftUI-rendered markdown view for chat text.
     ///
@@ -540,7 +544,8 @@ struct MessageBubble: View {
             } else if let pr = message.payment {
                 // THE SHARED CARD, in the thread where the request was made.
                 // Not a modal: the user should see which change was blocked.
-                PaymentRequiredCard(payment: pr, subject: String(localized: "This change"))
+                PaymentRequiredCard(payment: pr, subject: String(localized: "This change"),
+                                    onResolved: { onPaymentResolved?() })
                     .padding(.top, 8 * k)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             } else if message.jobStatus == "needs_input", let c = message.clarification {
