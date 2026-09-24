@@ -3954,6 +3954,15 @@ struct EditorView: View {
                         // double-close is a no-op by construction.
                         defer {
                             UploadTiming.meta(video.id.uuidString, "conn", ReachabilityMonitor.currentConnectionType)
+                            // BYTES, OR THERE IS NO MB/s. The acceleration
+                            // comparison is a throughput question, and throughput
+                            // needs a numerator. The dark call site set this; the
+                            // defer did not, so the first verified row came back
+                            // with every endpoint field populated and no size at
+                            // all — timings that cannot be turned into a rate.
+                            UploadTiming.meta(video.id.uuidString, "size_mb", (video.fileUrl.flatMap {
+                                (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.size] as? Int64
+                            }).map { (Double($0) / 1_048_576.0 * 10).rounded() / 10 } ?? 0)
                             UploadTiming.finish(video.id.uuidString, outcome: "dispatched")
                         }
                         if let acted = await chatActRouterURLImmediate(video: video, vibe: vibe, msgId: msgId) {
