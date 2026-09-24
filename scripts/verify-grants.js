@@ -99,6 +99,53 @@ function findGrants(node, path = '', out = []) {
   return out;
 }
 
+// ── WHERE THE GRANTS ACTUALLY LIVE ──────────────────────────────────────────
+// Zac's run settled it: RC product objects carry NO grant fields, so walking a
+// product for a currency-grant shape can only ever return nothing — which is
+// why the old script's "NONE FOUND on every row" was a fact about the payload.
+// The configuration lives on the VIRTUAL CURRENCY, so that is what this reads.
+async function currencyConfig() {
+  console.log('\n── VIRTUAL CURRENCY CONFIG ─────────────────────────────────');
+  const r = await get('/virtual_currencies', { raw: true });
+  if (r.status >= 300) {
+    console.log(`  GET /virtual_currencies -> HTTP ${r.status}: ${String(r.body).slice(0, 200)}`);
+    console.log('  (a non-200 is NOT "no currencies" — it is this read failing)');
+    return null;
+  }
+  const items = (r.json && (r.json.items || r.json.virtual_currencies)) || [];
+  if (!items.length) {
+    console.log('  no virtual currencies on this project. Top-level keys: '
+      + JSON.stringify(Object.keys(r.json || {})));
+    return null;
+  }
+  for (const vc of items) {
+    console.log(`  ${vc.code || vc.id}  name=${JSON.stringify(vc.name || '')}`);
+    const grants = findGrants(vc);
+    if (grants.length) {
+      for (const g of grants) console.log(`      grant: ${g.amount} ${g.code}  (at ${g.path})`);
+    } else {
+      // The keys are printed rather than "no grants" asserted — the whole
+      // reason this script was wrong the first time.
+      console.log(`      no grant-shaped node. keys: ${JSON.stringify(Object.keys(vc))}`);
+    }
+  }
+  return items;
+}
+
+// ── TRANSACTIONS: PROBE, DO NOT GUESS ───────────────────────────────────────
+// The first path returned 405 Method Not Allowed, which says the resource
+// exists and the verb is wrong — NOT that there are no transactions. Guessing
+// a second path and reporting its miss as a result is exactly how three
+// invented key names each got recorded as "measured, empty". So this tries a
+// short list and REPORTS WHAT EACH ONE ANSWERED, and a 405 or 404 is printed
+// as a probe result rather than folded into the history.
+const TX_PROBES = [
+  ['GET',  '/customers/%s/virtual_currencies/transactions?limit=10'],
+  ['GET',  '/customers/%s/virtual_currency_transactions?limit=10'],
+  ['GET',  '/customers/%s/transactions?limit=10'],
+  ['POST', '/customers/%s/virtual_currencies/transactions/list'],
+];
+
 async function productTable() {
   // THE STORE LIVES ON THE APP. Resolve it once rather than guessing per row.
   let apps = {};
@@ -207,14 +254,41 @@ async function subscriberReadback() {
   if (!url || !key) { console.log('\n  (skipping subscriber readback: no Supabase service env)'); return 0; }
   const db = createClient(url, key);
 
-  const { data, error } = await db
+  // THE COMP FILTER WAS NOT ENOUGH AND ZAC'S RUN PROVED IT. Two of the three
+  // "active paid subscribers" it picked were his own internal accounts: pro
+  // until 2030, comp_pro FALSE, and NO rc_product_id. A comp flag is one way
+  // an account can be non-paying; a hand-set tier with no RevenueCat customer
+  // behind it is another, and it looks identical in the profiles row.
+  //
+  // So the test is now POSITIVE — is there a RevenueCat product on this row —
+  // rather than a list of the ways it might be fake. An internal-domain
+  // exclusion rides along because a staff account can also hold a real
+  // product and still not be a customer.
+  const INTERNAL = ['@usepromptly.app', '@promptly.video'];
+  const { data: all, error } = await db
     .from('profiles')
     .select('id, tier, pro_until, rc_product_id, comp_pro')
     .in('tier', ['pro', 'max'])
-    .eq('comp_pro', false)               // a comped account proves nothing about grants
+    .eq('comp_pro', false)
+    .not('rc_product_id', 'is', null)    // NO RC CUSTOMER, NO GRANT TO CHECK
     .gt('pro_until', new Date().toISOString())
     .order('pro_until', { ascending: false })
-    .limit(3);
+    .limit(25);
+  let data = all || [];
+  if (data.length) {
+    const { data: users } = await db.auth.admin.listUsers({ perPage: 200 }).catch(() => ({ data: null }));
+    const byId = new Map((users?.users || []).map((u) => [u.id, u.email || '']));
+    const before = data.length;
+    data = data.filter((p) => {
+      const em = String(byId.get(p.id) || '').toLowerCase();
+      return !INTERNAL.some((d) => em.endsWith(d));
+    });
+    if (before !== data.length) {
+      console.log(`\n  (excluded ${before - data.length} internal-domain account(s) — `
+        + 'a staff row is not evidence about a paying customer)');
+    }
+    data = data.slice(0, 3);
+  }
   if (error) { console.log('\n  subscriber select FAILED:', error.message); return 1; }
   if (!data || !data.length) { console.log('\n  NO ACTIVE PAID SUBSCRIBERS FOUND to read.'); return 1; }
 
@@ -236,13 +310,23 @@ async function subscriberReadback() {
     // The transaction history is what says WHERE the credits came from. The
     // path is not one I have observed returning, so its status is printed
     // rather than its absence being read as "no transactions".
-    const tx = await get(
-      `/customers/${encodeURIComponent(p.id)}/virtual_currencies/transactions?limit=10`,
-      { raw: true });
+    let tx = null;
+    for (const [method, tpl] of TX_PROBES) {
+      if (method !== 'GET') continue;      // only GET is safe in a read-only script
+      const path = tpl.replace('%s', encodeURIComponent(p.id));
+      const r = await get(path, { raw: true });
+      console.log(`    probe ${method} ${path.split('?')[0]} -> HTTP ${r.status}`);
+      if (r.status < 300) { tx = r; break; }
+    }
+    if (!tx) {
+      console.log('    transactions: NO PROBE RETURNED 200. That is a fact about the '
+        + 'PATH, not about the account — none of these reads saw a history, and');
+      console.log('    "no transactions" is NOT what this observed. The balance above '
+        + 'is the reliable number.');
+      tx = { status: 599, json: null, body: '' };
+    }
     if (tx.status >= 300) {
-      console.log(`    transactions: HTTP ${tx.status} on GET .../transactions — `
-        + `${String(tx.body).slice(0, 200)}`);
-      console.log('    (a non-200 here is NOT "no transactions" — it is this read failing)');
+      // kept for shape; the probe loop already reported each status
     } else {
       const txs = (tx.json && (tx.json.items || tx.json.transactions)) || [];
       if (!txs.length) console.log('    transactions: NONE — no grant has ever landed');
@@ -263,6 +347,7 @@ async function subscriberReadback() {
 
 (async () => {
   const a = await productTable();
+  await currencyConfig();
   const b = await subscriberReadback();
   process.exit(a || b ? 1 : 0);
 })().catch((e) => { console.error('unhandled:', (e && e.stack) || e); process.exit(1); });
