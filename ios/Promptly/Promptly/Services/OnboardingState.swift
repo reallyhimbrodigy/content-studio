@@ -47,6 +47,10 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var creditsEnabled = false
     /// Server-controlled, default OFF. The 1080p HEVC source shrink.
     @Published private(set) var uploadShrinkEnabled = false
+    /// The first-run suggestion strings, served so wording can be A/B tested
+    /// without a release. EMPTY means "no server opinion" — VibeSuggestions
+    /// then uses its baked-in fallback. Never rendered directly.
+    @Published private(set) var suggestionStrings: [String] = []
     /// Monthly credit allowance for the CURRENT tier, served alongside the
     /// credits flag. nil while the meter is dark or the server has not said —
     /// and nil is what keeps the paywall honest: `headlineVideoClaim` falls back
@@ -270,6 +274,21 @@ final class OnboardingState: ObservableObject {
             // arms per-account first, then by percentage, measured against
             // control on the upload_timing spans. Default OFF: an absent field
             // must never read as enabled.
+            // SUGGESTIONS. Strings only, trimmed, empties dropped, capped —
+            // this is display text from the network and it renders on the
+            // first screen a new user ever sees. A malformed entry must cost
+            // that entry, never the screen.
+            if let raw = obj?["suggestions"] as? [Any] {
+                let cleaned = raw.compactMap { $0 as? String }
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty && $0.count <= 80 }
+                suggestionStrings = Array(cleaned.prefix(4))
+            } else {
+                // Absent field = no opinion. Do NOT clear a list already held;
+                // a single malformed payload would otherwise wipe the served
+                // wording mid-session and swap the screen under the user.
+                if obj == nil { /* unreadable config: keep what we have */ }
+            }
             uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"
             creditsEnabled = (obj?["credits_metering"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int

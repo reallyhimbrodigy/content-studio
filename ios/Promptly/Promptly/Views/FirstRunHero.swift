@@ -32,9 +32,32 @@ import SwiftUI
 /// state, and a chip inserts text. Everything here is a sentence someone
 /// would send.
 enum VibeSuggestions {
+    /// THE BAKED-IN FALLBACK. What ships in the binary and what every user
+    /// sees until the server says otherwise — including offline, first launch
+    /// before any config lands, and any future outage. Localized, because the
+    /// list that shipped before this was English in every language.
+    static let fallback: [String] = [
+        String(localized: "Fast cuts, big captions"),
+        String(localized: "Clean and professional"),
+    ]
+
+    /// What to show. Server list when there is one, fallback otherwise.
+    ///
+    /// SERVER-DRIVEN SO THE WORDING CAN BE TESTED WITHOUT A RELEASE. Measured
+    /// 2026-09-24: the top preset by a wide margin is "Viral engaging video" at
+    /// 276 users in 30 days — a string this app has not contained since build
+    /// 240. It survives only in builds still in the field, which is also the
+    /// limit of this change: it can only reach users who are ON a build that
+    /// reads the server list. 11.3% of weekly actives are below build 250 and
+    /// will keep sending whatever their binary holds.
+    ///
+    /// NEVER EMPTY. A server that answers with [] must not blank the empty
+    /// state — an empty first-run screen offers a new user nothing to do at
+    /// all. An empty or unreadable list falls back rather than renders.
+    @MainActor
     static var approved: [String] {
-        [String(localized: "Fast cuts, big captions"),
-         String(localized: "Clean and professional")]
+        let served = OnboardingState.shared.suggestionStrings
+        return served.isEmpty ? fallback : served
     }
 }
 

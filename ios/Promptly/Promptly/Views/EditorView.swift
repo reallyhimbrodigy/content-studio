@@ -1324,29 +1324,7 @@ struct EditorView: View {
     /// guide users toward different render styles.
     /// The same list the empty state shows — see `VibeSuggestions`. Not a
     /// second list.
-    private static var featuredVibes: [String] { VibeSuggestions.approved }
 
-    /// Re-edit suggestion chips. Shown above the composer when a
-    /// re-edit session is active and the input is empty. Each chip
-    /// maps to a pattern the worker's plan-diff classifier reliably
-    /// handles — split across the four ranges:
-    ///   - Directional reshape ("Pace the middle faster", "Make the
-    ///     captions punchier") → classifier upgrades to
-    ///     guided_redraft, the new mode that keeps your prior plan
-    ///     as soft default while reshaping the targeted region.
-    ///   - Surgical ("Remove the second cutaway") → tweak mode,
-    ///     touches only the named element.
-    ///   - Add ("Add a zoom on the payoff") → tweak mode, single op.
-    ///   - Total recast ("Redo it completely different") →
-    ///     reinterpret mode.
-    /// Picked for breadth: a user opening re-edit with no idea what
-    /// to ask gets one example from each category.
-    private static let reeditSuggestions: [String] = [
-        "Pace the middle faster",
-        "Make the captions punchier",
-        "Add a zoom on the payoff",
-        "Remove the second cutaway"
-    ]
 
     /// Horizontally-scrollable chip row that surfaces the featured
     /// vibes above the composer. Tap a chip to insert its text into
@@ -2750,8 +2728,8 @@ struct EditorView: View {
 
     // Old vibeSuggestions 12-item array removed in build 172 — the
     // ghost-text rotation + swipe-right that consumed it was replaced
-    // with the visible vibeChipRow above the input. Featured vibes
-    // now live next to that view (see `featuredVibes` static).
+    // with the visible vibeChipRow above the input, and that row was
+    // deleted too. The one surviving list is VibeSuggestions.approved.
 
     // MARK: - Per-message context menu (Regenerate / Edit)
     //
