@@ -1,14 +1,14 @@
 {
- "_source": "credit_prices.py in promptly-gpu-worker lane/agentic-builder2 \u2014 generated, do not hand-edit; smoke_credit_prices asserts they agree",
+ "_source": "credit_prices.py in promptly-gpu-worker lane/agentic-builder2 — generated, do not hand-edit; smoke_credit_prices asserts they agree",
  "_chatcut_source": "https://chatcut.io/docs/credits-policy",
  "_read_on": "2026-09-23",
  "our_per_theirs": 10,
  "image_floor": 5,
  "unpriced": {
   "avatar": "no rate published on the credits-policy page at all",
-  "image": "VARIABLE \u2014 \"By model, output quality, resolution, and image count\"",
-  "motion_graphics": "VARIABLE \u2014 \"Based on the AI model usage required\"",
-  "agent_messages": "VARIABLE \u2014 \"Model, input and output tokens, cached context, conversation length, and project context\"",
+  "image": "VARIABLE — \"By model, output quality, resolution, and image count\"",
+  "motion_graphics": "VARIABLE — \"Based on the AI model usage required\"",
+  "agent_messages": "VARIABLE — \"Model, input and output tokens, cached context, conversation length, and project context\"",
   "top_up": "top-ups exist (Avatar -> Credits history -> Buy Credits) but no price per credit is published on any docs page"
  },
  "rates": [
@@ -138,5 +138,12 @@
    "their_words": "Usually 0.28-0.80 credits per 1,000 characters",
    "our_per_unit": 8
   }
- ]
+ ],
+ "our_prices": {
+  "reedit_post_cap": {
+   "credits": 5,
+   "unit": "credits",
+   "why": "ruled by Zac 2026-09-24, pending override"
+  }
+ }
 }
