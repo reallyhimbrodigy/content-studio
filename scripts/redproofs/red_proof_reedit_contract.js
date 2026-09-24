@@ -32,8 +32,8 @@ const M = [
   // AN UNREAD BALANCE RENDERS AS ZERO. The obvious spelling, and the one I
   // wrote first: Number(null) is 0 and Number.isFinite(0) is true.
   ['an_unread_balance_renders_as_zero', SRC,
-   "    balance: (balance == null || !Number.isFinite(Number(balance)))\n      ? null : Number(balance),",
-   "    balance: Number.isFinite(Number(balance)) ? Number(balance) : null,",
+   "    balance: (bal == null || !Number.isFinite(Number(bal)))\n      ? null : Number(bal),",
+   "    balance: Number.isFinite(Number(bal)) ? Number(bal) : null,",
    'C6'],
   // THE SERVER STARTS WRITING THE COPY — a second authority beside the client.
   ['the_server_writes_the_copy', SRC,
@@ -56,6 +56,46 @@ const M = [
   ['the_table_price_drifts', TBL,
    '"credits": 5', '"credits": 3',
    'C4'],
+  // ── PRECEDENCE ────────────────────────────────────────────────────────
+  // THE PRECEDENCE INVERTS: someone who cannot pay is told "Use 5 credits".
+  ['cannot_pay_is_told_cap_reached', SRC,
+   "  const short = bal !== null && Number.isFinite(p.price) && bal < p.price;",
+   "  const short = false;",
+   // P2, not P3: the reachability leg asserts insufficient_credits can be
+   // produced at all, and it reads before the precedence band does.
+   'P2'],
+  // AN UNREAD BALANCE IS TREATED AS ZERO — a user with plenty is sent to a
+  // top-up they do not need, on a number we never read.
+  ['an_unread_balance_counts_as_short', SRC,
+   "  const bal = (balance == null || !Number.isFinite(Number(balance)))\n    ? null : Number(balance);",
+   "  const bal = Number(balance) || 0;",
+   // L3, not P5: with an unread balance counted as 0, EVERY past-the-cap
+   // decision becomes insufficient and stops allowing — the pre-existing
+   // "past the cap still allows" leg is the first to see it.
+   'L3'],
+  // EXACTLY AT THE PRICE IS REFUSED — off by one, and it refuses a user who
+  // can afford it.
+  ['exactly_at_the_price_is_refused', SRC,
+   "bal < p.price;",
+   "bal <= p.price;",
+   'P3'],
+  // pro_required LOSES ITS PRECEDENCE: a free user is told their balance is
+  // short instead of that they need Pro.
+  ['free_is_told_about_a_balance', SRC,
+   "  if (!PAID_TIERS.has(t)) {\n    return { allow: false, status: 402, error: 'payment_required',\n             reason: 'pro_required', actions: ['upgrade'] };\n  }",
+   "  if (!PAID_TIERS.has(t) && used === 0) {\n    return { allow: false, status: 402, error: 'payment_required',\n             reason: 'pro_required', actions: ['upgrade'] };\n  }",
+   'P4'],
+  // A FOURTH REASON APPEARS without a client that can render it.
+  ['a_fourth_reason_appears', SRC,
+   "const REASONS = ['pro_required', 'cap_reached', 'insufficient_credits'];",
+   "const REASONS = ['pro_required', 'cap_reached', 'insufficient_credits', 'try_later'];",
+   'P1'],
+  // THE BODY RE-DECIDES PRECEDENCE from its own argument, so the reason and
+  // the fields it ships with can disagree.
+  ['the_body_re_decides_precedence', SRC,
+   "  const bal = d.balance != null ? d.balance : balance;",
+   "  const bal = balance != null ? balance : d.balance;",
+   'P6'],
 ];
 
 const run = () => { try { const o = cp.execFileSync(process.execPath, [SMOKE], { encoding: 'utf8', stdio: ['ignore','pipe','pipe'] }); return { code: 0, out: o }; } catch (e) { return { code: e.status, out: (e.stdout||'') + (e.stderr||'') }; } };
