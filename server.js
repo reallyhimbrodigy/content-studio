@@ -7144,6 +7144,14 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
 
+        // HOISTED, AND DELIBERATELY ONE DEFINITION. The debit floor below now
+        // needs the tier, and the original `const _creditTier` sat ~100 lines
+        // further down — so my first version used it before it was defined,
+        // which is the use-before-define this repo has already paid for twice.
+        // Deriving it twice instead would be worse: two expressions computing
+        // the same name is how they drift.
+        const _creditTier = _credits.creditTierFor(entitlement.row || {});
+
         // Wall tier (N+1). Knob OFF (default) → effectiveTier makes this
         // byte-for-byte today: paid/active-trial → unlimited, none → 3/day free.
         // Knob ON → paid unlimited, trial 3/day + 1 concurrent, none → the wall.
@@ -7168,8 +7176,14 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // version — see debitApplies().
         const _debitBuild = _freeCredits.parseBuild(clientAppVersion(req));
         const _debitFloor = parseInt(process.env.FREE_CREDITS_MIN_BUILD || '', 10);
+        // PAID USERS ARE NOT GATED ON THE CLIENT-CLAIM BUILD. Their balance
+        // comes from RevenueCat, not from a device claim the binary has to
+        // make, so the clamp that protects free users on a caller-less build
+        // was simply making paying customers render free. 106 of them across
+        // 12 users since metering armed. See effectiveDebitFloor.
+        const _debitIsPaid = _creditTier === 'pro' || _creditTier === 'max';
         const _debitApplies = _freeCredits.debitApplies(
-          { build: _debitBuild, minBuild: _debitFloor });
+          { build: _debitBuild, minBuild: _debitFloor, isPaid: _debitIsPaid });
         // ARMED-BUT-INERT IS THE FAILURE MODE THIS MAKES VISIBLE.
         // CREDITS_DEBIT_ENABLED=1 with FREE_CREDITS_MIN_BUILD unset produces a
         // system that reports `debit_armed: true` at /healthz and debits
@@ -7190,7 +7204,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
               // The EFFECTIVE floor, not the env one. Reporting `floor=245`
               // while refusing build 246 reads as a contradiction and sends the
               // reader to the wrong variable.
-              ? `build=${_debitBuild} floor=${_freeCredits.effectiveDebitFloor(_debitFloor)}`
+              ? `build=${_debitBuild} floor=${_freeCredits.effectiveDebitFloor(_debitFloor, { isPaid: _debitIsPaid })}`
                 + ` (env=${_debitFloor} client=${_freeCredits.CLIENT_CLAIM_MIN_BUILD})`
               : 'CREDITS_DEBIT_ENABLED=1 but FREE_CREDITS_MIN_BUILD unset — '
                 + 'NOBODY is being debited');
@@ -7238,7 +7252,6 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         //
         // videos_limit is ruled SEPARATELY and ships now — it is the promise, in
         // the unit the user was sold. TIER_ALLOWANCE is the mechanism.
-        const _creditTier = _credits.creditTierFor(entitlement.row || {});
         const creditsAreTheLimiter = CREDITS_DEBIT_ENABLED && _debitApplies
           && _credits.isConfigured() && _credits.shouldDebit({ mode: 'full' })
           && _credits.tierIsMetered(_creditTier)
