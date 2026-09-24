@@ -530,6 +530,13 @@ struct MessageBubble: View {
                 }
                 .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if message.jobStatus == "failed", message.isRetryable, message.reeditFailureText != nil {
+                // TWO FAILURES, ONE OF WHICH TOUCHES MONEY. The classifier
+                // decides what may be claimed; this only renders it.
+                Text(verbatim: message.reeditFailureText ?? "")
+                    .font(.system(size: 13 * k))
+                    .foregroundColor(.white.opacity(0.65))
+                    .padding(.top, 6 * k)
             } else if let pr = message.payment {
                 // THE SHARED CARD, in the thread where the request was made.
                 // Not a modal: the user should see which change was blocked.

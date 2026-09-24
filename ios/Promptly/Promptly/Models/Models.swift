@@ -97,6 +97,19 @@ struct ChatMessage: Identifiable {
     /// on the message so the card sits where the request was, not in a modal
     /// over the thread.
     var payment: PaymentRequired?
+    /// True once the request actually reached the server — the difference
+    /// between "never sent" and "ran and failed", which is the difference
+    /// between no money and possibly some.
+    var reachedServer: Bool = false
+
+    /// What this failure may say about money. Derived, never stored, so it
+    /// cannot go stale against the refund it is describing.
+    var reeditFailureText: String? {
+        guard jobStatus == "failed" else { return nil }
+        return ReeditFailureCopy
+            .classify(reachedServer: reachedServer, creditsRefunded: creditsRefunded)
+            .text
+    }
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?

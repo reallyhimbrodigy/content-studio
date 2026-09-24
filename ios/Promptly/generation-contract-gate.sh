@@ -135,6 +135,43 @@ check("a zero ETA also yields no wait text", QueueState(position: 3, etaSeconds:
 check("a real ETA does render", QueueState(position: 3, etaSeconds: 300).waitText != nil)
 check("position always renders", QueueState(position: 3, etaSeconds: nil).positionText.contains("3"))
 
+// ── THE UPGRADE BUTTON, AND WHAT A FAILURE MAY CLAIM ────────────────────────
+check("a MAX user is offered no upgrade (a button to nowhere)",
+      TierOffer.upgradeLabel(isPro: true, isMax: true) == nil)
+check("a PRO user is told which tier they would be upgrading TO",
+      TierOffer.upgradeLabel(isPro: true, isMax: false) == "Upgrade to Max")
+check("...and it names Max, not a bare \"Upgrade\"",
+      TierOffer.upgradeLabel(isPro: true, isMax: false)?.contains("Max") == true)
+
+// THE MONEY CLAIM. "You weren't charged" may appear ONLY with a confirmed
+// refund — anywhere else it is a reassurance that can turn out to be false.
+let neverSent = ReeditFailureCopy.classify(reachedServer: false, creditsRefunded: nil)
+let ranUnknown = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: nil)
+let ranRefunded = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: 5)
+let ranCharged = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: nil, chargeStands: true)
+
+check("never sent makes NO money claim", neverSent.claimsNotCharged == false)
+check("...and says it was not sent", neverSent.text.contains("didn't get sent"))
+check("ran-and-failed with an UNCONFIRMED refund makes no money claim",
+      ranUnknown.claimsNotCharged == false)
+check("...and does not say 'weren't charged'", ranUnknown.text.contains("weren't charged") == false)
+check("a CONFIRMED refund is the only case that says 'weren't charged'",
+      ranRefunded.claimsNotCharged == true && ranRefunded.text.contains("weren't charged"))
+check("a standing charge says so plainly", ranCharged.text.contains("credits were used"))
+check("...and never claims they were not charged", ranCharged.claimsNotCharged == false)
+// Exhaustive: across every input, the claim implies a confirmed refund.
+var claimedWithoutRefund = 0
+for reached in [true, false] {
+  for refund in [nil, 0, 5] as [Int?] {
+    for stands in [true, false] {
+      let c = ReeditFailureCopy.classify(reachedServer: reached, creditsRefunded: refund, chargeStands: stands)
+      if c.claimsNotCharged, !(refund ?? 0 > 0) { claimedWithoutRefund += 1 }
+    }
+  }
+}
+check("across ALL inputs, 'not charged' never appears without a confirmed refund",
+      claimedWithoutRefund == 0)
+
 // ── 7. 410 expiry carries a fresh quote ──────────────────────────────────────
 let expiredJSON = """
 {"reason":"quote_expired","requote":{"quote_id":"fresh","kind":"ai_video",

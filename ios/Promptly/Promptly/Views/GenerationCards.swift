@@ -258,6 +258,7 @@ struct QuoteCardView: View {
 /// the caller because only it knows. Everything else comes from the server.
 struct PaymentRequiredCard: View {
     @Environment(\.conversionScale) private var k
+    @ObservedObject private var subscription = SubscriptionService.shared
     let payment: PaymentRequired
     let subject: String
     /// Retry the same intent after the user resolves the block. Carries no
@@ -279,10 +280,17 @@ struct PaymentRequiredCard: View {
                 } else {
                     line("Not enough credits")
                 }
-                actions(primary: "Get credits",
-                        primaryAction: { AppState.shared.showCredits = true },
-                        secondary: "Upgrade",
-                        secondaryAction: { AppState.shared.presentPaywall(.manual) })
+                // GET CREDITS IS THE PRIMARY ACTION — it is what they need.
+                // The upgrade sits beside it only when a higher tier EXISTS:
+                // a Max user shown "Upgrade" is given a button to nowhere.
+                if let up = TierOffer.upgradeLabel(isPro: subscription.isPro, isMax: subscription.isMax) {
+                    actions(primary: "Get credits",
+                            primaryAction: { AppState.shared.showCredits = true },
+                            secondary: up,
+                            secondaryAction: { AppState.shared.presentPaywall(.manual) })
+                } else {
+                    primary("Get credits") { AppState.shared.showCredits = true }
+                }
             case .proRequired:
                 line("\(subject) is a Pro feature.")
                 primary("Upgrade") { AppState.shared.presentPaywall(.manual) }

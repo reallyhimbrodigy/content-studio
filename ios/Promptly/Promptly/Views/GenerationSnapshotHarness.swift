@@ -115,7 +115,9 @@ struct GenerationSnapshotHarnessView: View {
         case 26: PaymentRequiredCard(payment: Self.payment(Self.body402Short), subject: "This change")
         case 27: questionThread(retracted: false)
         case 28: questionThread(retracted: true)
-        case 29: reeditRow(status: "failed")
+        case 29: reeditRow(status: "never_sent")
+        case 30: reeditRow(status: "failed_refunded")
+        case 31: reeditRow(status: "failed_charge_stands")
         case 2:  PosedQuoteCard(state: .confirming(Self.quote()))
         case 3:  PosedQuoteCard(state: .blocked(Self.payment("insufficient_credits", needed: 45, balance: 20, shortfall: 25), Self.quote()))
         case 4:  PosedQuoteCard(state: .blocked(Self.payment("pro_required", needed: 45, balance: 0, shortfall: 45), Self.quote()))
@@ -165,11 +167,22 @@ struct GenerationSnapshotHarnessView: View {
                         .font(.system(size: 12)).foregroundColor(.white.opacity(0.55))
                 }
             default:
+                // THE COPY COMES FROM THE CLASSIFIER, not a literal — so the
+                // screenshot shows what the rule produces, and a change to the
+                // rule changes the picture.
+                let copy: ReeditFailureCopy = {
+                    switch status {
+                    case "failed_refunded":      return .classify(reachedServer: true, creditsRefunded: 5)
+                    case "failed_charge_stands": return .classify(reachedServer: true, creditsRefunded: nil, chargeStands: true)
+                    default:                     return .classify(reachedServer: false, creditsRefunded: nil)
+                    }
+                }()
                 rowCard {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(verbatim: "make the captions punchier").foregroundColor(.white.opacity(0.9))
-                        Text(verbatim: "That change didn't get sent. Tap to try it again.")
+                        Text(verbatim: copy.text)
                             .font(.system(size: 12)).foregroundColor(.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -260,7 +273,9 @@ struct GenerationSnapshotHarnessView: View {
         case 26: return "26 · 402 insufficient_credits"
         case 27: return "27 · QUESTION posted under the video"
         case 28: return "28 · QUESTION retracted by a newer change"
-        case 29: return "29 · FAILURE, retryable"
+        case 29: return "29 · NEVER SENT — no money claim"
+        case 30: return "30 · SENT, FAILED, refund CONFIRMED"
+        case 31: return "31 · SENT, FAILED, charge STANDS"
         case 2: return "2 · CONFIRMING"
         case 3: return "3 · 402 insufficient_credits"
         case 4: return "4 · 402 pro_required (free tier)"

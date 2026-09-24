@@ -266,3 +266,74 @@ enum GenerationContract {
     /// plain formatter is the one guaranteed to parse it.
     static func iso(from d: Date) -> String { isoPlain.string(from: d) }
 }
+
+// MARK: - What a refusal or a failure may claim
+
+/// WHICH UPGRADE, IF ANY, TO OFFER BESIDE "Get credits".
+///
+/// Insufficient credits only reaches a PAYING user — a free user cannot
+/// re-edit at all, they get pro_required. So "Upgrade" is either wrong or
+/// ambiguous depending on which tier they already hold:
+///   - Max already holds the top tier. An Upgrade button leads nowhere, and a
+///     button that leads nowhere is worse than no button.
+///   - Pro means Max, so it should say Max rather than making them find out.
+/// Returns nil when there is nothing above them.
+enum TierOffer {
+    static func upgradeLabel(isPro: Bool, isMax: Bool) -> String? {
+        if isMax { return nil }
+        if isPro { return "Upgrade to Max" }
+        return "Upgrade"
+    }
+}
+
+/// WHAT A FAILED CHANGE IS ALLOWED TO SAY ABOUT MONEY.
+///
+/// Two different failures wear one face today, and only one of them touches
+/// money:
+///   - it never reached the server: nothing ran, nothing was charged, and
+///     nothing needs refunding. Saying "you weren't charged" here is true but
+///     beside the point.
+///   - it reached the server and the edit failed: a charge was taken. Whether
+///     it came back is a FACT we either have or do not.
+///
+/// THE RULE: never claim "you weren't charged" until a refund is confirmed —
+/// in the response or on the job row. A reassurance that turns out to be false
+/// is worse than saying nothing, because the user stops checking.
+enum ReeditFailureCopy {
+    case neverSent
+    case failedRefundConfirmed(Int)
+    case failedRefundUnknown
+    case failedChargeStands(Int)
+
+    static func classify(reachedServer: Bool, creditsRefunded: Int?, chargeStands: Bool = false) -> ReeditFailureCopy {
+        guard reachedServer else { return .neverSent }
+        if chargeStands, let n = creditsRefunded, n == 0 { return .failedChargeStands(0) }
+        if let n = creditsRefunded, n > 0 { return .failedRefundConfirmed(n) }
+        if chargeStands { return .failedChargeStands(0) }
+        return .failedRefundUnknown
+    }
+
+    var text: String {
+        switch self {
+        case .neverSent:
+            // No money claim at all: nothing ran.
+            return String(localized: "That change didn't get sent. Tap to try it again.")
+        case .failedRefundConfirmed:
+            return String(localized: "That change didn't work. You weren't charged. Tap to try again.")
+        case .failedRefundUnknown:
+            // We know it ran and failed; we do NOT know the refund landed. Say
+            // what is true and nothing more.
+            return String(localized: "That change didn't work. Tap to try again.")
+        case .failedChargeStands:
+            // Plainly. Hiding this is how someone finds it on a statement.
+            return String(localized: "That change didn't work, and the credits were used. Tap to try again.")
+        }
+    }
+
+    /// Only true when the copy actually contains the reassurance, so a test can
+    /// assert the claim rather than the phrasing.
+    var claimsNotCharged: Bool {
+        if case .failedRefundConfirmed = self { return true }
+        return false
+    }
+}
