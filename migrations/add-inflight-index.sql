@@ -1,0 +1,68 @@
+-- THE IN-FLIGHT COUNT GETS ITS OWN INDEX.
+--
+-- ── WHAT WAS MEASURED (EXPLAIN ANALYZE, 2026-09-24) ───────────────────────
+-- inFlightJobCount() asks a PER-USER question:
+--
+--   SELECT count(*) FROM video_jobs
+--   WHERE user_id = $1 AND demo = false AND status IN ('queued','processing')
+--
+-- and the planner answers it with idx_video_jobs_status_updated — a GLOBAL
+-- status index — then FILTERS on user_id and demo:
+--
+--   Index Scan using idx_video_jobs_status_updated
+--     Index Cond: (status = ANY ('{queued,processing}'))
+--     Filter: ((NOT demo) AND (user_id = ...))
+--   Planning Time: 3.620 ms   Buffers: shared hit=411
+--   Execution Time: 0.833 ms  Buffers: shared hit=3
+--
+-- ON A QUIET DATABASE THAT IS THREE BUFFERS AND IT IS FINE. The cost is not
+-- in the steady state: it scales with the GLOBAL number of in-flight jobs,
+-- not with the asking user's. Every queued job anywhere is a row this scan
+-- walks and discards — so the query gets more expensive exactly when the
+-- system is busiest, and it is on the UPLOAD DOOR, which is the path every
+-- user hits before rendering.
+--
+-- That is the shape of the 2026-09-24 outage window: PATCH /video_jobs went
+-- 64 -> 183 -> 185 per five minutes while origin time went 108ms -> 4,134ms.
+-- This is not a claim that this query caused it; it is one query whose cost
+-- rises with in-flight volume, on the path that spiked, and it is cheap to
+-- make constant.
+--
+-- ── THE FIX: A PARTIAL INDEX THAT IS THE QUESTION ─────────────────────────
+-- Partial on the predicate, so it contains ONLY in-flight non-demo rows —
+-- typically a handful — and user_id is the leading column, so the scan is the
+-- answer rather than a filter over it.
+--
+-- CONCURRENTLY, and it CANNOT RUN INSIDE A TRANSACTION BLOCK. video_jobs is
+-- live; a plain CREATE INDEX takes an ACCESS EXCLUSIVE lock and blocks every
+-- write to it for the duration, which on the upload door means users cannot
+-- start a render. Run this statement on its own.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_jobs_inflight_by_user
+  ON video_jobs (user_id)
+  WHERE demo = false AND status IN ('queued', 'processing');
+
+-- ── WHAT I AM NOT RECOMMENDING, AND WHY ───────────────────────────────────
+-- video_jobs carries SIXTEEN indexes and EIGHT report idx_scan = 0:
+--   idx_video_jobs_source_type, video_jobs_harness_idx,
+--   idx_video_jobs_root_job_id, video_jobs_demo_idx,
+--   video_jobs_user_client_message_id_key,
+--   video_jobs_edit_recipe_present_idx, idx_video_jobs_app_version,
+--   video_jobs_stage_timings_present_idx
+--
+-- Sixteen indexes is real write amplification on a table whose writes spiked
+-- 3x during the incident, and dropping eight is the obvious move.
+--
+-- I AM NOT PROPOSING IT, BECAUSE THE ZERO HAS NO DENOMINATOR. pg_stat_database
+-- reports stats_reset = NULL and video_jobs_pkey has only 4,468 scans — that
+-- is a few HOURS of traffic, consistent with the project restart at ~01:00
+-- UTC today, not months. An index used by a weekly sweep or a monthly report
+-- has had no opportunity to register a single scan in that window.
+--
+-- "A clean zero is guilty until proven innocent" is written into this repo
+-- because four zeros in one day were all reader bugs. Dropping eight indexes
+-- on three hours of statistics would be the fifth.
+--
+-- TO DECIDE IT PROPERLY: leave the counters alone for a full week, then
+-- re-read. Two of them (user_client_message_id_key, demo_idx) are UNIQUE or
+-- correctness-bearing and must be judged on what they GUARANTEE rather than
+-- on how often they are scanned.
