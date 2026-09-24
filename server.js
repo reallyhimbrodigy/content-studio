@@ -2958,7 +2958,14 @@ const server = http.createServer((req, res) => {
         }
         return sendJson(res, 200, { ok: true, flags: out, resolved_by: why });
       } catch (error) {
-        return sendJson(res, error?.statusCode || 500, { ok: false, error: 'upload_flags_failed' });
+        // AN UNAUTHENTICATED CALLER IS NOT A BROKEN ENDPOINT. The catch-all
+        // returned 401 with the body 'upload_flags_failed', which reads as a
+        // server fault to whoever is integrating against it — the same
+        // collapse-every-exit-into-one-message defect just fixed on
+        // /api/upload-url, reintroduced two routes later.
+        const status = error?.statusCode || 500;
+        return sendJson(res, status,
+          { ok: false, error: status === 401 ? 'unauthorized' : 'upload_flags_failed' });
       }
     })();
     return;
