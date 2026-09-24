@@ -13,7 +13,14 @@ const {
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const cloudfront = require('./cloudfront');
 
-const AWS_REGION = process.env.AWS_REGION || 'us-west-1';
+// us-west-2, WHICH IS WHERE THE BUCKET ACTUALLY IS. The default read
+// 'us-west-1' and was wrong from the start — the commit that introduced
+// acceleration says "users far from us-west-2" in its own body, and Zac's
+// bucket read confirms us-west-2. It has never bitten because AWS_REGION is
+// set in the environment, which is exactly the shape of a landmine: correct
+// in production, wrong the first time anyone runs without the env set, and
+// the failure is a signature mismatch on every presigned URL.
+const AWS_REGION = process.env.AWS_REGION || 'us-west-2';
 const S3_BUCKET = process.env.S3_BUCKET_NAME || '';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || '';
 // Transfer Acceleration routes uploads through the nearest CloudFront edge
@@ -26,6 +33,8 @@ let s3Client = null;
 // Separate client instance for presigning URLs that target the accelerate
 // endpoint. The host format is {bucket}.s3-accelerate.amazonaws.com.
 let s3SigningClient = null;
+let s3PlainSigningClient = null;
+let s3AccelSigningClient = null;
 
 if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUCKET) {
   // Opt out of @aws-sdk/client-s3 v3.730+'s default "include CRC32 checksum
@@ -52,6 +61,21 @@ if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUC
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     },
+    ...checksumOptOut,
+  });
+
+  // A PLAIN SIGNER ALONGSIDE THE ACCELERATE ONE. The canary needs BOTH in one
+  // process: which endpoint a user's URL targets is now a per-request
+  // decision, and a module-level boolean cannot express "these three accounts
+  // and nobody else".
+  s3PlainSigningClient = s3Client;
+  s3AccelSigningClient = new S3Client({
+    region: AWS_REGION,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+    useAccelerateEndpoint: true,
     ...checksumOptOut,
   });
 
@@ -204,9 +228,19 @@ async function upload(key, buffer, contentType) {
  * @param {number} expiresIn - Seconds (default 1 hour)
  * @returns {Promise<string>}
  */
-async function createPresignedPutUrl(key, expiresIn = 3600) {
-  if (!s3SigningClient) throw new Error('S3 client not configured');
-  return getSignedUrl(s3SigningClient, new PutObjectCommand({
+// `accelerate` is a TRISTATE and the third state is the point: undefined means
+// "whatever the process default is", true and false are the canary deciding
+// per user. Collapsing it to a boolean would make "not specified" mean "off"
+// and silently un-accelerate every caller that has not been updated.
+function signerFor(accelerate) {
+  if (accelerate === undefined) return s3SigningClient;
+  return accelerate ? s3AccelSigningClient : s3PlainSigningClient;
+}
+
+async function createPresignedPutUrl(key, expiresIn = 3600, { accelerate } = {}) {
+  const signer = signerFor(accelerate);
+  if (!signer) throw new Error('S3 client not configured');
+  return getSignedUrl(signer, new PutObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   }), { expiresIn });
@@ -223,8 +257,13 @@ async function createPresignedPutUrl(key, expiresIn = 3600) {
  * @param {number} expiresIn - Seconds (default 1 hour)
  * @returns {Promise<{uploadId: string, partUrls: string[]}>}
  */
-async function initMultipartUpload(key, partCount, expiresIn = 3600) {
-  if (!s3Client || !s3SigningClient) throw new Error('S3 client not configured');
+async function initMultipartUpload(key, partCount, expiresIn = 3600, { accelerate } = {}) {
+  // THE MULTIPART PATH IS WHERE THE TRAFFIC AND THE FAILURES BOTH ARE. Every
+  // status-0 upload error measured over 7 days (1,464 of 1,520) was on this
+  // stage, so a canary that accelerated only the single PUT would be testing
+  // the path almost nobody takes.
+  const signer = signerFor(accelerate);
+  if (!s3Client || !signer) throw new Error('S3 client not configured');
 
   const initResp = await s3Client.send(new CreateMultipartUploadCommand({
     Bucket: S3_BUCKET,
@@ -240,7 +279,7 @@ async function initMultipartUpload(key, partCount, expiresIn = 3600) {
   const partUrls = [];
   for (let partNumber = 1; partNumber <= partCount; partNumber++) {
     const url = await getSignedUrl(
-      s3SigningClient,
+      signer,
       new UploadPartCommand({
         Bucket: S3_BUCKET,
         Key: key,
@@ -373,6 +412,7 @@ module.exports = {
   getObjectBuffer,
   upload,
   createPresignedPutUrl,
+  signerFor,
   createPresignedGetUrl,
   getPublicUrl,
   initMultipartUpload,
