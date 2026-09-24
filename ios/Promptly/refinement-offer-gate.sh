@@ -372,6 +372,53 @@ retriedOnce = false
 check("a 402 long after confirming is not treated as a race",
       on402Free(secondsSinceConfirm: 120, words: "add captions", key: "K1") == "handed_back")
 
+
+// ── ONE PAYMENT CARD, THREE REASONS ─────────────────────────────────────────
+// reason alone decides the card, the numbers are the server's, and the words
+// are kept on every path so resolving the block costs one tap.
+enum Reason2 { case insufficient, proRequired, dailyCap, unknown }
+struct Card { var text: String; var primary: String; var opensPaywall: Bool }
+func card(_ r: Reason2, needed: Int?, balance: Int?, shortfall: Int?) -> Card {
+    switch r {
+    case .insufficient:
+        let t = (shortfall != nil && balance != nil)
+            ? "You have \(balance!) — \(shortfall!) short" : "Not enough credits"
+        return Card(text: t, primary: "Get credits", opensPaywall: false)
+    case .proRequired:
+        return Card(text: "This change is a Pro feature.", primary: "Upgrade", opensPaywall: true)
+    case .dailyCap:
+        if let n = needed {
+            return Card(text: "That's today's included edits. Next one is \(n) credits.",
+                        primary: "Use \(n) credits", opensPaywall: false)
+        }
+        return Card(text: "That's today's limit — back tomorrow.", primary: "Upgrade for more", opensPaywall: true)
+    case .unknown:
+        return Card(text: "Not available right now.", primary: "Get credits", opensPaywall: false)
+    }
+}
+var keptOn402: [String] = []
+func on402(_ r: Reason2, words: String) -> Card {
+    keptOn402.append(words)                         // kept on EVERY reason
+    return card(r, needed: 12, balance: 20, shortfall: 25)
+}
+
+let cap = on402(.dailyCap, words: "make it shorter")
+check("the CAP shows a price, not a wall", cap.text.contains("12 credits"))
+check("...and its action spends credits", cap.primary == "Use 12 credits")
+check("...and it does NOT push a subscription", cap.opensPaywall == false)
+
+let short = on402(.insufficient, words: "make it shorter")
+check("INSUFFICIENT shows the shortfall as a number", short.text == "You have 20 — 25 short")
+check("...and routes to credits, not the paywall", short.primary == "Get credits" && short.opensPaywall == false)
+
+let pro = on402(.proRequired, words: "make it shorter")
+check("PRO_REQUIRED is the only reason that opens the paywall", pro.opensPaywall == true)
+
+check("the words are kept on every reason", keptOn402.count == 3)
+check("a cap with no price still offers a way forward, never a dead end",
+      card(.dailyCap, needed: nil, balance: nil, shortfall: nil).primary.isEmpty == false)
+check("an unknown reason still offers an action", card(.unknown, needed: nil, balance: nil, shortfall: nil).primary.isEmpty == false)
+
 print(failed == 0 ? "  (behavioural: all correct)" : "  (behavioural: \(failed) wrong)")
 exit(failed == 0 ? 0 : 1)
 SWIFT

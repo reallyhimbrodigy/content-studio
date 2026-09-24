@@ -530,6 +530,12 @@ struct MessageBubble: View {
                 }
                 .padding(.top, 8 * k)
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if let pr = message.payment {
+                // THE SHARED CARD, in the thread where the request was made.
+                // Not a modal: the user should see which change was blocked.
+                PaymentRequiredCard(payment: pr, subject: String(localized: "This change"))
+                    .padding(.top, 8 * k)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             } else if message.jobStatus == "needs_input", let c = message.clarification {
                 // ELSE-IF, not a second `if`. A row cannot hold both shapes, and
                 // rendering two question cards in one bubble would ask the user

@@ -42,7 +42,8 @@ enum PresignResilience {
                 // and will be the same decision in three minutes.
                 return status >= 500 || status == 429
             case .paymentRequired, .insufficientCredits, .freeExportSpent,
-                 .wallRequired, .validationRejected, .reeditInFlight:
+                 .wallRequired, .validationRejected, .reeditInFlight,
+                 .paymentBlocked:
                 // Refusals. Retrying them is pretending.
                 return false
             case .uploadFailed, .deleteFailed, .jobCreationFailed, .structuredFailure:

@@ -93,6 +93,10 @@ struct ChatMessage: Identifiable {
     /// stays delivered; this is an offer, not a gate. Cleared atomically when a
     /// re-edit supersedes it, so a question about v2 never sits under v3.
     var refinement: RefinementOffer?
+    /// A 402 on THIS message, rendered by the shared PaymentRequiredCard. Held
+    /// on the message so the card sits where the request was, not in a modal
+    /// over the thread.
+    var payment: PaymentRequired?
     var renderedVideoUrl: String?       // Progressive MP4 (faststart, CDN-served)
     var hlsManifestUrl: String?         // HLS .m3u8 master — preferred when present
     var thumbnailUrl: String?

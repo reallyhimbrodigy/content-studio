@@ -415,6 +415,21 @@ final class JobDispatchCoordinator {
                 paymentLimit: nil
             ))
 
+        case .paymentBlocked(let pr):
+            // A CARD, NOT A FAILURE MESSAGE. The surface renders
+            // PaymentRequiredCard from these numbers; this terminal exists so
+            // the dispatch stops cleanly and the reason reaches analytics. The
+            // user's words are kept by the caller, never discarded here.
+            return .hard(HardFailure(
+                errorCode: "PAYMENT_REQUIRED_\(pr.rawReason.uppercased())",
+                userMessage: "",
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: true,
+                paymentKind: pr.rawReason,
+                paymentLimit: pr.needed
+            ))
+
         case .uploadURLRefused(let status, let reason):
             // THE UPLOAD DOOR REFUSED. Retryable rather than fatal: the common
             // causes are a 5xx or a rate limit, and the user's clip is still

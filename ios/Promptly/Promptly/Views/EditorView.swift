@@ -3152,6 +3152,25 @@ struct EditorView: View {
                     startSSE(jobId: newJobId, messageId: msgId)
                     persistMessages()
                 }
+            } catch let APIError.paymentBlocked(pr) {
+                // ONE CARD FOR EVERY 402. reason decides what it says; the
+                // numbers are the server's. The words are kept either way, so
+                // resolving the block and tapping once is all it takes.
+                PendingProReedit.shared.keep(request: changeRequest, originalJobId: originalJobId)
+                if let i = idx() {
+                    messages[i].jobStatus = "failed"
+                    messages[i].isRetryable = false
+                    messages[i].error = nil          // the CARD explains it
+                    messages[i].payment = pr
+                    persistMessages()
+                }
+                Analytics.track("reedit_payment_required",
+                                props: ["reason": pr.rawReason], durable: true)
+                // Only pro_required opens the paywall by itself. A cap or a
+                // shortfall shows its price in place — pushing someone to a
+                // subscription screen when they only needed credits is asking
+                // the wrong question.
+                if pr.reason == .proRequired { appState.presentPaywall(.reedit) }
             } catch let APIError.paymentRequired(kind, _, _) where kind == "reedit" {
                 // THE WEBHOOK RACE. StoreKit confirms the entitlement on THIS
                 // device instantly; the server's tier arrives via the

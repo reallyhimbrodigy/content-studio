@@ -279,6 +279,106 @@ struct QuoteCardView: View {
     }
 }
 
+/// THE ONE PAYMENT CARD, wherever a 402 lands.
+///
+/// Quote confirm, re-edit, batch and video send all refuse the same way, so
+/// they all explain it the same way — from the same numbers. A second payment
+/// UI is how two surfaces end up quoting two different prices for one thing.
+///
+/// `subject` is what is being paid for ("AI video", "this change"), supplied by
+/// the caller because only it knows. Everything else comes from the server.
+struct PaymentRequiredCard: View {
+    @Environment(\.conversionScale) private var k
+    let payment: PaymentRequired
+    let subject: String
+    /// Retry the same intent after the user resolves the block. Carries no
+    /// arguments: the caller already holds the words and the key.
+    var onResolved: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10 * k) {
+            switch payment.reason {
+            case .insufficientCredits:
+                // THE SHORTFALL AS A NUMBER, never parsed from prose.
+                if let short = payment.shortfall, let have = payment.balance {
+                    line("You have \(have) — \(short) short")
+                } else {
+                    line("Not enough credits")
+                }
+                actions(primary: "Get credits",
+                        primaryAction: { AppState.shared.showCredits = true },
+                        secondary: "Upgrade",
+                        secondaryAction: { AppState.shared.presentPaywall(.manual) })
+            case .proRequired:
+                line("\(subject) is a Pro feature.")
+                primary("Upgrade") { AppState.shared.presentPaywall(.manual) }
+            case .dailyCap:
+                // THE CAP SHOWS A PRICE, NOT A WALL. They have hit today's
+                // included allowance; the next change is still available, and
+                // saying what it costs is more useful than saying no.
+                if let needed = payment.needed {
+                    line("That's today's included edits. Next one is \(needed) credits.")
+                    primary("Use \(needed) credits") { AppState.shared.showCredits = true }
+                } else {
+                    line("That's today's limit — back tomorrow.")
+                    primary("Upgrade for more") { AppState.shared.presentPaywall(.manual) }
+                }
+            case .none:
+                line("Not available right now.")
+                primary("Get credits") { AppState.shared.showCredits = true }
+            }
+        }
+        .padding(14 * k)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14 * k).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 14 * k).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+    }
+
+    private func line(_ t: String) -> some View {
+        Text(verbatim: t)
+            .font(.system(size: 13 * k))
+            .foregroundColor(.white.opacity(0.75))
+            .monospacedDigit()
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func primary(_ title: String, _ go: @escaping () -> Void) -> some View {
+        Button(action: go) {
+            Text(verbatim: title)
+                .font(.system(size: 15 * k, weight: .semibold))
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11 * k)
+                .background(Capsule().fill(Color.white))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func actions(primary p: String, primaryAction: @escaping () -> Void,
+                         secondary sec: String, secondaryAction: @escaping () -> Void) -> some View {
+        HStack(spacing: 8 * k) {
+            Button(action: primaryAction) {
+                Text(verbatim: p)
+                    .font(.system(size: 14 * k, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10 * k)
+                    .background(Capsule().fill(Color.white))
+            }
+            .buttonStyle(.plain)
+            Button(action: secondaryAction) {
+                Text(verbatim: sec)
+                    .font(.system(size: 14 * k, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.10)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 // MARK: - Batch
 
 /// THE ONE LINE BEFORE SENDING. "10 videos · 100 credits · you have 45" —

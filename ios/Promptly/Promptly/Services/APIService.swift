@@ -102,6 +102,13 @@ class APIService {
     /// bare uploadFailed — a silent block, which is exactly what we must avoid.
     static func throwIfPaymentRequired(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse, http.statusCode == 402 else { return }
+        // THE CONTRACT SHAPE FIRST. A body carrying `reason` is the one every
+        // surface renders from — one card, one set of numbers, no second
+        // payment UI. Only a body WITHOUT a reason falls through to the older
+        // per-route shape, so this cannot change what existing routes throw.
+        if let pr = try? JSONDecoder().decode(PaymentRequired.self, from: data), !pr.rawReason.isEmpty {
+            throw APIError.paymentBlocked(pr)
+        }
         struct LimitBody: Decodable { let kind: String?; let limit: Int?; let message: String?; let error: String? }
         let body = try? JSONDecoder().decode(LimitBody.self, from: data)
         throw APIError.paymentRequired(
@@ -1960,6 +1967,7 @@ extension APIError: CustomNSError {
         case .structuredFailure:    return 1010
         case .validationRejected:   return 1011
         case .uploadURLRefused:     return 1012
+        case .paymentBlocked:       return 1013
         }
     }
 
@@ -2011,6 +2019,11 @@ enum APIError: LocalizedError {
     /// and cellular alike. The server's own `error` string was sitting in
     /// UploadUrlResponse the whole time and nothing read it.
     case uploadURLRefused(status: Int, reason: String)
+    /// A 402 in the CONTRACT's shape — reason / needed / balance / shortfall.
+    /// Carried typed so every surface renders the same card from the same
+    /// numbers; `paymentRequired` above is the older per-route shape and stays
+    /// for the routes that still send it.
+    case paymentBlocked(PaymentRequired)
     /// Render dispatch returned a structured failure shape: error_code +
     /// user_message + the three behavioural flags (retryable,
     /// requires_new_video, requires_vibe_change). Callers branch on the
@@ -2042,6 +2055,10 @@ enum APIError: LocalizedError {
         case .uploadFailed: return "Upload failed"
         case .uploadURLRefused(let status, let reason):
             return reason.isEmpty ? "Upload failed (\(status))" : reason
+        case .paymentBlocked(let pr):
+            // The CARD says what happened; this is only for logs and a last
+            // resort. Never rendered as the user's explanation.
+            return "payment_required: \(pr.rawReason)"
         case .deleteFailed: return "Delete failed"
         case .paymentRequired(_, _, let msg): return msg
         case .wallRequired(let message): return message
