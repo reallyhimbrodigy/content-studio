@@ -2983,22 +2983,44 @@ const server = http.createServer((req, res) => {
 
       const raw = String(process.env.OPS_ALERT_USER_IDS || OWNER_USER_ID_FOR_OPS || '');
       const recipients = raw.split(',').map((x) => x.trim()).filter(Boolean);
-      // ACCEPTED, and the count of who it is going to, so the caller can see
-      // a zero without reading our logs.
-      sendJson(res, 202, { ok: true, recipients: recipients.length });
-
       if (!recipients.length) {
+        sendJson(res, 202, { ok: true, recipients: 0, delivery: 'UNDELIVERED',
+          reason: 'no_recipients' });
         // NOT A SILENT NO-OP. An alert endpoint with nobody to alert is the
         // consumer-with-no-producer shape, and it would report success.
-        console.error('[ops-alert] ACCEPTED BUT UNDELIVERABLE — OPS_ALERT_USER_IDS is '
+        console.error('[ops-alert] UNDELIVERED — OPS_ALERT_USER_IDS is '
           + 'empty and no owner default resolved. Nothing was sent.');
         return;
       }
+
+      // ── DELIVERED / UNDELIVERED / UNKNOWN, AND THE CALLER IS TOLD WHICH ──
+      // The first version 202'd before pushing, so "202, sent=0" was
+      // indistinguishable from success — an alert endpoint whose ack cannot
+      // be read as delivery is an alert endpoint nobody can rely on.
+      //
+      // But blocking on APNs indefinitely is the other failure: a slow Apple
+      // makes the endpoint look broken and the caller retries into a storm.
+      // So the send is AWAITED WITH A DEADLINE and the answer is three-state,
+      // the same discipline as MEASURED/ABSENT/FAILED:
+      //
+      //   DELIVERED    at least one device took it
+      //   UNDELIVERED  we know it reached nobody, and `reason` says why
+      //   UNKNOWN      the deadline passed first — it may or may not land, and
+      //                that is NOT the same as failing
+      //
+      // UNKNOWN is the one that must never be folded into either neighbour:
+      // read as delivered it hides an outage, read as failed it triggers a
+      // retry for an alert that already arrived.
       const push = require('./services/push');
-      for (const userId of recipients) {
-        try {
-          const r = await push.sendToUser(userId, { title, body: line },
-            { type: 'ops-alert' }, { apsExtra: { 'thread-id': threadId } });
+      const DEADLINE_MS = 8000;
+      const results = [];
+      const work = (async () => {
+        for (const userId of recipients) {
+          try {
+            const r = await push.sendToUser(userId, { title, body: line },
+              { type: 'ops-alert' }, { apsExtra: { 'thread-id': threadId } });
+            results.push({ user: String(userId).slice(0, 8), sent: r.sent ?? 0,
+                           total: r.total ?? 0, skipped: r.skipped || null });
           // EVERY SEND IS LOGGED, INCLUDING THE ZEROES. `skipped` is the field
           // that separates "Apple refused" from "this user has no device
           // registered", and those have completely different repairs.
@@ -3010,11 +3032,36 @@ const server = http.createServer((req, res) => {
             console.warn(`[ops-alert] NOTHING DELIVERED to ${String(userId).slice(0, 8)} `
               + `(${r.skipped || 'no reason given'}) — the alert was accepted and nobody saw it.`);
           }
-        } catch (e) {
-          console.error(`[ops-alert] send failed user=${String(userId).slice(0, 8)}: `
-            + (e && e.message ? e.message : e));
+          } catch (e) {
+            results.push({ user: String(userId).slice(0, 8), sent: 0, total: 0,
+                           skipped: `error:${(e && e.message) || 'unknown'}`.slice(0, 80) });
+            console.error(`[ops-alert] send failed user=${String(userId).slice(0, 8)}: `
+              + (e && e.message ? e.message : e));
+          }
         }
-      }
+        return 'done';
+      })();
+      const raced = await Promise.race([
+        work,
+        new Promise((r) => setTimeout(() => r('deadline'), DEADLINE_MS)),
+      ]);
+      const delivered = results.reduce((n, r) => n + (r.sent || 0), 0);
+      const delivery = raced === 'deadline' ? 'UNKNOWN'
+        : (delivered > 0 ? 'DELIVERED' : 'UNDELIVERED');
+      // 200 when the answer is known, 202 when it is not — so a caller that
+      // reads only the status code still cannot mistake UNKNOWN for success.
+      sendJson(res, delivery === 'UNKNOWN' ? 202 : 200, {
+        ok: delivery !== 'UNDELIVERED',
+        delivery,
+        delivered,
+        recipients: recipients.length,
+        detail: results,
+        reason: delivery === 'UNDELIVERED'
+          ? (results.find((r) => r.skipped) || {}).skipped || 'no_devices' : undefined,
+      });
+      console.log(`[ops-alert] ${delivery} delivered=${delivered} `
+        + `recipients=${recipients.length} thread=${threadId} `
+        + `detail=${JSON.stringify(results)}`);
     })();
     return;
   }
