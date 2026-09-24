@@ -95,9 +95,10 @@ struct GenerationSnapshotHarnessView: View {
     static let body402Pro =
         "{\"error\":\"payment_required\",\"reason\":\"pro_required\"," +
         "\"needed\":5,\"balance\":0,\"shortfall\":5,\"actions\":[\"upgrade\"]}"
+    // PER VIDEO, not per day — and every figure is the server's.
     static let body402Cap =
-        "{\"error\":\"payment_required\",\"reason\":\"daily_cap\",\"scope\":\"today's\"," +
-        "\"needed\":5,\"balance\":40,\"shortfall\":0,\"actions\":[\"topup\"]}"
+        "{\"error\":\"payment_required\",\"reason\":\"video_cap\",\"scope\":\"this video's\"," +
+        "\"included\":10,\"used\":10,\"price\":5,\"balance\":40,\"actions\":[\"topup\"]}"
     static let body402Short =
         "{\"error\":\"payment_required\",\"reason\":\"insufficient_credits\"," +
         "\"needed\":5,\"balance\":2,\"shortfall\":3,\"actions\":[\"topup\",\"upgrade\"]}"
@@ -122,7 +123,6 @@ struct GenerationSnapshotHarnessView: View {
         case 28: questionThread(retracted: true)
         case 29: reeditRow(status: "never_sent")
         case 30: reeditRow(status: "failed_refunded")
-        case 31: reeditRow(status: "failed_charge_stands")
         case 2:  PosedQuoteCard(state: .confirming(Self.quote()))
         case 3:  PosedQuoteCard(state: .blocked(Self.payment("insufficient_credits", needed: 45, balance: 20, shortfall: 25), Self.quote()))
         case 4:  PosedQuoteCard(state: .blocked(Self.payment("pro_required", needed: 45, balance: 0, shortfall: 45), Self.quote()))
@@ -144,7 +144,7 @@ struct GenerationSnapshotHarnessView: View {
         VStack(alignment: .leading, spacing: 10) {
             switch status {
             case "idle":
-                rowCard { Text(verbatim: "Ready when you are.").foregroundColor(.white.opacity(0.5)) }
+                composerBox("Type a change — like \u{201C}make the captions bigger\u{201D}", placeholder: true)
             case "running":
                 rowCard {
                     VStack(alignment: .leading, spacing: 8) {
@@ -178,7 +178,6 @@ struct GenerationSnapshotHarnessView: View {
                 let copy: ReeditFailureCopy = {
                     switch status {
                     case "failed_refunded":      return .classify(reachedServer: true, creditsRefunded: 5)
-                    case "failed_charge_stands": return .classify(reachedServer: true, creditsRefunded: nil, chargeStands: true)
                     default:                     return .classify(reachedServer: false, creditsRefunded: nil)
                     }
                 }()
@@ -211,8 +210,6 @@ struct GenerationSnapshotHarnessView: View {
                 rowCard {
                     Text(verbatim: "make the captions punchier").foregroundColor(.white.opacity(0.9))
                 }
-                Text(verbatim: "(question retracted — a newer change supersedes it)")
-                    .font(.system(size: 11)).foregroundColor(.white.opacity(0.35))
             } else {
                 rowCard {
                     Text(verbatim: "Captions are now live. Would you like any emphasis added to specific words, or a different caption style?")
@@ -254,9 +251,9 @@ struct GenerationSnapshotHarnessView: View {
         .background(Capsule().fill(Color.white.opacity(0.07)))
     }
 
-    private func composerBox(_ text: String) -> some View {
+    private func composerBox(_ text: String, placeholder: Bool = false) -> some View {
         HStack {
-            Text(verbatim: text).foregroundColor(.white.opacity(0.95))
+            Text(verbatim: text).foregroundColor(.white.opacity(placeholder ? 0.4 : 0.95))
             Spacer(minLength: 0)
             Circle().fill(Color.white).frame(width: 28, height: 28)
                 .overlay(Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold)).foregroundColor(.black))
@@ -287,13 +284,12 @@ struct GenerationSnapshotHarnessView: View {
         case 22: return "22 · QUEUED"
         case 23: return "23 · QUEUED, being edited"
         case 24: return "24 · 402 pro_required (free user)"
-        case 25: return "25 · 402 daily_cap — price + scope from the server"
+        case 25: return "25 · cap reached — per VIDEO, all figures from the server"
         case 26: return "26 · 402 insufficient_credits"
         case 27: return "27 · QUESTION posted under the video"
         case 28: return "28 · QUESTION retracted by a newer change"
         case 29: return "29 · NEVER SENT — no money claim"
         case 30: return "30 · SENT, FAILED, refund CONFIRMED"
-        case 31: return "31 · SENT, FAILED, charge STANDS"
         case 32: return "32 · insufficient — PRO user (upgrade names Max)"
         case 33: return "33 · insufficient — MAX user (credits only)"
         case 2: return "2 · CONFIRMING"

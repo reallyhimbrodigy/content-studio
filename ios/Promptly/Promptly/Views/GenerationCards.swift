@@ -202,7 +202,9 @@ struct QuoteCardView: View {
             switch pr.reason {
             case .insufficientCredits: AppState.shared.showCredits = true
             case .proRequired:         AppState.shared.presentPaywall(.manual)
-            case .dailyCap, .none:     break   // a cap has no purchase to make
+            // A CAP NOW HAS A PURCHASE TO MAKE — it quotes a price — but the
+            // card shows it in place rather than throwing the user at a sheet.
+            case .dailyCap, .capReached, .none: break
             }
         case .failed(let why):
             state = .failed(why, q)
@@ -304,25 +306,27 @@ struct PaymentRequiredCard: View {
             case .proRequired:
                 line("\(subject) is a Pro feature.")
                 primary("Upgrade") { AppState.shared.presentPaywall(.manual) }
-            case .dailyCap:
-                // THE CAP SHOWS A PRICE, NOT A WALL. They have hit today's
-                // included allowance; the next change is still available, and
-                // saying what it costs is more useful than saying no.
-                if let needed = payment.needed {
-                    // THE PERIOD IS THE SERVER'S WORD, NOT OURS. Saying
-                    // "today's" when the cap is monthly sends someone back
-                    // tomorrow to the same wall. With no scope we simply do not
-                    // name a period — vaguer, and true.
-                    line(payment.scope.map { "That's \($0) included edits." }
-                            ?? "That's your included edits for now.")
-                    line("This change costs \(needed) credits.")
-                    primary("Use \(needed) credits") { AppState.shared.showCredits = true }
+            case .dailyCap, .capReached:
+                // THE CAP QUOTES, IT DOES NOT REFUSE. Every figure is the
+                // server's: how many were included, how many are used, what the
+                // next one costs. The client has never known what a cap is
+                // worth and must not start.
+                //
+                // The SCOPE is the server's word too — the cap is per VIDEO,
+                // not per day, and a client that says "today's" sends someone
+                // back tomorrow to the same wall.
+                let what = payment.scope ?? "your"
+                if let included = payment.included {
+                    line("You've used \(what) \(included) included changes.")
                 } else {
-                    // No price quoted: do not invent one, and do not claim a
-                    // period either.
-                    line(payment.scope.map { "That's \($0) included edits." }
-                            ?? "You've used your included edits.")
-                    primary("Upgrade for more") { AppState.shared.presentPaywall(.manual) }
+                    line("You've used \(what) included changes.")
+                }
+                if let price = payment.nextPrice {
+                    line("This one costs \(price) credits.")
+                    primary("Use \(price) credits") { AppState.shared.showCredits = true }
+                } else {
+                    // No price quoted: do not invent one.
+                    primary("Get credits") { AppState.shared.showCredits = true }
                 }
             case .none:
                 line("Not available right now.")

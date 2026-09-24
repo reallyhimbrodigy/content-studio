@@ -156,7 +156,6 @@ check("...and it names Max, not a bare \"Upgrade\"",
 let neverSent = ReeditFailureCopy.classify(reachedServer: false, creditsRefunded: nil)
 let ranUnknown = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: nil)
 let ranRefunded = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: 5)
-let ranCharged = ReeditFailureCopy.classify(reachedServer: true, creditsRefunded: nil, chargeStands: true)
 
 check("never sent makes NO money claim", neverSent.claimsNotCharged == false)
 check("...and says it was not sent", neverSent.text.contains("didn't get sent"))
@@ -165,20 +164,45 @@ check("ran-and-failed with an UNCONFIRMED refund makes no money claim",
 check("...and does not say 'weren't charged'", ranUnknown.text.contains("weren't charged") == false)
 check("a CONFIRMED refund is the only case that says 'weren't charged'",
       ranRefunded.claimsNotCharged == true && ranRefunded.text.contains("weren't charged"))
-check("a standing charge says so plainly", ranCharged.text.contains("credits were used"))
-check("...and never claims they were not charged", ranCharged.claimsNotCharged == false)
 // Exhaustive: across every input, the claim implies a confirmed refund.
 var claimedWithoutRefund = 0
 for reached in [true, false] {
   for refund in [nil, 0, 5] as [Int?] {
-    for stands in [true, false] {
-      let c = ReeditFailureCopy.classify(reachedServer: reached, creditsRefunded: refund, chargeStands: stands)
-      if c.claimsNotCharged, !(refund ?? 0 > 0) { claimedWithoutRefund += 1 }
-    }
+    let c = ReeditFailureCopy.classify(reachedServer: reached, creditsRefunded: refund)
+    if c.claimsNotCharged, !(refund ?? 0 > 0) { claimedWithoutRefund += 1 }
   }
 }
 check("across ALL inputs, 'not charged' never appears without a confirmed refund",
       claimedWithoutRefund == 0)
+
+// ── THE CAP IS PER VIDEO, AND EVERY FIGURE IS THE SERVER'S ─────────────────
+let capBody = """
+{"error":"payment_required","reason":"video_cap","scope":"this video's",
+ "included":10,"used":10,"price":5,"balance":40,"actions":["topup"]}
+"""
+if let cap: PaymentRequired = dec(capBody) {
+    check("the cap reason parses", cap.reason == .capReached)
+    check("scope is the server's words", cap.scope == "this video's")
+    check("included comes from the server", cap.included == 10)
+    check("used comes from the server", cap.used == 10)
+    check("the next price is the server's `price`, not `needed`", cap.nextPrice == 5)
+    check("a cap is recognisable by its numbers", cap.isCapShaped)
+} else { check("the cap body decodes", false) }
+
+// A RENAME MUST NOT BREAK THE CARD. Same numbers, unknown reason string.
+let renamed = """
+{"error":"payment_required","reason":"per_clip_limit","scope":"this video's",
+ "included":10,"used":10,"price":5,"balance":40,"actions":["topup"]}
+"""
+if let r: PaymentRequired = dec(renamed) {
+    check("an unknown reason carrying cap numbers still renders as a cap", r.reason == .capReached)
+    check("...and its raw string is preserved for analytics", r.rawReason == "per_clip_limit")
+} else { check("the renamed cap body decodes", false) }
+
+// `price` wins over the older generic `needed`.
+let both: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":3,\"used\":3,\"price\":5,\"needed\":45}")
+check("price beats needed when both are present", both?.nextPrice == 5)
+
 
 // ── 7. 410 expiry carries a fresh quote ──────────────────────────────────────
 let expiredJSON = """
@@ -226,8 +250,8 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
     || ufail "the impression event is not deduped — it would count redraws"
 
   # REASON ALONE DECIDES THE CARD. All three must be handled by name.
-  for r in insufficientCredits proRequired dailyCap; do
-    grep -Eq "case \.$r[[:space:]]*:" "$C" && echo "  ok   — 402 $r has its own branch" \
+  for r in insufficientCredits proRequired dailyCap capReached; do
+    grep -Eq "[.]$r[[:space:]]*[,:]" "$C" && echo "  ok   — 402 $r has a branch" \
       || ufail "402 $r has no branch — a reason with no card is a dead end"
   done
 
@@ -274,9 +298,12 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
   # The shared card was extracted and the original left behind, so for a while
   # the quote flow said "back tomorrow" while the re-edit flow quoted a price —
   # two renderings of one refusal, which is how two surfaces quote two prices.
-  n=$(grep -c 'case \.dailyCap:' "$C")
-  [ "$n" = 1 ] && echo "  ok   — the three 402 reasons are rendered in exactly ONE place" \
-               || ufail "the 402 reasons are rendered in $n places — a second payment UI"
+  # THE INVARIANT IS DELEGATION. QuoteCardView must not render the reasons
+  # itself — that is the duplicate that appeared once already, when the
+  # shared card was extracted and the original left behind.
+  n=$(sed -n '/private func blockedBody/,/^    }/p' "$C" | grep -c 'case \.')
+  [ "$n" = 0 ] && echo "  ok   — blockedBody delegates; the reasons are rendered in ONE place" \
+               || ufail "blockedBody switches on reason itself ($n branches) — a second payment UI"
   # No client-side price. Every figure on that card is the server's.
   if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -qE '[0-9]+ credits'; then
     ufail "a hardcoded credit figure is on the payment card — it must come from the 402 body"
@@ -284,7 +311,7 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
     echo "  ok   — no hardcoded credit figure on the payment card"
   fi
   # The cap period is the SERVER'S word, not ours.
-  sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -Fq 'payment.scope.map' \
+  sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -Fq 'payment.scope' \
     && echo "  ok   — the cap period comes from the server, not the word \"today\"" \
     || ufail "the cap period is hardcoded — saying today when the cap is monthly sends people back to the same wall"
   if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -q "today's included"; then

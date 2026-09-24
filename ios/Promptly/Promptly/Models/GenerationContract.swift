@@ -88,6 +88,12 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
         case insufficientCredits = "insufficient_credits"
         case proRequired = "pro_required"
         case dailyCap = "daily_cap"
+        /// THE PER-VIDEO CAP. B2's exact string is still to be confirmed, so
+        /// the card does not depend on it: `isCapShaped` recognises a cap by
+        /// its NUMBERS (included + used present), and an unrecognised reason
+        /// carrying them renders the cap copy anyway. Pinning the string here
+        /// only makes the match exact.
+        case capReached = "video_cap"
     }
 
     /// The raw string, kept beside the parsed case so an unknown reason from a
@@ -104,20 +110,50 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
     /// cap is monthly tells the user to come back tomorrow to the same wall.
     /// Absent means we do not know, and the copy then does not claim a period.
     let scope: String?
+    /// THE CAP, IN THE SERVER'S NUMBERS. `included` is the allowance, `used`
+    /// what has been spent of it, `price` what the NEXT one costs. All three
+    /// are the server's: the client has never known what a cap is worth and
+    /// must not start guessing now.
+    let included: Int?
+    let used: Int?
+    let price: Int?
 
-    enum CodingKeys: String, CodingKey { case error, reason, needed, balance, shortfall, actions, scope }
+    /// What the next change costs. `price` is the cap contract's field;
+    /// `needed` is the older generic one. Prefer the specific.
+    var nextPrice: Int? { price ?? needed }
+
+    /// A cap is recognised by its NUMBERS, not by a string. The reason names
+    /// which cap; these three say what to render, and a body carrying them is
+    /// a cap whatever it calls itself — so a rename on the server degrades to
+    /// slightly generic copy instead of the wrong card.
+    var isCapShaped: Bool { included != nil && used != nil }
+
+    enum CodingKeys: String, CodingKey {
+        case error, reason, needed, balance, shortfall, actions, scope, included, used, price
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         rawReason = ((try? c.decodeIfPresent(String.self, forKey: .reason)) ?? nil) ?? ""
-        reason = Reason(rawValue: rawReason)
+        let parsed = Reason(rawValue: rawReason)
         needed = (try? c.decodeIfPresent(Int.self, forKey: .needed)) ?? nil
         balance = (try? c.decodeIfPresent(Int.self, forKey: .balance)) ?? nil
         shortfall = (try? c.decodeIfPresent(Int.self, forKey: .shortfall)) ?? nil
         actions = ((try? c.decodeIfPresent([String].self, forKey: .actions)) ?? nil) ?? []
+        included = (try? c.decodeIfPresent(Int.self, forKey: .included)) ?? nil
+        used = (try? c.decodeIfPresent(Int.self, forKey: .used)) ?? nil
+        price = (try? c.decodeIfPresent(Int.self, forKey: .price)) ?? nil
         scope = ((try? c.decodeIfPresent(String.self, forKey: .scope)) ?? nil)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
+        // RECOGNISED BY ITS NUMBERS. If B2 renames the reason, a body carrying
+        // included+used still renders the cap card rather than the fallback —
+        // the copy stays right through a rename instead of silently degrading.
+        if parsed == nil, included != nil, used != nil {
+            reason = .capReached
+        } else {
+            reason = parsed
+        }
     }
 }
 
@@ -314,14 +350,16 @@ enum TierOffer {
 enum ReeditFailureCopy {
     case neverSent
     case failedRefundConfirmed(Int)
+    /// A CONTRACT VIOLATION, not a normal state. B2 commits the refund in the
+    /// same transaction that marks a re-edit failed, so a failure without one
+    /// cannot happen — and if it does, the honest response is to say nothing
+    /// about money rather than guess in either direction. Kept as a guard
+    /// precisely because it should never fire.
     case failedRefundUnknown
-    case failedChargeStands(Int)
 
-    static func classify(reachedServer: Bool, creditsRefunded: Int?, chargeStands: Bool = false) -> ReeditFailureCopy {
+    static func classify(reachedServer: Bool, creditsRefunded: Int?) -> ReeditFailureCopy {
         guard reachedServer else { return .neverSent }
-        if chargeStands, let n = creditsRefunded, n == 0 { return .failedChargeStands(0) }
         if let n = creditsRefunded, n > 0 { return .failedRefundConfirmed(n) }
-        if chargeStands { return .failedChargeStands(0) }
         return .failedRefundUnknown
     }
 
@@ -333,12 +371,9 @@ enum ReeditFailureCopy {
         case .failedRefundConfirmed:
             return String(localized: "That change didn't work. You weren't charged. Tap to try again.")
         case .failedRefundUnknown:
-            // We know it ran and failed; we do NOT know the refund landed. Say
-            // what is true and nothing more.
+            // Ran, failed, and no refund was reported — which the server
+            // contract says is impossible. Say what is true and nothing more.
             return String(localized: "That change didn't work. Tap to try again.")
-        case .failedChargeStands:
-            // Plainly. Hiding this is how someone finds it on a statement.
-            return String(localized: "That change didn't work, and the credits were used. Tap to try again.")
         }
     }
 
