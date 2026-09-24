@@ -122,6 +122,25 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
     /// `needed` is the older generic one. Prefer the specific.
     var nextPrice: Int? { price ?? needed }
 
+    /// WHAT THE CARD SHOULD ACTUALLY SAY, after affordability.
+    ///
+    /// A user can be past the cap AND short at the same time, and that body
+    /// carries cap numbers — so the numbers rule alone would offer "Use 5
+    /// credits" to someone holding 2, and the tap would fail. Being told the
+    /// price of something you cannot buy, by a button that then errors, is
+    /// worse than being told you are short.
+    ///
+    /// So affordability WINS whenever it is knowable: if the balance is known
+    /// and below the price, this is an insufficient-credits card whatever the
+    /// server called it. A NULL balance is UNKNOWN, not zero — it cannot make
+    /// anything insufficient, and nothing numeric is claimed from it.
+    var effectiveReason: Reason? {
+        if let price = nextPrice, let have = balance, have < price {
+            return .insufficientCredits
+        }
+        return reason
+    }
+
     /// A cap is recognised by its NUMBERS, not by a string. The reason names
     /// which cap; these three say what to render, and a body carrying them is
     /// a cap whatever it calls itself — so a rename on the server degrades to

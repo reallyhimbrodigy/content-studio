@@ -275,13 +275,19 @@ struct PaymentRequiredCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10 * k) {
-            switch payment.reason {
+            // AFFORDABILITY FIRST. A cap the user cannot pay is an
+            // insufficient-credits card, or the button quotes a price and then
+            // fails on tap.
+            switch payment.effectiveReason {
             case .insufficientCredits:
                 // THE SHORTFALL AS A NUMBER, never parsed from prose.
                 // COST FIRST, THEN WHAT THEY HOLD. "You have 20 — 25 short"
                 // reads backwards: it leads with the balance and makes the
                 // reader do the subtraction to find the price.
-                if let needed = payment.needed, let have = payment.balance {
+                // nextPrice, not `needed`: a cap-shaped body carries `price`,
+                // and this is exactly the body that lands here when someone is
+                // past the cap AND short.
+                if let needed = payment.nextPrice, let have = payment.balance {
                     line("This change costs \(needed) credits. You have \(have).")
                 } else if let have = payment.balance {
                     line("You have \(have) credits.")

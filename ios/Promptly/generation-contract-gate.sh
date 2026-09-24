@@ -203,6 +203,36 @@ if let r: PaymentRequired = dec(renamed) {
 let both: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":3,\"used\":3,\"price\":5,\"needed\":45}")
 check("price beats needed when both are present", both?.nextPrice == 5)
 
+// ── PAST THE CAP *AND* SHORT: affordability wins ───────────────────────────
+// The body carries cap numbers, so the numbers rule alone would offer
+// "Use 5 credits" to someone holding 2 — a button that fails on tap.
+let capAndShort = """
+{"error":"payment_required","reason":"video_cap","scope":"this video's",
+ "included":10,"used":10,"price":5,"balance":2,"actions":["topup"]}
+"""
+if let cs: PaymentRequired = dec(capAndShort) {
+    check("a cap the user cannot afford renders as INSUFFICIENT, not a price",
+          cs.effectiveReason == .insufficientCredits)
+    check("...even though the body is cap-shaped", cs.isCapShaped && cs.reason == .capReached)
+    check("...and the cost is still readable from `price`", cs.nextPrice == 5)
+}
+// Affordable: the cap still quotes.
+let capAffordable: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5,\"balance\":40}")
+check("a cap the user CAN afford still quotes the price",
+      capAffordable?.effectiveReason == .capReached)
+// Exactly at the price is affordable, not short.
+let exact: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5,\"balance\":5}")
+check("a balance EQUAL to the price is affordable", exact?.effectiveReason == .capReached)
+// NULL BALANCE IS UNKNOWN, NOT ZERO.
+let unknownBal: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5}")
+check("a NULL balance does not make a cap unaffordable",
+      unknownBal?.effectiveReason == .capReached)
+check("...and no balance figure is available to render", unknownBal?.balance == nil)
+// The plain insufficient case is unaffected.
+let plainShort: PaymentRequired? = dec("{\"reason\":\"insufficient_credits\",\"needed\":5,\"balance\":2,\"shortfall\":3}")
+check("a plain insufficient body is unchanged", plainShort?.effectiveReason == .insufficientCredits)
+
+
 
 // ── 7. 410 expiry carries a fresh quote ──────────────────────────────────────
 let expiredJSON = """
