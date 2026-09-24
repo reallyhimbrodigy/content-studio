@@ -166,7 +166,9 @@ if [ ! -f "$T" ]; then note "missing $T"; else
   grep -Eq '^[[:space:]]*static func recordEndpoint' "$T" \
     && echo "  ok   — the upload endpoint is recorded" \
     || note "recordEndpoint is gone — accelerated and control rows become indistinguishable"
-  sed -n '/static func recordEndpoint/,/^    }/p' "$T" | grep -Fq 'meta(id, "upload_host"' \
+  # The real host VARIABLE, not the "unreadable" placeholder in the guard
+  # branch — matching the bare key passed on that fallback alone.
+  sed -n '/static func recordEndpoint/,/^    }/p' "$T" | grep -Fq 'meta(id, "upload_host", host)' \
     && echo "  ok   — the HOST rides beside the boolean, so a wrong derivation is visible" \
     || note "only the boolean is recorded — a changed accelerator would silently read as control"
   grep -Fq 'UploadTiming.recordEndpoint(pending.id.uuidString' "$E" \
