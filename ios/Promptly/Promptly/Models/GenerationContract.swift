@@ -279,7 +279,19 @@ enum GenerationContract {
 ///   - Pro means Max, so it should say Max rather than making them find out.
 /// Returns nil when there is nothing above them.
 enum TierOffer {
-    static func upgradeLabel(isPro: Bool, isMax: Bool) -> String? {
+    /// `resolved` is whether the entitlement is actually KNOWN yet.
+    ///
+    /// UNKNOWN IS NOT FREE, and treating it as free is the live bug the
+    /// snapshot harness exposed by accident: before customerInfo loads at
+    /// launch, or offline, `isPro` and `isMax` are both false — indistinguish-
+    /// able from a free account. A Max subscriber opening the app on a plane
+    /// would be offered "Upgrade", a button to a tier they already hold.
+    ///
+    /// So when the tier is unknown we offer NOTHING above Get credits. Get
+    /// credits is right for every tier; an upgrade is right only for some, and
+    /// showing it on a guess is how a paying user is told to pay again.
+    static func upgradeLabel(isPro: Bool, isMax: Bool, resolved: Bool = true) -> String? {
+        guard resolved else { return nil }
         if isMax { return nil }
         if isPro { return "Upgrade to Max" }
         return "Upgrade"

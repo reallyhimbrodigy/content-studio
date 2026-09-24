@@ -113,6 +113,15 @@ final class SubscriptionService: ObservableObject {
     }
 
     #if DEBUG
+    /// Pose a tier for a snapshot. Sets the REAL published flags — including
+    /// hasResolvedCustomerInfo, since an unresolved pose would render the
+    /// unknown-tier case rather than the tier asked for.
+    func debugPoseTier(isPro pro: Bool, isMax mx: Bool) {
+        if isPro != pro { isPro = pro }
+        if isMax != mx { isMax = mx }
+        if !hasResolvedCustomerInfo { hasResolvedCustomerInfo = true }
+    }
+
     nonisolated(unsafe) static var debugPosedEntitled = false
     #endif
 

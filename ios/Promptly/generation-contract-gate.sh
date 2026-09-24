@@ -138,6 +138,14 @@ check("position always renders", QueueState(position: 3, etaSeconds: nil).positi
 // ── THE UPGRADE BUTTON, AND WHAT A FAILURE MAY CLAIM ────────────────────────
 check("a MAX user is offered no upgrade (a button to nowhere)",
       TierOffer.upgradeLabel(isPro: true, isMax: true) == nil)
+// UNKNOWN IS NOT FREE. Before customerInfo loads, or offline, both flags are
+// false — and a Max subscriber would be told to upgrade to what they hold.
+check("an UNKNOWN entitlement offers no upgrade at all",
+      TierOffer.upgradeLabel(isPro: false, isMax: false, resolved: false) == nil)
+check("...even when the flags happen to read Pro",
+      TierOffer.upgradeLabel(isPro: true, isMax: false, resolved: false) == nil)
+check("a KNOWN free account still sees the plain upgrade",
+      TierOffer.upgradeLabel(isPro: false, isMax: false, resolved: true) == "Upgrade")
 check("a PRO user is told which tier they would be upgrading TO",
       TierOffer.upgradeLabel(isPro: true, isMax: false) == "Upgrade to Max")
 check("...and it names Max, not a bare \"Upgrade\"",

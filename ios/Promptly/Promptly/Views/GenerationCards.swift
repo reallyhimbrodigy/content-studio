@@ -261,6 +261,12 @@ struct PaymentRequiredCard: View {
     @ObservedObject private var subscription = SubscriptionService.shared
     let payment: PaymentRequired
     let subject: String
+    /// The tier to offer against. Defaults to nil, meaning "read the live
+    /// service" — which is what production does. A snapshot passes one
+    /// explicitly, because posing the shared service is clobbered by the next
+    /// applyCustomerInfo (that file says so in its own comment). Either way the
+    /// DECISION is TierOffer's, so the screenshot exercises the shipping rule.
+    var tierOverride: (isPro: Bool, isMax: Bool, resolved: Bool)? = nil
     /// Retry the same intent after the user resolves the block. Carries no
     /// arguments: the caller already holds the words and the key.
     var onResolved: () -> Void = {}
@@ -283,7 +289,11 @@ struct PaymentRequiredCard: View {
                 // GET CREDITS IS THE PRIMARY ACTION — it is what they need.
                 // The upgrade sits beside it only when a higher tier EXISTS:
                 // a Max user shown "Upgrade" is given a button to nowhere.
-                if let up = TierOffer.upgradeLabel(isPro: subscription.isPro, isMax: subscription.isMax) {
+                let tier = tierOverride
+                    ?? (isPro: subscription.isPro,
+                        isMax: subscription.isMax,
+                        resolved: subscription.hasResolvedCustomerInfo)
+                if let up = TierOffer.upgradeLabel(isPro: tier.isPro, isMax: tier.isMax, resolved: tier.resolved) {
                     actions(primary: "Get credits",
                             primaryAction: { AppState.shared.showCredits = true },
                             secondary: up,

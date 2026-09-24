@@ -113,6 +113,11 @@ struct GenerationSnapshotHarnessView: View {
         case 24: PaymentRequiredCard(payment: Self.payment(Self.body402Pro), subject: "This change")
         case 25: PaymentRequiredCard(payment: Self.payment(Self.body402Cap), subject: "This change")
         case 26: PaymentRequiredCard(payment: Self.payment(Self.body402Short), subject: "This change")
+        // 26 SPLIT BY TIER. Insufficient credits only reaches a PAYING user, so
+        // the free-tier rendering of 26 shows a state production cannot reach.
+        // These two are the real ones.
+        case 32: posedTier(pro: true, max: false)
+        case 33: posedTier(pro: true, max: true)
         case 27: questionThread(retracted: false)
         case 28: questionThread(retracted: true)
         case 29: reeditRow(status: "never_sent")
@@ -218,6 +223,19 @@ struct GenerationSnapshotHarnessView: View {
         }
     }
 
+    /// Pose the entitlement so the card renders the tier it would in
+    /// production. Sets the shipping service's own flags, so this exercises the
+    /// real TierOffer path rather than a parallel one.
+    @ViewBuilder
+    private func posedTier(pro: Bool, max: Bool) -> some View {
+        // Passed in rather than posed on the shared service: applyCustomerInfo
+        // clobbers a posed tier on its next refresh, which is why the first
+        // attempt still rendered "Upgrade" for a Max user.
+        PaymentRequiredCard(payment: Self.payment(Self.body402Short),
+                            subject: "This change",
+                            tierOverride: (isPro: pro, isMax: max, resolved: true))
+    }
+
     private func rowCard<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -276,6 +294,8 @@ struct GenerationSnapshotHarnessView: View {
         case 29: return "29 · NEVER SENT — no money claim"
         case 30: return "30 · SENT, FAILED, refund CONFIRMED"
         case 31: return "31 · SENT, FAILED, charge STANDS"
+        case 32: return "32 · insufficient — PRO user (upgrade names Max)"
+        case 33: return "33 · insufficient — MAX user (credits only)"
         case 2: return "2 · CONFIRMING"
         case 3: return "3 · 402 insufficient_credits"
         case 4: return "4 · 402 pro_required (free tier)"
