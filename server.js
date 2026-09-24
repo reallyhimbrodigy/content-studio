@@ -47,6 +47,7 @@ const { isTerminalJobStatus, classifyLostTransition } = require('./lib/job-statu
 
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 const { sendOwnerAlert } = require('./services/pushNotifier');
+const uploadFlags = require('./lib/upload-flags');
 const { postAgentAlert } = require('./lib/agent-alert');
 const { isKnownOutageActive, maintenanceUserMessage } = require('./lib/known-outage');
 const { checkSpendGuards, checkRejectionAttemptCap } = require('./lib/spend-guard');
@@ -735,6 +736,10 @@ function sendUploadDenial(res, dec, label, userId) {
 // the owner's id (vs. a guessable/forgeable value) is safe: only that account's
 // authenticated session passes requireSupabaseUser.
 const SUBMISSION_OWNER_USER_ID = 'ec702499-ca10-49e6-8850-df8f99840904';
+// The ops-alert default recipient. Same id lifecycle-push and the reaper
+// already use, so OPS_ALERT_USER_IDS is an OVERRIDE rather than a required
+// setting — 'set it to Zac's account' is the default, not a dashboard step.
+const OWNER_USER_ID_FOR_OPS = process.env.OWNER_USER_ID || SUBMISSION_OWNER_USER_ID;
 function isAuthorizedSubmissionReviewer(user) {
   if (!user) return false;
   if (user.id && String(user.id) === SUBMISSION_OWNER_USER_ID) return true;
@@ -2899,6 +2904,74 @@ const server = http.createServer((req, res) => {
   //      {event:'lifecycle_push_proof_nonce', props:{nonce}} and echoes the
   //      nonce in X-Proof-Nonce. The row must be <5 min old and is consumed
   //      (deleted) on use — replay-proof.
+  // ── OPS ALERT, FOR THE WORKER LANE ──────────────────────────────────────
+  // POST /api/internal/ops-alert   x-modal-secret: <MODAL_CALLBACK_SECRET>
+  //   { "title": "...", "body": "...", "thread_id": "ops-alert" }
+  //
+  // Builder 1 needs a way to put a line on a phone when something in the
+  // worker lane needs a human — the 48-hour session alert is the first
+  // caller. NO NEW SECRET: MODAL_CALLBACK_SECRET is already on both sides,
+  // and adding a second one would mean a second thing to rotate and a second
+  // thing to get wrong in the Render dashboard.
+  //
+  // 202 BEFORE THE PUSH, DELIBERATELY. APNs is a network call to a third
+  // party and the caller is a worker with its own timeouts; blocking the ack
+  // on delivery makes a slow Apple look like a broken endpoint, and the
+  // caller retries, and a retry against an alert endpoint is an alert storm.
+  // The ack means ACCEPTED, and the log says what happened after.
+  //
+  // RECIPIENTS COME FROM THE ENV, DEFAULTING TO THE OWNER. OPS_ALERT_USER_IDS
+  // is a comma-separated list; absent, it is OWNER_USER_ID — the same
+  // constant lifecycle-push and the reaper already use, so "set it to Zac's
+  // account" needs no dashboard change and no redeploy to take effect.
+  if (parsed.pathname === '/api/internal/ops-alert' && req.method === 'POST') {
+    (async () => {
+      if (!modalCallbackAuthed(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      let body = null;
+      try { body = await readJsonBody(req); } catch (_) { body = null; }
+      const title = String((body && body.title) || '').slice(0, 120).trim();
+      const line = String((body && body.body) || '').slice(0, 300).trim();
+      if (!title) return sendJson(res, 400, { error: 'title is required' });
+      const threadId = String((body && body.thread_id) || 'ops-alert').slice(0, 60);
+
+      const raw = String(process.env.OPS_ALERT_USER_IDS || OWNER_USER_ID_FOR_OPS || '');
+      const recipients = raw.split(',').map((x) => x.trim()).filter(Boolean);
+      // ACCEPTED, and the count of who it is going to, so the caller can see
+      // a zero without reading our logs.
+      sendJson(res, 202, { ok: true, recipients: recipients.length });
+
+      if (!recipients.length) {
+        // NOT A SILENT NO-OP. An alert endpoint with nobody to alert is the
+        // consumer-with-no-producer shape, and it would report success.
+        console.error('[ops-alert] ACCEPTED BUT UNDELIVERABLE — OPS_ALERT_USER_IDS is '
+          + 'empty and no owner default resolved. Nothing was sent.');
+        return;
+      }
+      const push = require('./services/push');
+      for (const userId of recipients) {
+        try {
+          const r = await push.sendToUser(userId, { title, body: line },
+            { type: 'ops-alert' }, { apsExtra: { 'thread-id': threadId } });
+          // EVERY SEND IS LOGGED, INCLUDING THE ZEROES. `skipped` is the field
+          // that separates "Apple refused" from "this user has no device
+          // registered", and those have completely different repairs.
+          console.log(`[ops-alert] user=${String(userId).slice(0, 8)} `
+            + `sent=${r.sent ?? 0}/${r.total ?? 0}`
+            + (r.skipped ? ` skipped=${r.skipped}` : '')
+            + ` thread=${threadId} title=${JSON.stringify(title.slice(0, 60))}`);
+          if ((r.sent ?? 0) === 0) {
+            console.warn(`[ops-alert] NOTHING DELIVERED to ${String(userId).slice(0, 8)} `
+              + `(${r.skipped || 'no reason given'}) — the alert was accepted and nobody saw it.`);
+          }
+        } catch (e) {
+          console.error(`[ops-alert] send failed user=${String(userId).slice(0, 8)}: `
+            + (e && e.message ? e.message : e));
+        }
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/internal/lifecycle-push-proof' && req.method === 'POST') {
     (async () => {
       try {
@@ -3540,7 +3613,15 @@ const server = http.createServer((req, res) => {
         // losing videos. The only remaining cause is the local file itself
         // disappearing (camera-roll delete / iCloud eviction) → the 224 app-owned
         // copy at pick time.
-        const uploadUrl = await s3.createPresignedPutUrl(key, 604800);
+        // THE ACCELERATION CANARY. Per-account first, then a percentage, then
+        // off — resolved per request so three named accounts can take the
+        // edge network while everyone else is unchanged. The SOURCE is logged,
+        // not just the boolean: an allowlist hit and a percentage hit are
+        // different experiments and would otherwise share one number.
+        const accel = await uploadFlags.resolve('s3_accelerate', authUser.id, supabaseAdmin);
+        const uploadUrl = await s3.createPresignedPutUrl(key, 604800,
+          { accelerate: accel.on });
+        console.log(`[upload-url] accel=${accel.on} via=${accel.source}/${accel.from} path=single`);
         const publicUrl = s3.getPublicUrl(key);
         // SERVER-TRUTH upload attempt — the user got far enough to request an
         // upload URL. More reliable than the client's upload_started (which drops
@@ -3604,7 +3685,12 @@ const server = http.createServer((req, res) => {
         // 1h window killed backgrounded uploads by deadline, not by network.
         // The single-PUT door already presigns 604800; the parts asymmetry was
         // the defect. SigV4 caps at 7d. Client resumeTTL follows (6.5d margin).
-        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 604800);
+        // Same canary on the multipart path, which is where the traffic and
+        // every measured status-0 failure actually live.
+        const mAccel = await uploadFlags.resolve('s3_accelerate', authUser.id, supabaseAdmin);
+        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 604800,
+          { accelerate: mAccel.on });
+        console.log(`[upload-multipart-init] accel=${mAccel.on} via=${mAccel.source}/${mAccel.from} parts=${partCount}`);
         const publicUrl = s3.getPublicUrl(key);
         serverFunnel(authUser.id, 'upload_url_requested', { path: 'multipart' }); // server-truth upload attempt
         warmDispatcherOnIntent(); // boot the dispatcher during the upload window → no cold-start 502 at dispatch
