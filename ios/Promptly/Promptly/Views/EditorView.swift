@@ -2188,6 +2188,18 @@ struct EditorView: View {
                             // `shrunk` stays nil and the original uploads, so a
                             // bad export can cost speed but never the upload.
                             var shrunk: URL?
+                            // ALWAYS SAY WHY, INCLUDING "WE DIDN'T".
+                            //
+                            // This was recorded only INSIDE the enabled branch,
+                            // so a control run wrote no shrink_reason at all —
+                            // and an absent field is indistinguishable from
+                            // instrumentation that never ran. A baseline you
+                            // cannot tell apart from a broken instrument is not
+                            // a baseline. "flag_off" is written first and
+                            // overwritten by the real decision when the flag is
+                            // on, so every row carries one.
+                            UploadTiming.meta(pending.id.uuidString, "shrink_reason", "flag_off")
+                            UploadTiming.meta(pending.id.uuidString, "shrink_enabled", onboardingState.uploadShrinkEnabled)
                             if onboardingState.uploadShrinkEnabled {
                                 let tShrink = Date()
                                 let decision = await SourceShrinker.decide(for: AVURLAsset(url: sourceUrl))
