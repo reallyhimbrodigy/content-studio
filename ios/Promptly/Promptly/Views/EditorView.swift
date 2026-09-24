@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import AVFoundation
 import PhotosUI
 import UIKit
@@ -1036,6 +1037,7 @@ struct EditorView: View {
             // the routing back to a normal Send.
             vibeEditPill
             queuedReeditPill
+            drainSupersededNotice
 
             // ChatGPT-style vibe-suggestion chips. Always visible when
             // the input is empty + we're not in a re-edit session, so
@@ -1323,6 +1325,28 @@ struct EditorView: View {
     /// affordance and keeps the chip row from sprawling. Each chip is
     /// short enough to read at a glance, distinct enough in feel to
     /// guide users toward different render styles.
+    /// ONE LINE, ON ONE PATH. Shown only when the running edit finished while
+    /// the user was revising the queued one — the case where their revision
+    /// silently stopped being a replacement and became a new message.
+    @ViewBuilder
+    private var drainSupersededNotice: some View {
+        if showDrainSupersededNotice {
+            HStack(spacing: 8 * k) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 12 * k, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                Text("Your earlier change already started — send this as the next one?")
+                    .font(.system(size: 13 * k))
+                    .foregroundColor(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12 * k)
+            .padding(.bottom, 6 * k)
+            .transition(.opacity)
+        }
+    }
+
     /// "1 change queued · tap to edit" — what is waiting, and the one thing
     /// the user can do about it. Shown only while a slot is full and not while
     /// they are already editing it, or it would describe the text in the field.
@@ -1765,6 +1789,12 @@ struct EditorView: View {
     /// True while the composer holds the QUEUED text for revision. Send is
     /// re-opened, and sending REPLACES the slot instead of appending to it.
     @State private var isEditingQueuedReedit = false
+    /// Set only when a drain landed WHILE the user was revising the queued
+    /// change. Cleared when they send or clear the composer — it describes one
+    /// moment, not a mode.
+    @State private var showDrainSupersededNotice = false
+    /// Holds the entitlement subscription for this view's lifetime.
+    @State private var entitlementObserver: AnyCancellable?
 
     /// A recoverable orphan that needs the user's nod before we re-materialize
     /// it (an iCloud pull costs them data). nil when there is nothing to offer.
@@ -1828,9 +1858,46 @@ struct EditorView: View {
         addPendingVideoAndStartUpload(recovered)
     }
 
+    /// SEND THE KEPT WORDS — ONLY ON A CONFIRMED ENTITLEMENT.
+    ///
+    /// Driven by `isPro` going TRUE, which is set from
+    /// `entitlements[pro].isActive`. Deliberately not the purchase sheet
+    /// closing (that fires on cancel too) and not a restore completing (it
+    /// completes having found nothing). `claim()` takes the record before the
+    /// send, so the several ways isPro can flip true in one session —
+    /// purchase, customerInfo refresh, delegate renewal — produce one send.
+    private func sendPendingProReeditIfEntitled() {
+        guard subscriptionService.isPro else { return }
+        guard let r = PendingProReedit.shared.claim() else { return }
+        Analytics.track("reedit_resumed_after_upgrade", props: [:], durable: true)
+        sendReedit(changeRequest: r.request,
+                   originalJobId: r.originalJobId,
+                   idempotencyKey: r.idempotencyKey)
+        PendingProReedit.shared.clear()
+    }
+
+    /// Observe the CONFIRMED entitlement. Registered here rather than as a view
+    /// modifier because the composer's modifier chain is already at the
+    /// type-checker's limit — adding one more there fails the build with
+    /// "unable to type-check in reasonable time", which is a compile budget,
+    /// not a correctness signal.
+    private func observeEntitlementForPendingReedit() {
+        entitlementObserver?.cancel()
+        entitlementObserver = SubscriptionService.shared.$isPro
+            .removeDuplicates()                 // one send per TRANSITION
+            .filter { $0 }                      // only when it goes active
+            .sink { _ in
+                Task { @MainActor in sendPendingProReeditIfEntitled() }
+            }
+    }
+
     private func registerEditorHooks() {
         reconcileStaleUploads()
         reconcileQueuedReedits()
+        observeEntitlementForPendingReedit()
+        // A purchase can complete while the app is being restored, so check on
+        // appear as well as on the transition.
+        sendPendingProReeditIfEntitled()
         debugAttachClipIfRequested()
         debugSendChatIfRequested()
         AuthGate.shared.onSendResume = { send() }
@@ -2943,6 +3010,13 @@ struct EditorView: View {
         // confirmed), and the user's revision stays in the composer as text
         // they may choose to send. One dispatch from the queue; a second only
         // if a person decides on it.
+        //
+        // AND SAY SO, because otherwise this is a silent swap. The user was
+        // mid-revision believing they were REPLACING the queued change; what
+        // actually happened is the old words started and their revision is now
+        // an ordinary unsent message. Without a word, they will tap send
+        // expecting a replacement and get a second render.
+        if isEditingQueuedReedit { showDrainSupersededNotice = true }
         isEditingQueuedReedit = false
         // Drop the placeholder row: sendReedit appends its own pair, and two
         // rows for one request would read as a double send even though only
@@ -2952,7 +3026,8 @@ struct EditorView: View {
         sendReedit(changeRequest: q.request, originalJobId: q.originalJobId)
     }
 
-    private func sendReedit(changeRequest: String, originalJobId: String) {
+    private func sendReedit(changeRequest: String, originalJobId: String,
+                            idempotencyKey: String? = nil) {
         clearInputField()
         isSending = true
 
@@ -2999,7 +3074,8 @@ struct EditorView: View {
             do {
                 let newJobId = try await APIService.shared.reeditFromJob(
                     originalJobId: originalJobId,
-                    changeRequest: changeRequest
+                    changeRequest: changeRequest,
+                    idempotencyKey: idempotencyKey
                 )
                 if let i = idx() {
                     messages[i].jobId = newJobId
@@ -3012,6 +3088,20 @@ struct EditorView: View {
                     startSSE(jobId: newJobId, messageId: msgId)
                     persistMessages()
                 }
+            } catch let APIError.paymentRequired(kind, _, _) where kind == "reedit" {
+                // FREE USER, FRAMED AS AN UPGRADE — never an error. Their words
+                // are kept with a key minted NOW, so a send after subscribing
+                // is the same intent to the server however many processes it
+                // takes to get there.
+                PendingProReedit.shared.keep(request: changeRequest, originalJobId: originalJobId)
+                if let i = idx() {
+                    messages[i].jobStatus = "failed"
+                    messages[i].isRetryable = false
+                    messages[i].error = String(localized: "Want that change? Upgrade to keep editing.")
+                    persistMessages()
+                }
+                appState.presentPaywall(.reedit)
+                Analytics.track("reedit_pro_required", props: [:], durable: true)
             } catch let APIError.reeditInFlight(inFlight) {
                 // TYPED, NOT GENERIC. "Parked on a question" and "already
                 // rendering" need different words because the user's next
@@ -3751,6 +3841,8 @@ struct EditorView: View {
     // call spun a dispatcher container for pure burn. Renders start cold-tolerant.
 
     private func send() {
+        // The notice described the state of the composer BEFORE this send.
+        showDrainSupersededNotice = false
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }

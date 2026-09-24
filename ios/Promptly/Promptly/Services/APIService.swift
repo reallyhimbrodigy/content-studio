@@ -679,8 +679,13 @@ class APIService {
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.
     /// Returns the new job id; progress is watched via SSE just like a fresh edit.
-    func reeditFromJob(originalJobId: String, changeRequest: String) async throws -> String {
+    /// `idempotencyKey` is minted when the words are QUEUED, not when they are
+    /// sent, so every later attempt at the same intent carries the same key —
+    /// a relaunch mid-purchase, a double tap, a retry. The server charges once.
+    func reeditFromJob(originalJobId: String, changeRequest: String,
+                       idempotencyKey: String? = nil) async throws -> String {
         var request = await authorizedRequest("/api/video-jobs/re-edit", method: "POST")
+        if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
         request.httpBody = try JSONEncoder().encode([
             "original_job_id": originalJobId,
             "change_request": changeRequest,

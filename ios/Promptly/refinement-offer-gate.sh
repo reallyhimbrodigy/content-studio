@@ -244,6 +244,68 @@ check("an orphaned queue row dispatches NOTHING on its own", dispatched.isEmpty)
 check("it is handed back to the user, not dropped", rowState == "failed_retryable" && !orphanRow.isEmpty)
 check("and the user's words survive the restart", orphanRow == "queued before the kill")
 
+
+// ── KEPT WORDS AFTER A PAYWALL: once, and only on a real entitlement ────────
+struct Kept: Equatable { var request: String; var jobId: String; var key: String; var dispatched: Bool }
+var kept: Kept? = nil
+var sentAfterUpgrade: [(String, String)] = []     // (words, idempotency-key)
+
+func keep(_ req: String, _ job: String, key: String) {
+    if let k = kept, k.request == req, k.jobId == job, !k.dispatched { return }  // same intent keeps its key
+    kept = Kept(request: req, jobId: job, key: key, dispatched: false)
+}
+func claim() -> Kept? {                            // mirrors PendingProReedit.claim
+    guard var k = kept, !k.dispatched else { return nil }
+    k.dispatched = true; kept = k; return k
+}
+func onEntitlement(_ isPro: Bool) {                // mirrors the isPro sink
+    guard isPro else { return }
+    guard let k = claim() else { return }
+    sentAfterUpgrade.append((k.request, k.key))
+}
+
+keep("add captions", "j1", key: "K1")
+check("keeping the words sends nothing", sentAfterUpgrade.isEmpty)
+
+// NOT on a dismissed sheet, NOT on a failed restore — both are isPro == false.
+onEntitlement(false)
+check("a dismissed purchase sheet sends nothing", sentAfterUpgrade.isEmpty)
+onEntitlement(false)
+check("a restore that found nothing sends nothing", sentAfterUpgrade.isEmpty)
+
+// The entitlement actually goes active.
+onEntitlement(true)
+check("a CONFIRMED entitlement sends the kept words", sentAfterUpgrade.map { $0.0 } == ["add captions"])
+check("...with the key minted when they were queued", sentAfterUpgrade.first?.1 == "K1")
+
+// isPro can flip true several times in one session.
+onEntitlement(true); onEntitlement(true)
+check("repeated entitlement signals do NOT resend", sentAfterUpgrade.count == 1)
+
+// A relaunch mid-purchase: the record persisted, already marked dispatched.
+let survived = kept
+kept = survived                                    // same record restored from disk
+onEntitlement(true)
+check("a relaunch after dispatch does not send again", sentAfterUpgrade.count == 1)
+
+// Two taps before subscribing must not mint two keys for one intent.
+kept = nil; sentAfterUpgrade = []
+keep("make it shorter", "j2", key: "K2")
+keep("make it shorter", "j2", key: "K3")           // second tap, same intent
+check("one intent keeps ONE key", kept?.key == "K2")
+onEntitlement(true)
+check("...and sends once under that key", sentAfterUpgrade.map { $0.1 } == ["K2"])
+
+// ── THE DRAIN-WINS NOTICE: one path only ───────────────────────────────────
+var notice = false
+func drainWithNotice(editing: Bool) { if editing { notice = true } }
+notice = false; drainWithNotice(editing: false)
+check("no notice when the drain lands and nobody was editing", notice == false)
+notice = false; drainWithNotice(editing: true)
+check("the notice shows when the drain lands mid-edit", notice == true)
+notice = false                                     // cleared by send()
+check("the notice is cleared once the user acts", notice == false)
+
 print(failed == 0 ? "  (behavioural: all correct)" : "  (behavioural: \(failed) wrong)")
 exit(failed == 0 ? 0 : 1)
 SWIFT
