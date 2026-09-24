@@ -179,6 +179,28 @@ if [ ! -f "$T" ]; then note "missing $T"; else
     || note "multipart does not record its endpoint — that is the path p50 80 MB actually takes"
 fi
 
+# ── 4f. AN OUTAGE WE CAUSED MUST NOT COST THE USER THEIR CLIP ───────────────
+# Measured 2026-09-24: five users started an upload during a database outage,
+# none completed, two were told nothing. Every one would have had to re-pick.
+P="Promptly/Services/PresignResilience.swift"
+if [ ! -f "$P" ]; then note "missing $P"; else
+  grep -Fq 'PresignResilience.withRetry(' "$E" \
+    && echo "  ok   — the presign rides out an infrastructure outage" \
+    || note "the presign does not retry — an outage still costs the user their clip"
+  # Refusals must NOT be retried: three minutes of pretending ends in the same no.
+  sed -n '/func isRetryableInfrastructure/,/^    }/p' "$P" \
+    | grep -Fq 'case .paymentRequired, .insufficientCredits, .freeExportSpent,' \
+    && echo "  ok   — walls and refusals are excluded by name" \
+    || note "refusals are not excluded — a paywall would be retried for minutes"
+  sed -n '/func isRetryableInfrastructure/,/^    }/p' "$P" | grep -Fq 'case NSURLErrorCancelled:' \
+    && echo "  ok   — a cancelled upload is not resumed behind the user" \
+    || note "cancellation would be retried — the user removed the clip and we would keep going"
+  # A cancelled TASK must break the loop, or a removed clip keeps a retry alive.
+  sed -n '/static func withRetry/,/^    }/p' "$P" | grep -Fq 'if Task.isCancelled' \
+    && echo "  ok   — the retry loop stops on task cancellation" \
+    || note "the retry loop ignores cancellation and can outlive its clip"
+fi
+
 # ── 5. ERROR CODES MUST BE STABLE ACROSS BUILDS ─────────────────────────────
 # Implicit enum tags renumber when a case is inserted; that is why one error
 # read as 7 on 1.3.34 and 8 on 1.3.37 and cost most of an investigation.

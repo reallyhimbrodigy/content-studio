@@ -2340,9 +2340,31 @@ struct EditorView: View {
                         // Get TWO presigned upload URLs in parallel —
                         // one for the proxy (small, foreground), one
                         // for the source (large, background).
-                        async let proxyUrlResp = APIService.shared.getUploadUrl(fileName: "proxy-\(UUID().uuidString).mp4")
-                        async let sourceUrlResp = APIService.shared.getUploadUrl(fileName: pending.fileName)
-                        let (proxyResp, sourceResp) = try await (proxyUrlResp, sourceUrlResp)
+                        // KEEP THE CLIP THROUGH AN OUTAGE WE CAUSED. During the
+                        // 2026-09-24 database outage five users started an upload
+                        // and none completed; TWO were told nothing at all, and
+                        // every one of them would have had to find the clip and
+                        // pick it again for a fault entirely on our side. The
+                        // presign now waits the backend out — but ONLY for
+                        // failures that are ours and transient. A wall or a
+                        // refusal still surfaces at once: retrying those is
+                        // pretending something might change.
+                        let (proxyResp, sourceResp) = try await PresignResilience.withRetry({
+                            async let p = APIService.shared.getUploadUrl(fileName: "proxy-\(UUID().uuidString).mp4")
+                            async let sr = APIService.shared.getUploadUrl(fileName: pending.fileName)
+                            return try await (p, sr)
+                        }, onWaiting: { attempt, delay in
+                            UploadTiming.meta(pending.id.uuidString, "presign_retries", attempt)
+                            Analytics.track("presign_retry", props: [
+                                "attempt": attempt, "delay_s": Int(delay),
+                            ], durable: true)
+                            // NOTE: no message update here — the upload task has
+                            // no message bound to it yet (the clip may not even
+                            // have been sent). The pending tile keeps showing its
+                            // ring, which is honest: the upload really is still
+                            // in progress. `presign_retry` carries the fact for
+                            // anyone reading the funnel.
+                        })
                         // The paired /api/upload-url POSTs Render sees 2-70ms
                         // apart are these two, by design. Marked so the grant
                         // prefetch can be SHOWN to remove them.
