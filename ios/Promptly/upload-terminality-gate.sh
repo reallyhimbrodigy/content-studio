@@ -156,6 +156,27 @@ grep -Fq 'UploadTiming.finish(video.id.uuidString, outcome: "dispatched")' "$E" 
   && echo "  ok   — finish is called with the dispatch outcome" \
   || note "UploadTiming.finish is gone — upload_timing stops emitting entirely"
 
+# ── 4e. THE TWO FLAGS MUST STAY SEPARABLE ───────────────────────────────────
+# Zac's runs have shrink AND acceleration on at once, so unless every row says
+# which endpoint it used, neither effect can be attributed at the 10% ramp: the
+# shrink reads from bytes_before/bytes_after, acceleration from MB/s.
+T="Promptly/Services/UploadTiming.swift"
+M2="Promptly/Services/ResumableMultipartUploader.swift"
+if [ ! -f "$T" ]; then note "missing $T"; else
+  grep -Eq '^[[:space:]]*static func recordEndpoint' "$T" \
+    && echo "  ok   — the upload endpoint is recorded" \
+    || note "recordEndpoint is gone — accelerated and control rows become indistinguishable"
+  sed -n '/static func recordEndpoint/,/^    }/p' "$T" | grep -Fq 'meta(id, "upload_host"' \
+    && echo "  ok   — the HOST rides beside the boolean, so a wrong derivation is visible" \
+    || note "only the boolean is recorded — a changed accelerator would silently read as control"
+  grep -Fq 'UploadTiming.recordEndpoint(pending.id.uuidString' "$E" \
+    && echo "  ok   — recorded on the single-PUT path" \
+    || note "the single-PUT path does not record its endpoint"
+  grep -Fq 'UploadTiming.recordEndpoint(manifest.messageId' "$M2" \
+    && echo "  ok   — recorded on the MULTIPART path (where most bytes go)" \
+    || note "multipart does not record its endpoint — that is the path p50 80 MB actually takes"
+fi
+
 # ── 5. ERROR CODES MUST BE STABLE ACROSS BUILDS ─────────────────────────────
 # Implicit enum tags renumber when a case is inserted; that is why one error
 # read as 7 on 1.3.34 and 8 on 1.3.37 and cost most of an investigation.

@@ -2347,6 +2347,10 @@ struct EditorView: View {
                         // apart are these two, by design. Marked so the grant
                         // prefetch can be SHOWN to remove them.
                         UploadTiming.mark(pending.id.uuidString, "presigned")
+                        // EVERY upload records this, flags on or off — the 10%
+                        // ramp needs a control bucket that says it is one.
+                        UploadTiming.recordEndpoint(pending.id.uuidString,
+                                                    presignedURL: sourceResp.uploadUrl)
                         guard let proxyPutUrl = proxyResp.uploadUrl,
                               let proxyPub = proxyResp.publicUrl,
                               let sourcePutUrl = sourceResp.uploadUrl,

@@ -194,6 +194,16 @@ final class ResumableMultipartUploader: NSObject {
             fileSize: size, partSize: partSize, messageId: messageId, chatId: chatId, createdAt: Date())
         saveManifest(manifest)
         msgIdByUpload[manifest.uploadId] = manifest.messageId
+        // THE PATH MOST BYTES ACTUALLY TAKE. Multipart starts at 30 MB and the
+        // measured source is p50 80 MB, so this — not the single PUT — is where
+        // acceleration will or will not show up. Read from the PART url, which
+        // is the host the bytes go to; the init and public urls can differ from
+        // it. Overwrites the single-PUT value recorded earlier, which is correct:
+        // whichever transfer actually ran is the one the row should describe.
+        UploadTiming.recordEndpoint(manifest.messageId, presignedURL: initResponse.partUrls.first)
+        UploadTiming.meta(manifest.messageId, "upload_path", "multipart")
+        UploadTiming.meta(manifest.messageId, "part_size_mib", partSize / (1024 * 1024))
+        UploadTiming.meta(manifest.messageId, "part_count", plan.count)
         let ledger = MultipartResumeLedger(uploadId: initResponse.uploadId, key: initResponse.key,
                                            publicUrl: initResponse.publicUrl, fileSize: size, partSize: partSize)
         try? ledger.save(in: ledgerDir)

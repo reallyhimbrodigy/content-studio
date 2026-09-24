@@ -43,6 +43,36 @@ enum UploadTiming {
         runs[id] = r
     }
 
+    /// WHICH ENDPOINT THE BYTES ACTUALLY WENT TO, read from the presigned URL
+    /// rather than from what we think we asked for.
+    ///
+    /// Zac's TestFlight runs have BOTH flags on at once, so the two effects
+    /// have to be separable after the fact or neither can be attributed at the
+    /// 10% ramp: the shrink reads from bytes_before/bytes_after, acceleration
+    /// from MB/s — but only if each row says whether it was accelerated.
+    ///
+    /// The HOST is recorded beside the boolean on purpose. If B2 ever serves a
+    /// different accelerator, or the pattern changes, the boolean silently
+    /// reads false and every accelerated upload lands in the control bucket —
+    /// a wrong answer that looks like a real one. With the host in the row that
+    /// mistake is visible in one query instead of being invisible forever.
+    static func recordEndpoint(_ id: String, presignedURL: String?) {
+        guard let host = presignedURL.flatMap({ URL(string: $0)?.host }) else {
+            meta(id, "accelerated", false)
+            meta(id, "upload_host", "unreadable")
+            return
+        }
+        meta(id, "accelerated", isAcceleratedHost(host))
+        meta(id, "upload_host", host)
+    }
+
+    /// Pure, so it can be reasoned about and tested without a network call.
+    /// S3 Transfer Acceleration serves `<bucket>.s3-accelerate[.dualstack]
+    /// .amazonaws.com`; anything else is the ordinary regional endpoint.
+    static func isAcceleratedHost(_ host: String) -> Bool {
+        host.lowercased().contains("s3-accelerate")
+    }
+
     /// Emit the breakdown and forget the run.
     static func finish(_ id: String, outcome: String) {
         lock.lock()
