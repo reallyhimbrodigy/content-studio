@@ -36,6 +36,21 @@ final class PendingProReedit {
         /// Set the moment a send is STARTED, before it can succeed, so a crash
         /// mid-flight cannot produce a second attempt that looks like a first.
         var dispatched: Bool = false
+
+        /// TOO OLD TO FIRE BY ITSELF.
+        ///
+        /// The record persists, so without a window a user who hit the 402,
+        /// walked away, and subscribed a WEEK LATER for an unrelated reason
+        /// would have week-old words run against a video they have forgotten —
+        /// a render and a charge they did not ask for today. Thirty minutes
+        /// covers a purchase flow including an interruption, an App Store
+        /// password prompt, a phone call; it excludes anything that is no
+        /// longer the same sitting.
+        ///
+        /// Stale words are NOT lost. They go back to the composer unsent,
+        /// which is the difference between forgetting them and deciding for
+        /// the user.
+        var isStale: Bool { Date().timeIntervalSince(createdAt) > 30 * 60 }
     }
 
     private(set) var record: Record? { didSet { persist() } }
@@ -59,9 +74,18 @@ final class PendingProReedit {
     /// to send OR when it has already been claimed — so two callers racing on
     /// one entitlement change produce one send.
     func claim() -> Record? {
-        guard var r = record, !r.dispatched else { return nil }
+        guard var r = record, !r.dispatched, !r.isStale else { return nil }
         r.dispatched = true
         record = r
+        return r
+    }
+
+    /// A record that exists but must not fire on its own — too old. Returns it
+    /// so the caller can put the words back in the composer, and forgets it so
+    /// this happens once.
+    func takeStale() -> Record? {
+        guard let r = record, !r.dispatched, r.isStale else { return nil }
+        record = nil
         return r
     }
 

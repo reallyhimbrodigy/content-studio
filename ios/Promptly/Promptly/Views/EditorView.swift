@@ -1038,6 +1038,7 @@ struct EditorView: View {
             vibeEditPill
             queuedReeditPill
             drainSupersededNotice
+            resumeFailureLine
 
             // ChatGPT-style vibe-suggestion chips. Always visible when
             // the input is empty + we're not in a re-edit session, so
@@ -1325,6 +1326,28 @@ struct EditorView: View {
     /// affordance and keeps the chip row from sprawling. Each chip is
     /// short enough to read at a glance, distinct enough in feel to
     /// guide users toward different render styles.
+    /// WHY THE WORDS CAME BACK. Shown with the text already in the composer and
+    /// Send live, so the user's next action is one tap — never a blank field
+    /// and never a dead end.
+    @ViewBuilder
+    private var resumeFailureLine: some View {
+        if let reason = resumeFailureReason {
+            HStack(spacing: 8 * k) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 12 * k, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                Text(verbatim: reason)
+                    .font(.system(size: 13 * k))
+                    .foregroundColor(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12 * k)
+            .padding(.bottom, 6 * k)
+            .transition(.opacity)
+        }
+    }
+
     /// ONE LINE, ON ONE PATH. Shown only when the running edit finished while
     /// the user was revising the queued one — the case where their revision
     /// silently stopped being a replacement and became a new message.
@@ -1795,6 +1818,16 @@ struct EditorView: View {
     @State private var showDrainSupersededNotice = false
     /// Holds the entitlement subscription for this view's lifetime.
     @State private var entitlementObserver: AnyCancellable?
+    /// When the entitlement was confirmed on THIS device. The server's tier
+    /// comes from the RevenueCat webhook and can lag by seconds, so a send
+    /// landing first is refused as free-tier. Inside this window that 402 is a
+    /// race, not an answer.
+    @State private var entitlementConfirmedAt: Date?
+    /// One retry per upgrade, not per 402. Reset when an entitlement is newly
+    /// confirmed so a later purchase gets its own single retry.
+    @State private var didRetryAfterEntitlement = false
+    /// One line above the composer when words were handed back.
+    @State private var resumeFailureReason: String?
 
     /// A recoverable orphan that needs the user's nod before we re-materialize
     /// it (an iCloud pull costs them data). nil when there is nothing to offer.
@@ -1867,13 +1900,43 @@ struct EditorView: View {
     /// send, so the several ways isPro can flip true in one session —
     /// purchase, customerInfo refresh, delegate renewal — produce one send.
     private func sendPendingProReeditIfEntitled() {
-        guard subscriptionService.isPro else { return }
+        // EVERY PAID TIER, NOT JUST "pro". `isPro` reads entitlements["pro"]
+        // ALONE, and Max is its own entitlement — so a free user who upgrades
+        // straight to MAX would never have their words sent. `effectiveIsPro`
+        // is the composed definition the rest of the app already gates on
+        // (pro OR max OR the server's view); a second, narrower definition of
+        // "paying" is exactly how wrong values reach users.
+        guard subscriptionService.effectiveIsPro else { return }
+
+        // TOO OLD TO FIRE BY ITSELF — hand the words back instead of running a
+        // render they have forgotten asking for.
+        if let stale = PendingProReedit.shared.takeStale() {
+            returnWordsToComposer(stale.request,
+                                  reason: String(localized: "Here's the change you asked for earlier — send it when you're ready."))
+            Analytics.track("reedit_resume_stale", props: [
+                "age_s": Int(Date().timeIntervalSince(stale.createdAt)),
+            ], durable: true)
+            return
+        }
+
         guard let r = PendingProReedit.shared.claim() else { return }
         Analytics.track("reedit_resumed_after_upgrade", props: [:], durable: true)
+        entitlementConfirmedAt = Date()
+        didRetryAfterEntitlement = false
         sendReedit(changeRequest: r.request,
                    originalJobId: r.originalJobId,
                    idempotencyKey: r.idempotencyKey)
         PendingProReedit.shared.clear()
+    }
+
+    /// NEVER A BLANK COMPOSER. Whatever went wrong, the user's words come back
+    /// with one line saying why and a Send button — they described a change
+    /// once and should never have to describe it twice.
+    private func returnWordsToComposer(_ words: String, reason: String) {
+        inputText = words
+        resumeFailureReason = reason
+        isInputFocused = true
+        Analytics.track("reedit_words_returned", props: [:], durable: true)
     }
 
     /// Observe the CONFIRMED entitlement. Registered here rather than as a view
@@ -1883,9 +1946,10 @@ struct EditorView: View {
     /// not a correctness signal.
     private func observeEntitlementForPendingReedit() {
         entitlementObserver?.cancel()
-        entitlementObserver = SubscriptionService.shared.$isPro
-            .removeDuplicates()                 // one send per TRANSITION
-            .filter { $0 }                      // only when it goes active
+        let sub = SubscriptionService.shared
+        // pro OR max: merged, because a Max purchase never touches $isPro.
+        entitlementObserver = Publishers.Merge(sub.$isPro, sub.$isMax)
+            .filter { $0 }                      // only when something goes ACTIVE
             .sink { _ in
                 Task { @MainActor in sendPendingProReeditIfEntitled() }
             }
@@ -3089,16 +3153,52 @@ struct EditorView: View {
                     persistMessages()
                 }
             } catch let APIError.paymentRequired(kind, _, _) where kind == "reedit" {
-                // FREE USER, FRAMED AS AN UPGRADE — never an error. Their words
-                // are kept with a key minted NOW, so a send after subscribing
-                // is the same intent to the server however many processes it
-                // takes to get there.
+                // THE WEBHOOK RACE. StoreKit confirms the entitlement on THIS
+                // device instantly; the server's tier arrives via the
+                // RevenueCat webhook and can lag seconds. A send that lands
+                // first is refused as free-tier — so someone who has just paid
+                // would see a failure for the change they paid to make.
+                //
+                // Inside 60s of a confirmed entitlement this 402 is a race, not
+                // an answer: wait once and retry the SAME key, so if the first
+                // attempt did somehow register, the server still charges once.
+                // Exactly one retry — beyond that it is an answer after all.
+                if let confirmed = entitlementConfirmedAt,
+                   Date().timeIntervalSince(confirmed) < 60,
+                   !didRetryAfterEntitlement {
+                    didRetryAfterEntitlement = true
+                    Analytics.track("reedit_402_webhook_race_retry", props: [:], durable: true)
+                    if let i = idx() {
+                        messages[i].stepMessage = String(localized: "Finishing your upgrade...")
+                    }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(3))
+                        sendReedit(changeRequest: changeRequest,
+                                   originalJobId: originalJobId,
+                                   idempotencyKey: idempotencyKey)
+                    }
+                    return
+                }
+                // A REAL FREE-TIER REFUSAL. If words were already kept for this
+                // intent they stay kept; otherwise keep them now with a key
+                // minted at this moment.
                 PendingProReedit.shared.keep(request: changeRequest, originalJobId: originalJobId)
                 if let i = idx() {
                     messages[i].jobStatus = "failed"
                     messages[i].isRetryable = false
                     messages[i].error = String(localized: "Want that change? Upgrade to keep editing.")
                     persistMessages()
+                }
+                // ALREADY PAID, AND STILL REFUSED. The retry is spent, so this
+                // is no longer a race. Do not show a paywall to someone who
+                // just bought — hand the words back with a reason they can act
+                // on, rather than asking them to pay again.
+                if didRetryAfterEntitlement {
+                    PendingProReedit.shared.clear()
+                    returnWordsToComposer(changeRequest,
+                                          reason: String(localized: "Your upgrade is still syncing. Send again in a moment."))
+                    Analytics.track("reedit_resume_failed_after_upgrade", props: [:], durable: true)
+                    return
                 }
                 appState.presentPaywall(.reedit)
                 Analytics.track("reedit_pro_required", props: [:], durable: true)
@@ -3843,6 +3943,7 @@ struct EditorView: View {
     private func send() {
         // The notice described the state of the composer BEFORE this send.
         showDrainSupersededNotice = false
+        resumeFailureReason = nil
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }

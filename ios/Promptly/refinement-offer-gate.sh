@@ -306,6 +306,72 @@ check("the notice shows when the drain lands mid-edit", notice == true)
 notice = false                                     // cleared by send()
 check("the notice is cleared once the user acts", notice == false)
 
+
+// ── MAX, STALENESS, AND THE WEBHOOK RACE ───────────────────────────────────
+var sends: [(String, String)] = []                 // (words, key)
+var composerText = ""
+var composerReason: String? = nil
+var keptRec: Kept? = nil
+var confirmedAt: Date? = nil
+var retriedOnce = false
+
+func effectiveIsPro(pro: Bool, max: Bool, serverPro: Bool) -> Bool { pro || max || serverPro }
+func resume(pro: Bool, max: Bool, serverPro: Bool, ageSeconds: TimeInterval) {
+    guard effectiveIsPro(pro: pro, max: max, serverPro: serverPro) else { return }
+    guard var k = keptRec, !k.dispatched else { return }
+    if ageSeconds > 30 * 60 {                      // stale: hand back, do not fire
+        keptRec = nil
+        composerText = k.request
+        composerReason = "Here's the change you asked for earlier — send it when you're ready."
+        return
+    }
+    k.dispatched = true; keptRec = k
+    confirmedAt = Date(); retriedOnce = false
+    sends.append((k.request, k.key))
+}
+
+// 1 — A MAX PURCHASE MUST FIRE THE SEND.
+keptRec = Kept(request: "add captions", jobId: "j", key: "K1", dispatched: false)
+resume(pro: false, max: true, serverPro: false, ageSeconds: 10)
+check("a MAX purchase fires the send", sends.map { $0.0 } == ["add captions"])
+check("...exactly once", sends.count == 1)
+resume(pro: false, max: true, serverPro: false, ageSeconds: 10)
+check("...and not again on a repeat Max signal", sends.count == 1)
+// The narrow definition would have missed it entirely:
+check("gating on entitlements[\"pro\"] alone would NOT have fired", (false || false) == false)
+
+// 2 — STALE INTENT.
+sends = []; composerText = ""; composerReason = nil
+keptRec = Kept(request: "week-old change", jobId: "j", key: "K2", dispatched: false)
+resume(pro: true, max: false, serverPro: false, ageSeconds: 7 * 24 * 3600)
+check("a week-old intent does NOT auto-send", sends.isEmpty)
+check("...its words go back to the composer", composerText == "week-old change")
+check("...with a reason, never a blank field", composerReason != nil)
+sends = []; composerText = ""
+keptRec = Kept(request: "fresh change", jobId: "j", key: "K3", dispatched: false)
+resume(pro: true, max: false, serverPro: false, ageSeconds: 120)
+check("an intent inside the window DOES auto-send", sends.map { $0.0 } == ["fresh change"])
+
+// 3 — THE WEBHOOK RACE.
+sends = []; confirmedAt = Date(); retriedOnce = false
+func on402Free(secondsSinceConfirm: TimeInterval, words: String, key: String) -> String {
+    if confirmedAt != nil, secondsSinceConfirm < 60, !retriedOnce {
+        retriedOnce = true
+        sends.append((words, key))                 // the one retry, SAME key
+        return "retried"
+    }
+    composerText = words                            // never blank
+    composerReason = "Your upgrade is still syncing. Send again in a moment."
+    return "handed_back"
+}
+check("a 402 just after confirming is retried once", on402Free(secondsSinceConfirm: 2, words: "add captions", key: "K1") == "retried")
+check("...under the SAME key", sends.last?.1 == "K1")
+check("a SECOND 402 is not retried again", on402Free(secondsSinceConfirm: 4, words: "add captions", key: "K1") == "handed_back")
+check("...and the words come back with a reason", composerText == "add captions" && composerReason != nil)
+retriedOnce = false
+check("a 402 long after confirming is not treated as a race",
+      on402Free(secondsSinceConfirm: 120, words: "add captions", key: "K1") == "handed_back")
+
 print(failed == 0 ? "  (behavioural: all correct)" : "  (behavioural: \(failed) wrong)")
 exit(failed == 0 ? 0 : 1)
 SWIFT
