@@ -225,6 +225,33 @@ if [ ! -f "$C" ]; then ufail "missing $C"; else
     && echo "  ok   — the batch actions are gone once work has started" \
     || ufail "the batch card still offers an action after dispatch — a second tap would double-charge"
 
+  # ONE PAYMENT UI, AND EVERY NUMBER FROM THE SERVER.
+  # The shared card was extracted and the original left behind, so for a while
+  # the quote flow said "back tomorrow" while the re-edit flow quoted a price —
+  # two renderings of one refusal, which is how two surfaces quote two prices.
+  n=$(grep -c 'case \.dailyCap:' "$C")
+  [ "$n" = 1 ] && echo "  ok   — the three 402 reasons are rendered in exactly ONE place" \
+               || ufail "the 402 reasons are rendered in $n places — a second payment UI"
+  # No client-side price. Every figure on that card is the server's.
+  if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -qE '[0-9]+ credits'; then
+    ufail "a hardcoded credit figure is on the payment card — it must come from the 402 body"
+  else
+    echo "  ok   — no hardcoded credit figure on the payment card"
+  fi
+  # The cap period is the SERVER'S word, not ours.
+  sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -Fq 'payment.scope.map' \
+    && echo "  ok   — the cap period comes from the server, not the word \"today\"" \
+    || ufail "the cap period is hardcoded — saying today when the cap is monthly sends people back to the same wall"
+  if sed -n '/struct PaymentRequiredCard/,/^}/p' "$C" | grep -q "today's included"; then
+    ufail "the card still hardcodes \"today's\""
+  else
+    echo "  ok   — no hardcoded period in the cap copy"
+  fi
+  # Cost before balance, so the reader is not made to subtract.
+  sed -n '/case .insufficientCredits:/,/case .proRequired:/p' "$C" | grep -Fq 'This change costs' \
+    && echo "  ok   — insufficient leads with the COST, then the balance" \
+    || ufail "insufficient copy does not lead with the cost"
+
   # QUEUE: ONLY ABOVE ZERO, AND NEVER AN INVENTED WAIT.
   grep -Eq 'state\.position > 0' "$C" \
     && echo "  ok   — the queue line draws only above position 0" \

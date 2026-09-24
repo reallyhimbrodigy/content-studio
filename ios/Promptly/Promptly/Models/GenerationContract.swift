@@ -98,8 +98,14 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
     let balance: Int?
     let shortfall: Int?
     let actions: [String]
+    /// WHAT PERIOD THE CAP COVERS, in the server's words ("today", "this
+    /// week", "this month"). Rendered verbatim, because only the server knows
+    /// what its cap actually resets on — the client saying "today" when the
+    /// cap is monthly tells the user to come back tomorrow to the same wall.
+    /// Absent means we do not know, and the copy then does not claim a period.
+    let scope: String?
 
-    enum CodingKeys: String, CodingKey { case error, reason, needed, balance, shortfall, actions }
+    enum CodingKeys: String, CodingKey { case error, reason, needed, balance, shortfall, actions, scope }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -109,6 +115,9 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
         balance = (try? c.decodeIfPresent(Int.self, forKey: .balance)) ?? nil
         shortfall = (try? c.decodeIfPresent(Int.self, forKey: .shortfall)) ?? nil
         actions = ((try? c.decodeIfPresent([String].self, forKey: .actions)) ?? nil) ?? []
+        scope = ((try? c.decodeIfPresent(String.self, forKey: .scope)) ?? nil)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 

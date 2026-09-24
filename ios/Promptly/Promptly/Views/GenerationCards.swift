@@ -145,48 +145,17 @@ struct QuoteCardView: View {
         .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
-    /// THE 402, AND IT IS NEVER AN ERROR. `reason` alone chooses the words and
-    /// the button; nothing is read from a message string.
+    /// THE SAME CARD EVERY OTHER SURFACE USES.
+    ///
+    /// This had its own copy of the three reasons — and the moment the cap copy
+    /// changed, the quote flow kept saying "back tomorrow" while the re-edit
+    /// flow quoted a price. Two renderings of one refusal is exactly the second
+    /// payment UI the contract forbids, and it appeared here by extraction
+    /// rather than by intent: I lifted the shared card out and left the
+    /// original behind.
     @ViewBuilder
     private func blockedBody(_ pr: PaymentRequired) -> some View {
-        switch pr.reason {
-        case .insufficientCredits:
-            // The shortfall is a NUMBER from the server. The user has already
-            // been taken to top-up; this is what they come back to.
-            if let short = pr.shortfall, let have = pr.balance {
-                Text(verbatim: "You have \(have) — \(short) short")
-                    .font(.system(size: 12 * k))
-                    .foregroundColor(.white.opacity(0.6))
-                    .monospacedDigit()
-            }
-            twoActions(primary: "Get credits",
-                       primaryAction: { AppState.shared.showCredits = true },
-                       secondary: "Upgrade",
-                       secondaryAction: { AppState.shared.presentPaywall(.manual) })
-        case .proRequired:
-            // NAME THE THING THAT IS WALLED, NOT "generating". Free users CAN
-            // generate — an image costs 5 credits — so a blanket "Generating is
-            // a Pro feature" is simply false, and a user who has made images
-            // reads it as the app being broken rather than as an offer.
-            Text(verbatim: "\(Self.subject(of: state.quote.label)) is a Pro feature.")
-                .font(.system(size: 12 * k))
-                .foregroundColor(.white.opacity(0.6))
-            primaryButton("Upgrade") { AppState.shared.presentPaywall(.manual) }
-        case .dailyCap:
-            // ONE LINE, AND NOT A DEAD END. The cap resets; saying only "you
-            // hit a limit" strands someone who would happily pay to continue.
-            Text("That's today's limit — back tomorrow.")
-                .font(.system(size: 12 * k))
-                .foregroundColor(.white.opacity(0.6))
-            primaryButton("Upgrade for more") { AppState.shared.presentPaywall(.manual) }
-        case .none:
-            // An unknown reason from a newer server. Offer the least-wrong door
-            // rather than a dead end, and the raw reason is already in analytics.
-            Text("Not available right now.")
-                .font(.system(size: 12 * k))
-                .foregroundColor(.white.opacity(0.6))
-            primaryButton("Get credits") { AppState.shared.showCredits = true }
-        }
+        PaymentRequiredCard(payment: pr, subject: Self.subject(of: state.quote.label))
     }
 
     @ViewBuilder
@@ -300,8 +269,13 @@ struct PaymentRequiredCard: View {
             switch payment.reason {
             case .insufficientCredits:
                 // THE SHORTFALL AS A NUMBER, never parsed from prose.
-                if let short = payment.shortfall, let have = payment.balance {
-                    line("You have \(have) — \(short) short")
+                // COST FIRST, THEN WHAT THEY HOLD. "You have 20 — 25 short"
+                // reads backwards: it leads with the balance and makes the
+                // reader do the subtraction to find the price.
+                if let needed = payment.needed, let have = payment.balance {
+                    line("This change costs \(needed) credits. You have \(have).")
+                } else if let have = payment.balance {
+                    line("You have \(have) credits.")
                 } else {
                     line("Not enough credits")
                 }
@@ -317,10 +291,19 @@ struct PaymentRequiredCard: View {
                 // included allowance; the next change is still available, and
                 // saying what it costs is more useful than saying no.
                 if let needed = payment.needed {
-                    line("That's today's included edits. Next one is \(needed) credits.")
+                    // THE PERIOD IS THE SERVER'S WORD, NOT OURS. Saying
+                    // "today's" when the cap is monthly sends someone back
+                    // tomorrow to the same wall. With no scope we simply do not
+                    // name a period — vaguer, and true.
+                    line(payment.scope.map { "That's \($0) included edits." }
+                            ?? "That's your included edits for now.")
+                    line("This change costs \(needed) credits.")
                     primary("Use \(needed) credits") { AppState.shared.showCredits = true }
                 } else {
-                    line("That's today's limit — back tomorrow.")
+                    // No price quoted: do not invent one, and do not claim a
+                    // period either.
+                    line(payment.scope.map { "That's \($0) included edits." }
+                            ?? "You've used your included edits.")
                     primary("Upgrade for more") { AppState.shared.presentPaywall(.manual) }
                 }
             case .none:
