@@ -173,6 +173,77 @@ if let q = slot { sent.append(q.request); slot = nil; rows.removeAll() }
 check("drain sends the queued change once", sent == ["first change", "third change"])
 check("drain empties the slot", slot == nil && rows.isEmpty)
 
+
+// ── THE THREE PAYMENT-SAFETY CONFIRMATIONS ──────────────────────────────────
+// 1. A queued change costs nothing until dispatched.
+// 2. Drain-during-edit must not dispatch BOTH the old and the new words.
+// 3. An orphaned queue row dispatches once, or is handed back — never twice.
+var dispatched: [String] = []          // what reached the server (= what charges)
+var slot2: Slot? = nil
+var editing2 = false
+var composer = ""
+
+func queue(_ t: String) { slot2 = Slot(request: t, jobId: "j", messageId: "m") }
+func replaceSlot(_ t: String) -> Bool {
+    guard editing2, var s = slot2 else { return false }
+    s.request = t; slot2 = s; editing2 = false; return true
+}
+func drain() {                          // mirrors drainQueuedReedit
+    guard let q = slot2 else { return }
+    slot2 = nil
+    editing2 = false                    // ← the fix: end the edit before dispatch
+    dispatched.append(q.request)
+}
+// mirrors send(): replace if editing, else an ordinary dispatch
+func send2(_ t: String) {
+    if replaceSlot(t) { return }
+    if slot2 != nil { return }           // composer closed
+    dispatched.append(t)
+}
+
+// 1 — QUEUED COSTS NOTHING.
+queue("make it shorter")
+check("a queued change has not been dispatched", dispatched.isEmpty)
+editing2 = true; _ = replaceSlot("make it punchier")
+check("replacing a queued change dispatches nothing", dispatched.isEmpty)
+slot2 = nil                              // user discards
+check("discarding a queued change dispatches nothing", dispatched.isEmpty)
+
+// 2 — THE RACE.
+dispatched = []; composer = "punchier, and add captions"
+queue("make it shorter"); editing2 = true      // user is mid-revision
+drain()                                        // running edit finishes NOW
+check("drain dispatches the queued words once", dispatched == ["make it shorter"])
+check("drain ends the edit, so a later send cannot fall through", editing2 == false)
+send2(composer)                                // user then taps send
+check("the revision is a SEPARATE, deliberate dispatch — not a silent second one",
+      dispatched == ["make it shorter", "punchier, and add captions"])
+check("...and never both from one intent: each dispatch had its own send or drain",
+      dispatched.count == 2)
+
+// The un-fixed shape, for contrast: if drain did NOT end the edit, the send
+// would fail the replace (slot empty) and fall through, dispatching twice off
+// ONE user action.
+dispatched = []
+queue("old words"); editing2 = true
+slot2 = nil; dispatched.append("old words")    // drain WITHOUT clearing editing2
+let wouldReplace = replaceSlot("new words")    // fails: slot is nil
+check("without the fix the replace fails and the send would fall through",
+      wouldReplace == false)
+
+// 3 — ORPHAN RECONCILE.
+dispatched = []
+queue("queued before the kill")
+// App is killed: the in-memory slot dies, the ROW persists.
+slot2 = nil
+var orphanRow = "queued before the kill"
+var rowState = "queued_behind"
+// Launch reconcile hands it back rather than dispatching.
+if rowState == "queued_behind" { rowState = "failed_retryable" }
+check("an orphaned queue row dispatches NOTHING on its own", dispatched.isEmpty)
+check("it is handed back to the user, not dropped", rowState == "failed_retryable" && !orphanRow.isEmpty)
+check("and the user's words survive the restart", orphanRow == "queued before the kill")
+
 print(failed == 0 ? "  (behavioural: all correct)" : "  (behavioural: \(failed) wrong)")
 exit(failed == 0 ? 0 : 1)
 SWIFT

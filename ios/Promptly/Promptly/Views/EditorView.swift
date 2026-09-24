@@ -2929,6 +2929,21 @@ struct EditorView: View {
     private func drainQueuedReedit() {
         guard let q = queuedReedit else { return }
         queuedReedit = nil
+        // THE RACE: THE RUNNING EDIT FINISHES WHILE THE USER IS REVISING THE
+        // QUEUED ONE.
+        //
+        // Both are @MainActor so they cannot overlap, but they INTERLEAVE: this
+        // takes the slot and dispatches the old words, and a send arriving a
+        // moment later still has `isEditingQueuedReedit` true, finds the slot
+        // empty, fails the replace condition — and FALLS THROUGH to an ordinary
+        // send. Both the old words and the new ones dispatch, which is two
+        // renders and two charges for one intent.
+        //
+        // Ending the edit here closes that. The queued change runs (it was
+        // confirmed), and the user's revision stays in the composer as text
+        // they may choose to send. One dispatch from the queue; a second only
+        // if a person decides on it.
+        isEditingQueuedReedit = false
         // Drop the placeholder row: sendReedit appends its own pair, and two
         // rows for one request would read as a double send even though only
         // one ran.
