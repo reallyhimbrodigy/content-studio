@@ -4103,6 +4103,20 @@ struct EditorView: View {
                     if let i = messages.firstIndex(where: { $0.id == msgId }) {
                         let mapped = Int(video.uploadProgress * 30)
                         if mapped > (messages[i].jobProgress ?? 0) { messages[i].jobProgress = mapped }
+                        // SEND NEVER WAITS ON A SPINNER. The bar already moved
+                        // with the real transfer, but the line above it read
+                        // "Getting started..." for the whole upload — which on a
+                        // slow connection is minutes of a message that says
+                        // nothing while something specific and reassuring is
+                        // known. Show the actual percent.
+                        //
+                        // The REAL transfer percent, not the 0-30 band the bar
+                        // is drawn in: a user reading "18%" beside a bar that is
+                        // clearly past half would rightly distrust both.
+                        let pct = Int((video.uploadProgress * 100).rounded())
+                        messages[i].stepMessage = pct >= 100
+                            ? String(localized: "Finishing upload...")
+                            : String(localized: "Uploading \(pct)%")
                     }
                     try? await Task.sleep(for: .milliseconds(200))
                 }
