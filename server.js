@@ -1980,6 +1980,70 @@ if (String(process.env.SCOREBOARD_SCHEDULER_DISABLED || '') !== '1') {
   }
 }
 
+// ── THE ORIGIN GUARD GETS ITS SINK (Zac 2026-09-24, item 3) ──────────────
+//
+// The guard has been complete and INERT: nothing called observe() (now fixed at
+// services/supabase-admin.js, one wrapped fetch covering every PostgREST round
+// trip) and nothing called configure(), so a page had nowhere to go and said so
+// into a log nobody was reading.
+//
+// I held this back on the grounds that device_tokens is 0 for the owner, so a
+// page would reach nobody. That reason does not survive our own ops-alert
+// contract: it answers UNDELIVERED / no_recipients / a zero `delivered`, which
+// is a MACHINE-READABLE MISS, not success into the void. Waiting only creates a
+// second commit that has to happen later; wired now, it goes live the moment a
+// build-261 sign-in registers a device, with no redeploy.
+//
+// LOOPBACK, NOT AN INTERNAL CALL. Posting to our own /api/internal/ops-alert
+// reuses the whole DELIVERED / UNDELIVERED / UNKNOWN contract — including its
+// 8s deadline and its per-recipient logging — and hands back the `delivery` and
+// `reason` that make the miss readable. Calling a private function instead
+// would mean re-implementing that contract at the one call site that needs it
+// most.
+//
+// THE FIRE IS RECORDED BEFORE THE DELIVERY IS KNOWN, and again with it. A page
+// that fires and reaches nobody must not be indistinguishable from no page.
+(() => {
+  const _fires = require('./lib/ops-fire-log');
+  const _guard = require('./lib/origin-latency-guard');
+  const _port = process.env.PORT || 3000;
+  _guard.configure({
+    sink: async (title, body, facts = {}) => {
+      // The facts come from the page that fired, not from _state() — reading
+      // the guard here would report the NEXT minute's bucket.
+      const base = { at: facts.at || Date.now(), title,
+        why: facts.why || (/5xx/.test(title) ? 'errors' : 'latency'),
+        p95_ms: Number.isFinite(facts.p95) && facts.p95 >= 0 ? facts.p95 : null,
+        samples: facts.n };
+      const secret = process.env.MODAL_CALLBACK_SECRET || '';
+      if (!secret) {
+        await _fires.record({ ...base, delivery: 'NOT_ATTEMPTED', reason: 'no_callback_secret' },
+          { supabaseAdmin });
+        return;
+      }
+      try {
+        const r = await fetch(`http://127.0.0.1:${_port}/api/internal/ops-alert`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-modal-secret': secret },
+          body: JSON.stringify({ title, body, thread_id: 'origin-guard' }),
+          signal: AbortSignal.timeout(12000),
+        });
+        const j = await r.json().catch(() => ({}));
+        await _fires.record({ ...base,
+          delivery: j.delivery || (r.ok ? 'UNKNOWN' : 'NOT_ATTEMPTED'),
+          reason: j.reason || `http_${r.status}`,
+          delivered: j.delivered, recipients: j.recipients }, { supabaseAdmin });
+      } catch (e) {
+        await _fires.record({ ...base, delivery: 'NOT_ATTEMPTED',
+          reason: `sink_error:${(e && e.message || 'unknown').slice(0, 60)}` },
+          { supabaseAdmin });
+      }
+    },
+  });
+  console.log('[origin-latency] sink wired to /api/internal/ops-alert; fires recorded to '
+    + 'the [ops-fire] log line, /healthz ops_fires, and ops_alert_fires when applied.');
+})();
+
 const server = http.createServer((req, res) => {
   try {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -2001,6 +2065,19 @@ const server = http.createServer((req, res) => {
 
   // Render health checks should be constant-time and avoid any extra work.
   if (req.method === 'GET' && parsed.pathname === '/healthz') {
+    // ?ops_fires=1 renders the guard's recent pages. Behind a query parameter
+    // so Render's health probe keeps its constant-time 'OK' — the probe runs
+    // every few seconds and must never do work — while the fires stay one curl
+    // away with no migration applied. That is what "visible today" has to mean.
+    if (parsed.query && parsed.query.ops_fires) {
+      const _fires = require('./lib/ops-fire-log');
+      const _guard = require('./lib/origin-latency-guard');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({
+        ops_fires: _fires.recent(Number(parsed.query.ops_fires) || 10),
+        guard: _guard._state(),
+      }, null, 2));
+    }
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end('OK');
   }
