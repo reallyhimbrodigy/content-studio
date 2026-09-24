@@ -3864,6 +3864,27 @@ struct EditorView: View {
                         // byte-identical to today. The HARD GUARD (attachment ⇒ video_url)
                         // lives in the helper: no url ⇒ no video act is ever sent.
                         let outcome: JobDispatchCoordinator.Outcome
+                        // CLOSE THE TIMING RUN WHICHEVER ROUTE WINS.
+                        //
+                        // UploadTiming.finish lived ONLY on the URL-immediate
+                        // router's success path, and that router is dark:
+                        // /api/chat/actions returns 404 in production, so it
+                        // always returns nil and the coordinator below always
+                        // runs. The result is that `upload_timing` has NEVER
+                        // been received — 0 rows in 60 days while upload_attempt
+                        // and upload_completed flow in their thousands. The
+                        // instrument shipped, was allowlisted, was called, and
+                        // measured nothing, because the one call site sits on a
+                        // branch that is never taken.
+                        //
+                        // `defer` rather than a second call site: the run must be
+                        // closed on EVERY exit from here, including the ones
+                        // added next year. finish() removes the run, so a
+                        // double-close is a no-op by construction.
+                        defer {
+                            UploadTiming.meta(video.id.uuidString, "conn", ReachabilityMonitor.currentConnectionType)
+                            UploadTiming.finish(video.id.uuidString, outcome: "dispatched")
+                        }
                         if let acted = await chatActRouterURLImmediate(video: video, vibe: vibe, msgId: msgId) {
                             outcome = acted
                         } else {

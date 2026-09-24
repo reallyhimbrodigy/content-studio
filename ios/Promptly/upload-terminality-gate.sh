@@ -141,6 +141,21 @@ if [ ! -f "$O" ] || [ ! -f "$S2" ]; then note "missing shrink files"; else
     || note "no tone-mapping — an HDR source would land grey and washed out"
 fi
 
+# ── 4d. THE TIMING RUN MUST BE CLOSED ON EVERY EXIT ─────────────────────────
+# UploadTiming.finish lived only on the URL-immediate router's SUCCESS path,
+# and that router is dark (/api/chat/actions 404s in production). So the
+# instrument shipped, was allowlisted, was called — and never once emitted:
+# 0 upload_timing rows in 60 days while upload_attempt and upload_completed
+# flowed in their thousands. A measurement that depends on a branch nobody
+# takes measures nothing.
+sed -n '/let outcome: JobDispatchCoordinator.Outcome/,/^                        if let acted/p' "$E" \
+  | grep -Fq 'defer {' \
+  && echo "  ok   — the timing run is closed on every dispatch exit, not one branch" \
+  || note "UploadTiming.finish is not deferred — it will miss whichever branch is taken"
+grep -Fq 'UploadTiming.finish(video.id.uuidString, outcome: "dispatched")' "$E" \
+  && echo "  ok   — finish is called with the dispatch outcome" \
+  || note "UploadTiming.finish is gone — upload_timing stops emitting entirely"
+
 # ── 5. ERROR CODES MUST BE STABLE ACROSS BUILDS ─────────────────────────────
 # Implicit enum tags renumber when a case is inserted; that is why one error
 # read as 7 on 1.3.34 and 8 on 1.3.37 and cost most of an investigation.
