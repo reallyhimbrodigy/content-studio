@@ -1638,6 +1638,31 @@ struct EditorView: View {
     /// LAUNCH RECONCILE (ruled 2026-09-06). An upload that died with the app is
     /// either retried from its staged file or failed and refunded — never left
     /// hanging, which is the state the sweep used to leave every one of them in.
+    /// A QUEUED RE-EDIT CANNOT SURVIVE THE PROCESS THAT WAS HOLDING IT.
+    ///
+    /// The queue slot is in-memory — it has to be, since it is waiting on a
+    /// live SSE completion. The ROW persists, so after a kill the thread would
+    /// show "Queued, next up" against a queue that no longer exists: a row that
+    /// spins forever, which is worse than never persisting it.
+    ///
+    /// So on launch, any queued row is turned back into something the user can
+    /// act on, WITH THEIR WORDS INTACT. They asked for something; the least we
+    /// owe them is not to make them remember what.
+    private func reconcileQueuedReedits() {
+        var changed = false
+        for i in messages.indices where messages[i].jobStatus == "queued_behind" {
+            messages[i].jobStatus = "failed"
+            messages[i].isRetryable = true
+            messages[i].stepMessage = nil
+            messages[i].error = String(localized: "That change didn't get sent. Tap to try it again.")
+            changed = true
+        }
+        if changed {
+            persistMessages()
+            Analytics.track("reedit_queue_orphaned", props: [:], durable: true)
+        }
+    }
+
     private func reconcileStaleUploads() {
         let stale = UploadOutcomeReporter.shared.sweepOnLaunch()
         guard !stale.isEmpty else { return }
@@ -1684,6 +1709,19 @@ struct EditorView: View {
         }
         persistMessages()
     }
+
+    /// ONE QUEUED RE-EDIT, WAITING FOR THE ONE IN FLIGHT.
+    ///
+    /// The server serializes re-edits per video and answers a second one with a
+    /// typed 409. The client used to render that as a FAILURE — the user's
+    /// request became a red row saying "give that one a moment", and the words
+    /// they typed were gone. They had to notice, wait, and type it again.
+    ///
+    /// Now it waits its turn. Exactly ONE: a queue of many would let someone
+    /// stack five contradictory edits against a video they have not seen yet,
+    /// and the honest answer to a second queued request is that the first is
+    /// still pending.
+    @State private var queuedReedit: (request: String, originalJobId: String, messageId: UUID)?
 
     /// A recoverable orphan that needs the user's nod before we re-materialize
     /// it (an iCloud pull costs them data). nil when there is nothing to offer.
@@ -1749,6 +1787,7 @@ struct EditorView: View {
 
     private func registerEditorHooks() {
         reconcileStaleUploads()
+        reconcileQueuedReedits()
         debugAttachClipIfRequested()
         debugSendChatIfRequested()
         AuthGate.shared.onSendResume = { send() }
@@ -2837,6 +2876,24 @@ struct EditorView: View {
         }
     }
 
+    /// Send the queued re-edit, if there is one.
+    ///
+    /// IDEMPOTENT AND SELF-CLEARING. The queue slot is taken before the send so
+    /// a second completion event — SSE and the poll both fire on a finished job
+    /// — cannot send the same request twice. That double-send is the exact
+    /// failure this feature exists to prevent, so it must not be introduced by
+    /// the fix for it.
+    private func drainQueuedReedit() {
+        guard let q = queuedReedit else { return }
+        queuedReedit = nil
+        // Drop the placeholder row: sendReedit appends its own pair, and two
+        // rows for one request would read as a double send even though only
+        // one ran.
+        messages.removeAll { $0.id == q.messageId }
+        Analytics.track("reedit_queue_released", props: [:], durable: true)
+        sendReedit(changeRequest: q.request, originalJobId: q.originalJobId)
+    }
+
     private func sendReedit(changeRequest: String, originalJobId: String) {
         clearInputField()
         isSending = true
@@ -2902,10 +2959,24 @@ struct EditorView: View {
                 // rendering" need different words because the user's next
                 // action differs — answer it, or wait.
                 if let i = idx() {
-                    messages[i].jobStatus = "failed"
-                    messages[i].error = inFlight.isParkedOnAQuestion
-                        ? String(localized: "This video is still waiting on an earlier question. Answer that first and I'll pick this up.")
-                        : String(localized: "This video is already being re-edited. Give that one a moment to finish.")
+                    if inFlight.isParkedOnAQuestion {
+                        // NOT queueable. The earlier job is waiting on the USER,
+                        // not on us, so queueing behind it would wait forever.
+                        // Name the one action that unblocks it.
+                        messages[i].jobStatus = "failed"
+                        messages[i].error = String(localized: "This video is still waiting on an earlier question. Answer that first and I'll pick this up.")
+                    } else {
+                        // QUEUED, VISIBLY. The request is kept and sent the
+                        // moment the running one finishes — no double send, and
+                        // nothing silently dropped.
+                        messages[i].jobStatus = "queued_behind"
+                        messages[i].error = nil
+                        messages[i].stepMessage = String(localized: "Queued, next up")
+                        queuedReedit = (request: changeRequest,
+                                        originalJobId: originalJobId,
+                                        messageId: messages[i].id)
+                        Analytics.track("reedit_queued", props: [:], durable: true)
+                    }
                     persistMessages()
                 }
             } catch APIError.paymentRequired {
@@ -4510,6 +4581,11 @@ struct EditorView: View {
                         messages[idx].stageTimeline?.finish()
                         Analytics.track("render_completed", props: ["path": "sse"], durable: true)
                         persistMessages()
+                        // THE RUNNING ONE FINISHED — RELEASE WHAT WAS WAITING.
+                        // Drained here rather than on a timer: the queue exists
+                        // because the server was busy, and this is the moment it
+                        // stopped being busy.
+                        drainQueuedReedit()
                         maybeOfferSoftPromptOnCompletion() // build 222: ask AFTER the payoff
                         if isFinalEvent {
                             client.disconnect()

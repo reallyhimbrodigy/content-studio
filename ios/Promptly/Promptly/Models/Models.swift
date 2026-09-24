@@ -350,7 +350,14 @@ struct SerializedMessage: Codable, Hashable {
         if message.role == .assistant
             && (message.jobId != nil
                 || message.jobStatus == "processing"
-                || message.jobStatus == "queued") {
+                || message.jobStatus == "queued"
+                // A re-edit waiting its turn. It has no jobId yet — that is
+                // what it is waiting FOR — so without this the row vanishes on
+                // a chat switch and the user's request is silently dropped,
+                // which is the whole thing the queue exists to prevent. The
+                // launch reconcile turns an orphaned one back into something
+                // the user can act on; it is never left spinning.
+                || message.jobStatus == "queued_behind") {
             return true
         }
         // A QUOTE CARD IS THE WHOLE PAYLOAD, and the fallback below would drop
