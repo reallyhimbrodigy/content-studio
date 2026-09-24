@@ -110,6 +110,69 @@ retract(&t3, job: "A")
 check("retracting one job leaves another job's question alone",
       t3.count == 1 && t3[0].refinement?.jobId == "B")
 
+
+// ── THE THIRD SEND: nothing dropped, nothing stacked ────────────────────────
+// One re-edit running, one queued. What happens when the user types another?
+// Dropping it is a silent loss; stacking lets someone pile up contradictory
+// edits against a video they have not seen. The composer closes instead, and
+// the only way through is EDITING the queued change — which replaces it.
+struct Slot: Equatable { var request: String; var jobId: String; var messageId: String }
+var slot: Slot? = nil
+var editing = false
+var sent: [String] = []            // what actually reached the server
+var rows: [String] = []            // queued placeholder rows in the thread
+
+func canSend(_ text: String) -> Bool {
+    if text.isEmpty { return false }
+    if slot != nil && !editing { return false }   // third send is closed
+    return true
+}
+func send(_ text: String) {
+    guard canSend(text) else { return }
+    if editing, var s = slot {                    // REPLACE, never append
+        s.request = text; slot = s; editing = false
+        return
+    }
+    sent.append(text)
+}
+func serverSaysBusy(_ text: String) {             // the typed 409
+    slot = Slot(request: text, jobId: "j1", messageId: "m1")
+    rows.append(text)
+    sent.removeAll { $0 == text }                 // it did not run
+}
+
+send("first change")                              // runs
+check("the first change is sent", sent == ["first change"])
+send("second change"); serverSaysBusy("second change")
+check("the second change is QUEUED, not sent", slot?.request == "second change" && sent == ["first change"])
+check("and it is visible as one row", rows.count == 1)
+
+// THE THIRD SEND.
+send("third change")
+check("a third send is refused while one is queued", sent == ["first change"])
+check("...and does NOT stack a second slot", slot?.request == "second change")
+check("...and does not add a row", rows.count == 1)
+check("the composer reports it cannot send", canSend("third change") == false)
+
+// The one way through: edit the queued change.
+editing = true
+check("editing re-opens send", canSend("third change") == true)
+send("third change")
+check("editing REPLACES the queued change", slot?.request == "third change")
+check("...still exactly one queued", rows.count == 1)
+check("...and nothing extra was sent to the server", sent == ["first change"])
+check("editing ends after the replace", editing == false)
+
+// Abandoning an edit must not lose the queued change.
+editing = true
+editing = false                                   // user backs out, sends nothing
+check("abandoning an edit keeps the queued change", slot?.request == "third change")
+
+// Draining releases exactly one, and empties the slot.
+if let q = slot { sent.append(q.request); slot = nil; rows.removeAll() }
+check("drain sends the queued change once", sent == ["first change", "third change"])
+check("drain empties the slot", slot == nil && rows.isEmpty)
+
 print(failed == 0 ? "  (behavioural: all correct)" : "  (behavioural: \(failed) wrong)")
 exit(failed == 0 ? 0 : 1)
 SWIFT

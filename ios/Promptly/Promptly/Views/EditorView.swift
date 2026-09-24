@@ -1035,6 +1035,7 @@ struct EditorView: View {
             // the user's new wording, no upload. Tapping the X clears
             // the routing back to a normal Send.
             vibeEditPill
+            queuedReeditPill
 
             // ChatGPT-style vibe-suggestion chips. Always visible when
             // the input is empty + we're not in a re-edit session, so
@@ -1322,17 +1323,48 @@ struct EditorView: View {
     /// affordance and keeps the chip row from sprawling. Each chip is
     /// short enough to read at a glance, distinct enough in feel to
     /// guide users toward different render styles.
-    /// The same list the empty state shows — see `VibeSuggestions`. Not a
-    /// second list.
+    /// "1 change queued · tap to edit" — what is waiting, and the one thing
+    /// the user can do about it. Shown only while a slot is full and not while
+    /// they are already editing it, or it would describe the text in the field.
+    @ViewBuilder
+    private var queuedReeditPill: some View {
+        if let q = queuedReedit, !isEditingQueuedReedit {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Hand the queued words back for revision. The slot STAYS full
+                // until they send: abandoning the edit must not lose the
+                // change they already asked for.
+                inputText = q.request
+                isEditingQueuedReedit = true
+                isInputFocused = true
+                Analytics.track("reedit_queue_edit_opened", props: [:], durable: true)
+            } label: {
+                HStack(spacing: 8 * k) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12 * k, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.75))
+                    Text("1 change queued · tap to edit")
+                        .font(.system(size: 13 * k, weight: .medium))
+                        .foregroundColor(.white.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 6 * k)
+                }
+                .padding(.horizontal, 12 * k)
+                .padding(.vertical, 8 * k)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("One change queued. Tap to edit it.")
+            .padding(.horizontal, 12 * k)
+            .padding(.bottom, 6 * k)
+        }
+    }
 
-
-    /// Horizontally-scrollable chip row that surfaces the featured
-    /// vibes above the composer. Tap a chip to insert its text into
-    /// Pill that surfaces above the composer when the user is mid-
-    /// vibe-edit. Tells them their next Send will re-render the
-    /// previously-uploaded source video with the new wording. Single
-    /// X button cancels the routing — Send then falls back to the
-    /// normal text/render flow.
+    /// Pill above the composer while the user is mid-vibe-edit. Tells them
+    /// their next Send will re-render the previously-uploaded source video
+    /// with the new wording; the X cancels the routing and Send falls back
+    /// to the normal text/render flow.
     @ViewBuilder
     private var vibeEditPill: some View {
         if pendingVibeEditMessageId != nil {
@@ -1511,6 +1543,14 @@ struct EditorView: View {
             && pendingVideos.isEmpty && pendingImages.isEmpty {
             return false
         }
+        // ONE SLOT RUNNING, ONE QUEUED, AND THAT IS THE LOT.
+        //
+        // A third request has nowhere honest to go: dropping it is a silent
+        // loss, and stacking it lets someone pile up contradictory edits
+        // against a video they have not seen. So the composer says what is
+        // already waiting and send is closed — UNLESS the user is editing that
+        // queued text, which replaces the slot rather than adding to it.
+        if queuedReedit != nil && !isEditingQueuedReedit { return false }
         // Video sends still gate on isSending so we don't dispatch
         // duplicate render jobs mid-spawn. Pure text sends are always
         // allowed — sending a new message cancels the in-flight stream
@@ -1722,6 +1762,9 @@ struct EditorView: View {
     /// and the honest answer to a second queued request is that the first is
     /// still pending.
     @State private var queuedReedit: (request: String, originalJobId: String, messageId: UUID)?
+    /// True while the composer holds the QUEUED text for revision. Send is
+    /// re-opened, and sending REPLACES the slot instead of appending to it.
+    @State private var isEditingQueuedReedit = false
 
     /// A recoverable orphan that needs the user's nod before we re-materialize
     /// it (an iCloud pull costs them data). nil when there is nothing to offer.
@@ -3696,6 +3739,29 @@ struct EditorView: View {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
         guard !text.isEmpty || hasVideos || !pendingImages.isEmpty else { return }
+
+        // EDITING THE QUEUED CHANGE REPLACES IT — IT DOES NOT ADD ONE.
+        //
+        // This is the only way a third request can be accepted while a slot is
+        // full, and it is a swap: the waiting text becomes the new text, the
+        // row keeps its place in the thread, and the count stays at one. It
+        // returns rather than falling through, because falling through is
+        // exactly how a replace becomes a stack.
+        if isEditingQueuedReedit, var q = queuedReedit {
+            q.request = text
+            queuedReedit = q
+            isEditingQueuedReedit = false
+            clearInputField()
+            if let i = messages.firstIndex(where: { $0.id == q.messageId }) {
+                // The row shows the CHANGE, so the user can see what is
+                // actually waiting rather than what they first typed.
+                messages[i].content = text
+                messages[i].stepMessage = String(localized: "Queued, next up")
+                persistMessages()
+            }
+            Analytics.track("reedit_queue_replaced", props: [:], durable: true)
+            return
+        }
 
         // AUTH SEAM — BEFORE THE MESSAGE IS ACCEPTED.
         //
