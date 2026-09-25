@@ -57,8 +57,48 @@ async function decide() {
   if (flight) { console.log(`\nDECIDE: NOTHING TO DO — ${flight.v} is ${flight.s}. The slot is occupied by the newest work.`); return; }
   const pending = vers.find((x) => x.s === 'PENDING_DEVELOPER_RELEASE');
   if (pending) { console.log(`\nDECIDE: HOLD — ${pending.v} is approved and awaiting a MANUAL release. Submitting now would displace an approved-but-unreleased build.`); return; }
-  console.log('\nDECIDE: SLOT FREE — nothing queued. Submit the newest uploaded build with:');
-  console.log('   node scripts/asc-ship.js <version> <build>');
+  // NAME THE CANDIDATE, DON'T LEAVE IT TO BE REMEMBERED.
+  //
+  // "submit the newest uploaded build" was an instruction to a human who then
+  // had to go and look — and the build that is newest MOVES while a release
+  // sits pending. 263 was the candidate for several hours and then 264 was,
+  // and nothing here would have said so. The candidate is whatever is latest
+  // and VALID at the moment the slot opens, so it is read at that moment
+  // rather than carried in someone's head.
+  const cand = await latestValidBuild();
+  if (!cand) {
+    console.log('\nDECIDE: SLOT FREE — but NO build is in a VALID processing state.');
+    console.log('   Nothing is submittable yet; wait for processing and re-run.');
+    return;
+  }
+  console.log(`\nDECIDE: SLOT FREE — submit ${cand.version} (build ${cand.build}), the latest VALID build:`);
+  console.log(`   node scripts/asc-ship.js ${cand.version} ${cand.build}`);
+}
+
+/// The newest build in a VALID processing state, with the version it belongs
+/// to. PROCESSING and INVALID are excluded: a build that is not VALID cannot
+/// be attached to a version, so offering it would fail at the PATCH.
+async function latestValidBuild() {
+  // NO SPARSE fields[builds] HERE. Restricting it strips `relationships` from
+  // the payload entirely — `preReleaseVersion.data` came back undefined for
+  // every build, so this returned null and the caller printed "nothing is
+  // submittable" while four VALID builds sat there. Found by exercising the
+  // function directly; the HOLD branch returns before it, so a --decide run
+  // never reaches it and it would have failed for the first time at the
+  // moment the slot opened.
+  const b = await get(`/v1/builds?filter[app]=${APP}&limit=20&sort=-uploadedDate`
+    + `&include=preReleaseVersion&fields[preReleaseVersions]=version`);
+  const included = new Map((b.included || []).map((i) => [i.id, i.attributes && i.attributes.version]));
+  for (const x of (b.data || [])) {
+    const a = x.attributes || {};
+    if (a.processingState !== 'VALID' || a.expired) continue;
+    const relId = x.relationships && x.relationships.preReleaseVersion
+      && x.relationships.preReleaseVersion.data && x.relationships.preReleaseVersion.data.id;
+    const version = (relId && included.get(relId)) || null;
+    if (!version) continue;
+    return { build: a.version, version };
+  }
+  return null;
 }
 
 async function ship(version, buildNum) {
