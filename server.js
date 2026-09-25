@@ -384,6 +384,70 @@ function agenticRouteArmed() {
 function routeForNewJob() {
   return agenticRouteArmed() ? 'agentic' : 'handler';
 }
+
+// ── THE ROUTE, PER USER, FROM server_flags.chatcut_route ─────────────────
+//
+// Zac 2026-09-25: "server_flags.chatcut_route exists now: allowlist = the 3
+// internal accounts + Frontend's test account d14d30e7, percent 0,
+// enabled_all false. Wire the routing decision to it through the existing
+// DB-first resolver; don't create a second row or name. Kill switch = percent
+// 0 AND enabled_all false."
+//
+// WHAT THIS REPLACES, AND WHY IT MATTERS. routeForNewJob() above answers from
+// AGENTIC_ENABLED and AGENTIC_BASE_URL — two ENV VARS. An env var on Render is
+// not live until a REDEPLOY, which this repo has already written down twice.
+// So until now the ONLY way to turn the agentic route off was to ship, and a
+// kill switch whose latency is a deploy is not a kill switch. The row is.
+//
+// THE ENV PAIR IS STILL THE MASTER ARM, and deliberately so: an armed flag
+// pointing at no base URL would 500 every render, so `agenticRouteArmed()`
+// stays the outer gate and fails closed. The row can only ever narrow what the
+// env has already armed — it cannot turn on a route that has nowhere to go.
+//
+// ── AND IT IS A THIRD STATE, NOT A SECOND BOOLEAN ────────────────────────
+// 'handler' here can now mean four different things — the route is unarmed, we
+// were told no, we could not read the switch, or the account cannot pay — and
+// a row that says 'handler' for all four is the two-numbers-with-the-same-name
+// defect with money attached. The reason is recorded beside every decision.
+async function routeForNewJobAsync(userId, opts = {}) {
+  const { jobId = null } = opts;
+  const _rd = require('./lib/route-decisions');
+  // THE OUTER ARM FIRST. No base URL means no agentic route however the row
+  // reads, and asking the database about a route that cannot run is a query
+  // spent to learn nothing.
+  if (!agenticRouteArmed()) {
+    _rd.record({ jobId, userId, pipeline: 'handler', route: 'existing',
+                 reason: 'route_unarmed', stage: 'unarmed', source: 'env', dbState: null });
+    return 'handler';
+  }
+  let d = null;
+  try {
+    const { routeForJob, ROUTE_CHATCUT, fetchAccountStatus } = require('./lib/chatcut-routing');
+    const { rampAllows } = require('./lib/chatcut-ramp');
+    d = await routeForJob({
+      userId,
+      rampAllows: (a) => rampAllows({ ...a,
+        resolveFlag: (f, u) => uploadFlags.resolve(f, u, supabaseAdmin) }),
+      // A THUNK, so the 2 s account_status call happens ONLY when the ramp has
+      // already said yes. At percent 0 with a four-account allowlist that is
+      // ~every job NOT paying for a read it will not use.
+      accountStatus: async () => (await fetchAccountStatus()).status,
+    });
+    const pipeline = d.route === ROUTE_CHATCUT ? 'agentic' : 'handler';
+    _rd.record({ jobId, userId, pipeline, route: d.route, reason: d.reason,
+                 stage: d.stage, source: d.rampSource || d.source || null,
+                 dbState: d.dbState || null });
+    return pipeline;
+  } catch (e) {
+    // A ROUTING DECISION MUST NEVER FAIL A CUSTOMER'S JOB. chatcut-routing
+    // states it never throws; this is the belt for the day that stops being
+    // true. The existing pipeline always works.
+    console.error('[chatcut-route] decision threw — existing pipeline:', (e && e.message) || e);
+    _rd.record({ jobId, userId, pipeline: 'handler', route: 'existing',
+                 reason: 'decision_threw', stage: 'error', source: null, dbState: null });
+    return 'handler';
+  }
+}
 const _refundLeg = require('./lib/refund-leg');
 
 function _consumeRateToken(scope, key, capacity, refillSeconds) {
@@ -2076,6 +2140,30 @@ const server = http.createServer((req, res) => {
       return res.end(JSON.stringify({
         ops_fires: _fires.recent(Number(parsed.query.ops_fires) || 10),
         guard: _guard._state(),
+      }, null, 2));
+    }
+    // ?chatcut_routes=N — the last N routing decisions, so "the flip landed"
+    // is a curl and not a log dig. Behind a query parameter for the same
+    // reason as ops_fires: Render's probe hits this path every few seconds and
+    // must stay constant-time.
+    //
+    // IDs ONLY (job, user, route, reason, stage, source, dbState). No email,
+    // no name, no balance — same rule as verify-grants.
+    //
+    // WHY NOT video_jobs.routed_by: because a column I have not read back from
+    // the LIVE schema may not be there, and an INSERT naming a missing column
+    // fails the insert, which on this path means the job is never created.
+    // server_flags gained a `value jsonb` in a migration on 2026-09-23 and the
+    // column is not on the table today — a migration in this repo is a
+    // request, not a fact. The ring cannot fail a customer's job.
+    if (parsed.query && parsed.query.chatcut_routes) {
+      const _rd = require('./lib/route-decisions');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({
+        agentic_route_armed: agenticRouteArmed(),
+        account_status_url_set: Boolean(process.env.CHATCUT_ACCOUNT_STATUS_URL),
+        flag: 'chatcut_route',
+        decisions: _rd.recent(Number(parsed.query.chatcut_routes) || 10),
       }, null, 2));
     }
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -7822,7 +7910,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
             // The route decision, stored as a fact rather than inferred later.
-            pipeline: routeForNewJob(),
+            pipeline: await routeForNewJobAsync(authUser.id, { jobId: clientJobId }),
             creditsDebited: _creditsDebited,
           });
           } catch (e) {
