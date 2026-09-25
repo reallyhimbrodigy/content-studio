@@ -133,9 +133,27 @@ if [ ! -f "$O" ] || [ ! -f "$S2" ]; then note "missing shrink files"; else
   grep -Fq 'shrunk = try? await SourceShrinker.shrink(sourceUrl)' "$E" \
     && echo "  ok   — a failed shrink falls back to the original, never fails the upload" \
     || note "the shrink is not fail-soft — a bad export would cost the user their upload"
-  sed -n '/static func shrink/,/^    }/p' "$S2" | grep -Fq 'AVAssetExportPresetHEVC1920x1080' \
-    && echo "  ok   — HEVC 1080p, the target B1 confirmed both ways" \
-    || note "the shrink is not exporting HEVC 1080p"
+  # HEVC 1080p — asserted as a PROPERTY, not as one spelling of it.
+  #
+  # This demanded `AVAssetExportPresetHEVC1920x1080` by name. That preset was
+  # replaced by an AVAssetWriter at an explicit codec, size and bitrate,
+  # because an export preset has no bitrate API and produced ~10 Mbps — a
+  # DELIVERY bitrate for a file that only has to survive an edit. The target
+  # B1 confirmed did not change; the way of reaching it did.
+  #
+  # The two halves are checked separately because each can be lost on its own,
+  # and `upload-speed-rules-gate` forbids the preset returning — a gate
+  # demanding the old spelling while another forbids it is a contradiction
+  # that one of them has to lose.
+  shrinkbody="$(sed -n '/static func shrink/,/^    }/p' "$S2")"
+  printf '%s' "$shrinkbody" | grep -Fq 'AVVideoCodecKey: AVVideoCodecType.hevc' \
+    && echo "  ok   — the shrink encodes HEVC" \
+    || note "the shrink is not encoding HEVC — the codec B1 confirmed imports both ways"
+  printf '%s' "$shrinkbody" | grep -Eq 'AVVideoWidthKey: outW|AVVideoHeightKey: outH' \
+    && grep -Eq '^[[:space:]]*static let targetLongSide: CGFloat = 1920' "$S2" \
+    && grep -Eq '^[[:space:]]*static let targetShortSide: CGFloat = 1080' "$S2" \
+    && echo "  ok   — sized to the 1080p box (1920 long / 1080 short), aspect preserved" \
+    || note "the shrink no longer targets the 1080p box — the render does not use more than that"
   sed -n '/static func shrink/,/^    }/p' "$S2" | grep -Fq 'AVVideoTransferFunction_ITU_R_709_2' \
     && echo "  ok   — HDR is tone-mapped in the same pass" \
     || note "no tone-mapping — an HDR source would land grey and washed out"
