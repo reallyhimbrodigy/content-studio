@@ -87,22 +87,6 @@ enum MultipartConfig {
     static let maxPartsInFlight = 6
     /// The key `OnboardingState` writes when `upload_parallel` arrives.
     static let partsInFlightKey = "upload_parallel_parts"
-    /// Parse the served flag value into parts in flight.
-    ///
-    /// Pure and total, so every spelling the flag service might send has a
-    /// stated answer rather than falling through a chain of optionals:
-    ///   "off" / "" / absent / unparseable -> 0 (meaning: no opinion, use the default)
-    ///   "on"                              -> onMeansPartsInFlight (4)
-    ///   "4" / "5" / "6"                   -> that many, clamped
-    static let onMeansPartsInFlight = 4
-    static func partsInFlight(forFlag raw: String) -> Int {
-        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if v == "on" { return onMeansPartsInFlight }
-        guard let n = Int(v) else { return 0 }
-        guard n > 0 else { return 0 }
-        return min(max(n, minPartsInFlight), maxPartsInFlight)
-    }
-
     static var partsInFlight: Int {
         let stored = UserDefaults.standard.integer(forKey: partsInFlightKey)
         // 0 = absent, unreadable, or "off". All three mean "no opinion", which

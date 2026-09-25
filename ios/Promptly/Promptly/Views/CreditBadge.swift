@@ -46,9 +46,27 @@ struct CreditBadge: View {
     /// when the badge goes away, so signing out and back in counts again.
     @State private var reportedShown = false
 
+    /// Reported once per negative reading, not once per redraw — SwiftUI
+    /// re-runs a body freely and this would otherwise count frames.
+    @State private var reportedNegative: Int?
+
     var body: some View {
         Group {
-            if let value = visibleBalance {
+            if let raw = visibleBalance {
+                // A MINUS SIGN IS NEVER THE RIGHT THING TO SHOW SOMEBODY.
+                //
+                // ~451 users can carry a negative balance until the server-side
+                // backfill lands: debits were applied against grants that never
+                // landed. "-3 credits" reads as a debt the user has no way to
+                // understand or settle, and nothing in the product can act on a
+                // negative — zero and below-zero mean the same thing here (you
+                // cannot render), and zero is the honest way to say it.
+                //
+                // DISPLAY ONLY. `credits.balance` keeps the real value, so the
+                // server stays the source of truth and the backfill can be
+                // verified against what it actually was. The clamp lives here,
+                // at the one place the number is drawn.
+                let value = max(0, raw)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     Analytics.track("credit_badge_tap", props: ["balance": value])
@@ -84,6 +102,10 @@ struct CreditBadge: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("^[\(value) credit](inflect: true)"))
                 .accessibilityHint(Text("Get more"))
+                // LOG THE REAL NUMBER, not the clamped one — the whole point is
+                // to see how far below zero people actually are.
+                .onAppear { reportNegativeIfNeeded(raw) }
+                .onChange(of: raw) { _, new in reportNegativeIfNeeded(new) }
             } else {
                 // A ZERO-SIZE NODE, NOT EmptyView. The condition above depends
                 // on `shown`, and `shown` is only ever set by the `.task` below
@@ -126,6 +148,13 @@ struct CreditBadge: View {
             reportedShown = true
             Analytics.track("credit_badge_shown", props: ["balance": value])
         }
+    }
+
+    private func reportNegativeIfNeeded(_ raw: Int) {
+        guard raw < 0, reportedNegative != raw else { return }
+        reportedNegative = raw
+        Analytics.track("credit_balance_negative", props: ["balance": raw], durable: true)
+        print("[credits] NEGATIVE balance \(raw) — displayed as 0")
     }
 
     /// What the badge is actually showing, or nil when it is not drawing —

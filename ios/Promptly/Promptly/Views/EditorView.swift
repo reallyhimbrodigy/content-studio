@@ -2392,6 +2392,13 @@ struct EditorView: View {
                             // on, so every row carries one.
                             UploadTiming.meta(pending.id.uuidString, "shrink_reason", "flag_off")
                             UploadTiming.meta(pending.id.uuidString, "shrink_enabled", onboardingState.uploadShrinkEnabled)
+                            // WHY, NOT JUST WHETHER. A row saying shrink was off
+                            // could not distinguish "this user is not on the
+                            // allowlist" from "we could not read the allowlist" —
+                            // and the second is what made shrink look dead for
+                            // everyone. The server resolves both and says which.
+                            UploadTiming.meta(pending.id.uuidString, "knob_state", onboardingState.uploadKnobState)
+                            UploadTiming.meta(pending.id.uuidString, "knob_resolved_by", onboardingState.uploadResolvedBy)
                             if onboardingState.uploadShrinkEnabled {
                                 let tShrink = Date()
                                 let decision = await SourceShrinker.decide(
@@ -4260,6 +4267,10 @@ struct EditorView: View {
                     // restored in-flight bubble that cannot resolve is no
                     // longer representable.
                     processingMsg.jobId = UUID().uuidString.lowercased()
+                    // LIVE FROM THE MOMENT THE ID EXISTS, not from the moment
+                    // `dispatch` is entered — the uploads run first, and that
+                    // window is where the reconciler killed the bubble.
+                    JobDispatchCoordinator.shared.markActive(processingMsg.jobId)
                     // THE CARD THAT DRAWS PROGRESS IS THIS ONE. The picked
                     // clip's frame was attached only to the user message above,
                     // so RenderProgressRing got nil for both its image and its
@@ -4449,6 +4460,9 @@ struct EditorView: View {
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true
+                                // The server has acknowledged this id, so from
+                                // here a missing row means something.
+                                messages[i].serverJobConfirmed = true
                                 // §6 retry-gap fix: stash the retry cache on SUCCESS
                                 // too. Previously only the dispatch-FAILURE path cached
                                 // source+proxy+vibe, so a render that dispatched fine but
@@ -5243,6 +5257,19 @@ struct EditorView: View {
                 // killed LIVE uploads with "you weren't charged" while the
                 // coordinator went on to charge).
                 if JobDispatchCoordinator.shared.isDispatchActive(jobId) { return }
+                // "ROW MISSING" IS ONLY EVIDENCE IF THE ROW COULD EXIST.
+                //
+                // The client mints the job id at send so it can survive a
+                // relaunch mid-upload, and POST /api/video-jobs does not happen
+                // until the uploads finish. Until that POST comes back, there
+                // has never been a row to find, and reading its absence as "this
+                // render expired on our side — you weren't charged" states a
+                // refund for a job that was never created. Measured: the bubble
+                // was killed 12s before the POST even went out.
+                guard messages[idx].serverJobConfirmed else {
+                    print("[reconcile] \(jobId) row missing but never server-confirmed — leaving it alone")
+                    return
+                }
                 let wasProcessing = messages[idx].jobStatus == "processing" || messages[idx].jobStatus == "queued"
                 print("[reconcile] \(jobId) row missing — terminalizing (wasProcessing=\(wasProcessing))")
                 messages[idx].jobStatus = "failed"
@@ -5256,6 +5283,7 @@ struct EditorView: View {
             }
             guard let idx = messages.firstIndex(where: { $0.jobId == jobId }) else { return }
             messages[idx].serverRowExists = true  // a row decoded — cancel is meaningful now
+            messages[idx].serverJobConfirmed = true   // a row exists, so the id is real
 
             // Poll is authoritative for the bar. Rehydrate progress + phase
             // from the durable row on EVERY tick (foreground, heartbeat,

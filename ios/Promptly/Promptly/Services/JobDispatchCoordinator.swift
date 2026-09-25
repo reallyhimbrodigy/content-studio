@@ -36,6 +36,26 @@ final class JobDispatchCoordinator {
         guard let id = clientJobId?.lowercased() else { return false }
         return activeClientJobIds.contains(id)
     }
+    /// Mark a client-minted job id live BEFORE any upload starts.
+    ///
+    /// The registry used to be populated only inside `dispatch(...)`, which is
+    /// entered AFTER the source and proxy uploads. The id exists from the
+    /// moment the bubble is created, so for the whole upload window — measured
+    /// at 12.18s on a 45 MB clip — the reconciler saw a bubble with a job id,
+    /// found no row (none had been POSTed yet), and terminalized it as "this
+    /// render expired on our side".
+    func markActive(_ clientJobId: String?) {
+        guard let id = clientJobId?.lowercased() else { return }
+        activeClientJobIds.insert(id)
+    }
+
+    /// Must be called on EVERY exit from the send, including the ones that
+    /// never reach `dispatch` — a failed upload, a cancelled pick, a throw.
+    func clearActive(_ clientJobId: String?) {
+        guard let id = clientJobId?.lowercased() else { return }
+        activeClientJobIds.remove(id)
+    }
+
     private init() {}
 
     enum Outcome {

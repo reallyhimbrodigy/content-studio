@@ -47,6 +47,54 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var creditsEnabled = false
     /// Server-controlled, default OFF. The 1080p HEVC source shrink.
     @Published private(set) var uploadShrinkEnabled = false
+    /// Why shrink is on or off, straight from the server's own resolution, so
+    /// a row can say which rule decided rather than leaving it to be inferred.
+    @Published private(set) var uploadKnobState: String = "UNASKED"
+    @Published private(set) var uploadResolvedBy: String = ""
+
+    /// THE PER-USER UPLOAD DECISION, from the one endpoint that knows who is
+    /// asking.
+    ///
+    /// FAIL CLOSED AND SAY SO, matching the server: "UNREADABLE" means it could
+    /// not ask, and carries shrink false / parallel 3. A MISSING block — an
+    /// older server that does not send one — is treated identically, because
+    /// "no opinion" and "could not form one" have the same safe answer and
+    /// neither is a licence to turn shrink on.
+    func refreshUploadKnobs() async {
+        var shrink = false
+        var parallel = MultipartConfig.defaultPartsInFlight
+        var state = "UNREADABLE"
+        var why = ""
+        defer {
+            uploadShrinkEnabled = shrink
+            uploadKnobState = state
+            uploadResolvedBy = why
+            UserDefaults.standard.set(parallel, forKey: MultipartConfig.partsInFlightKey)
+            uploadParallelParts = parallel
+            print("[upload-knobs] shrink=\(shrink) parallel=\(parallel) state=\(state) by=\(why)")
+        }
+        guard let token = await AuthService.shared.getValidToken(),
+              let url = URL(string: "https://usepromptly.app/api/profile/settings") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let up = obj["upload"] as? [String: Any]
+        else { return }   // missing block or unreachable => the UNREADABLE defaults above
+        let reported = (up["state"] as? String) ?? "UNREADABLE"
+        if let by = up["resolved_by"] as? [String: Any] {
+            why = by.keys.sorted().map { "\($0)=\(by[$0] ?? "")" }.joined(separator: ",")
+        }
+        state = reported
+        // ONLY A MEASURED ANSWER MAY TURN ANYTHING ON.
+        guard reported == "MEASURED" else { return }
+        shrink = (up["shrink"] as? Bool) == true
+        if let p = up["parallel"] as? Int {
+            parallel = min(max(p, MultipartConfig.minPartsInFlight), MultipartConfig.maxPartsInFlight)
+        }
+    }
     /// The requested parts-in-flight, 0 when the knob says "off" or is absent.
     /// Observability only — the uploader reads the persisted value, because it
     /// needs it before this fetch returns.
@@ -202,6 +250,9 @@ final class OnboardingState: ObservableObject {
             // Version awareness rides the same fetch (latest/min-supported/
             // force flag/notes — all server-driven).
             VersionAwareness.shared.ingest(obj)
+            // The per-user upload decision rides its own AUTHENTICATED call —
+            // this one has no idea who is asking.
+            Task { await self.refreshUploadKnobs() }
             // Referral-surfacing experiment knobs (P2/P1/ambient-wall).
             postrenderSaveCtaEnabled = (obj?["postrender_save_cta"] as? String) == "on"
             chatMediaEnabled = (obj?["chat_media"] as? String) == "on"
@@ -293,35 +344,15 @@ final class OnboardingState: ObservableObject {
                 // wording mid-session and swap the screen under the user.
                 if obj == nil { /* unreadable config: keep what we have */ }
             }
-            uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"
-            // upload_parallel: "off" or absent = no opinion = the shipped
-            // default (3). "4" / "5" / "6" set parts in flight.
-            //
-            // WRITTEN THROUGH, because the consumer cannot read this value at
-            // the moment it arrives: the background URLSession that carries the
-            // parts fixes its connection limit when it is constructed, during
-            // launch. Persisting it is what makes the knob take effect at all —
-            // on the next launch, with no reinstall. Clamped here as well as at
-            // the read, so a typo'd "60" cannot open sixty connections.
-            let parallelRaw = (obj?["upload_parallel"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased() ?? "off"
-            // "on" MEANS SOMETHING, or the knob can never arm.
-            //
-            // The flag service serves "on" / absent — it has no way to serve
-            // "4". Parsed with `Int(...)` alone, "on" is nil, which falls to 0,
-            // which reads back as the default 3. So the knob shipped in a state
-            // where flipping it on did exactly nothing, and the row would have
-            // said parts_in_flight=3 while the flag said it was enabled: an
-            // experiment that reports as running and is not.
-            //
-            // "on" therefore maps to the BOTTOM of the target band, not the
-            // top. Four parts at 5 MiB is 20 MB in flight against the 15 MB
-            // that works today and the 96 MB that starved; 6 is available by
-            // serving "6" explicitly once 4 is measured.
-            let parallelParts = MultipartConfig.partsInFlight(forFlag: parallelRaw)
-            UserDefaults.standard.set(parallelParts, forKey: MultipartConfig.partsInFlightKey)
-            uploadParallelParts = parallelParts
+            // UPLOAD KNOBS NO LONGER COME FROM HERE. /api/health is fetched
+            // WITHOUT auth, so it cannot know who is asking — a per-user
+            // allowlist could never reach the device through it, which is why
+            // shrink read "flag_off" on an allowlisted account. They come from
+            // GET /api/profile/settings (authenticated) instead; see
+            // refreshUploadKnobs().
+            // upload_parallel is NOT read here either. Same reason as
+            // shrink: this payload is anonymous. refreshUploadKnobs()
+            // reads the per-user number from /api/profile/settings.
             creditsEnabled = (obj?["credits_metering"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
             #if DEBUG

@@ -193,6 +193,15 @@ struct ChatMessage: Identifiable {
     /// and cancelling a row that doesn't exist yet is a 404 no-op that would
     /// leave the dispatch running and the user charged after "cancelling".
     var serverRowExists: Bool = false
+    /// THE SERVER HAS ACKNOWLEDGED THIS JOB ID, and therefore a row for it can
+    /// meaningfully be absent.
+    ///
+    /// PERSISTED, unlike `serverRowExists`, because the question it answers
+    /// outlives the process: did POST /api/video-jobs ever come back with this
+    /// id? Until it has, "no row" is not evidence of anything — the job has
+    /// simply not been created yet, and the client minted the id itself at
+    /// send so it could survive a relaunch mid-upload.
+    var serverJobConfirmed: Bool = false
     /// TRANSIENT (never persisted): set once when we silently auto-retry a
     /// worker-coded UPLOAD_STALLED failure (a stalled source upload). Guarantees
     /// the auto-retry fires at most once — a second UPLOAD_STALLED surfaces the
@@ -347,6 +356,7 @@ struct SerializedMessage: Codable, Hashable {
     var cachedProxyUrl: String?
     var cachedVibe: String?
     var isRetryable: Bool?
+    var serverJobConfirmed: Bool?
     // The re-edit intent. Optional in storage, so rows written by older
     // builds decode unchanged.
     var reeditRequest: String?
@@ -448,6 +458,7 @@ struct SerializedMessage: Codable, Hashable {
         self.cachedProxyUrl = message.cachedProxyUrl
         self.cachedVibe = message.cachedVibe
         self.isRetryable = message.isRetryable ? true : nil
+        self.serverJobConfirmed = message.serverJobConfirmed ? true : nil
         self.reeditRequest = message.reeditRequest
         self.reeditOriginalJobId = message.reeditOriginalJobId
         self.reeditIdempotencyKey = message.reeditIdempotencyKey
@@ -494,6 +505,7 @@ struct SerializedMessage: Codable, Hashable {
         msg.cachedProxyUrl = cachedProxyUrl
         msg.cachedVibe = cachedVibe
         msg.isRetryable = isRetryable ?? false
+        msg.serverJobConfirmed = serverJobConfirmed ?? false
         msg.reeditRequest = reeditRequest
         msg.reeditOriginalJobId = reeditOriginalJobId
         msg.reeditIdempotencyKey = reeditIdempotencyKey

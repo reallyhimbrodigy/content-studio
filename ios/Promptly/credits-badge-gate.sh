@@ -67,5 +67,31 @@ grep -Fq 'private var visibleBalance: Int? { onboarding.creditsEnabled ? shown :
   && echo "  ok   — the badge and its impression event read one expression" \
   || note "visibleBalance changed shape — the body and credit_badge_shown can now disagree about whether a user saw a balance"
 
+# ── 4. A NEGATIVE BALANCE IS NEVER DRAWN AS A MINUS ───────────────────────
+# ~451 users can carry one until the server backfill lands: debits applied
+# against grants that never landed. "-3 credits" reads as a debt the user
+# cannot understand or settle, and nothing in the product can act on a
+# negative — zero and below-zero both mean "you cannot render".
+badge="$(sed -n '/var body: some View {/,/^    private func reportNegativeIfNeeded/p' "$B")"
+printf '%s' "$badge" | grep -Fq 'let value = max(0, raw)' \
+  && echo "  ok   — the drawn number is clamped at zero" \
+  || note "the badge does not clamp the drawn value — a negative balance would render with a minus sign"
+
+# DISPLAY ONLY. The stored balance must keep the real number, or the backfill
+# cannot be verified against what it actually was.
+if grep -v '^[[:space:]]*//' "$C" | grep -Eq 'balance = max\(0'; then
+  note "CreditsService clamps the stored balance — the clamp must be display-only, or the real value is lost and the server's truth is unverifiable"
+else
+  echo "  ok   — the clamp is display-only; the stored balance keeps the real value"
+fi
+
+rep="$(sed -n '/private func reportNegativeIfNeeded/,/^    }/p' "$B")"
+printf '%s' "$rep" | grep -Fq 'Analytics.track("credit_balance_negative", props: ["balance": raw]' \
+  && echo "  ok   — credit_balance_negative logs the REAL value, not the clamped one" \
+  || note "credit_balance_negative is missing, or logs the clamped value — which would hide how far below zero people are"
+printf '%s' "$rep" | grep -Fq 'guard raw < 0, reportedNegative != raw else { return }' \
+  && echo "  ok   — reported once per value, not once per redraw" \
+  || note "the negative report has no dedup — SwiftUI re-runs a body freely, so this would count frames instead of readings"
+
 [ "$fail" = 0 ] && echo "credits-badge-gate: PASS" || echo "credits-badge-gate: FAIL"
 exit "$fail"

@@ -132,6 +132,48 @@ final class FloodUITests: XCTestCase {
                       "the composer is gone during a flooded upload")
     }
 
+    // MARK: The free-tier doors
+
+    /// THE RE-EDIT WALL, on a free account with a finished video.
+    ///
+    /// Free never reaches a 402 here: the client walls it locally
+    /// (`guard effectiveIsPro else { presentPaywall(.reedit) }`) so nothing is
+    /// sent. This asserts the wall is a PAYWALL and not an error or a dead tap,
+    /// and holds the screen long enough to be photographed from outside.
+    /// NOT UNDER -snapshotPayoff. That mode renders ONE VIEW IN ISOLATION (the
+    /// app's own comment says so), so the paywall sheet — hosted above
+    /// EditorView in the real tree — has no host: the tap fires
+    /// presentPaywall(.reedit) and nothing can present it. A first run of this
+    /// under the harness read as "the locked re-edit does nothing", which
+    /// would have been a P0 raised against the harness rather than the app.
+    ///
+    /// So this drives the REAL app over the REAL chat on this account — the
+    /// Sep 24 job, vibe "make this punchy" — where the paywall host exists.
+    func testFreeReeditWallIsAPaywall() {
+        let app = UITest.launch(UITest.Launch(deviceSeen: true))   // no tier => free
+        // Open the chat list and pick the chat that holds the finished video.
+        let sidebar = app.buttons["Show chats"]
+        if sidebar.waitForExistence(timeout: 20) { sidebar.tap() }
+        let chat = app.buttons["make this punchy"]
+        UITest.require(chat, "the 'make this punchy' chat", timeout: 25).tap()
+
+        UITest.require(app.buttons["video.share"], "the finished video in that chat", timeout: 40)
+        UITest.require(app.buttons["video.action.reedit.locked"],
+                       "a LOCKED re-edit for a free viewer", timeout: 20).tap()
+        UITest.require(UITest.any(app, "paywall.cta"), "the paywall CTA", timeout: 30)
+        // ASSERT THE ABSENCE OF SOMETHING THAT EXISTS. The first version of
+        // this checked `credits.balance`, which no view defines — so
+        // XCTAssertFalse(...exists) was true no matter what the app did, and
+        // the check could never fail. `credits.banner` is a real identifier
+        // (RenderPathUITests drives it), so its absence here means something:
+        // a pro_required wall must not carry a credits surface.
+        XCTAssertFalse(app.buttons["credits.banner"].exists,
+                       "the credits banner is showing on the pro_required wall")
+        // Marker the shell waits for, then hold so it can be photographed.
+        print("WALL_ON_SCREEN")
+        Thread.sleep(forTimeInterval: 30)
+    }
+
     // MARK: One intent, one key
 
     /// Sends the change, then taps Try Again. The shell asserts the two

@@ -126,9 +126,15 @@ if [ ! -f "$O" ] || [ ! -f "$S2" ]; then note "missing shrink files"; else
   grep -Eq '^[[:space:]]*@Published private\(set\) var uploadShrinkEnabled = false' "$O" \
     && echo "  ok   — the shrink flag defaults OFF" \
     || note "uploadShrinkEnabled does not default to false — an absent field could arm it"
-  grep -Fq 'uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"' "$O" \
-    && echo "  ok   — it arms only on an explicit \"on\"" \
-    || note "the shrink flag arms on something other than an explicit \"on\""
+  # ARMED ONLY BY A MEASURED, AUTHENTICATED ANSWER. This used to assert the
+  # read from /api/health — an UNAUTHENTICATED call that cannot know who is
+  # asking, which is exactly why an allowlisted account still read flag_off.
+  # The decision now comes from the per-user block, and only a MEASURED state
+  # may turn it on; UNREADABLE and a missing block both leave it off.
+  sed -n '/func refreshUploadKnobs()/,/^    }/p' "$O" \
+    | grep -Fq 'guard reported == "MEASURED" else { return }' \
+    && echo "  ok   — shrink arms only on a MEASURED per-user answer" \
+    || note "shrink is not gated on a MEASURED state — an unreadable flag store could turn it on"
   # try? , not try: a throw must leave `shrunk` nil so the ORIGINAL uploads.
   grep -Fq 'shrunk = try? await SourceShrinker.shrink(sourceUrl)' "$E" \
     && echo "  ok   — a failed shrink falls back to the original, never fails the upload" \
