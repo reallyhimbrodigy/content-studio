@@ -807,6 +807,66 @@ struct PromptlyApp: App {
                         }
                     }
                 }
+                // -uploadProof <path>: run a REAL upload of a real file through
+                // the shipping presign + transfer path, so there is an
+                // upload_timing row with a real upload_host and a real
+                // `accelerated` on this account. The photo picker runs out of
+                // process and does not present under XCUITest on the simulator,
+                // so this is the only way to exercise the network path here
+                // without a device. Everything after the picker is the shipping
+                // code — nothing about the presign, the host, or the transfer
+                // is posed.
+                if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-uploadProof"),
+                   i + 1 < ProcessInfo.processInfo.arguments.count {
+                    let path = ProcessInfo.processInfo.arguments[i + 1]
+                    Task.detached(priority: .userInitiated) {
+                        let url = URL(fileURLWithPath: path)
+                        let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+                        // WAIT FOR THE SESSION, AND SAY WHICH WAY IT WENT.
+                        // The first run of this printed "Please sign in" — the
+                        // exact 257 failure — and a seam that races the Keychain
+                        // restore would produce that symptom without the app
+                        // having anything wrong with it. So the two are
+                        // separated here rather than guessed at.
+                        var waited = 0
+                        while await AuthService.shared.getValidToken() == nil, waited < 20 {
+                            if waited == 0 { await AuthService.shared.signInAnonymouslyIfNeeded() }
+                            try? await Task.sleep(for: .milliseconds(500))
+                            waited += 1
+                        }
+                        let haveToken = await AuthService.shared.getValidToken() != nil
+                        print("[uploadProof] session after \(waited * 500)ms: "
+                              + (haveToken ? "OK" : "STILL NONE — this is the 257 shape, not a race"))
+                        let id = UUID().uuidString
+                        UploadTiming.begin(id)
+                        UploadTiming.meta(id, "size_mb", (Double(size) / 1_048_576.0 * 10).rounded() / 10)
+                        UploadTiming.meta(id, "conn", ReachabilityMonitor.currentConnectionType)
+                        UploadTiming.meta(id, "source", "uploadProof")
+                        do {
+                            let presign = try await APIService.shared.getUploadUrl(
+                                fileName: "uploadproof-\(UUID().uuidString).mp4")
+                            UploadTiming.recordEndpoint(id, presignedURL: presign.uploadUrl)
+                            print("[uploadProof] presign host=\(URL(string: presign.uploadUrl ?? "")?.host ?? "nil") "
+                                  + "accelerated=\(UploadTiming.isAcceleratedHost(URL(string: presign.uploadUrl ?? "")?.host ?? ""))")
+                            guard let put = presign.uploadUrl, let pub = presign.publicUrl else {
+                                print("[uploadProof] FAILED no urls"); UploadTiming.finish(id, outcome: "failed"); return
+                            }
+                            UploadTiming.mark(id, "presigned")
+                            let resolved = try await APIService.shared.uploadSourceNeverWorse(
+                                fileUrl: url, fileName: url.lastPathComponent,
+                                singlePutUrl: put, singlePutPublicUrl: pub,
+                                messageId: id, chatId: nil,
+                                onPublicUrlResolved: { _ in },
+                                onProgress: { _ in })
+                            UploadTiming.mark(id, "uploaded")
+                            UploadTiming.finish(id, outcome: "dispatched")
+                            print("[uploadProof] DONE resolved=\(resolved)")
+                        } catch {
+                            UploadTiming.finish(id, outcome: "failed")
+                            print("[uploadProof] FAILED \(error.localizedDescription)")
+                        }
+                    }
+                }
                 #endif
                 #if DEBUG
                 if motionProof { Self.motionProofReset(); OnboardingState.shared.debugForceFlag("first_launch_paywall"); OnboardingState.shared.debugForceFlag("onboarding_v2") }
