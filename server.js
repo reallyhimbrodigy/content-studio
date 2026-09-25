@@ -5415,6 +5415,44 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // any zero would have been a reader artifact, not a suppression bug.
           'update_banner_shown', 'update_banner_dismissed', 'update_prompt_tapped',
           'credits_topup_upgrade_tap',
+          // ── REHEARSAL INSTRUMENTATION (Zac 2026-09-25) ──────────────────
+          //
+          // "Without them tomorrow's rehearsal is unqueryable in SQL." The
+          // /api/events mirror DROPS any name not in this set, silently, and a
+          // dropped event is indistinguishable from a thing that never
+          // happened — which is exactly the reading a rehearsal is meant to
+          // produce. PostHog keeps them regardless; this is the SQL half.
+          //
+          // Allowlisted AHEAD of the emitters, which is the standing law here:
+          // the parity gate scans the app-* branches and fails the deploy if a
+          // surface emits a name main does not accept, so landing the names
+          // first is what makes the emitters shippable at all.
+          //
+          // PRESIGN — the upload retry path.
+          'presign_401_refresh', 'presign_retry',
+          // RE-EDIT — the money doors and the queue. The three 402 reasons the
+          // server already emits (pro_required, cap_reached, insufficient) get
+          // their client-side counterparts here; the webhook-race retry is the
+          // new-subscriber case where RevenueCat is active before the webhook
+          // lands, and without it an admitted-on-recheck user is invisible.
+          'reedit_402_webhook_race_retry', 'reedit_payment_required',
+          'reedit_price_accepted', 'reedit_pro_required',
+          'reedit_queue_edit_opened', 'reedit_queue_orphaned',
+          'reedit_queue_released', 'reedit_queue_replaced', 'reedit_queued',
+          'reedit_resume_failed_after_upgrade', 'reedit_resume_stale',
+          'reedit_resumed_after_upgrade', 'reedit_words_returned',
+          // REFINEMENT — the offer and its retraction. A posted offer with no
+          // retraction event cannot be told from one still standing.
+          'refinement_offer_posted', 'refinement_offer_retracted',
+          // RENDER — first step observed, the head of the progress funnel.
+          'render_step_first',
+          // UPLOAD ORPHANS — the class where a pick dies between the presign
+          // and the job. asset_gone and recoverable are OPPOSITE diagnoses of
+          // the same stall, and resume_accepted/declined is the only place the
+          // user's answer is recorded at all.
+          'upload_orphan_asset_gone', 'upload_orphan_auto_restarted',
+          'upload_orphan_recoverable', 'upload_orphan_resume_accepted',
+          'upload_orphan_resume_declined',
 ]);
         if (!ALLOWED.has(body.event)) {
           console.warn(`[events] dropped unknown event=${String(body.event).slice(0, 40)}`);
