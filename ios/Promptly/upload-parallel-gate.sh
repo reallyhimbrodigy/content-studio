@@ -62,11 +62,42 @@ grep -Fq 'obj?["upload_parallel"]' "$O" \
 # ── 4. CLAMPED AT BOTH ENDS, ON BOTH SIDES ─────────────────────────────────
 # A typo'd "60" must not open sixty connections, and it must not matter which
 # side of the boundary the typo lands on.
-for f in "$R" "$O"; do
-  grep -Eq 'min\(max\(.*minPartsInFlight\), MultipartConfig\.maxPartsInFlight\)|min\(max\(stored, minPartsInFlight\), maxPartsInFlight\)' "$f" \
-    || note "$(basename "$f") does not clamp the parts-in-flight value between min and max"
-done
-echo "  ok   — checked the clamp on both the writing and the reading side"
+# The reading side clamps what it finds stored.
+grep -Eq 'min\(max\(stored, minPartsInFlight\), maxPartsInFlight\)' "$R" \
+  || note "the reading side does not clamp the stored value between min and max"
+# The writing side must clamp too — either inline, or by delegating to the
+# pure parser that does. Delegation is the stronger shape (one place decides),
+# so it is accepted, but ONLY if that parser is itself checked below.
+if grep -Fq 'MultipartConfig.partsInFlight(forFlag:' "$O"; then
+  echo "  ok   — the writing side delegates to the one parser that decides"
+elif grep -Eq 'min\(max\(.*minPartsInFlight\), MultipartConfig\.maxPartsInFlight\)' "$O"; then
+  echo "  ok   — the writing side clamps inline"
+else
+  note "OnboardingState neither clamps nor delegates to partsInFlight(forFlag:) — a typo'd \"60\" would be written through"
+fi
+
+# ── 4b. "on" MUST MEAN SOMETHING ───────────────────────────────────────────
+# The flag service serves "on"/absent and has no way to serve "4". Parsed with
+# Int() alone, "on" is nil -> 0 -> the default 3, so flipping the flag on did
+# nothing while the flag said it was enabled: an experiment that reports as
+# running and is not.
+parser="$(sed -n '/static func partsInFlight(forFlag raw: String)/,/^    }/p' "$R")"
+if [ -z "$parser" ]; then
+  note "there is no partsInFlight(forFlag:) — \"on\" cannot be distinguished from a typo, and the knob can never arm"
+else
+  printf '%s' "$parser" | grep -Fq 'if v == "on" { return onMeansPartsInFlight }' \
+    && echo "  ok   — \"on\" maps to a real number of parts" \
+    || note "the parser does not handle \"on\" — the only value the flag service can serve would fall through to the default"
+  printf '%s' "$parser" | grep -Fq 'min(max(n, minPartsInFlight), maxPartsInFlight)' \
+    && echo "  ok   — and numeric values are clamped in the parser" \
+    || note "partsInFlight(forFlag:) does not clamp numeric values"
+  on_val=$(grep -oE 'static let onMeansPartsInFlight = [0-9]+' "$R" | grep -oE '[0-9]+$')
+  if [ -n "$on_val" ] && [ "$on_val" -ge 4 ] && [ "$on_val" -le 6 ]; then
+    echo "  ok   — \"on\" means $on_val parts, inside the 4-6 target band"
+  else
+    note "onMeansPartsInFlight is '${on_val:-unset}' — outside the 4-6 band that was asked for"
+  fi
+fi
 
 # ── 5. THE SPAN CARRIES BOTH NUMBERS ───────────────────────────────────────
 span="$(sed -n '/func transfer(/,/^    }/p' "$R")"

@@ -304,10 +304,22 @@ final class OnboardingState: ObservableObject {
             // on the next launch, with no reinstall. Clamped here as well as at
             // the read, so a typo'd "60" cannot open sixty connections.
             let parallelRaw = (obj?["upload_parallel"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "off"
-            let parallelParts = Int(parallelRaw).map {
-                min(max($0, MultipartConfig.minPartsInFlight), MultipartConfig.maxPartsInFlight)
-            } ?? 0
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? "off"
+            // "on" MEANS SOMETHING, or the knob can never arm.
+            //
+            // The flag service serves "on" / absent — it has no way to serve
+            // "4". Parsed with `Int(...)` alone, "on" is nil, which falls to 0,
+            // which reads back as the default 3. So the knob shipped in a state
+            // where flipping it on did exactly nothing, and the row would have
+            // said parts_in_flight=3 while the flag said it was enabled: an
+            // experiment that reports as running and is not.
+            //
+            // "on" therefore maps to the BOTTOM of the target band, not the
+            // top. Four parts at 5 MiB is 20 MB in flight against the 15 MB
+            // that works today and the 96 MB that starved; 6 is available by
+            // serving "6" explicitly once 4 is measured.
+            let parallelParts = MultipartConfig.partsInFlight(forFlag: parallelRaw)
             UserDefaults.standard.set(parallelParts, forKey: MultipartConfig.partsInFlightKey)
             uploadParallelParts = parallelParts
             creditsEnabled = (obj?["credits_metering"] as? String) == "on"
