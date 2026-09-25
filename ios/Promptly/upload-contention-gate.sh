@@ -39,11 +39,26 @@ def const(src, name, typ=r'Int64'):
     m = re.search(rf'static let {name}(?::\s*\w+)?\s*=\s*([0-9]+)\b', src)
     return int(m.group(1)) if m else None
 
-part = const(UP, 'defaultPartSize')
 floor = const(UP, 's3MinPartSize')
-conns = None
-m = re.search(r'httpMaximumConnectionsPerHost\s*=\s*(\d+)', MP)
-if m: conns = int(m.group(1))
+
+# RESOLVE THE ALIAS. `defaultPartSize` is declared as `= s3MinPartSize`, not as
+# a number, so the numeric regex returned None and the whole scan reported
+# itself empty. It has been blind on this half for as long as that alias has
+# existed.
+part = const(UP, 'defaultPartSize')
+if part is None and re.search(r'static let defaultPartSize(?::\s*\w+)?\s*=\s*s3MinPartSize', UP):
+    part = floor
+
+# BOUND THE KNOB'S WORST CASE, NOT TODAY'S LITERAL.
+# This read `httpMaximumConnectionsPerHost = <digits>`. That line is now
+# `= MultipartConfig.partsInFlight` — server-driven — so the digits regex found
+# nothing and this half went blind too, at exactly the moment concurrency
+# became tunable to 4-6. The number that matters is therefore the MOST the knob
+# can ever serve, which is what the clamp guarantees.
+conns = const(MP, 'maxPartsInFlight', typ=r'Int')
+if conns is None:
+    m = re.search(r'httpMaximumConnectionsPerHost\s*=\s*(\d+)', MP)
+    if m: conns = int(m.group(1))
 
 if part is None or conns is None or floor is None:
     bad.append('could not read partSize / connections / floor — the scan is empty, not clean')
