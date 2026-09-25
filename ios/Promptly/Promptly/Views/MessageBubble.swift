@@ -719,6 +719,7 @@ struct MessageBubble: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("bubble.retry")
                         .accessibilityLabel(message.reeditRequest != nil
                             ? "Try again — re-sends your change"
                             : "Try again — re-runs the render with the same video and vibe")
@@ -745,6 +746,7 @@ struct MessageBubble: View {
                             .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5 * k))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("bubble.makeAnother")
                         .accessibilityLabel("Upload a new video")
                     }
                 }
