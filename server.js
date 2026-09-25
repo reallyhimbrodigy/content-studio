@@ -8071,11 +8071,22 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         if (job.pipeline === 'agentic' && AGENTIC_BASE_URL) {
           try {
             const { prepareAndDispatchAgentic } = require('./lib/agentic-dispatch');
+            // THE PERMISSION GATE'S EXEMPTION, RESOLVED FROM THE SAME ROW.
+            // B1's worker refuses customer traffic while Zac's written-
+            // permission record is absent; only `first_party: true` exempts a
+            // request, and only the internal ALLOWLIST rung earns it. Read here
+            // rather than carried on the job row, because the row has no column
+            // for it and inventing one would fail the insert.
+            const _fp = await require('./lib/chatcut-ramp').firstPartyFor({
+              userId: authUser.id,
+              resolveFlag: (f, u) => uploadFlags.resolve(f, u, supabaseAdmin),
+            });
             await prepareAndDispatchAgentic({
               baseUrl: AGENTIC_BASE_URL,
               jobId: job.id,
               videoUrl,
               brief: vibeInput,
+              isFirstParty: _fp.firstParty,
             });
             _agenticDispatched = true;
           } catch (e) {
