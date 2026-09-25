@@ -57,6 +57,43 @@ enum MultipartConfig {
     static let resumeTTL: TimeInterval = 6.5 * 24 * 3600
     /// Client-side kill switch — false ⇒ the never-worse caller always uses single-PUT.
     nonisolated(unsafe) static var enabled = true
+
+    // MARK: - Parts in flight (upload_parallel)
+
+    /// PARTS IN FLIGHT, SERVER-DRIVEN AND DARK BY DEFAULT.
+    ///
+    /// WHY THIS IS A FLAG AND NOT A NEW CONSTANT. It WAS 6, and was cut to 3 on
+    /// measurement: six concurrent 16 MiB parts put 96 MB in flight on one
+    /// uplink and starved each other into the idle timeout. Raising it back
+    /// blind would re-run an experiment that already failed.
+    ///
+    /// But the thing that starved is BYTES in flight, not the part count, and
+    /// the part size has since dropped to `defaultPartSize` — 5 MiB. So today's
+    /// 3 parts is 15 MB in flight, and 6 would be 30 MB: a third of the 96 MB
+    /// that broke. That makes 6 PLAUSIBLE, which is not the same as measured,
+    /// which is exactly why it ships dark and why `parts_in_flight` is recorded
+    /// next to `part_size_mib` on every span. The product of the two is the
+    /// number to read; either alone explains nothing.
+    ///
+    /// READ FROM THE PERSISTED KNOB, NOT THE LIVE ONE. A background
+    /// URLSession's configuration is fixed the moment the session exists, and
+    /// this one is built during `init()` so killed-task callbacks can
+    /// reconnect on launch. Reading the live flag here would compile, run, and
+    /// silently do nothing until the next launch anyway. So the knob is
+    /// written through to UserDefaults when it arrives and read back here: a
+    /// flag change is honoured on the NEXT LAUNCH, with no reinstall.
+    static let defaultPartsInFlight = 3
+    static let minPartsInFlight = 1
+    static let maxPartsInFlight = 6
+    /// The key `OnboardingState` writes when `upload_parallel` arrives.
+    static let partsInFlightKey = "upload_parallel_parts"
+    static var partsInFlight: Int {
+        let stored = UserDefaults.standard.integer(forKey: partsInFlightKey)
+        // 0 = absent, unreadable, or "off". All three mean "no opinion", which
+        // is the shipped default rather than zero connections.
+        guard stored > 0 else { return defaultPartsInFlight }
+        return min(max(stored, minPartsInFlight), maxPartsInFlight)
+    }
     /// Max reschedules of a single failing part before the whole transfer gives up.
     static let maxPartAttempts = 6
     /// Retries of the final `complete` call before giving up.
@@ -152,7 +189,10 @@ final class ResumableMultipartUploader: NSObject {
         config.timeoutIntervalForRequest = 45
         // WAS 6. Six concurrent 16 MiB parts = 96 MB in flight on one uplink;
         // they starved each other into the idle timeout. 3 x 8 MiB = 24 MB.
-        config.httpMaximumConnectionsPerHost = 3   // parallel parts
+        // Server-driven since upload_parallel; `partsInFlight` is 3 unless the
+        // knob says otherwise, so an install that never sees the flag behaves
+        // exactly as it does today.
+        config.httpMaximumConnectionsPerHost = MultipartConfig.partsInFlight
         return URLSession(configuration: config, delegate: MultipartUploadDelegate.shared, delegateQueue: nil)
     }()
 
@@ -203,6 +243,12 @@ final class ResumableMultipartUploader: NSObject {
         UploadTiming.recordEndpoint(manifest.messageId, presignedURL: initResponse.partUrls.first)
         UploadTiming.meta(manifest.messageId, "upload_path", "multipart")
         UploadTiming.meta(manifest.messageId, "part_size_mib", partSize / (1024 * 1024))
+        // BOTH, ALWAYS. The failure this knob can reproduce is bytes-in-flight
+        // starvation, and that is the product of these two. A span carrying
+        // only the part count cannot distinguish 6 small parts from 6 large
+        // ones, which is the entire difference between the working
+        // configuration and the one that broke.
+        UploadTiming.meta(manifest.messageId, "parts_in_flight", MultipartConfig.partsInFlight)
         UploadTiming.meta(manifest.messageId, "part_count", plan.count)
         let ledger = MultipartResumeLedger(uploadId: initResponse.uploadId, key: initResponse.key,
                                            publicUrl: initResponse.publicUrl, fileSize: size, partSize: partSize)

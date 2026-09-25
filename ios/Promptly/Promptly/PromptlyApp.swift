@@ -766,6 +766,45 @@ struct PromptlyApp: App {
                     UploadOutcomeReporter.shared.sweepOnLaunch()
                     print("[unsProof] records remaining after sweep = \(UploadOutcomeReporter.shared._debugRecordCount)")
                 }
+                // -shrinkProof <path>: run the REAL SourceShrinker over a file
+                // in the app container and print what it decided and produced.
+                //
+                // WHY A SEAM AND NOT A BENCHMARK THROUGH THE UI. The numbers
+                // worth having here are the BYTES — bytes_before, bytes_after,
+                // shrink_reason — and those are a property of the export, not
+                // of the network or the device's uplink. A simulator's transfer
+                // time is the host's ethernet and is not a phone number, so it
+                // is deliberately not what this measures.
+                if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-shrinkProof"),
+                   i + 1 < ProcessInfo.processInfo.arguments.count {
+                    let path = ProcessInfo.processInfo.arguments[i + 1]
+                    Task.detached(priority: .userInitiated) {
+                        let url = URL(fileURLWithPath: path)
+                        let before = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+                        let asset = AVURLAsset(url: url)
+                        let d = await SourceShrinker.decide(for: asset)
+                        print("[shrinkProof] decide shouldShrink=\(d.shouldShrink) reason=\(d.reason) "
+                              + "shortSide=\(d.shortSide) bitrate=\(d.bitrate)")
+                        guard d.shouldShrink else { print("[shrinkProof] DONE no-shrink"); return }
+                        let t0 = Date()
+                        do {
+                            let out = try await SourceShrinker.shrink(url)
+                            let after = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int64) ?? 0
+                            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                            let partsBefore = MultipartChunker.partCount(
+                                fileSize: before, partSize: MultipartChunker.chosenPartSize(fileSize: before))
+                            let partsAfter = MultipartChunker.partCount(
+                                fileSize: after, partSize: MultipartChunker.chosenPartSize(fileSize: after))
+                            print("[shrinkProof] RESULT bytes_before=\(before) bytes_after=\(after) "
+                                  + "ratio=\(before > 0 ? Double(after) / Double(before) : 0) "
+                                  + "shrink_reason=\(d.reason) shrink_ms=\(ms) "
+                                  + "parts_before=\(partsBefore) parts_after=\(partsAfter) "
+                                  + "parts_in_flight=\(MultipartConfig.partsInFlight)")
+                        } catch {
+                            print("[shrinkProof] FAILED \(error.localizedDescription)")
+                        }
+                    }
+                }
                 #endif
                 #if DEBUG
                 if motionProof { Self.motionProofReset(); OnboardingState.shared.debugForceFlag("first_launch_paywall"); OnboardingState.shared.debugForceFlag("onboarding_v2") }

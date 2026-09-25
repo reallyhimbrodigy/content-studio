@@ -51,8 +51,30 @@ final class VersionAwareness: ObservableObject {
         latestVersion = latest.isEmpty ? nil : latest
         notes = (serverNotes?.isEmpty == false) ? serverNotes : nil
         updateAvailable = !latest.isEmpty && VersionMath.isOlder(current, than: latest)
-        updateRequired = forceArmed && !minSupported.isEmpty
+        // A VERSION FLOOR CANNOT SEPARATE TWO BUILDS OF THE SAME VERSION,
+        // and that is the case in front of us rather than a hypothetical: 261
+        // and 262 are both 1.3.39. `isOlder("1.3.39", than: "1.3.39")` is
+        // false, so a version floor can never move anyone off 261 — the forced
+        // cover would stay dark however the knob was set, and it would look
+        // like the flag was simply off.
+        //
+        // So the floor is EITHER: below the supported version, or below the
+        // supported build. A build number is a single monotonic integer, which
+        // is the only thing that distinguishes two submissions of one version.
+        let minBuild = (health?["min_supported_build"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let currentBuild = Self.bundleBuild()
+        // NEVER BRICK ON CONFIG. An unreadable floor, an unreadable build, or
+        // a non-numeric knob means "no opinion" — not "block everyone". This
+        // screen is the one surface that can make the app unusable, so every
+        // unreadable path has to fall to NOT forcing.
+        let buildBelowFloor: Bool = {
+            guard let floor = Int(minBuild), floor > 0, let mine = currentBuild else { return false }
+            return mine < floor
+        }()
+        let versionBelowFloor = !minSupported.isEmpty
             && VersionMath.isOlder(current, than: minSupported)
+        updateRequired = forceArmed && (versionBelowFloor || buildBelowFloor)
         dismissedForLatest = !latest.isEmpty
             && UserDefaults.standard.string(forKey: Self.dismissedKey) == latest
     }
@@ -110,6 +132,15 @@ final class VersionAwareness: ObservableObject {
 
     static func bundleVersion() -> String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+    }
+
+    /// The BUILD number — CFBundleVersion, not CFBundleShortVersionString.
+    /// nil when it is missing or not an integer, which reads as "no opinion"
+    /// at every call site rather than as build 0 (which would be below every
+    /// floor and would force the cover on for everyone).
+    static func bundleBuild() -> Int? {
+        guard let raw = Bundle.main.infoDictionary?["CFBundleVersion"] as? String else { return nil }
+        return Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
 }

@@ -47,6 +47,10 @@ final class OnboardingState: ObservableObject {
     @Published private(set) var creditsEnabled = false
     /// Server-controlled, default OFF. The 1080p HEVC source shrink.
     @Published private(set) var uploadShrinkEnabled = false
+    /// The requested parts-in-flight, 0 when the knob says "off" or is absent.
+    /// Observability only — the uploader reads the persisted value, because it
+    /// needs it before this fetch returns.
+    @Published private(set) var uploadParallelParts = 0
     /// The first-run suggestion strings, served so wording can be A/B tested
     /// without a release. EMPTY means "no server opinion" — VibeSuggestions
     /// then uses its baked-in fallback. Never rendered directly.
@@ -290,6 +294,22 @@ final class OnboardingState: ObservableObject {
                 if obj == nil { /* unreadable config: keep what we have */ }
             }
             uploadShrinkEnabled = (obj?["upload_shrink"] as? String) == "on"
+            // upload_parallel: "off" or absent = no opinion = the shipped
+            // default (3). "4" / "5" / "6" set parts in flight.
+            //
+            // WRITTEN THROUGH, because the consumer cannot read this value at
+            // the moment it arrives: the background URLSession that carries the
+            // parts fixes its connection limit when it is constructed, during
+            // launch. Persisting it is what makes the knob take effect at all —
+            // on the next launch, with no reinstall. Clamped here as well as at
+            // the read, so a typo'd "60" cannot open sixty connections.
+            let parallelRaw = (obj?["upload_parallel"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "off"
+            let parallelParts = Int(parallelRaw).map {
+                min(max($0, MultipartConfig.minPartsInFlight), MultipartConfig.maxPartsInFlight)
+            } ?? 0
+            UserDefaults.standard.set(parallelParts, forKey: MultipartConfig.partsInFlightKey)
+            uploadParallelParts = parallelParts
             creditsEnabled = (obj?["credits_metering"] as? String) == "on"
             creditsMonthlyAllowance = obj?["credits_monthly"] as? Int
             #if DEBUG
