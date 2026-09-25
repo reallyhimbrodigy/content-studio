@@ -1094,7 +1094,7 @@ enum PipelineCatalog {
         PipelineStage(id: "cc_captions",title: String(localized: "Placing your captions"),     icon: "text.bubble",          authoritative: false, parent: "editing",  modes: ["chatcut"]),
         PipelineStage(id: "cc_graphics",title: String(localized: "Adding graphics"),           icon: "sparkles",             authoritative: false, parent: "editing",  modes: ["chatcut"]),
         PipelineStage(id: "cc_sound",   title: String(localized: "Balancing the sound"),       icon: "speaker.wave.2",       authoritative: false, parent: "editing",  modes: ["chatcut"]),
-        PipelineStage(id: "exporting",  title: String(localized: "Rendering"),                 icon: "film",                 authoritative: true,  parent: nil,        modes: ["chatcut"]),
+        PipelineStage(id: "exporting",  title: String(localized: "Finishing your video"),     icon: "film",                 authoritative: true,  parent: nil,        modes: ["chatcut"]),
         PipelineStage(id: "cc_encode",  title: String(localized: "Putting the frames together"), icon: "square.stack.3d.up", authoritative: false, parent: "exporting", modes: ["chatcut"]),
         PipelineStage(id: "delivering", title: String(localized: "Almost there"),              icon: "square.and.arrow.up",  authoritative: true,  parent: nil,        modes: ["chatcut"])
     ]
