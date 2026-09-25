@@ -1020,6 +1020,19 @@ enum JobLifecycle {
 }
 
 enum PipelineCatalog {
+    /// The worker's own progress band for a stage, MEASURED from live rows
+    /// rather than assumed: jobs sitting at each step carry
+    ///   analyze 3–7 · transcribe 10 · face_detect 16 · shots 18 ·
+    ///   plan 45–50 · render 65–95 · upload 100
+    /// Only stages with derived children need one, because it exists to place
+    /// the narration inside a stage.
+    static func progressBand(for stageId: String) -> (lower: Int, upper: Int)? {
+        switch stageId {
+        case "render": return (65, 95)
+        default: return nil
+        }
+    }
+
     // Baked-in snapshot of shared/pipeline-stages.json — keep in sync.
     //
     // `download` is intentionally absent from this client-side catalog even
@@ -1097,6 +1110,11 @@ final class StageTimeline: ObservableObject {
     }
 
     private var derivedTask: Task<Void, Never>?
+
+    /// Per-child dwell for the derived narration, sized to the measured render
+    /// stage rather than guessed. Five children at 22s spans 88s before the
+    /// last one holds, against a measured render of 94–143s.
+    static let derivedDwellNanos: UInt64 = 22_000_000_000
 
     init(mode: String, startWith: String? = nil) {
         let filtered = PipelineCatalog.stages(for: mode)
@@ -1184,10 +1202,59 @@ final class StageTimeline: ObservableObject {
                 }
                 self.states[child.id] = .inProgress
                 self.currentDerivedId = child.id
-                let dwellNanos: UInt64 = i == children.count - 1 ? 8_000_000_000 : 3_200_000_000
+                // THE NARRATION MUST NOT RUN OUT BEFORE ITS STAGE DOES.
+                //
+                // MEASURED, from stage_timings on real completed jobs: the
+                // `render` stage runs 94.6s, 137.1s and 143.2s on three recent
+                // renders — the dominant stretch of a 140–253s job. The old
+                // dwell was 3.2s per child with 8s on the last: five children
+                // exhausted in 20.8s, and the label then sat frozen on "Saving
+                // your video" for the remaining 73–122 SECONDS. The ring kept
+                // ramping, so it was not a dead screen — but the words stopped,
+                // which is the half a user reads.
+                //
+                // The dwell now spans the measured stage instead of a fraction
+                // of it. It is a FLOOR, not a schedule: a real `step` token
+                // cancels this task, and `receive(progressPct:)` snaps the
+                // index forward when the server's own progress says we are
+                // further along. So this only governs the gap between real
+                // signals, which is exactly what it is for.
+                let dwellNanos: UInt64 = i == children.count - 1
+                    ? 30_000_000_000
+                    : Self.derivedDwellNanos
                 try? await Task.sleep(nanoseconds: dwellNanos)
             }
         }
+    }
+
+    /// ADVANCE THE NARRATION FROM REAL PROGRESS.
+    ///
+    /// The worker publishes a live `progress` through the long stages — 30 jobs
+    /// sitting at step=render span 65..95 across six distinct values — and the
+    /// derived narration ignored it entirely, running on a timer alone. When
+    /// the server says we are 90% through a stage, the words should not still
+    /// be on the first of five sub-steps because a sleep has not elapsed.
+    ///
+    /// Only ever moves FORWARD. A poll and an SSE tick can arrive out of order,
+    /// and a label that walks backwards reads as the render having restarted.
+    func receive(progressPct: Int) {
+        guard !isFinished, let parentId = currentStageId else { return }
+        guard let band = PipelineCatalog.progressBand(for: parentId) else { return }
+        let children = stages.filter { $0.parent == parentId && !$0.authoritative }
+        guard children.count > 1 else { return }
+
+        let span = max(1, band.upper - band.lower)
+        let clamped = min(max(progressPct, band.lower), band.upper)
+        let frac = Double(clamped - band.lower) / Double(span)
+        let target = min(children.count - 1, max(0, Int(frac * Double(children.count))))
+
+        let currentIdx = currentDerivedId.flatMap { id in children.firstIndex(where: { $0.id == id }) } ?? -1
+        guard target > currentIdx else { return }
+
+        for i in 0...target where i < children.count {
+            states[children[i].id] = i == target ? .inProgress : .completed
+        }
+        currentDerivedId = children[target].id
     }
 
     /// Called on final SSE event (completed / failed / needs_clarification).

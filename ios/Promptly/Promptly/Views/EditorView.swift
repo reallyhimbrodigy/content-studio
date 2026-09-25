@@ -4793,6 +4793,11 @@ struct EditorView: View {
                 if mapped > (messages[messageIndex].jobProgress ?? 0) {
                     messages[messageIndex].jobProgress = mapped
                 }
+                // The render heartbeats above (65 -> 90..93) are the only live
+                // signal during the longest stage of the job. The narration
+                // takes the RAW pct, on the worker's scale, for the same reason
+                // the poll does.
+                messages[messageIndex].stageTimeline?.receive(progressPct: progress)
             }
             // Suppress the server-provided stepMessage during the post-render
             // "finalizing" phase below — we own the copy there ("Finalizing
@@ -5240,6 +5245,12 @@ struct EditorView: View {
                 if clamped > (messages[idx].jobProgress ?? 0) {
                     messages[idx].jobProgress = clamped
                 }
+                // THE RAW WORKER PCT, NOT THE MAPPED ONE. The bar is drawn on a
+                // 30–100 display band; the narration is placed inside the
+                // WORKER's band for the stage (render is 65–95). Handing it
+                // `clamped` would measure the render against the wrong ruler
+                // and put the words in the wrong place all the way through.
+                messages[idx].stageTimeline?.receive(progressPct: Int(p))
             }
             if let step = row.current_step, !step.isEmpty {
                 messages[idx].stageTimeline?.receive(stepToken: step)
