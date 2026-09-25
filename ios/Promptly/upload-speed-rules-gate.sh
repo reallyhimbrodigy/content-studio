@@ -108,5 +108,28 @@ else
   note "expected 2 pre-expiry refresh margins (launch restore + getValidToken), found $margins — a near-expiry upload on the unprotected path takes a 401 round trip first"
 fi
 
+# ── 7. THE CLIP-INJECTION SEAMS MUST NOT EXIST IN A SHIPPED BINARY ─────────
+# `-attachClip <path>` hands a local file straight into handlePickedVideos —
+# the same entry a real pick uses. That is the only way to drive the upload
+# rail without a device, because the system picker runs out of process and does
+# not present under XCUITest. It is also, in a Release build, a launch argument
+# that makes the app upload a file of someone else'"'"'s choosing.
+#
+# Checked the same way as -apiBase, and for the same reason. Each seam is
+# looked up in its own function body: a single #if DEBUG somewhere in a
+# 5000-line file proves nothing about the function next to it.
+for seam in debugAttachClipIfRequested debugSendChatIfRequested; do
+  body="$(sed -n "/private func ${seam}()/,/^    }/p" "$E")"
+  if [ -z "$body" ]; then
+    echo "  ok   — no ${seam} present"
+    continue
+  fi
+  if printf '%s' "$body" | grep -Fq '#if DEBUG'; then
+    echo "  ok   — ${seam} is inside #if DEBUG"
+  else
+    note "${seam} is NOT inside #if DEBUG — a shipped build would take a file path from a launch argument and upload it"
+  fi
+done
+
 [ "$fail" = 0 ] && echo "upload-speed-rules-gate: PASS" || echo "upload-speed-rules-gate: FAIL"
 exit "$fail"
