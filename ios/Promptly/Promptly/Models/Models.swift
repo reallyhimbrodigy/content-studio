@@ -1026,9 +1026,18 @@ enum PipelineCatalog {
     ///   plan 45–50 · render 65–95 · upload 100
     /// Only stages with derived children need one, because it exists to place
     /// the narration inside a stage.
+    /// The steps ChatCut publishes. Used to recognise the pipeline from its
+    /// first token rather than having to be told which one will run.
+    static let chatCutStageIds: Set<String> = ["staged", "editing", "exporting", "delivering"]
+
     static func progressBand(for stageId: String) -> (lower: Int, upper: Int)? {
         switch stageId {
         case "render": return (65, 95)
+        // ChatCut's own bands, as published by B1.
+        case "staged": return (5, 10)
+        case "editing": return (10, 80)
+        case "exporting": return (80, 95)
+        case "delivering": return (95, 100)
         default: return nil
         }
     }
@@ -1068,7 +1077,26 @@ enum PipelineCatalog {
         PipelineStage(id: "transitions",  title: String(localized: "Making it flow better"),         icon: "arrow.triangle.swap",       authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "encode",       title: String(localized: "Saving your video"),                  icon: "film",                      authoritative: false, parent: "render", modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "thumbnail",    title: String(localized: "Choosing your cover picture"),      icon: "photo.on.rectangle",        authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
-        PipelineStage(id: "upload",       title: String(localized: "Almost done"),          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"])
+        PipelineStage(id: "upload",       title: String(localized: "Almost done"),          icon: "square.and.arrow.up",       authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
+
+        // ── ChatCut ────────────────────────────────────────────────────────
+        // B1's four published steps: staged (5) -> editing (10-80) ->
+        // exporting (80-95) -> delivering (95-100).
+        //
+        // EDITING OWNS 70 OF THE 100 POINTS, so it owns most of the lines. A
+        // two-to-three minute edit spends the bulk of its time here, and this
+        // is the stretch a user actually sits through — the handler pipeline's
+        // equivalent stage is where the label used to freeze for two minutes.
+        PipelineStage(id: "staged",     title: String(localized: "Getting your video ready"),  icon: "tray.and.arrow.down",  authoritative: true,  parent: nil,        modes: ["chatcut"]),
+        PipelineStage(id: "editing",    title: String(localized: "Making your edit"),          icon: "wand.and.stars",       authoritative: true,  parent: nil,        modes: ["chatcut"]),
+        PipelineStage(id: "cc_deadair", title: String(localized: "Cutting the dead air"),      icon: "scissors",             authoritative: false, parent: "editing",  modes: ["chatcut"]),
+        PipelineStage(id: "cc_pacing",  title: String(localized: "Tightening the pacing"),     icon: "timer",                authoritative: false, parent: "editing",  modes: ["chatcut"]),
+        PipelineStage(id: "cc_captions",title: String(localized: "Placing your captions"),     icon: "text.bubble",          authoritative: false, parent: "editing",  modes: ["chatcut"]),
+        PipelineStage(id: "cc_graphics",title: String(localized: "Adding graphics"),           icon: "sparkles",             authoritative: false, parent: "editing",  modes: ["chatcut"]),
+        PipelineStage(id: "cc_sound",   title: String(localized: "Balancing the sound"),       icon: "speaker.wave.2",       authoritative: false, parent: "editing",  modes: ["chatcut"]),
+        PipelineStage(id: "exporting",  title: String(localized: "Rendering"),                 icon: "film",                 authoritative: true,  parent: nil,        modes: ["chatcut"]),
+        PipelineStage(id: "cc_encode",  title: String(localized: "Putting the frames together"), icon: "square.stack.3d.up", authoritative: false, parent: "exporting", modes: ["chatcut"]),
+        PipelineStage(id: "delivering", title: String(localized: "Almost there"),              icon: "square.and.arrow.up",  authoritative: true,  parent: nil,        modes: ["chatcut"])
     ]
 
     static func stages(for mode: String) -> [PipelineStage] {
@@ -1116,7 +1144,25 @@ final class StageTimeline: ObservableObject {
     /// last one holds, against a measured render of 94–143s.
     static let derivedDwellNanos: UInt64 = 22_000_000_000
 
+    /// AN UNKNOWN STEP MUST NOT FREEZE THE WORDS.
+    ///
+    /// The local catalog stage WINS over the server's message on the ring, so a
+    /// token this build does not know used to be discarded and the label simply
+    /// stayed where it was — for the rest of the job. That is the two-minute
+    /// freeze again, arriving by a different door: the first time the server
+    /// ships a step name older clients have never seen.
+    ///
+    /// So an unrecognised token clears the stage pointers and puts a generic
+    /// line up instead. The ring keeps ramping, the words keep making sense,
+    /// and nothing claims to know a stage it does not.
+    @Published private(set) var genericLine: String?
+
+    /// Which catalog is in force. Stored because ChatCut is recognised from its
+    /// first token rather than declared up front.
+    private(set) var mode: String
+
     init(mode: String, startWith: String? = nil) {
+        self.mode = mode
         let filtered = PipelineCatalog.stages(for: mode)
         self.stages = filtered
         self.states = Dictionary(uniqueKeysWithValues: filtered.map { ($0.id, StageState.upcoming) })
@@ -1131,14 +1177,45 @@ final class StageTimeline: ObservableObject {
     /// don't paint them as "not needed" — the server runs every catalog
     /// stage on the success path, so the user shouldn't see anything
     /// labeled skipped during a successful render.
+    /// Swap to another catalog mid-flight, preserving nothing: a different
+    /// pipeline is a different set of stages, and carrying old states across
+    /// would show handler stages as completed inside a ChatCut render.
+    private func adopt(mode newMode: String) {
+        derivedTask?.cancel()
+        mode = newMode
+        let filtered = PipelineCatalog.stages(for: newMode)
+        stages = filtered
+        states = Dictionary(uniqueKeysWithValues: filtered.map { ($0.id, StageState.upcoming) })
+        currentStageId = nil
+        currentDerivedId = nil
+        genericLine = nil
+    }
+
     func receive(stepToken token: String) {
         guard !isFinished else { return }
+        // THE PIPELINE ANNOUNCES ITSELF. The timeline is built at dispatch,
+        // before anything knows whether this job will run on the handler or on
+        // ChatCut, so the first ChatCut token reconfigures it instead of being
+        // discarded as unknown — which is what would otherwise happen to every
+        // step of every ChatCut render.
+        if PipelineCatalog.chatCutStageIds.contains(token), mode != "chatcut" {
+            adopt(mode: "chatcut")
+        }
         guard let idx = stages.firstIndex(where: { $0.id == token }) else {
-            // Unknown token for this mode — ignore. Could happen if worker adds a new
-            // stage that the client catalog doesn't know about. Forward compat: we
-            // don't crash, we just don't track it visually.
+            // Unknown: do not leave the words on a stage that is no longer
+            // running. Clear the pointers so the ring falls back to a generic
+            // line, and keep the ramp going.
+            derivedTask?.cancel()
+            currentStageId = nil
+            currentDerivedId = nil
+            genericLine = String(localized: "Working on your video…")
             return
         }
+        genericLine = nil
+        return receiveKnown(idx: idx)
+    }
+
+    private func receiveKnown(idx: Int) {
         let stage = stages[idx]
 
         // Walk earlier stages: anything not already completed → completed.

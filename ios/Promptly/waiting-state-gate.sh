@@ -86,5 +86,44 @@ for bad in 'receive(progressPct: mapped)' 'receive(progressPct: clamped)'; do
 done
 echo "  ok   — no caller passes the display-band value"
 
+# ── 5. CHATCUT'S FOUR STEPS, WITH THE BANDS B1 PUBLISHED ───────────────────
+R="Promptly/Views/RenderProgressRing.swift"
+[ -f "$R" ] || { echo "  FAIL — missing $R"; exit 1; }
+for pair in "staged:(5, 10)" "editing:(10, 80)" "exporting:(80, 95)" "delivering:(95, 100)"; do
+  id="${pair%%:*}"; band="${pair#*:}"
+  grep -Fq "case \"$id\": return $band" "$M" \
+    || note "ChatCut step '$id' has no progress band $band — the narration cannot be placed inside it"
+done
+echo "  ok   — all four ChatCut bands present (5 / 10-80 / 80-95 / 95-100)"
+
+# EDITING IS THE LONG ONE, so it must carry the most lines. 70 of the 100
+# points are spent here; one label for that stretch is the freeze again.
+edit_children=$(grep -cE 'parent: "editing"' "$M")
+other_children=$(grep -cE 'parent: "exporting"|parent: "staged"|parent: "delivering"' "$M")
+if [ "$edit_children" -ge 4 ] && [ "$edit_children" -gt "$other_children" ]; then
+  echo "  ok   — editing carries $edit_children sub-lines, more than the other ChatCut stages ($other_children)"
+else
+  note "editing has $edit_children sub-line(s) against $other_children elsewhere — it owns 70 of the 100 points and must own the most lines"
+fi
+
+# ── 6. THE PIPELINE IS RECOGNISED FROM ITS FIRST TOKEN ─────────────────────
+# The timeline is built at dispatch, before the pipeline is known. Without
+# this every ChatCut step is an unknown token.
+grep -Fq 'if PipelineCatalog.chatCutStageIds.contains(token), mode != "chatcut" {' "$M" \
+  && echo "  ok   — a ChatCut token reconfigures the timeline instead of being discarded" \
+  || note "nothing adopts the ChatCut catalog — the timeline is created before the pipeline is known, so every ChatCut step would arrive as unknown"
+
+# ── 7. AN UNKNOWN STEP NEVER FREEZES THE LABEL ─────────────────────────────
+unk="$(sed -n '/func receive(stepToken token: String)/,/^        genericLine = nil/p' "$M")"
+printf '%s' "$unk" | grep -Fq 'currentStageId = nil' \
+  && echo "  ok   — an unknown step clears the stage pointer rather than leaving it" \
+  || note "an unknown step leaves currentStageId set — the local catalog stage WINS on the ring, so the label would sit on a stage that stopped running"
+printf '%s' "$unk" | grep -Fq 'genericLine = String(localized:' \
+  && echo "  ok   — and puts up a generic line" \
+  || note "an unknown step sets no generic line — the ring would fall through to the server's untranslated message or \"Getting started\""
+grep -Fq 'if let g = timeline.genericLine, !g.isEmpty { return g }' "$R" \
+  && echo "  ok   — the ring renders that generic line" \
+  || note "RenderProgressRing never reads genericLine — the fallback is set and displayed by nobody"
+
 [ "$fail" = 0 ] && echo "waiting-state-gate: PASS" || echo "waiting-state-gate: FAIL"
 exit "$fail"

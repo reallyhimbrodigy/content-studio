@@ -160,6 +160,14 @@ struct RenderProgressRing: View {
     /// the same plain-language pass, and they can never be translated from here.
     private var line: String {
         if let s = activeStage { return s.title }
+        // AN UNKNOWN STEP LANDS HERE, not on a stale stage title. `activeStage`
+        // is nil precisely because the timeline cleared its pointers on a token
+        // this build does not know — the ring keeps ramping and the words stay
+        // honest instead of naming a stage that stopped running minutes ago.
+        // Ahead of the server's message because that string is composed
+        // server-side, is not in the String Catalog, and is therefore English
+        // for every user in every language.
+        if let g = timeline.genericLine, !g.isEmpty { return g }
         if let m = subMessage, !m.isEmpty { return m }
         return String(localized: "Getting started…")
     }
