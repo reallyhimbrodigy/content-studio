@@ -4747,6 +4747,25 @@ struct EditorView: View {
         // not the moment we got a reply.
         let dispatchStamp = messages.first(where: { $0.id == messageId })?.dispatchedAt ?? Date()
         RenderStepTiming.begin(jobId: jobId, dispatchedAt: dispatchStamp)
+        // REPLACE MEANS REPLACE. This was `sseClients[jobId] = client` alone,
+        // which drops the dictionary's reference to any client already watching
+        // this job — and drops it WITHOUT closing it. URLSession retains its
+        // delegate until the session is invalidated, so the orphan stays alive
+        // and keeps reconnecting on its own backoff, forever, with nothing
+        // holding a handle to stop it.
+        //
+        // Six call sites reach this function and only one of them guarded
+        // against re-entry, so a second watch of the same job — a re-edit, a
+        // reconcile restart, a resumed clarification — left a permanently
+        // reconnecting client behind each time.
+        //
+        // The reconnect backoff (2/4/8/16/32/60, six attempts) does not bound
+        // it either, because `reconnectAttempts` resets to 0 on ANY successful
+        // data: a connection that opens, receives one frame and drops restarts
+        // the ladder at 2s and never exhausts. N orphans is then N reconnects
+        // every 2 seconds against /api/video-jobs/<id>/stream, which is the
+        // shape of the 118-151 requests/minute seen in the server log.
+        sseClients[jobId]?.disconnect()
         let client = SSEClient(jobId: jobId)
         sseClients[jobId] = client
 

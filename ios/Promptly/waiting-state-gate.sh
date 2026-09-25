@@ -149,5 +149,42 @@ grep -Fq 'dispatchedAt ?? Date()' "$E" \
   && echo "  ok   — timed from the message's own dispatch stamp, set before the request left" \
   || note "the clock does not prefer the message's dispatchedAt — timing from the reply measures our round trip, not the user's wait"
 
+# ── 9. THE WAITING SCREEN CANNOT STORM THE SERVER ──────────────────────────
+# Server log, 2026-09-25: one job took 67/142/151/118 GET /api/video-jobs per
+# MINUTE across four minutes, every one a 429. That is ~2.5 requests/second for
+# a single render. A demo freezes on exactly this.
+#
+# Two independent ways this screen talks to the server, and both are bounded
+# here because fixing one while the other can storm proves nothing.
+
+# (a) THE RECONCILE POLL floor. 3s while the user is watching, backing off
+# after a minute. Anything under ~2s per job is the storm rate.
+fast=$(sed -n '/POLL CADENCE: fast while the user is watching/,/interval = .seconds(3)/p' "$E" | grep -oE 'interval = \.seconds\(([0-9]+)\)' | grep -oE '[0-9]+' | head -1)
+if [ -n "$fast" ] && [ "$fast" -ge 3 ]; then
+  echo "  ok   — the reconcile poll floor is ${fast}s per job"
+else
+  note "the reconcile poll floor is '${fast:-unreadable}'s — at or under 2s this is the storm rate seen in the server log"
+fi
+
+# (b) SSE RE-ENTRY must not orphan a live client. `sseClients[jobId] = client`
+# alone drops the dictionary's handle without closing the socket; URLSession
+# retains its delegate, so the orphan reconnects forever with nothing able to
+# stop it. Six call sites reach startSSE and only one guarded against re-entry,
+# so every extra watch of a job left another one running.
+# NON-COMMENT LINES ONLY. The comment above the fix quotes the broken line
+# verbatim to explain what it was, and a check that cannot tell an explanation
+# from a call reads that quote as the code — which is how a useful comment gets
+# deleted to make a gate green. Third time this pattern has bitten in this file.
+start_body="$(sed -n '/private func startSSE(jobId: String, messageId: UUID) {/,/client.onEvent = { event in/p' "$E" | grep -v '^[[:space:]]*//')"
+dis_line=$(printf '%s\n' "$start_body" | grep -n 'sseClients\[jobId\]?\.disconnect()' | head -1 | cut -d: -f1)
+set_line=$(printf '%s\n' "$start_body" | grep -n 'sseClients\[jobId\] = client' | head -1 | cut -d: -f1)
+if [ -z "$dis_line" ]; then
+  note "startSSE does not disconnect the existing client before replacing it — the orphan keeps reconnecting against /api/video-jobs/<id>/stream and nothing holds a handle to stop it"
+elif [ -z "$set_line" ] || [ "$dis_line" -gt "$set_line" ]; then
+  note "startSSE disconnects AFTER assigning — by then the handle to the old client is gone and the disconnect hits the new one"
+else
+  echo "  ok   — startSSE closes any existing watcher before replacing it"
+fi
+
 [ "$fail" = 0 ] && echo "waiting-state-gate: PASS" || echo "waiting-state-gate: FAIL"
 exit "$fail"
