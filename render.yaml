@@ -96,15 +96,15 @@ crons:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-  - name: daily-scoreboard
-    runtime: node
-    schedule: "0 15 * * *"
-    buildCommand: npm install
-    startCommand: node scripts/scoreboard.js
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
+  # THE daily-scoreboard CRON ENTRY IS GONE (2026-09-24, Zac).
+  #
+  # It declared a service that DOES NOT EXIST on Render — `list_services`
+  # returns one cron, promptly-trend-pipeline, and it is suspended. The
+  # scoreboard has run in-process since 2026-08-12 precisely because whether
+  # this blueprint entry had ever produced a service was [UNKNOWN]; it had not.
+  #
+  # A blueprint entry for a service that does not exist is not inert. It is an
+  # instruction, and the next person to read this file restores it — which
+  # would put a SECOND scoreboard on a timer beside the in-process one, with
+  # ANTHROPIC_API_KEY attached, re-arming the judge that cost ~$17 and 849
+  # seconds of database time walking a history nobody read.
