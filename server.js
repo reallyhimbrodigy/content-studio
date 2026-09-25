@@ -2460,7 +2460,64 @@ const server = http.createServer((req, res) => {
           const r = await uploadFlags.resolve(f, user.id, supabaseAdmin);
           if (r.on) upload_flags[f] = 'on';
         }
-        return sendJson(res, 200, { ok: true, settings, upload_flags });
+        // ── THE RESOLVED UPLOAD KNOBS, AS VALUES THE CLIENT CAN ACT ON ────
+        //
+        // Frontend 2026-09-25: upload_shrink, s3_accelerate and upload_parallel
+        // are absent from /api/health, which the client fetches UNAUTHENTICATED
+        // — so a per-user allowlist cannot reach it, and shrink was off on the
+        // device for everyone regardless of the allowlist. The 261 row read
+        // shrink_reason="flag_off" for exactly that reason. Acceleration still
+        // worked only because the SERVER decides it at presign; nothing about
+        // the client knew.
+        //
+        // `upload_flags` above stays exactly as it was (present-or-absent, the
+        // shape shipped clients already parse). This is the additive block, and
+        // it carries VALUES rather than presence: a count cannot be expressed
+        // by a key existing.
+        //
+        // ONE RESOLVER. uploadFlags.resolve is the same allowlist -> percent ->
+        // all path with the same 30s cache that /api/upload-url and
+        // /api/upload-flags use. A second resolver here would be two rollout
+        // behaviours to reason about at 2am, which is the reason that module
+        // has one entry point at all.
+        //
+        // FAIL CLOSED, AND SAY SO. resolve() reports dbState 'unreadable' when
+        // the flag store could not be read — including when the env fallback
+        // then answered, which is the case that would otherwise turn shrink ON
+        // for the default allowlist off a failed query. Unreadable means shrink
+        // OFF and parallel at today's default, with state: 'UNREADABLE' so the
+        // client can tell "we were told no" from "we could not ask".
+        const _uk = { shrink: false, parallel: 3, accelerate: false,
+                      state: 'MEASURED', resolved_by: {} };
+        try {
+          const _rs = await uploadFlags.resolve('upload_shrink', user.id, supabaseAdmin);
+          const _rp = await uploadFlags.resolve('upload_parallel', user.id, supabaseAdmin);
+          const _ra = await uploadFlags.resolve('s3_accelerate', user.id, supabaseAdmin);
+          const _blind = [_rs, _rp, _ra].some((r) => r && r.dbState === 'unreadable');
+          if (_blind) {
+            _uk.state = 'UNREADABLE';
+          } else {
+            _uk.shrink = _rs.on === true;
+            // A NUMBER, BECAUSE THE CLIENT KNOB IS A COUNT. Frontend measured
+            // 6 x 16 MiB starving the idle timeout; parts are 5 MiB now and Zac
+            // ruled 3 for the demo, 4 when the flag is on.
+            _uk.parallel = _rp.on === true ? 4 : 3;
+            _uk.accelerate = _ra.on === true;
+          }
+          _uk.resolved_by = {
+            shrink: `${_rs.source}/${_rs.from}`,
+            parallel: `${_rp.source}/${_rp.from}`,
+            accelerate: `${_ra.source}/${_ra.from}`,
+          };
+        } catch (_e) {
+          // A flag read must never fail the settings call the client makes
+          // before it can pick a video.
+          _uk.state = 'UNREADABLE';
+        }
+        console.log(`[upload-knobs] user=${String(user.id).slice(0, 8)} `
+          + `shrink=${_uk.shrink} parallel=${_uk.parallel} accel=${_uk.accelerate} `
+          + `state=${_uk.state}`);
+        return sendJson(res, 200, { ok: true, settings, upload_flags, upload: _uk });
       } catch (err) {
         const status = err.statusCode || 500;
         if (status !== 401) {
