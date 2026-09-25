@@ -4739,6 +4739,14 @@ struct EditorView: View {
     // were being absorbed by a different message. Resolving by id each
     // event is O(messages) but the array is tiny and SSE is sparse.
     private func startSSE(jobId: String, messageId: UUID) {
+        // Start the step clock here rather than at each call site: every path
+        // that watches a render goes through this one function, so there is no
+        // dispatch that can be instrumented on one rail and not the other.
+        // Prefer the message's own dispatch stamp — it is set BEFORE the
+        // request goes out, so it measures the wait the user actually had,
+        // not the moment we got a reply.
+        let dispatchStamp = messages.first(where: { $0.id == messageId })?.dispatchedAt ?? Date()
+        RenderStepTiming.begin(jobId: jobId, dispatchedAt: dispatchStamp)
         let client = SSEClient(jobId: jobId)
         sseClients[jobId] = client
 
@@ -4874,6 +4882,9 @@ struct EditorView: View {
             // in only when no timeline exists at all.
             if let step = event.step, !step.isEmpty {
                 messages[messageIndex].stageTimeline?.receive(stepToken: step)
+                if let jid = messages[messageIndex].jobId {
+                    RenderStepTiming.step(jobId: jid, token: step)
+                }
             }
 
             // §5 progressive playback: capture the HLS manifest the MOMENT the backend
@@ -5254,6 +5265,7 @@ struct EditorView: View {
             }
             if let step = row.current_step, !step.isEmpty {
                 messages[idx].stageTimeline?.receive(stepToken: step)
+                RenderStepTiming.step(jobId: jobId, token: step)
             }
             // Mirror the SSE handler's suppression: don't overwrite the locally
             // owned "Finalizing your video..." copy during the finish hold.

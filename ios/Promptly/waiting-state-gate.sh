@@ -125,5 +125,29 @@ grep -Fq 'if let g = timeline.genericLine, !g.isEmpty { return g }' "$R" \
   && echo "  ok   — the ring renders that generic line" \
   || note "RenderProgressRing never reads genericLine — the fallback is set and displayed by nobody"
 
+# ── 8. THE STEP CLOCK IS WIRED ON BOTH RAILS, AND FIRES ONCE ───────────────
+# "How long from dispatch to the first `editing` step" had no answer anywhere
+# before this: upload_timing ends at dispatch and the job row carries no
+# client clock. An instrument wired to one rail would read whichever arrived
+# first; one with no once-guard would report how often we polled.
+T="Promptly/Services/RenderStepTiming.swift"
+[ -f "$T" ] || { echo "  FAIL — missing $T (a failed read is not a pass)"; exit 1; }
+grep -Fq 'RenderStepTiming.begin(jobId: jobId, dispatchedAt: dispatchStamp)' "$E" \
+  && echo "  ok   — the step clock starts in startSSE, which every watch path goes through" \
+  || note "nothing starts the step clock in startSSE — a dispatch instrumented on one call site and not another measures nothing reliable"
+sse_n=$(grep -c 'RenderStepTiming.step(jobId: jid, token: step)' "$E")
+poll_n=$(grep -c 'RenderStepTiming.step(jobId: jobId, token: step)' "$E")
+if [ "$sse_n" -ge 1 ] && [ "$poll_n" -ge 1 ]; then
+  echo "  ok   — both rails report steps (SSE and the reconcile poll)"
+else
+  note "steps are reported on only one rail (sse=$sse_n poll=$poll_n) — whichever arrives first would be the only one ever timed"
+fi
+grep -Fq 'guard var r = records[jobId], !r.seen.contains(token) else { return }' "$T" \
+  && echo "  ok   — once per (job, step), so a poll cannot inflate the count" \
+  || note "RenderStepTiming.step has no once-per-(job,step) guard — a step current for two minutes emits on every poll tick"
+grep -Fq 'dispatchedAt ?? Date()' "$E" \
+  && echo "  ok   — timed from the message's own dispatch stamp, set before the request left" \
+  || note "the clock does not prefer the message's dispatchedAt — timing from the reply measures our round trip, not the user's wait"
+
 [ "$fail" = 0 ] && echo "waiting-state-gate: PASS" || echo "waiting-state-gate: FAIL"
 exit "$fail"
