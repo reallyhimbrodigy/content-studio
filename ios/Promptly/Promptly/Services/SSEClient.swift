@@ -33,9 +33,11 @@ class SSEClient {
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
 
+        lastStatus = nil
         let delegate = SSEDelegate(
             onData: { [weak self] data in self?.handleData(data) },
-            onComplete: { [weak self] error in self?.handleConnectionEnd(error: error) }
+            onComplete: { [weak self] error in self?.handleConnectionEnd(error: error) },
+            onResponse: { [weak self] status in self?.lastStatus = status }
         )
 
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -96,10 +98,27 @@ class SSEClient {
         connect()
     }
 
+    /// The status of the response currently being read. nil until the headers
+    /// arrive. Reset on every connect so a previous attempt cannot vouch for
+    /// this one.
+    private var lastStatus: Int?
+
     private func handleData(_ data: Data) {
         lastEventTime = Date()
-        // Any successful data resets the reconnect counter — we're back
-        // in business, future drops should also be retried from scratch.
+        // ONLY A 2xx COUNTS AS "BACK IN BUSINESS".
+        //
+        // This reset used to fire on ANY bytes, before parsing and without
+        // looking at the status — and a rate-limit response has a body. So a
+        // 429 reset the ladder to zero, the next reconnect came 2 SECONDS
+        // later, earned another 429, and reset it again: a self-sustaining
+        // 30 connects/minute against a cap of 12/minute per jobId, which it
+        // could never climb out of because every refusal looked like success.
+        //
+        // The cap is on /api/video-jobs/<id>/stream, so this loop is both the
+        // cause of the 429s and the reason they continue.
+        if let s = lastStatus, !(200...299).contains(s) {
+            return
+        }
         reconnectAttempts = 0
 
         guard let text = String(data: data, encoding: .utf8) else { return }
@@ -149,7 +168,14 @@ class SSEClient {
         }
         let attempt = reconnectAttempts
         reconnectAttempts += 1
-        let backoffSeconds = min(pow(2.0, Double(attempt + 1)), 60.0)
+        // WHEN WE KNOW WE ARE CAPPED, WAIT OUT THE WINDOW. The limit is 12 per
+        // 60s per jobId; the ladder's first rungs (2s, 4s) are inside that
+        // window and would spend the allowance re-earning the same refusal.
+        // A full window is ~1/minute, comfortably under the cap, and the
+        // timeout checker keeps polling the DB every 45s of silence meanwhile,
+        // so the screen is not blind while we wait.
+        let base = min(pow(2.0, Double(attempt + 1)), 60.0)
+        let backoffSeconds = (lastStatus == 429) ? max(base, 60.0) : base
         print("[sse] reconnect attempt=\(attempt + 1)/\(maxReconnectAttempts) in \(backoffSeconds)s")
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
@@ -339,10 +365,25 @@ struct SSEEvent: Codable {
 private class SSEDelegate: NSObject, URLSessionDataDelegate {
     let onData: (Data) -> Void
     let onComplete: (Error?) -> Void
+    let onResponse: (Int) -> Void
 
-    init(onData: @escaping (Data) -> Void, onComplete: @escaping (Error?) -> Void) {
+    init(onData: @escaping (Data) -> Void,
+         onComplete: @escaping (Error?) -> Void,
+         onResponse: @escaping (Int) -> Void) {
         self.onData = onData
         self.onComplete = onComplete
+        self.onResponse = onResponse
+    }
+
+    /// THE STATUS WAS INVISIBLE TO THIS WHOLE CLASS. Without this callback
+    /// nothing in SSEClient could tell a 200 carrying events from a 429
+    /// carrying a refusal — both arrived as "some bytes, then the connection
+    /// ended".
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        onResponse((response as? HTTPURLResponse)?.statusCode ?? 0)
+        completionHandler(.allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
