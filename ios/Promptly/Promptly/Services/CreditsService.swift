@@ -105,6 +105,30 @@ final class CreditsService: ObservableObject {
         claimAttempted = false   // a new account on this device must claim again
     }
 
+    /// The server's own view of the balance. Used only when RevenueCat does
+    /// not resolve our currency.
+    ///
+    /// `found` IS THE FIELD THAT MATTERS, not `balance`. The endpoint returns
+    /// found:false with balance:0 for "no row for our currency", and writing
+    /// that 0 into the badge would state a confident zero for a user whose
+    /// balance is merely unknown — the exact mistake the catch below was
+    /// written to avoid.
+    private func refreshFromServer() async {
+        guard let token = await AuthService.shared.getValidToken(),
+              let url = URL(string: "https://usepromptly.app/api/credits/balance") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return }
+        guard (obj["found"] as? Bool) == true, let b = obj["balance"] as? Int else { return }
+        balance = b
+        lastReadFailed = false
+        Analytics.track("credit_balance_server_fallback", props: ["balance": b], durable: true)
+    }
+
     func refresh() async {
         #if DEBUG
         // A posed balance is for a capture; the real read would immediately
@@ -131,12 +155,29 @@ final class CreditsService: ObservableObject {
                 // the server granted, RevenueCat has not caught up, and the
                 // currency resolves to nothing for a moment.
                 lastReadFailed = true
+                // ASK THE SIDE THAT ACTUALLY GRANTED THEM.
+                //
+                // MEASURED: 2,439 users were granted credits in 30 days
+                // (status 200, reasons new_period/already_granted) and
+                // `credit_badge_shown` fired ONCE, for zero distinct users.
+                // The balance the badge needs exists — the server issues it —
+                // and the client only ever asked RevenueCat, which does not
+                // resolve CREDITS for real users. /api/credits/balance has
+                // served that number the whole time with no caller in the app.
+                //
+                // This is a FALLBACK, not a replacement: RevenueCat stays the
+                // first read because it is what the debit moves against.
+                await refreshFromServer()
             }
         } catch {
             // A failed read is NOT a zero balance. Leave the last known value
             // in place and mark the failure — this project has already paid for
             // treating an unreadable metric as a confident zero.
             lastReadFailed = true
+            // Same fallback as the empty-currency branch above: a thrown read
+            // leaves the badge just as blank as one that returned nothing, and
+            // the server can still answer.
+            await refreshFromServer()
         }
     }
 
