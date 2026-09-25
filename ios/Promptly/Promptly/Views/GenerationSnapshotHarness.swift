@@ -97,7 +97,7 @@ struct GenerationSnapshotHarnessView: View {
         "\"needed\":5,\"balance\":0,\"shortfall\":5,\"actions\":[\"upgrade\"]}"
     // PER VIDEO, not per day — and every figure is the server's.
     static let body402Cap =
-        "{\"error\":\"payment_required\",\"reason\":\"video_cap\",\"scope\":\"this video's\"," +
+        "{\"error\":\"payment_required\",\"reason\":\"cap_reached\",\"scope\":\"this video's\"," +
         "\"included\":10,\"used\":10,\"price\":5,\"balance\":40,\"actions\":[\"topup\"]}"
     static let body402Short =
         "{\"error\":\"payment_required\",\"reason\":\"insufficient_credits\"," +

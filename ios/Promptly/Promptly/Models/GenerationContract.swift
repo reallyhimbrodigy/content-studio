@@ -87,13 +87,16 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
     enum Reason: String, Codable {
         case insufficientCredits = "insufficient_credits"
         case proRequired = "pro_required"
+        /// LEGACY. Not in B2's contract as of 04b0b26 — the set is
+        /// pro_required / cap_reached / insufficient_credits. Kept only so a
+        /// server that has not shipped that commit still renders the cap card
+        /// rather than falling through to the generic refusal.
         case dailyCap = "daily_cap"
-        /// THE PER-VIDEO CAP. B2's exact string is still to be confirmed, so
-        /// the card does not depend on it: `isCapShaped` recognises a cap by
-        /// its NUMBERS (included + used present), and an unrecognised reason
-        /// carrying them renders the cap copy anyway. Pinning the string here
-        /// only makes the match exact.
-        case capReached = "video_cap"
+        /// THE CAP, per B2's contract (04b0b26). The card still does not
+        /// DEPEND on this string — `isCapShaped` recognises a cap by its
+        /// numbers — so a future rename degrades to the same copy instead of a
+        /// dead end. Pinning it just makes the match exact.
+        case capReached = "cap_reached"
     }
 
     /// The raw string, kept beside the parsed case so an unknown reason from a
@@ -134,8 +137,24 @@ struct PaymentRequired: Decodable, Equatable, Hashable {
     /// and below the price, this is an insufficient-credits card whatever the
     /// server called it. A NULL balance is UNKNOWN, not zero — it cannot make
     /// anything insufficient, and nothing numeric is claimed from it.
+    /// PRECEDENCE, per B2 (04b0b26): pro_required > insufficient_credits >
+    /// cap_reached. The server already applies it — past the cap with a short
+    /// balance arrives AS insufficient_credits, carrying price and balance —
+    /// so this is a fallback for a body that has not had it applied.
+    ///
+    /// AND IT MUST NOT OUTRANK pro_required. The earlier version promoted to
+    /// insufficient whenever the balance was below the price, which would have
+    /// turned a free user's "this is a Pro feature" into "you are 3 credits
+    /// short" — sending them to buy credits for something credits cannot
+    /// unlock. Only a CAP (or an unrecognised reason) may be promoted.
     var effectiveReason: Reason? {
-        if let price = nextPrice, let have = balance, have < price {
+        // ONE RULE, NOT TWO. Only a CAP or an unrecognised reason may be
+        // promoted — which is what keeps pro_required intact. An extra early
+        // return for pro_required read as load-bearing and was not: removing
+        // it changed nothing, which is exactly how a redundant guard misleads
+        // the next person into thinking the protection lives there.
+        let promotable = (reason == .capReached || reason == .dailyCap || reason == nil)
+        if promotable, let price = nextPrice, let have = balance, have < price {
             return .insufficientCredits
         }
         return reason

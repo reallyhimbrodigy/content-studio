@@ -177,7 +177,7 @@ check("across ALL inputs, 'not charged' never appears without a confirmed refund
 
 // ── THE CAP IS PER VIDEO, AND EVERY FIGURE IS THE SERVER'S ─────────────────
 let capBody = """
-{"error":"payment_required","reason":"video_cap","scope":"this video's",
+{"error":"payment_required","reason":"cap_reached","scope":"this video's",
  "included":10,"used":10,"price":5,"balance":40,"actions":["topup"]}
 """
 if let cap: PaymentRequired = dec(capBody) {
@@ -200,14 +200,14 @@ if let r: PaymentRequired = dec(renamed) {
 } else { check("the renamed cap body decodes", false) }
 
 // `price` wins over the older generic `needed`.
-let both: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":3,\"used\":3,\"price\":5,\"needed\":45}")
+let both: PaymentRequired? = dec("{\"reason\":\"cap_reached\",\"included\":3,\"used\":3,\"price\":5,\"needed\":45}")
 check("price beats needed when both are present", both?.nextPrice == 5)
 
 // ── PAST THE CAP *AND* SHORT: affordability wins ───────────────────────────
 // The body carries cap numbers, so the numbers rule alone would offer
 // "Use 5 credits" to someone holding 2 — a button that fails on tap.
 let capAndShort = """
-{"error":"payment_required","reason":"video_cap","scope":"this video's",
+{"error":"payment_required","reason":"cap_reached","scope":"this video's",
  "included":10,"used":10,"price":5,"balance":2,"actions":["topup"]}
 """
 if let cs: PaymentRequired = dec(capAndShort) {
@@ -217,20 +217,45 @@ if let cs: PaymentRequired = dec(capAndShort) {
     check("...and the cost is still readable from `price`", cs.nextPrice == 5)
 }
 // Affordable: the cap still quotes.
-let capAffordable: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5,\"balance\":40}")
+let capAffordable: PaymentRequired? = dec("{\"reason\":\"cap_reached\",\"included\":10,\"used\":10,\"price\":5,\"balance\":40}")
 check("a cap the user CAN afford still quotes the price",
       capAffordable?.effectiveReason == .capReached)
 // Exactly at the price is affordable, not short.
-let exact: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5,\"balance\":5}")
+let exact: PaymentRequired? = dec("{\"reason\":\"cap_reached\",\"included\":10,\"used\":10,\"price\":5,\"balance\":5}")
 check("a balance EQUAL to the price is affordable", exact?.effectiveReason == .capReached)
 // NULL BALANCE IS UNKNOWN, NOT ZERO.
-let unknownBal: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5}")
+let unknownBal: PaymentRequired? = dec("{\"reason\":\"cap_reached\",\"included\":10,\"used\":10,\"price\":5}")
 check("a NULL balance does not make a cap unaffordable",
       unknownBal?.effectiveReason == .capReached)
 check("...and no balance figure is available to render", unknownBal?.balance == nil)
 // The plain insufficient case is unaffected.
 let plainShort: PaymentRequired? = dec("{\"reason\":\"insufficient_credits\",\"needed\":5,\"balance\":2,\"shortfall\":3}")
 check("a plain insufficient body is unchanged", plainShort?.effectiveReason == .insufficientCredits)
+
+// ── B2'S PRECEDENCE: pro_required > insufficient_credits > cap_reached ──────
+// The server applies it, so these are fallback assertions — but the promotion
+// rule must not invent a precedence of its own.
+let proShort: PaymentRequired? = dec("{\"reason\":\"pro_required\",\"needed\":5,\"balance\":2}")
+check("pro_required OUTRANKS a short balance",
+      proShort?.effectiveReason == .proRequired)
+check("...so a free user is never told to buy credits for a Pro feature",
+      proShort?.effectiveReason != .insufficientCredits)
+
+// The server's own overlap answer arrives already resolved.
+let serverResolved: PaymentRequired? = dec("{\"reason\":\"insufficient_credits\",\"price\":5,\"balance\":2}")
+check("the server's overlap answer carries price and balance",
+      serverResolved?.nextPrice == 5 && serverResolved?.balance == 2)
+check("...and needs no promotion", serverResolved?.effectiveReason == .insufficientCredits)
+
+// The exact strings, pinned.
+check("cap_reached parses", (dec("{\"reason\":\"cap_reached\"}") as PaymentRequired?)?.reason == .capReached)
+check("pro_required parses", (dec("{\"reason\":\"pro_required\"}") as PaymentRequired?)?.reason == .proRequired)
+check("insufficient_credits parses", (dec("{\"reason\":\"insufficient_credits\"}") as PaymentRequired?)?.reason == .insufficientCredits)
+// The numbers rule survives as the fallback.
+let renamedAgain: PaymentRequired? = dec("{\"reason\":\"something_new\",\"included\":10,\"used\":10,\"price\":5,\"balance\":40}")
+check("an unknown reason with cap numbers still renders as a cap",
+      renamedAgain?.effectiveReason == .capReached)
+
 
 // ── THE NULL-BALANCE PATH MUST RECOVER CLEANLY ─────────────────────────────
 // Unknown is allowed to be optimistic ONLY because this recovers: the card
@@ -252,7 +277,7 @@ func serverAnswers(_ body: String) {
 }
 
 // 1. Unknown balance: the card quotes.
-let optimistic: PaymentRequired? = dec("{\"reason\":\"video_cap\",\"included\":10,\"used\":10,\"price\":5}")
+let optimistic: PaymentRequired? = dec("{\"reason\":\"cap_reached\",\"included\":10,\"used\":10,\"price\":5}")
 cardReason = optimistic?.effectiveReason
 check("with an unknown balance the card quotes a price", cardReason == .capReached)
 
