@@ -1,0 +1,81 @@
+-- ── THE AGENTIC COLLECTION SWEEP GETS AN INDEX BEFORE THE ROUTE IS ARMED ──
+--
+-- Zac 2026-09-25: "On a 2-core CPU-bound DB during Zac's rehearsal, that sweep
+-- is the first thing I'd blame for a slow upload door. It gets fixed before I
+-- arm, not after."
+--
+-- THE SWEEP, EXACTLY (lib/agentic-dispatch.js sweepAgentic, read from the code):
+--   SELECT id, user_id, status FROM video_jobs
+--    WHERE pipeline = 'agentic'
+--      AND status NOT IN ('completed','failed','canceled','needs_input')
+--      AND updated_at >= now() - interval '6 hours'
+--    LIMIT 40;
+--   No ORDER BY. DEFAULT_SWEEP_LIMIT = 40, DEFAULT_LOOKBACK_HOURS = 6.
+--   Scheduled in server.js: boot pass at +90s, then setInterval EVERY 60 s,
+--   gated on agenticRouteArmed() — so it starts the moment AGENTIC_ENABLED and
+--   AGENTIC_BASE_URL are set.
+--
+-- WHAT IT DOES TODAY, MEASURED on the live table 2026-09-25:
+--   Index Scan using idx_video_jobs_status_updated
+--     Index Cond: (updated_at >= now() - '06:00:00')
+--     Filter: (pipeline = 'agentic' AND status <> ALL (...))
+--     Rows Removed by Filter: 22
+--     Buffers: shared hit=40
+--
+-- `updated_at` is the ONLY index condition. `pipeline` is a filter — there is
+-- no index on it — so the scan walks EVERY ROW UPDATED IN THE LAST SIX HOURS
+-- and throws them away one at a time. Its cost is therefore a function of TOTAL
+-- recent write volume, not of agentic volume, which is why it cost 825 blocks
+-- per call over 15,554 calls (12.8M blocks, 22.8 minutes of database time)
+-- while the population it hunts has never had a single member. It is quiet now
+-- because the table is quiet; during a rehearsal it grows with everyone else's
+-- traffic, once a minute, on two cores.
+--
+-- ── THE PREDICATE MOVED, NOT THE INDEX, AND I HAD THE ARGUMENT BACKWARDS ─
+--
+-- I first proposed mirroring the sweep's DENYLIST in the index predicate, and
+-- argued against the positive form on coverage grounds: a sweep FINISHES work,
+-- so a status missing from a positive list is a job never collected. I cited
+-- `needs_clarification`, which the codebase does write.
+--
+-- THE DATABASE REFUTES IT. video_jobs carries:
+--   valid_status CHECK (status = ANY (ARRAY['queued','processing','completed',
+--                                           'failed','canceled','needs_input']))
+-- The domain is SIX values, enforced. Four are terminal. So "not the four
+-- terminal ones" and "queued or processing" are EXACTLY THE SAME SET, and the
+-- positive form loses no coverage at all. `needs_clarification` is written to a
+-- different table; this constraint forbids it here. I argued from the codebase
+-- when the answer was one constraint away.
+--
+-- AND ONLY THE POSITIVE FORM IS INDEXABLE. Postgres cannot prove
+-- `status <> ALL(terminal)` implies `status = ANY(queued,processing)` — rightly,
+-- because without the constraint it does not. So the SWEEP'S PREDICATE changed
+-- (lib/agentic-dispatch.js) and this index is the shape Zac built.
+--
+-- THE EQUIVALENCE IS AN ASSUMPTION ABOUT A CONSTRAINT, and it is load-bearing:
+-- add a seventh status and the sweep silently stops collecting those jobs —
+-- they run forever, never terminalize, and nothing errors.
+-- lib/__smoke_agentic_sweep_statuses.js pins the sweep's list, this file's
+-- predicate, and the recorded domain together.
+--
+-- ── DISCIPLINE, SAME AS idx_video_jobs_inflight_by_user — whose positive
+--    status list is the precedent this ended up following ──────────────────
+--   CONCURRENTLY      no ACCESS EXCLUSIVE lock on a live table
+--   IF NOT EXISTS     re-runnable
+--   partial           the index holds ONLY agentic in-flight rows, which is
+--                     ZERO today, so the scan touches an empty btree
+--
+-- RUN THIS OUTSIDE A TRANSACTION. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_video_jobs_agentic_inflight
+  ON public.video_jobs USING btree (updated_at)
+  WHERE pipeline = 'agentic'
+    AND status = ANY (ARRAY['queued'::text, 'processing'::text]);
+
+-- MEASURED on the live table 2026-09-25, same query, same minute:
+--   sweep with NOT IN  -> Index Scan using idx_video_jobs_status_updated
+--                         Index Cond: updated_at only
+--                         Filter: pipeline AND status; Rows Removed 21
+--                         Buffers: shared hit=39   Execution 12.207 ms
+--   sweep with IN      -> Index Scan using idx_video_jobs_agentic_inflight
+--                         Index Cond: updated_at only, NO Filter line
+--                         Buffers: shared hit=2    Execution 0.071 ms
+-- Zero agentic rows: 2 shared buffers per sweep, once a minute.
