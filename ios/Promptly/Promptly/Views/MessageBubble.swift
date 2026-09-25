@@ -690,8 +690,13 @@ struct MessageBubble: View {
                     // cached S3 URLs to re-dispatch with. One tap re-
                     // submits the SAME source + proxy + vibe via
                     // createVideoJob; no upload, no re-typing.
+                    // A re-edit qualifies too. This test used to be
+                    // `cachedSourceUrl != nil` alone — a field only the upload
+                    // path ever sets — so a failed change fell past this into
+                    // the "Upload a new video" branch below, which throws the
+                    // change away.
                     if message.isRetryable,
-                       message.cachedSourceUrl != nil,
+                       message.cachedSourceUrl != nil || message.reeditRequest != nil,
                        let onRetry = onRetry {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -714,7 +719,9 @@ struct MessageBubble: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Try again — re-runs the render with the same video and vibe")
+                        .accessibilityLabel(message.reeditRequest != nil
+                            ? "Try again — re-sends your change"
+                            : "Try again — re-runs the render with the same video and vibe")
                     } else if let onMakeAnother = onMakeAnother {
                         // Rejected-user recovery: for a content rejection (no speech,
                         // no audio, too short/long, not-talking-head), the SAME clip

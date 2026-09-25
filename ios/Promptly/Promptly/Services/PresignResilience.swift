@@ -37,7 +37,8 @@ enum PresignResilience {
             switch api {
             case .notAuthenticated:
                 return true
-            case .uploadURLRefused(let status, _):
+            case .uploadURLRefused(let status, _),
+                 .reeditRefused(let status, _):
                 // 5xx and 429 are ours; a 4xx is a decision about this request
                 // and will be the same decision in three minutes.
                 return status >= 500 || status == 429

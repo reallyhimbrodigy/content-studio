@@ -66,6 +66,18 @@ for g in *.sh; do
   fi
 done
 
+# EVERY ASSERTION MUST REACH ITS GATE'S EXIT CODE.
+# Five assertions once called `note` in a section that defines `ufail`; bash
+# ran an undefined command, printed a convincing FAIL line, and let the build
+# through. Found only because a RED-prove came back 0-for-4. See the script's
+# own header for why this is exact rather than a regex.
+if [ ! -f __assertion_reach.py ]; then
+  echo "  FAIL - __assertion_reach.py missing (a failed read is not a pass)"
+  FAIL=1
+elif ! python3 __assertion_reach.py .; then
+  FAIL=1
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "gate-integrity-gate: FAIL"
   exit 1

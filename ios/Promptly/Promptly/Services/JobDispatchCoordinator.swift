@@ -430,6 +430,20 @@ final class JobDispatchCoordinator {
                 paymentLimit: pr.needed
             ))
 
+        case .reeditRefused(let status, let reason):
+            // The re-edit rail does not dispatch through this coordinator, so
+            // this is here for exhaustiveness rather than traffic. Classified
+            // like its upload twin: retryable, clip still good, no new video.
+            return .hard(HardFailure(
+                errorCode: "REEDIT_REFUSED_\(status)",
+                userMessage: reason.isEmpty ? "Couldn't send that change. Try again." : reason,
+                requiresNewVideo: false,
+                requiresVibeChange: false,
+                isPaymentRequired: false,
+                paymentKind: nil,
+                paymentLimit: nil
+            ))
+
         case .uploadURLRefused(let status, let reason):
             // THE UPLOAD DOOR REFUSED. Retryable rather than fatal: the common
             // causes are a 5xx or a rate limit, and the user's clip is still

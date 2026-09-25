@@ -3106,6 +3106,26 @@ struct EditorView: View {
 
     private func sendReedit(changeRequest: String, originalJobId: String,
                             idempotencyKey: String? = nil) {
+        // ONE KEY PER INTENT, MINTED AT THE FIRST SEND.
+        //
+        // Only the queued and kept paths used to pass a key; an ordinary send
+        // — a user typing a change and hitting send, which is nearly all of
+        // them — passed nil, so no Idempotency-Key header was set at all. Two
+        // consequences, both charged to the user:
+        //
+        //   - The webhook-race retry below re-sent with `idempotencyKey`,
+        //     still nil, while its own comment promised "retry the SAME key,
+        //     so if the first attempt did somehow register, the server still
+        //     charges once". With no key there was nothing to match on and the
+        //     second attempt was simply a second job.
+        //   - A flood loses responses, not necessarily work. A re-edit that
+        //     5xx'd or timed out after 20s may already have been created
+        //     server-side; retrying it without a key charges again.
+        //
+        // Minting here means every attempt at this intent — this send, the
+        // race retry, and a tap on the failure card in some later process —
+        // presents one key.
+        let key = idempotencyKey ?? UUID().uuidString
         clearInputField()
         isSending = true
 
@@ -3142,6 +3162,12 @@ struct EditorView: View {
                 thumbnail: inherited,
                 remoteThumbnailUrl: prior.thumbnailUrl ?? prior.videoAttachment?.remoteThumbnailUrl)
         }
+        // THE ROW REMEMBERS WHAT IT ASKED FOR. Without this a failed re-edit
+        // is a sentence on screen with no way to send it: the retry cache
+        // holds a source URL and a vibe, and a re-edit has neither.
+        processingMsg.reeditRequest = changeRequest
+        processingMsg.reeditOriginalJobId = originalJobId
+        processingMsg.reeditIdempotencyKey = key
         messages.append(processingMsg)
         let msgId = processingMsg.id
         persistMessages()
@@ -3153,7 +3179,7 @@ struct EditorView: View {
                 let newJobId = try await APIService.shared.reeditFromJob(
                     originalJobId: originalJobId,
                     changeRequest: changeRequest,
-                    idempotencyKey: idempotencyKey
+                    idempotencyKey: key
                 )
                 if let i = idx() {
                     messages[i].jobId = newJobId
@@ -3208,7 +3234,7 @@ struct EditorView: View {
                         try? await Task.sleep(for: .seconds(3))
                         sendReedit(changeRequest: changeRequest,
                                    originalJobId: originalJobId,
-                                   idempotencyKey: idempotencyKey)
+                                   idempotencyKey: key)
                     }
                     return
                 }
@@ -3271,6 +3297,16 @@ struct EditorView: View {
                 if let i = idx() {
                     messages[i].jobStatus = "failed"
                     messages[i].error = friendlyError(error)
+                    // A SENT CHANGE IS NEVER LOST TO A BAD MINUTE.
+                    //
+                    // This branch set no retry flag at all, so a 503, a 429 or
+                    // a timed-out send left a dead row: the composer had
+                    // already been cleared, the card offered nothing, and the
+                    // only copy of the user's words was the bubble above it,
+                    // to be retyped. The classifier is a closed list that
+                    // defaults to false, so a genuine refusal still ends here
+                    // without a button that could only fail again.
+                    messages[i].isRetryable = PresignResilience.isRetryableInfrastructure(error)
                     persistMessages()
                 }
             }
@@ -3330,8 +3366,48 @@ struct EditorView: View {
     private func retryClosure(for message: ChatMessage) -> (() -> Void)? {
         guard message.role == .assistant,
               message.jobStatus == "failed" || message.jobStatus == "error",
-              message.isRetryable,
-              let cachedSourceUrl = message.cachedSourceUrl,
+              message.isRetryable else { return nil }
+
+        // A RE-EDIT RETRIES ITS SENTENCE.
+        //
+        // This branch exists because the guard below — written for the upload
+        // path — demanded a cached source URL and vibe that a re-edit row can
+        // never have, so this closure returned nil for every failed change.
+        // The card then skipped "Try Again" (it tests cachedSourceUrl too) and
+        // offered "Upload a new video" instead, directly under copy reading
+        // "That change didn't get sent. Tap to try it again." The tap did not
+        // exist, and the one button on offer discarded the change.
+        //
+        // The key rides along, so this is the SAME intent to the server rather
+        // than a second one — the send it is retrying may have been received.
+        if let request = message.reeditRequest,
+           let original = message.reeditOriginalJobId {
+            let key = message.reeditIdempotencyKey
+            let failedId = message.id
+            return {
+                Task { @MainActor in
+                    // Take the spent row, and the user bubble it was appended
+                    // beside, out of the thread first: `sendReedit` appends a
+                    // fresh pair, and leaving these would show the change
+                    // twice. Paired BY POSITION AND TEXT — the two are
+                    // appended adjacently in one synchronous step — so a row
+                    // that does not match is left alone rather than guessed at.
+                    if let i = messages.firstIndex(where: { $0.id == failedId }) {
+                        messages.remove(at: i)
+                        if i > 0, messages[i - 1].role == .user,
+                           messages[i - 1].content == request {
+                            messages.remove(at: i - 1)
+                        }
+                        persistMessages()
+                    }
+                    sendReedit(changeRequest: request,
+                               originalJobId: original,
+                               idempotencyKey: key)
+                }
+            }
+        }
+
+        guard let cachedSourceUrl = message.cachedSourceUrl,
               let cachedVibe = message.cachedVibe else { return nil }
         let messageId = message.id
         let cachedProxyUrl = message.cachedProxyUrl
@@ -3362,6 +3438,11 @@ struct EditorView: View {
         case APIError.validationRejected(let m, _, _): return m
         case APIError.paymentRequired(_, _, let m): return m
         case APIError.notAuthenticated: return "Please sign in to continue."
+        // The server's own words on this path are operational ("overloaded",
+        // "rate_limited"), not copy written for a user, so they do not pass
+        // through — only the fact, and the action that follows it.
+        case APIError.reeditRefused(let status, _) where status >= 500 || status == 429:
+            return "We couldn't send that change just now — tap to try again."
         case is URLError: return "Connection problem — check your network and try again."
         default:
             print("[error] suppressed technical error from UI: \(error)")

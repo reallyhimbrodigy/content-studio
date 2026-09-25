@@ -164,6 +164,23 @@ struct ChatMessage: Identifiable {
     var cachedProxyUrl: String? = nil
     /// The vibe text the user typed before the failed dispatch.
     var cachedVibe: String? = nil
+    /// THE CHANGE THIS ROW IS ASKING FOR.
+    ///
+    /// A re-edit has no source clip and no vibe — it is a sentence about a
+    /// video that already exists. The retry cache above was built for the
+    /// upload path and stores neither, so a failed re-edit had nothing to
+    /// re-dispatch from: `retryClosure` returned nil, the "Try Again" button
+    /// was skipped for want of `cachedSourceUrl`, and the card fell through to
+    /// "Upload a new video" — under copy that had just promised the user they
+    /// could tap to try their change again. The words were on screen and
+    /// unreachable, and the only offered action threw them away.
+    var reeditRequest: String? = nil
+    var reeditOriginalJobId: String? = nil
+    /// Minted when the change is first SENT and presented by EVERY attempt at
+    /// it, in any process. A flood loses RESPONSES, not necessarily work: a
+    /// re-edit that timed out at 20s may well have been created server-side,
+    /// so a retry without this key is a second job and a second charge.
+    var reeditIdempotencyKey: String? = nil
     /// True iff the backend's structured failure said retryable: true.
     /// Drives visibility of the Retry button — non-retryable failures
     /// still show user_message but no retry affordance (the spec wants
@@ -330,6 +347,11 @@ struct SerializedMessage: Codable, Hashable {
     var cachedProxyUrl: String?
     var cachedVibe: String?
     var isRetryable: Bool?
+    // The re-edit intent. Optional in storage, so rows written by older
+    // builds decode unchanged.
+    var reeditRequest: String?
+    var reeditOriginalJobId: String?
+    var reeditIdempotencyKey: String?
 
     /// True for a persisted render placeholder still in flight (no video yet).
     /// Used to decide whether a cold relaunch should reopen this chat so the
@@ -426,6 +448,9 @@ struct SerializedMessage: Codable, Hashable {
         self.cachedProxyUrl = message.cachedProxyUrl
         self.cachedVibe = message.cachedVibe
         self.isRetryable = message.isRetryable ? true : nil
+        self.reeditRequest = message.reeditRequest
+        self.reeditOriginalJobId = message.reeditOriginalJobId
+        self.reeditIdempotencyKey = message.reeditIdempotencyKey
 
         // Persist the local UIImage to disk so chat reload can restore
         // the user-side video tile. UIImage doesn't survive JSON
@@ -469,6 +494,9 @@ struct SerializedMessage: Codable, Hashable {
         msg.cachedProxyUrl = cachedProxyUrl
         msg.cachedVibe = cachedVibe
         msg.isRetryable = isRetryable ?? false
+        msg.reeditRequest = reeditRequest
+        msg.reeditOriginalJobId = reeditOriginalJobId
+        msg.reeditIdempotencyKey = reeditIdempotencyKey
         // Restore an in-flight stage timeline so the bubble shows a
         // progress UI immediately on chat reload (instead of looking
         // like the assistant ghosted the user). The actual stage state

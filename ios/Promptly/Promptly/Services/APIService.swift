@@ -3,7 +3,23 @@ import Photos
 
 class APIService {
     static let shared = APIService()
-    private let baseUrl = "https://usepromptly.app"
+    /// Production, unless a DEBUG build is deliberately pointed elsewhere.
+    ///
+    /// FLOOD TESTING NEEDS A SERVER THAT MISBEHAVES ON PURPOSE. 503s, 429s and
+    /// 20-second latency cannot be produced against production without
+    /// affecting real users, so a DEBUG build can be pointed at a local proxy
+    /// with `-apiBase http://127.0.0.1:PORT`. Release builds ignore the
+    /// argument entirely — the override cannot exist in a shipped binary.
+    private let baseUrl: String = {
+        #if DEBUG
+        let a = ProcessInfo.processInfo.arguments
+        if let i = a.firstIndex(of: "-apiBase"), i + 1 < a.count,
+           let u = URL(string: a[i + 1]), u.scheme != nil {
+            return a[i + 1]
+        }
+        #endif
+        return "https://usepromptly.app"
+    }()
 
     private init() {}
 
@@ -727,7 +743,8 @@ class APIService {
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
-            throw APIError.jobCreationFailed(body?.error ?? "Re-edit failed")
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw APIError.reeditRefused(status: status, reason: body?.error ?? "")
         }
 
         let result = try JSONDecoder().decode(JobCreateResponse.self, from: data)
@@ -1968,6 +1985,7 @@ extension APIError: CustomNSError {
         case .validationRejected:   return 1011
         case .uploadURLRefused:     return 1012
         case .paymentBlocked:       return 1013
+        case .reeditRefused:        return 1014
         }
     }
 
@@ -1975,7 +1993,8 @@ extension APIError: CustomNSError {
     /// anyone parsing `localizedDescription`.
     var errorUserInfo: [String: Any] {
         switch self {
-        case .uploadURLRefused(let status, let reason):
+        case .uploadURLRefused(let status, let reason),
+             .reeditRefused(let status, let reason):
             return ["http_status": status, "refusal_reason": reason]
         default:
             return [:]
@@ -2024,6 +2043,16 @@ enum APIError: LocalizedError {
     /// numbers; `paymentRequired` above is the older per-route shape and stays
     /// for the routes that still send it.
     case paymentBlocked(PaymentRequired)
+    /// THE RE-EDIT DOOR REFUSED, WITH ITS STATUS INTACT.
+    ///
+    /// Every non-200 here used to collapse into `.jobCreationFailed(String)`,
+    /// which carries a message and no status — so a 503 in a flood and a 400
+    /// "that change makes no sense" were the same error to every classifier
+    /// downstream. `isRetryableInfrastructure` answers false for
+    /// `.jobCreationFailed` (correctly, since it cannot tell), which meant the
+    /// one shape we most need to offer a retry for could never be recognised.
+    /// Same fix, same reason, as `.uploadURLRefused` at the upload door.
+    case reeditRefused(status: Int, reason: String)
     /// Render dispatch returned a structured failure shape: error_code +
     /// user_message + the three behavioural flags (retryable,
     /// requires_new_video, requires_vibe_change). Callers branch on the
@@ -2055,6 +2084,11 @@ enum APIError: LocalizedError {
         case .uploadFailed: return "Upload failed"
         case .uploadURLRefused(let status, let reason):
             return reason.isEmpty ? "Upload failed (\(status))" : reason
+        case .reeditRefused(let status, let reason):
+            // For logs. The user-facing words for this come from
+            // `friendlyError`, which does not let an operational string
+            // ("overloaded") reach the thread.
+            return reason.isEmpty ? "Re-edit refused (\(status))" : reason
         case .paymentBlocked(let pr):
             // The CARD says what happened; this is only for logs and a last
             // resort. Never rendered as the user's explanation.
