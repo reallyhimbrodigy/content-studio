@@ -2394,7 +2394,10 @@ struct EditorView: View {
                             UploadTiming.meta(pending.id.uuidString, "shrink_enabled", onboardingState.uploadShrinkEnabled)
                             if onboardingState.uploadShrinkEnabled {
                                 let tShrink = Date()
-                                let decision = await SourceShrinker.decide(for: AVURLAsset(url: sourceUrl))
+                                let decision = await SourceShrinker.decide(
+                                    for: AVURLAsset(url: sourceUrl),
+                                    fileSize: sourceSize,
+                                    connection: ReachabilityMonitor.currentConnectionType)
                                 UploadTiming.meta(pending.id.uuidString, "shrink_reason", decision.reason)
                                 UploadTiming.meta(pending.id.uuidString, "src_short_side", decision.shortSide)
                                 if decision.shouldShrink {

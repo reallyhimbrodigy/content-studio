@@ -897,12 +897,33 @@ class APIService {
                 throw APIError.notAuthenticated
             }
         }
-        var request = await authorizedRequest("/api/upload-url", method: "POST")
-        var body = ["fileName": fileName]
-        if let purpose { body["purpose"] = purpose }
-        request.httpBody = try JSONEncoder().encode(body)
+        func presignOnce() async throws -> (Data, URLResponse) {
+            var request = await authorizedRequest("/api/upload-url", method: "POST")
+            var body = ["fileName": fileName]
+            if let purpose { body["purpose"] = purpose }
+            request.httpBody = try JSONEncoder().encode(body)
+            return try await requestData(request)
+        }
 
-        let (data, response) = try await requestData(request)
+        var (data, response) = try await presignOnce()
+
+        // A 401 HERE COSTS THE USER THEIR CLIP, so it gets one honest retry.
+        //
+        // The pre-check above only asks our own expiry clock, which cannot know
+        // about a session the server has stopped accepting — the 257 report was
+        // a presign refused while the client believed it was signed in. The
+        // user sees "Please sign in" for a token problem they cannot act on,
+        // standing in front of a video they just picked.
+        //
+        // Refresh once and retry the SAME presign. Once, because a 401 that
+        // survives a freshly-minted token is the server's answer rather than a
+        // race, and retrying an answer is pretending.
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            Analytics.track("presign_401_refresh", props: ["stage": "presign"], durable: true)
+            if await AuthService.shared.forceRefreshToken() != nil {
+                (data, response) = try await presignOnce()
+            }
+        }
         try Self.throwIfWall(response, data)
         try Self.throwIfPaymentRequired(response, data) // 2nd concurrent upload → paywall
 

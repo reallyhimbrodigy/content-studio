@@ -782,7 +782,9 @@ struct PromptlyApp: App {
                         let url = URL(fileURLWithPath: path)
                         let before = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
                         let asset = AVURLAsset(url: url)
-                        let d = await SourceShrinker.decide(for: asset)
+                        let d = await SourceShrinker.decide(
+                            for: asset, fileSize: before,
+                            connection: ReachabilityMonitor.currentConnectionType)
                         print("[shrinkProof] decide shouldShrink=\(d.shouldShrink) reason=\(d.reason) "
                               + "shortSide=\(d.shortSide) bitrate=\(d.bitrate)")
                         guard d.shouldShrink else { print("[shrinkProof] DONE no-shrink"); return }

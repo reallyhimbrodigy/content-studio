@@ -193,6 +193,30 @@ class AuthService {
         return token
     }
 
+    /// FORCE A REFRESH THE EXPIRY CLOCK DOES NOT ASK FOR.
+    ///
+    /// `getValidToken` refreshes inside 5 minutes of expiry, which covers a
+    /// token that is about to die. It cannot cover a token the SERVER rejects
+    /// while our clock still calls it valid — a rotated signing key, a revoked
+    /// session, a device whose clock is wrong. That arrives as a 401 on a
+    /// request we thought was authorised, and the only way to tell the two
+    /// apart is to ask.
+    ///
+    /// Returns the new token, or nil if there is nothing to refresh with or the
+    /// refresh is refused. Callers must retry AT MOST ONCE on a non-nil result:
+    /// a 401 that survives a fresh token is an answer, not a race.
+    @discardableResult
+    func forceRefreshToken() async -> String? {
+        guard let refreshToken = storedRefreshToken else { return nil }
+        do {
+            try await refreshSession(refreshToken: refreshToken)
+            return accessToken
+        } catch {
+            print("[auth] forceRefreshToken failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     // MARK: - Auth Actions
 
     // MARK: - Passwordless OTP
