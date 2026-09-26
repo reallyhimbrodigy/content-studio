@@ -422,6 +422,16 @@ function routeForNewJob() {
  * a presigned URL is a credential; the safe habit is that no query string ever
  * reaches a response, whether or not this particular one carries a token.
  */
+function _cacheState() {
+  // NEVER THROWS INTO THE PROBE. A diagnostic endpoint that 500s because its own
+  // reporter broke is how you lose the ability to diagnose.
+  try {
+    return require('./lib/chatcut-routing')._statusCacheStateForDisplay();
+  } catch (e) {
+    return { error: (e && e.message) || 'unknown' };
+  }
+}
+
 function _statusUrlForDisplay() {
   const raw = process.env.CHATCUT_ACCOUNT_STATUS_URL || '';
   if (!raw) return null;
@@ -455,7 +465,8 @@ async function routeForNewJobAsync(userId, opts = {}) {
   }
   let d = null;
   try {
-    const { routeForJob, ROUTE_CHATCUT, fetchAccountStatus } = require('./lib/chatcut-routing');
+    const { routeForJob, ROUTE_CHATCUT,
+            readAccountStatusCached } = require('./lib/chatcut-routing');
     const { rampAllows } = require('./lib/chatcut-ramp');
     // Captured by the thunk below and recorded with the decision. Declared out
     // here because the thunk runs only when the ramp says yes — so on a job the
@@ -463,6 +474,12 @@ async function routeForNewJobAsync(userId, opts = {}) {
     // guard was never asked.
     let _statusWhy = null;
     let _statusState = null;
+    // WHETHER THE DECISION WAS FAST BECAUSE IT SKIPPED THE NETWORK, and how old the
+    // value was. Without these a working cache and a fast endpoint look identical in
+    // the log, and a cache that silently stops working reads as an endpoint that got
+    // slower — the same trap `status_why` and `balance_path` were added to close.
+    let _statusCached = null;
+    let _statusAgeMs = null;
     d = await routeForJob({
       userId,
       rampAllows: (a) => rampAllows({ ...a,
@@ -477,10 +494,26 @@ async function routeForNewJobAsync(userId, opts = {}) {
       // for "we could not find out", from a server that had found out and thrown
       // the answer away. It took a hand-run curl to learn the endpoint was even
       // reachable, and the curl got a DIFFERENT answer than the server had.
-      accountStatus: async () => {
-        const _env = await fetchAccountStatus();
+      accountStatus: () => {
+        // ── A MAP LOOKUP, NOT AN HTTP CALL (Zac, 2026-09-26) ──────────────
+        //
+        // This was `await fetchAccountStatus()`: ~0.4s of a 1.41s route decision,
+        // paid on every allowlisted job, to re-read a balance in the thousands
+        // against a 150 floor. A background timer now owns that call and this
+        // reads what it left. No await, no network, no timeout to survive.
+        //
+        // THE FAIL-CLOSED CASES ARRIVE AS status=null, which decideRoute already
+        // turns into the existing pipeline — so a cold or broken cache costs a job
+        // its ChatCut route and costs the customer nothing.
+        //
+        // AND `why` STILL CARRIES THE CAUSE. It reads cache_stale(http_401), not
+        // a bare cache miss: the lesson of job 7eb3df03, where a server that had
+        // found out logged 'unknown'.
+        const _env = readAccountStatusCached();
         _statusWhy = (_env && _env.why) || null;
         _statusState = (_env && _env.status && _env.status.state) || null;
+        _statusCached = !!(_env && _env.cached);
+        _statusAgeMs = (_env && typeof _env.age_ms === 'number') ? _env.age_ms : null;
         return _env.status;
       },
     });
@@ -489,7 +522,8 @@ async function routeForNewJobAsync(userId, opts = {}) {
                  stage: d.stage, source: d.rampSource || d.source || null,
                  dbState: d.dbState || null,
                  statusWhy: _statusWhy, state: d.state || _statusState || null,
-                 balancePath: d.balancePath || null });
+                 balancePath: d.balancePath || null,
+                 statusCached: _statusCached, statusAgeMs: _statusAgeMs });
     return pipeline;
   } catch (e) {
     // A ROUTING DECISION MUST NEVER FAIL A CUSTOMER'S JOB. chatcut-routing
@@ -2650,13 +2684,24 @@ const server = http.createServer((req, res) => {
             // Did the body carry account facts at all? A boolean, not the facts.
             published_present: Boolean(_env && _env.status && _env.status.published),
             ms: Date.now() - _t0,
+            // THE LIVE READ AND THE CACHE ARE TWO DIFFERENT QUESTIONS, and the
+            // route only uses the second. A probe that returned why=ok while the
+            // cache sat empty would report healthy on a server routing every job
+            // to the handler. `ms` above is the ENDPOINT's latency; the route pays
+            // none of it.
+            cache: _cacheState(),
           };
         } catch (e) {
           out = { url: _statusUrlForDisplay(), why: `threw:${(e && e.message) || 'unknown'}`,
-                  state: null, published_present: false, ms: Date.now() - _t0 };
+                  state: null, published_present: false, ms: Date.now() - _t0,
+                  cache: _cacheState() };
         }
-        console.log('[chatcut-status-probe] url=%s why=%s state=%s published=%s %sms',
-          out.url, out.why, out.state, out.published_present, out.ms);
+        console.log('[chatcut-status-probe] url=%s why=%s state=%s published=%s %sms '
+          + 'cache_present=%s cache_fresh=%s cache_age_ms=%s timer=%s last_fail=%s',
+          out.url, out.why, out.state, out.published_present, out.ms,
+          out.cache && out.cache.present, out.cache && out.cache.fresh,
+          out.cache && out.cache.age_ms, out.cache && out.cache.timer_running,
+          out.cache && out.cache.last_fail_why);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8',
                              'Cache-Control': 'no-store' });
         res.end(JSON.stringify(out, null, 2));
@@ -10442,6 +10487,30 @@ if (require.main === module) {
   }
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
+
+  // ── WARM THE ROUTE'S CACHE BEFORE THE FIRST JOB ARRIVES ──────────────────
+  //
+  // The route decision now reads a cached account_status and FAILS CLOSED on an
+  // empty one. Started here, the cache is filled within a second of boot and kept
+  // warm on a timer, so the first job after a deploy routes on a real balance
+  // instead of being the one job that pays for the cold start.
+  //
+  // AFTER listen, not before: this must never be able to delay the port opening —
+  // Render kills a service that does not bind in time, and a slow ChatCut endpoint
+  // would then take the whole site down to make a route decision faster.
+  //
+  // ARMED-ONLY. With no URL configured it reports no_url and starts nothing, so a
+  // server with the feature off makes no outbound calls on a timer.
+  try {
+    const { startAccountStatusRefresher } = require('./lib/chatcut-routing');
+    const _r = startAccountStatusRefresher();
+    console.log('[chatcut-route] account_status refresher started=%s %s',
+      _r.started, _r.started ? `every ${_r.intervalMs}ms` : `(${_r.why})`);
+  } catch (e) {
+    // NON-FATAL BY DESIGN. Without the refresher every route fails closed onto the
+    // existing pipeline, which always works — a degraded route, not an outage.
+    console.error('[chatcut-route] refresher failed to start:', (e && e.message) || e);
+  }
 
   // ── THE CREDIT SWEEP'S TRIGGER ───────────────────────────────────────────
   //
