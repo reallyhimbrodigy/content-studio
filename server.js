@@ -7974,6 +7974,28 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         // account_status read, the insert, and the dispatch itself. A clock that
         // started after the slow parts would report a number nobody can act on.
         const _postT0 = Date.now();
+        // ── WHERE THE 3.3 SECONDS ACTUALLY GO ────────────────────────────────
+        //
+        // post_to_dispatch_ms measured 3974 on job f7da43ea and 3217/6068/3555/3322
+        // on FOUR handler jobs in the same window. Handler jobs never call
+        // account_status, so they share no part of the route's cost and are just as
+        // slow: the route was never the bottleneck, and caching it — correct and
+        // asked for — cannot reach the <1s target on its own.
+        //
+        // One number for a path with a dozen sequential awaits cannot say which one
+        // to fix. "One word can hide three problems", and "measure before building"
+        // — so this records a delta per phase and prints them on the same line as
+        // the total, in the same commit that adds them.
+        //
+        // COST OF THE INSTRUMENT: one Date.now() and one array push per phase.
+        const _phases = [];
+        let _phaseLast = _postT0;
+        const _mark = (name) => {
+          const t = Date.now();
+          _phases.push(`${name}:${t - _phaseLast}`);
+          _phaseLast = t;
+        };
+        const _phaseStr = () => _phases.join(' ');
         console.log('\n📝 POST /api/video-jobs REQUEST RECEIVED');
         console.log('  Time:', new Date().toISOString());
         console.log('  Method:', req.method);
@@ -7985,6 +8007,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
         const authUser = await requireSupabaseUser(req);
+        _mark('auth');
         console.log('  ✅ Auth user:', authUser.id);
 
         // MAINTENANCE GATE (known outage). While the render service is knowingly
@@ -8019,6 +8042,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         if (!checkRateLimit(res, 'video-job-create', authUser.id, 10, 900)) return;
 
         const body = await readJsonBody(req);
+        _mark('body');
         // Don't dump the whole body — video_url / proxy_video_url are presigned
         // storage URLs (bearer-capability tokens in the query string). Log only
         // the non-sensitive shape.
@@ -8097,6 +8121,7 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         }
 
         const entitlement = await assertProEntitled(authUser.id, { forceRcCheck: wallForceRcCheck(req) });
+        _mark('entitlement');
         console.log('  [paywall] isPro=%s reason=%s plan=%s userId=%s',
           entitlement.isPro, entitlement.reason, entitlement.plan, authUser.id);
 
@@ -8289,6 +8314,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             ? rawClientMsgId : null;
 
         const reservation = await withKeyLock(`render:${authUser.id}`, async () => {
+          // INSIDE the lock, so lock WAIT is separated from the work it protects. A
+          // slow phase and a queued phase are different bugs with different fixes.
+          _mark('lock_wait');
           // Idempotent replay fast-path: if the client's UUID already has a
           // row, this is a double-submit (retry mash / network replay). Return
           // the existing job — no new charge, no new concurrency slot, and the
@@ -8636,6 +8664,13 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // month for a video that does not exist. Our failure, their month.
           let created;
           try {
+          _mark('pre_insert');
+          // HOISTED OUT OF THE ARGUMENT LIST so the route's cost is its own number.
+          // As an inline `pipeline: await routeForNewJobAsync(...)` it was evaluated
+          // before the call and its time was billed to the insert — the two things
+          // this measurement most needs to separate.
+          const _pipeline = await routeForNewJobAsync(authUser.id, { jobId: clientJobId });
+          _mark('route');
           created = await createQueuedVideoJob({
             userId: authUser.id,
             videoUrl,
@@ -8647,9 +8682,10 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             sourceType: body?.source_type,
             sourceDuration: body?.source_duration,
             // The route decision, stored as a fact rather than inferred later.
-            pipeline: await routeForNewJobAsync(authUser.id, { jobId: clientJobId }),
+            pipeline: _pipeline,
             creditsDebited: _creditsDebited,
           });
+          _mark('insert');
           } catch (e) {
             if (_monthlyClaimed) {
               await releaseMonthlyUsage(authUser.id, _monthlyCap.USAGE_KIND);
@@ -8830,8 +8866,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             // variable and no output answers nothing — and this one exists to
             // answer a specific question about a specific job, so it has to be
             // readable from the log of that job.
-            console.log('  [job-timing] job=%s route=chatcut post_to_dispatch_ms=%d',
-              job.id, Date.now() - _postT0);
+            _mark('dispatch');
+            console.log('  [job-timing] job=%s route=chatcut post_to_dispatch_ms=%d %s',
+              job.id, Date.now() - _postT0, _phaseStr());
           } catch (e) {
             // FALL BACK, AND CORRECT THE ROW. The user gets their video either
             // way; what must not survive is a row that says 'agentic' for a
@@ -8866,8 +8903,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           supportsProgressive: body?.supports_progressive === true && progressivePlaybackEnabled(),
           prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
           });
-          console.log('  [job-timing] job=%s route=handler post_to_dispatch_ms=%d',
-            job.id, Date.now() - _postT0);
+          _mark('dispatch');
+          console.log('  [job-timing] job=%s route=handler post_to_dispatch_ms=%d %s',
+            job.id, Date.now() - _postT0, _phaseStr());
         }
         console.log('  ✅ Modal dispatch started for job:', job.id);
 
