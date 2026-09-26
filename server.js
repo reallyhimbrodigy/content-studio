@@ -1328,22 +1328,79 @@ async function runCreditSeedSweep({ dryRun = true, cap = SWEEP_HARD_CAP, log = c
       .eq('period', period).eq('provider_ok', false).limit(cap);
     if (e1) throw new Error(`unlanded read failed: ${e1.message}`);
 
-    // Device claims with no row for this period. Bounded by `cap` on purpose:
-    // this is O(claims) and the claim table is the one that grows.
-    const { data: claims, error: e2 } = await supabaseAdmin
-      .from('free_credit_grants').select('user_id')
-      .not('user_id', 'is', null).limit(2000);
-    if (e2) throw new Error(`claim read failed: ${e2.message}`);
-    const { data: haveRow, error: e3 } = await supabaseAdmin
-      .from('free_credit_periods').select('user_id').eq('period', period).limit(5000);
-    if (e3) throw new Error(`period read failed: ${e3.message}`);
-    const have = new Set((haveRow || []).map((r) => r.user_id));
+    // ── THE "ALREADY HAS A ROW" SET, PAGED ──────────────────────────────
+    //
+    // Truncating THIS side is worse than truncating the claims: a user whose row
+    // exists but fell outside the window reads as needing a grant, so the pass
+    // would call ensureFreePeriodGrant on an account that is already done. That
+    // is a harmless no-op today only because the (user_id, period) PK refuses the
+    // insert — a guard is not a licence to feed it wrong input.
+    const have = new Set();
+    for (let from = 0; from < 100000; from += 1000) {
+      const { data: hp, error: e3 } = await supabaseAdmin
+        .from('free_credit_periods').select('user_id').eq('period', period)
+        .order('user_id', { ascending: true })
+        .range(from, from + 999);
+      if (e3) throw new Error(`period page read failed at ${from}: ${e3.message}`);
+      const rows = hp || [];
+      for (const r of rows) have.add(r.user_id);
+      if (rows.length < 1000) break;
+    }
+    out.backfill.have_rows = have.size;
 
+    // A Set beside the list: `targets.includes` was O(n^2) and made the dedup
+    // invisible. Unlanded rows go FIRST — they are the ones that already tried
+    // and failed, which is what a retry is for.
     const targets = [];
-    for (const r of (unlanded || [])) targets.push(r.user_id);
-    for (const r of (claims || [])) {
-      if (!have.has(r.user_id) && !targets.includes(r.user_id)) targets.push(r.user_id);
+    const seen = new Set();
+    for (const r of (unlanded || [])) {
+      if (seen.has(r.user_id)) continue;
+      seen.add(r.user_id);
+      targets.push(r.user_id);
+    }
+
+    // ── DEVICE CLAIMS WITH NO ROW FOR THIS PERIOD, PAGED ────────────────
+    //
+    // THIS WAS `.limit(2000)` AND IT SILENTLY UNDERCOUNTED. free_credit_grants
+    // holds 2,710 rows with a user_id, so 710 claims were never examined — and
+    // the symptom was a dry-run population of 18 against a table that says 19:
+    // one real user who would never have been backfilled, with nothing anywhere
+    // saying so. "A truncated list must carry its denominator", in the sweep
+    // written the same night I quoted that rule at a Frontend measurement.
+    //
+    // Fixed by PAGING and by RECORDING the scan, not by raising 2000 — a bigger
+    // constant is the same defect one growth spurt later. The walk stops early
+    // once `cap` targets are found, since the pass cannot act on more than that,
+    // and `claims_exhausted` says whether the whole table was seen so a short
+    // answer can never read as a complete one.
+    const PAGE = 1000;
+    let scanned = 0;
+    let exhausted = false;
+    for (let from = 0; from < 100000; from += PAGE) {
+      const { data: page, error: e2 } = await supabaseAdmin
+        .from('free_credit_grants').select('user_id')
+        .not('user_id', 'is', null)
+        .order('claimed_at', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (e2) throw new Error(`claim page read failed at ${from}: ${e2.message}`);
+      const rows = page || [];
+      scanned += rows.length;
+      for (const r of rows) {
+        if (!have.has(r.user_id) && !seen.has(r.user_id)) {
+          seen.add(r.user_id);
+          targets.push(r.user_id);
+        }
+      }
+      if (rows.length < PAGE) { exhausted = true; break; }
       if (targets.length >= cap) break;
+    }
+    out.backfill.claims_scanned = scanned;
+    out.backfill.claims_exhausted = exhausted;
+    if (!exhausted && targets.length < cap) {
+      // Neither exhausted nor capped means the loop hit its own iteration bound.
+      // That is a harness failure, not a result.
+      out.state = 'PARTIAL';
+      log.error('[credit-sweep] claim walk neither exhausted nor capped after %d rows', scanned);
     }
     out.backfill.candidates = targets.length;
     if (!dryRun) {
@@ -1366,12 +1423,18 @@ async function runCreditSeedSweep({ dryRun = true, cap = SWEEP_HARD_CAP, log = c
   }
 
   out.ms = Date.now() - t0;
+  // EVERY COUNTER ADDED IS PRINTED IN THE COMMIT THAT ADDS IT. claims_scanned and
+  // claims_exhausted exist BECAUSE a silent truncation was found by comparing a
+  // count against the table; leaving them in the return value and out of the log
+  // would recreate exactly that blindness one layer up.
   log.log('[credit-sweep] %s state=%s seed{cand=%s granted=%s credits=%s skip=%s fail=%s} '
-    + 'backfill{cand=%s granted=%s credits=%s skip=%s fail=%s} %sms',
+    + 'backfill{cand=%s granted=%s credits=%s skip=%s fail=%s have=%s scanned=%s exhausted=%s} %sms',
     out.mode, out.state,
     out.seed.candidates, out.seed.granted, out.seed.credits, out.seed.skipped, out.seed.failed,
     out.backfill.candidates, out.backfill.granted, out.backfill.credits,
-    out.backfill.skipped, out.backfill.failed, out.ms);
+    out.backfill.skipped, out.backfill.failed,
+    out.backfill.have_rows, out.backfill.claims_scanned, out.backfill.claims_exhausted,
+    out.ms);
   return out;
 }
 
