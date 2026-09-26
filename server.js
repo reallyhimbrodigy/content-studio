@@ -1075,6 +1075,49 @@ let _rcProEntitlementInternalId = null;
 // /api/health at most every 5 minutes. `value` stays null until the first probe
 // resolves — "not measured" must not read as "ok".
 const _rcHealthProbe = { at: 0, value: null };
+
+/**
+ * PROBE REVENUECAT AND RETURN THE ANSWER.
+ *
+ * HOISTED 2026-09-26, because reading `_rcHealthProbe.value` is not the same as
+ * probing. The only writer was a FIRE-AND-FORGET fetch inside the /api/health
+ * handler, which sets `.at` immediately and `.value` whenever the promise
+ * settles — so `value` is null until some unrelated HTTP request happens to have
+ * arrived AND resolved. On a cold boot with no traffic it is null forever.
+ *
+ * THE CREDIT SWEEP READ IT 20s AFTER BOOT AND GOT rc_unreachable. That was not
+ * RevenueCat being unreachable; it was a cache nobody had filled. The sweep's
+ * UNMEASURED guard caught it and refused to report a clean zero, which is the
+ * guard working — but the underlying shape is the consumer-with-no-producer
+ * class: every leg asked whether the value READS correctly and none asked
+ * whether anything WRITES it by the time it is read.
+ *
+ * /api/health keeps calling this WITHOUT awaiting, because that probe must never
+ * slow a health response. Anything that needs a real answer awaits it.
+ *
+ * `force` skips the 5-minute throttle. The throttle keys on `.at`, which is
+ * stamped BEFORE the fetch resolves, so a caller arriving during an in-flight
+ * probe would otherwise be told "recently probed" and handed a null.
+ */
+async function probeRevenueCat({ force = false } = {}) {
+  const projectId = (process.env.REVENUECAT_PROJECT_ID || '').trim();
+  const secret = (process.env.REVENUECAT_SECRET_KEY || '').trim();
+  if (!projectId || !secret) return null;
+  if (!force && Date.now() - _rcHealthProbe.at <= 300000 && _rcHealthProbe.value) {
+    return _rcHealthProbe.value;
+  }
+  _rcHealthProbe.at = Date.now();
+  try {
+    const r = await fetch(
+      `${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`,
+      { headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(8000) });
+    _rcHealthProbe.value = r.ok ? 'ok' : `http_${r.status}`;
+  } catch (_) {
+    _rcHealthProbe.value = 'unreachable';
+  }
+  return _rcHealthProbe.value;
+}
 // { <internal entitlement id>: <tier> } for every lookup_key we understand.
 // Process-lifetime cache, same as the id above — entitlements are dashboard
 // artifacts that change on the order of never, and a restart re-reads them.
@@ -1204,10 +1247,24 @@ async function runCreditSeedSweep({ dryRun = true, cap = SWEEP_HARD_CAP, log = c
   };
   if (!supabaseAdmin) { out.state = 'UNMEASURED'; out.reason = 'no_db'; return out; }
   if (!_credits.isConfigured()) { out.state = 'UNMEASURED'; out.reason = 'credits_not_configured'; return out; }
-  // A sweep that cannot reach RC must not report a clean zero. UNMEASURED, not
-  // 0 granted — "a clean zero is guilty until proven innocent", and a sweep is
-  // exactly where an unreachable provider renders as nothing to do.
-  if (_rcHealthProbe.value !== 'ok') { out.state = 'UNMEASURED'; out.reason = 'rc_unreachable'; return out; }
+  // THE REACHABILITY GATE BELONGS ON THE WRITE, NOT ON THE COUNT. A dry pass
+  // reads our own database and asks RevenueCat nothing, so refusing to COUNT
+  // because RC is unreachable withholds the one number that is always available
+  // — and it is the number Zac asked for before any write.
+  //
+  // AND A RUN PROBES FOR ITSELF rather than reading a cache. `_rcHealthProbe` is
+  // filled by a fire-and-forget fetch inside /api/health; at 20s after boot it
+  // is null, which the first live pass duly reported as rc_unreachable when
+  // RevenueCat was in fact fine. See probeRevenueCat.
+  if (!dryRun) {
+    const _probe = await probeRevenueCat({ force: true });
+    if (_probe !== 'ok') {
+      out.state = 'UNMEASURED';
+      out.reason = `rc_probe_${_probe === null ? 'not_configured' : _probe}`;
+      log.error('[credit-sweep] refusing to grant: RevenueCat probe returned %s', _probe);
+      return out;
+    }
+  }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -5213,13 +5270,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         //
         // /entitlements is the right probe: a real endpoint, read-only, cheap,
         // and it exercises exactly the credential path the credits meter needs.
+        // DELIBERATELY NOT AWAITED — a health response must never wait on a
+        // third party. Hoisted into probeRevenueCat so anything that needs a
+        // REAL answer (the credit sweep) can await the same one probe instead of
+        // reading a cache this call may not have filled yet.
         if (projectId && secret && Date.now() - _rcHealthProbe.at > 300000) {
-          _rcHealthProbe.at = Date.now();
-          fetch(`${REVENUECAT_API_BASE}/projects/${encodeURIComponent(projectId)}/entitlements`, {
-            headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
-            signal: AbortSignal.timeout(8000),
-          }).then((r) => { _rcHealthProbe.value = r.ok ? 'ok' : `http_${r.status}`; })
-            .catch(() => { _rcHealthProbe.value = 'unreachable'; });
+          probeRevenueCat().catch(() => {});
         }
         return {
           // What credits.isConfigured() actually means: both vars are SET.
