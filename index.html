@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- PASSWORD-RECOVERY RESCUE — MUST BE THE FIRST SCRIPT ON THE PAGE, AND
+         MUST NOT BE async/defer/module.
+
+         Supabase recovery emails land HERE, on the homepage, because the Redirect
+         URLs allowlist holds the bare origin and not the reset paths, so any
+         redirectTo with a path is rejected and the Site URL
+         (http://usepromptly.app) is used instead. Measured 2026-09-26.
+
+         Any Supabase client on this page is created with detectSessionInUrl:true,
+         which CONSUMES the recovery fragment and strips it from the URL. If that
+         runs first there is nothing left to forward, and the user ends up
+         silently signed in on the marketing page with no way to set a password.
+         So this runs synchronously, before every module. Do not add defer. -->
+    <script src="/js/recovery-redirect.js"></script>
     <title>Promptly — AI Video Editor for iPhone | TikTok &amp; Reels in 60 Seconds</title>
     <meta
       name="description"

@@ -95,6 +95,20 @@ export async function signOut() {
 
 export async function resetPassword(email) {
   try {
+    // THIS redirectTo IS CURRENTLY DROPPED BY SUPABASE, AND THAT IS NOT A BUG
+    // HERE — it is a missing entry in the project's Redirect URLs allowlist.
+    //
+    // Measured 2026-09-26 by probing /auth/v1/verify: the allowlist holds the
+    // bare origin `https://usepromptly.app` and rejects ANY path, so this value
+    // is discarded and the Site URL (`http://usepromptly.app`) is used instead —
+    // the homepage. That is why password reset was broken for every user, on web
+    // as well as iOS.
+    //
+    // js/recovery-redirect.js catches the token on the homepage and forwards it
+    // here, so the flow works today regardless. DO NOT "fix" this by deleting the
+    // redirectTo: once `https://usepromptly.app/reset-password.html` is added to
+    // the allowlist this line becomes correct and the homepage hop stops being
+    // needed. Deleting it would make that fix invisible.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password.html`,
     });
