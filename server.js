@@ -7916,6 +7916,19 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
     (async () => {
       try {
+        // ── THE CLOCK FOR "SERVER TIME FROM POST TO DISPATCH" ──────────────
+        //
+        // Zac's target is under 1s of OUR time before ChatCut starts, and
+        // nothing measured it. The entry already logged a wall-clock timestamp
+        // and the dispatch logged none, so the only way to get the number was to
+        // subtract two log lines by eye — which is not a measurement, it is an
+        // estimate with a stopwatch made of text.
+        //
+        // Stamped here, at the top of the handler, so it covers everything we do:
+        // auth, the wall, the credit debit, the route decision including the
+        // account_status read, the insert, and the dispatch itself. A clock that
+        // started after the slow parts would report a number nobody can act on.
+        const _postT0 = Date.now();
         console.log('\n📝 POST /api/video-jobs REQUEST RECEIVED');
         console.log('  Time:', new Date().toISOString());
         console.log('  Method:', req.method);
@@ -8768,6 +8781,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
               isFirstParty: _fp.firstParty,
             });
             _agenticDispatched = true;
+            // PRINTED IN THE COMMIT THAT ADDS IT. A timing that reaches a
+            // variable and no output answers nothing — and this one exists to
+            // answer a specific question about a specific job, so it has to be
+            // readable from the log of that job.
+            console.log('  [job-timing] job=%s route=chatcut post_to_dispatch_ms=%d',
+              job.id, Date.now() - _postT0);
           } catch (e) {
             // FALL BACK, AND CORRECT THE ROW. The user gets their video either
             // way; what must not survive is a row that says 'agentic' for a
@@ -8781,7 +8800,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           }
         }
 
-        if (!_agenticDispatched) await dispatchJobToModal({
+        // THE HANDLER NUMBER IS THE CONTROL. A routed job's 900ms means nothing
+        // without knowing what the same server does on the path that has always
+        // worked — "cut cost and latency BY ROUTE" is a standing rule here, and a
+        // single number with no comparison is how a regression hides.
+        if (!_agenticDispatched) {
+          await dispatchJobToModal({
           pushProgressToSSE,
           jobId: job.id,
           videoUrl,
@@ -8796,7 +8820,10 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           // Modal payload, exactly like premium_pipeline_enabled.
           supportsProgressive: body?.supports_progressive === true && progressivePlaybackEnabled(),
           prewarmHintResult: speechGate.hint, // reuse the resolved hint (no double await)
-        });
+          });
+          console.log('  [job-timing] job=%s route=handler post_to_dispatch_ms=%d',
+            job.id, Date.now() - _postT0);
+        }
         console.log('  ✅ Modal dispatch started for job:', job.id);
 
         return sendJson(res, 200, {
