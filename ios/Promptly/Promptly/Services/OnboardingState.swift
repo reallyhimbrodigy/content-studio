@@ -50,6 +50,15 @@ final class OnboardingState: ObservableObject {
     /// Why shrink is on or off, straight from the server's own resolution, so
     /// a row can say which rule decided rather than leaving it to be inferred.
     @Published private(set) var uploadKnobState: String = "UNASKED"
+    /// Does the WORKER want a client-extracted proxy on this route?
+    ///
+    /// DEFAULTS TRUE, which is the opposite direction to shrink and parallel,
+    /// and deliberately so. Those default OFF because turning them on is the
+    /// change; this one defaults ON because SKIPPING is the change. An absent
+    /// field, an older server, or an unreadable answer must all leave today's
+    /// behaviour exactly as it is — never silently drop a proxy the worker is
+    /// still waiting for.
+    @Published private(set) var uploadProxyEnabled = true
     @Published private(set) var uploadResolvedBy: String = ""
 
     /// THE PER-USER UPLOAD DECISION, from the one endpoint that knows who is
@@ -62,11 +71,13 @@ final class OnboardingState: ObservableObject {
     /// neither is a licence to turn shrink on.
     func refreshUploadKnobs() async {
         var shrink = false
+        var proxy = true          // absent/unreadable => unchanged behaviour
         var parallel = MultipartConfig.defaultPartsInFlight
         var state = "UNREADABLE"
         var why = ""
         defer {
             uploadShrinkEnabled = shrink
+            uploadProxyEnabled = proxy
             uploadKnobState = state
             uploadResolvedBy = why
             UserDefaults.standard.set(parallel, forKey: MultipartConfig.partsInFlightKey)
@@ -91,6 +102,9 @@ final class OnboardingState: ObservableObject {
         // ONLY A MEASURED ANSWER MAY TURN ANYTHING ON.
         guard reported == "MEASURED" else { return }
         shrink = (up["shrink"] as? Bool) == true
+        // ONLY AN EXPLICIT false SKIPS IT. A missing key leaves `proxy` at the
+        // true it was initialised with.
+        if let p = up["proxy"] as? Bool { proxy = p }
         if let p = up["parallel"] as? Int {
             parallel = min(max(p, MultipartConfig.minPartsInFlight), MultipartConfig.maxPartsInFlight)
         }

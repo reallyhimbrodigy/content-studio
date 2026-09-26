@@ -2604,14 +2604,38 @@ struct EditorView: View {
                         // spec (H.264 480p height @ 10fps CFR, AAC mono
                         // 48kbps, MP4 faststart) so the worker accepts
                         // the upload and skips its on-server encode.
+                        // THE WORKER MAY NOT WANT THIS AT ALL.
+                        //
+                        // MEASURED: extraction is 13.15s / 11.86s / 8.05s on a
+                        // 45 MB clip — and it is LOCAL work, not transfer (the
+                        // uploads beside it were 0.39s and 2.40s). On the
+                        // ChatCut route B2 has shown the client proxy is never
+                        // read, so every second of that is spent producing a
+                        // file nothing opens, before the job is even POSTed.
+                        //
+                        // Skipping leaves `proxyFile` nil, which is a path this
+                        // code already has: the extraction was always allowed to
+                        // fail, `proxyAfterSource` flips `proxyUploadFinished`
+                        // on skip as well as on success, and the dispatcher's
+                        // `sourceUploadCompleted && proxyUploadFinished` gate
+                        // therefore opens the moment the source lands. So the
+                        // job POSTs immediately rather than waiting on an encode
+                        // — both halves of the win from one gate.
+                        let wantProxy = onboardingState.uploadProxyEnabled
+                        UploadTiming.meta(pending.id.uuidString, "proxy_wanted", wantProxy)
                         let proxyExtractStart = Date()
                         let proxyFile: URL?
-                        do {
-                            proxyFile = try await VideoProxyExtractor.extract(from: materializedSourceUrl)
-                            print(String(format: "[perf] proxy-extract %.2fs", Date().timeIntervalSince(proxyExtractStart)))
-                        } catch {
-                            print("[perf] proxy-extract FAILED (non-fatal, worker will encode its own): \(error.localizedDescription)")
+                        if !wantProxy {
                             proxyFile = nil
+                            print("[perf] proxy-extract SKIPPED (server says the worker does not read it)")
+                        } else {
+                            do {
+                                proxyFile = try await VideoProxyExtractor.extract(from: materializedSourceUrl)
+                                print(String(format: "[perf] proxy-extract %.2fs", Date().timeIntervalSince(proxyExtractStart)))
+                            } catch {
+                                print("[perf] proxy-extract FAILED (non-fatal, worker will encode its own): \(error.localizedDescription)")
+                                proxyFile = nil
+                            }
                         }
 
                         // THE SOURCE GOES FIRST, ALONE.
@@ -4457,6 +4481,14 @@ struct EditorView: View {
 
                         switch outcome {
                         case .success(let jobId):
+                            // TAP TO POST — the number the ChatCut route is
+                            // being judged on. `total_ms` on this span ends at
+                            // dispatch; this marks the moment the server
+                            // actually accepted the job, which is what the user
+                            // waits for before anything can start rendering.
+                            // Marks record ms since the pick, so t_job_posted IS
+                            // tap-to-POST.
+                            UploadTiming.mark(video.id.uuidString, "job_posted")
                             if let i = indexOfProcessingMsg() {
                                 messages[i].jobId = jobId
                                 messages[i].serverRowExists = true

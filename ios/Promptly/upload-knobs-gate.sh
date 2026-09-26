@@ -86,5 +86,37 @@ grep -Fq 'UploadTiming.meta(pending.id.uuidString, "knob_resolved_by"' "$E" \
   && echo "  ok   — and resolved_by, so the deciding rule is named" \
   || note "knob_resolved_by is not recorded — the row cannot say which rule decided"
 
+# ── 6. THE PROXY SKIP DEFAULTS TO TODAY'S BEHAVIOUR ────────────────────────
+# MEASURED: extraction is 8-13s of LOCAL work on a 45 MB clip, and B2 has shown
+# the worker never reads it on the ChatCut route. Skipping it also releases the
+# dispatcher's `sourceUploadCompleted && proxyUploadFinished` gate, so the job
+# POSTs as soon as the source lands.
+#
+# THE DEFAULT RUNS THE OPPOSITE WAY TO shrink AND parallel, deliberately.
+# Those default OFF because turning them on is the change. This defaults ON
+# because SKIPPING is the change: an absent field, an older server or an
+# unreadable answer must never silently drop a proxy the worker still wants.
+printf '%s' "$body" | grep -Eq '^[[:space:]]*var proxy = true' \
+  && echo "  ok   — proxy defaults TRUE, so absent/unreadable leaves today's behaviour" \
+  || note "proxy does not default to true — an older server or an unreadable answer would silently stop sending a proxy the worker may still read"
+printf '%s' "$body" | grep -Fq 'if let p = up["proxy"] as? Bool { proxy = p }' \
+  && echo "  ok   — only an explicit boolean changes it" \
+  || note "the proxy field is not parsed as an explicit Bool — a missing key must not be read as false"
+
+# The gate must be on the EXTRACTION, not merely on the upload: the cost is the
+# encode, and uploading nothing still leaves 8-13s of local work spent.
+# Window ends at the "FAILED" log line, which is the last line of the else
+# branch — an indentation-matched closing brace stopped short of the call.
+ext="$(sed -n '/let wantProxy = onboardingState.uploadProxyEnabled/,/proxy-extract FAILED/p' "$E")"
+printf '%s' "$ext" | grep -Fq 'if !wantProxy {' \
+  && printf '%s' "$ext" | grep -Fq 'VideoProxyExtractor.extract' \
+  && echo "  ok   — the extraction itself is skipped, not just the upload" \
+  || note "the proxy gate does not wrap VideoProxyExtractor.extract — skipping only the upload still pays the 8-13s encode"
+
+# ── 7. TAP-TO-POST IS RECORDED ─────────────────────────────────────────────
+grep -Fq 'UploadTiming.mark(video.id.uuidString, "job_posted")' "$E" \
+  && echo "  ok   — t_job_posted marks the moment the server accepted the job" \
+  || note "nothing records tap-to-POST — total_ms ends at dispatch and cannot answer how long the user waited before the job existed"
+
 [ "$fail" = 0 ] && echo "upload-knobs-gate: PASS" || echo "upload-knobs-gate: FAIL"
 exit "$fail"
