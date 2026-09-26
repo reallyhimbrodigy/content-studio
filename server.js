@@ -410,9 +410,41 @@ function routeForNewJob() {
 // were told no, we could not read the switch, or the account cannot pay — and
 // a row that says 'handler' for all four is the two-numbers-with-the-same-name
 // defect with money attached. The reason is recorded beside every decision.
+/**
+ * CHATCUT_ACCOUNT_STATUS_URL for display — origin and path only.
+ *
+ * A Modal endpoint hostname is not a credential and both sides need to be able
+ * to READ it: `account_status_url_set: true` says a URL exists and cannot say
+ * whether it is the right one, which is exactly the gap that left job 7eb3df03's
+ * cause arguable instead of readable.
+ *
+ * ANY QUERY STRING IS DROPPED rather than trusted. The standing rule here is that
+ * a presigned URL is a credential; the safe habit is that no query string ever
+ * reaches a response, whether or not this particular one carries a token.
+ */
+function _statusUrlForDisplay() {
+  const raw = process.env.CHATCUT_ACCOUNT_STATUS_URL || '';
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`;
+  } catch (_) {
+    // Unparseable is itself the finding — say so rather than echo the raw value,
+    // which is how a malformed URL with a token in it would leak.
+    return 'UNPARSEABLE';
+  }
+}
+
 async function routeForNewJobAsync(userId, opts = {}) {
-  const { jobId = null } = opts;
-  const _rd = require('./lib/route-decisions');
+  // `record` EXISTS SO A NON-JOB CALLER CANNOT EVICT JOB DECISIONS. The ring
+  // holds 50 entries and is the only thing that explains why a job went where it
+  // did. /api/profile/settings asks this same question to decide `upload.proxy`,
+  // and a client polling settings would flush every job decision out of the ring
+  // before anyone read it. Defaults true, so a job caller gets recording by
+  // omission and only a deliberate non-job caller opts out.
+  const { jobId = null, record = true } = opts;
+  const _rdReal = require('./lib/route-decisions');
+  const _rd = record ? _rdReal : { record() { return null; } };
   // THE OUTER ARM FIRST. No base URL means no agentic route however the row
   // reads, and asking the database about a route that cannot run is a query
   // spent to learn nothing.
@@ -425,6 +457,12 @@ async function routeForNewJobAsync(userId, opts = {}) {
   try {
     const { routeForJob, ROUTE_CHATCUT, fetchAccountStatus } = require('./lib/chatcut-routing');
     const { rampAllows } = require('./lib/chatcut-ramp');
+    // Captured by the thunk below and recorded with the decision. Declared out
+    // here because the thunk runs only when the ramp says yes — so on a job the
+    // ramp turned away these stay null, which is itself the correct reading: the
+    // guard was never asked.
+    let _statusWhy = null;
+    let _statusState = null;
     d = await routeForJob({
       userId,
       rampAllows: (a) => rampAllows({ ...a,
@@ -432,12 +470,25 @@ async function routeForNewJobAsync(userId, opts = {}) {
       // A THUNK, so the 2 s account_status call happens ONLY when the ramp has
       // already said yes. At percent 0 with a four-account allowlist that is
       // ~every job NOT paying for a read it will not use.
-      accountStatus: async () => (await fetchAccountStatus()).status,
+      // KEEP `why`, DO NOT DISCARD IT. This was
+      //   accountStatus: async () => (await fetchAccountStatus()).status
+      // which computes the exact transport outcome — http_404, no_url, error:… —
+      // and drops it. Job 7eb3df03 then logged reason=chatcut_unknown, the label
+      // for "we could not find out", from a server that had found out and thrown
+      // the answer away. It took a hand-run curl to learn the endpoint was even
+      // reachable, and the curl got a DIFFERENT answer than the server had.
+      accountStatus: async () => {
+        const _env = await fetchAccountStatus();
+        _statusWhy = (_env && _env.why) || null;
+        _statusState = (_env && _env.status && _env.status.state) || null;
+        return _env.status;
+      },
     });
     const pipeline = d.route === ROUTE_CHATCUT ? 'agentic' : 'handler';
     _rd.record({ jobId, userId, pipeline, route: d.route, reason: d.reason,
                  stage: d.stage, source: d.rampSource || d.source || null,
-                 dbState: d.dbState || null });
+                 dbState: d.dbState || null,
+                 statusWhy: _statusWhy, state: d.state || _statusState || null });
     return pipeline;
   } catch (e) {
     // A ROUTING DECISION MUST NEVER FAIL A CUSTOMER'S JOB. chatcut-routing
@@ -1408,7 +1459,8 @@ async function runCreditSeedSweep({ dryRun = true, cap = SWEEP_HARD_CAP, log = c
         // isPaid:false — every target here is a FREE-side row by construction:
         // a device claim or a free period row. A paid account's allowance is
         // RevenueCat's and pass 1 owns the ones RC will never grant.
-        const r = await ensureFreePeriodGrant(uid, { isPaid: false });
+        // WRITE PATH (the server-side sweep): may create an absent customer.
+        const r = await ensureFreePeriodGrant(uid, { isPaid: false, mayCreateCustomer: true });
         if (r.granted > 0) { out.backfill.granted += 1; out.backfill.credits += r.granted; }
         else if (String(r.reason || '').endsWith('_failed')
                  || String(r.reason || '') === 'exception') out.backfill.failed += 1;
@@ -1532,7 +1584,7 @@ async function ensureCompSeedGrant(userId, profileRow) {
  * NEVER THROWS. Both call sites are on the render/read path; a credits problem
  * must not take down a render. Every exit returns a reason string instead.
  */
-async function ensureFreePeriodGrant(userId, { isPaid }) {
+async function ensureFreePeriodGrant(userId, { isPaid, mayCreateCustomer = false }) {
   const skip = (reason) => ({ granted: 0, reason });
   try {
     // Paid tiers get their allowance FROM RevenueCat on renewal. Running this
@@ -1608,9 +1660,30 @@ async function ensureFreePeriodGrant(userId, { isPaid }) {
     // above that becomes a RETRYABLE 503 on their FIRST render. 3 users hit it in
     // one sweep. The customer is created by a GRANT, at a positive balance —
     // never by a debit.
-    if (bal.customerAbsent === true) {
+    // ONLY ON A WRITE PATH, AND FALSE BY DEFAULT (Zac, 2026-09-26).
+    //
+    // THE DEFECT THIS CLOSES WAS MINE AND IT SHIPPED. ensureFreePeriodGrant is
+    // called from FOUR places, and one of them is GET /api/credits/balance — so
+    // creating a RevenueCat customer here meant a plain balance READ provisioned
+    // a record at a third party. Zac had already ruled "no auto-provision on the
+    // read path" hours earlier, and I broke it by adding the create one level
+    // below the roll rather than at the roll's call sites.
+    //
+    // DEFAULT false, so the safe behaviour is what an omission gets. A new caller
+    // that forgets the flag reads balances and provisions nothing; it cannot
+    // acquire the power by accident. The three write callers opt IN explicitly:
+    // the credit sweep, the render dispatch debit, and POST /api/credits/free-grant.
+    if (bal.customerAbsent === true && mayCreateCustomer === true) {
       const _made = await _credits.ensureCustomer(userId);
       console.log('  [free-credits] customer %s for userId=%s', _made, String(userId).slice(0, 8));
+    } else if (bal.customerAbsent === true) {
+      // SAY SO RATHER THAN SKIP SILENTLY. A read that finds no customer is a real
+      // observation about that account, and the write path will repair it on the
+      // next render or claim. Printing it is how we know the population is
+      // shrinking rather than hidden.
+      console.log('  [free-credits] customer ABSENT for userId=%s — read path, not '
+        + 'provisioning; the next grant or claim will create it',
+        String(userId).slice(0, 8));
     }
     if (delta > 0) await _credits.credit(userId, delta);
 
@@ -2542,12 +2615,75 @@ const server = http.createServer((req, res) => {
     // server_flags gained a `value jsonb` in a migration on 2026-09-23 and the
     // column is not on the table today — a migration in this repo is a
     // request, not a fact. The ring cannot fail a customer's job.
+    // ── ?chatcut_status=1 — FIRE THE GUARD'S OWN READ, ON DEMAND ──────────
+    //
+    // WHY THIS EXISTS. The only way to exercise fetchAccountStatus against the
+    // CONFIGURED url was to create a job as an allowlisted user, which needs a
+    // JWT nobody here has. So the URL question could only be argued, not read:
+    // I probed candidate hosts by hand and got a DIFFERENT answer than the server
+    // had, which turned one failure into two hypotheses and cost a night.
+    //
+    // A hand-typed URL tests my typing. This tests the configuration.
+    //
+    // IT RETURNS NO ACCOUNT FACTS. `why` is the transport (ok | http_NNN | no_url
+    // | error:...) and `state` is the one word the body led with. Never the
+    // balance, never `published`, never the secret — this endpoint is
+    // unauthenticated, and ChatCut's balance is their business. An authenticated
+    // read is B1's to run and he has.
+    //
+    // Behind a query parameter for the same reason as ops_fires and
+    // chatcut_routes: Render's probe hits this path every few seconds and must
+    // stay constant-time. This one also makes an outbound HTTP call, so it must
+    // never be on the default path.
+    if (parsed.query && parsed.query.chatcut_status) {
+      (async () => {
+        const _t0 = Date.now();
+        let out;
+        try {
+          const { fetchAccountStatus } = require('./lib/chatcut-routing');
+          const _env = await fetchAccountStatus();
+          out = {
+            url: _statusUrlForDisplay(),
+            why: (_env && _env.why) || null,
+            state: (_env && _env.status && _env.status.state) || null,
+            // Did the body carry account facts at all? A boolean, not the facts.
+            published_present: Boolean(_env && _env.status && _env.status.published),
+            ms: Date.now() - _t0,
+          };
+        } catch (e) {
+          out = { url: _statusUrlForDisplay(), why: `threw:${(e && e.message) || 'unknown'}`,
+                  state: null, published_present: false, ms: Date.now() - _t0 };
+        }
+        console.log('[chatcut-status-probe] url=%s why=%s state=%s published=%s %sms',
+          out.url, out.why, out.state, out.published_present, out.ms);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8',
+                             'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(out, null, 2));
+      })();
+      return;
+    }
+
     if (parsed.query && parsed.query.chatcut_routes) {
       const _rd = require('./lib/route-decisions');
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify({
         agentic_route_armed: agenticRouteArmed(),
         account_status_url_set: Boolean(process.env.CHATCUT_ACCOUNT_STATUS_URL),
+        // ── THE URL ITSELF, QUERY STRIPPED ────────────────────────────────
+        //
+        // A BOOLEAN WAS NOT ENOUGH AND IT COST HOURS. `account_status_url_set:
+        // true` says a URL exists; it cannot say whether it is the right one. Job
+        // 7eb3df03 fell back with chatcut_unknown and the leading explanation —
+        // that the URL points at the standalone account-status host with
+        // /account_status appended, which 404s — could not be CHECKED by either
+        // side: Render's API does not expose env values to the tools here, and
+        // B1 had to ask me to paste it.
+        //
+        // A Modal endpoint hostname is not a credential. Any QUERY STRING might
+        // be, so it is removed rather than trusted — the standing rule is that a
+        // presigned URL is a credential, and the safe habit is to never let a
+        // query reach a response at all.
+        account_status_url: _statusUrlForDisplay(),
         flag: 'chatcut_route',
         decisions: _rd.recent(Number(parsed.query.chatcut_routes) || 10),
       }, null, 2));
@@ -2873,7 +3009,14 @@ const server = http.createServer((req, res) => {
         // for the default allowlist off a failed query. Unreadable means shrink
         // OFF and parallel at today's default, with state: 'UNREADABLE' so the
         // client can tell "we were told no" from "we could not ask".
-        const _uk = { shrink: false, parallel: 3, accelerate: false,
+        // `proxy` DEFAULTS TO TRUE, AND THAT IS THE FAIL-CLOSED DIRECTION
+        // (Zac, 2026-09-26). The handler route NEEDS the client proxy — without
+        // it the worker encodes one itself, 7-10s on the orchestrator's critical
+        // path. The ChatCut route never looks at it. So the expensive mistake is
+        // dropping the proxy for a job that turns out to go to the handler, and
+        // the cheap mistake is extracting one ChatCut ignores. When the route
+        // cannot be read we make the cheap mistake.
+        const _uk = { shrink: false, parallel: 3, accelerate: false, proxy: true,
                       state: 'MEASURED', resolved_by: {} };
         try {
           const _rs = await uploadFlags.resolve('upload_shrink', user.id, supabaseAdmin);
@@ -2895,6 +3038,38 @@ const server = http.createServer((req, res) => {
             parallel: `${_rp.source}/${_rp.from}`,
             accelerate: `${_ra.source}/${_ra.from}`,
           };
+
+          // ── WHETHER TO EXTRACT A PROXY AT ALL ──────────────────────────
+          //
+          // MEASURED BY FRONTEND: tap-to-uploaded is 27.5s and 13.15s of it is
+          // proxy extraction. On the ChatCut route that 13.15s is pure waste —
+          // prepareAndDispatchAgentic takes no proxyVideoUrl parameter, is not
+          // passed one, and presigns the SOURCE key only, so ChatCut never sees
+          // a proxy. On the handler route the worker does use it, ahead of both
+          // the prewarm cache and a 7-10s on-server encode.
+          //
+          // THE SAME DECISION THE JOB WILL GET, guard included, so the client is
+          // never told "skip it" for a job that then lands on the handler.
+          //
+          // IT COSTS ALMOST NOTHING FOR ALMOST EVERYONE. The ramp runs before the
+          // guard and account_status is a thunk, so at percent 0 with a
+          // four-account allowlist this is one cached flag read for every user
+          // who is not on that list. Only the allowlisted few pay an HTTP call,
+          // and they are the ones the answer changes.
+          //
+          // NOT RECORDED IN THE DECISION RING. The ring holds 50 entries and
+          // exists to explain JOBS; a settings read is not a job, and letting
+          // these in would evict the job decisions we actually need to diagnose.
+          try {
+            const _route = await routeForNewJobAsync(user.id, { record: false });
+            _uk.proxy = _route !== 'agentic';
+            _uk.resolved_by.proxy = `route/${_route}`;
+          } catch (_re) {
+            // FAIL CLOSED TO KEEPING IT. An unreadable route must not cost a
+            // handler job its proxy.
+            _uk.proxy = true;
+            _uk.resolved_by.proxy = 'route/unreadable';
+          }
         } catch (_e) {
           // A flag read must never fail the settings call the client makes
           // before it can pick a video.
@@ -2902,7 +3077,8 @@ const server = http.createServer((req, res) => {
         }
         console.log(`[upload-knobs] user=${String(user.id).slice(0, 8)} `
           + `shrink=${_uk.shrink} parallel=${_uk.parallel} accel=${_uk.accelerate} `
-          + `state=${_uk.state}`);
+          + `proxy=${_uk.proxy} state=${_uk.state} `
+          + `proxy_by=${_uk.resolved_by && _uk.resolved_by.proxy}`);
         return sendJson(res, 200, { ok: true, settings, upload_flags, upload: _uk });
       } catch (err) {
         const status = err.statusCode || 500;
@@ -8300,7 +8476,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             // This is the O(active) half of the no-cron design: the check runs
             // once per render, and the (user_id, period) PK makes it a no-op for
             // every render after the first of a period. Never throws.
-            const _roll = await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
+            // WRITE PATH (render dispatch, immediately before the debit): may create.
+            const _roll = await ensureFreePeriodGrant(authUser.id,
+              { isPaid: entitlement.isPro, mayCreateCustomer: true });
             // TOLD NO versus COULD NOT ASK, ON THE SPEND PATH (Zac's (c)).
             // The roll never throws; it returns a reason. Ignoring that reason
             // meant a roll that FAILED — RC unreachable, a read that errored —
@@ -9561,6 +9739,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
         } catch (_) { /* tier stays 'free'; the BALANCE is the answer here */ }
 
         // LAZY ROLL (read side). Never throws; a skip reason is not an error.
+        // READ PATH — GET /api/credits/balance. mayCreateCustomer is DELIBERATELY
+        // omitted, so it defaults to false: a balance read must not provision a
+        // record at RevenueCat. Zac's ruling, and __smoke_credit_seed asserts it.
         const _roll = await ensureFreePeriodGrant(authUser.id, { isPaid: tier !== 'free' });
 
         const b = await _credits.getBalance(authUser.id);
@@ -9679,7 +9860,8 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
           isPaid = Boolean(_dec && _dec.isPro);
         } catch (_) { /* treat as free; topUpDelta never lowers a balance */ }
 
-        const roll = await ensureFreePeriodGrant(authUser.id, { isPaid });
+        // WRITE PATH (POST /api/credits/free-grant, the device claim): may create.
+        const roll = await ensureFreePeriodGrant(authUser.id, { isPaid, mayCreateCustomer: true });
         return sendJson(res, 200, {
           claimed: true,
           already: decision.action === 'already_claimed',
