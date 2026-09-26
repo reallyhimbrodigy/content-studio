@@ -24,7 +24,17 @@ final class CreditsService: ObservableObject {
     /// surfaces as "unknown" rather than as a confident zero. A zero we did not
     /// read is the one number that must never be displayed — it would tell a
     /// paying user they have nothing left.
-    static let currencyCode = "CREDITS"
+    /// THE CODE REVENUECAT ACTUALLY USES. Was "CREDITS", which matches
+    /// nothing: the server's own resolver reads `currency_code` "CRD" and
+    /// finds the row, while this lookup — `vc[Self.currencyCode]` — could
+    /// never match and so returned nil for every user who had credits.
+    ///
+    /// That is the whole reason the badge never drew: 2,439 users were granted
+    /// credits in 30 days and `credit_badge_shown` fired once, for zero of
+    /// them. Confirmed against a live Pro account, whose /api/credits/balance
+    /// answered found=true balance=200 currency_code='CRD' while the client
+    /// read nothing.
+    static let currencyCode = "CRD"
 
     /// Cost of one video. Flat, regardless of source length or route.
     static let perVideo = 10
