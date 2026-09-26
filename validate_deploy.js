@@ -97,22 +97,76 @@ clearGateReceipt(__dirname);
 
 let failed = 0;
 const skipped = [];
+// Runner failures, kept apart from check failures on purpose — see the catch
+// below. A gate that cannot tell its own breakage from a finding sends someone
+// to edit working code.
+const harnessTrouble = [];
 for (const f of smokes) {
   const p = path.join(libDir, f);
   process.stdout.write(`▶ ${f} ... `);
   try {
-    const out = execFileSync(process.execPath, [p], { stdio: 'pipe', timeout: 60000 });
+    const out = execFileSync(process.execPath, [p], { stdio: 'pipe', timeout: 60000, maxBuffer: 32 * 1024 * 1024 });
     const s = out.toString().trim();
     const isSkip = /^\s*SKIP\(/m.test(s);
     if (isSkip) skipped.push(f.replace(/^__smoke_|\.js$/g, ''));
     console.log(isSkip ? 'SKIP' : 'OK');
     if (s) console.log(s.split('\n').map((l) => '   ' + l).join('\n'));
   } catch (e) {
-    failed++;
-    console.log('FAIL');
+    // ── THE RUNNER MUST FAIL DIFFERENTLY FROM THE THINGS IT RUNS ──────────
+    //
+    // This printed 'FAIL' and the child's output and NOTHING ELSE, so three
+    // different smokes reported FAIL across three consecutive runs on
+    // 2026-09-26 — each printing its own ALL PASS text, each passing alone.
+    // execFileSync throws for a non-zero exit AND for a timeout, a maxBuffer
+    // overflow, and a failure to fork, and every one of those rendered as
+    // "that smoke failed". The wrong culprit, named confidently, three times.
+    //
+    // This repo already has the rule from the 163/163 incident: a harness must
+    // fail LOUDLY AND DIFFERENTLY from its subjects, because "the question is
+    // always whether the thing reporting is the thing being measured". The
+    // runner was reporting its own trouble through the checks' channel.
+    //
+    // A CHECK failure has a numeric non-zero exit status. Anything else — a
+    // signal, a null status, ENOBUFS, EAGAIN — is the RUNNER's problem and is
+    // counted separately, so it can never be read as a finding about the code.
+    const isCheckFailure = typeof e.status === 'number' && e.status !== 0;
+    if (isCheckFailure) {
+      failed++;
+      console.log('FAIL');
+    } else {
+      harnessTrouble.push({ smoke: f, signal: e.signal || null, status: e.status,
+                            code: e.code || null,
+                            killed: Boolean(e.killed),
+                            message: (e.message || '').split('\n')[0].slice(0, 160) });
+      console.log('HARNESS');
+      console.log(`   ⚠️  RUNNER FAILURE, not a check result: signal=${e.signal || '-'} `
+        + `status=${e.status === undefined ? '-' : e.status} code=${e.code || '-'} `
+        + `killed=${Boolean(e.killed)}`);
+      console.log(`      ${(e.message || '').split('\n')[0].slice(0, 160)}`);
+    }
     if (e.stdout) process.stdout.write(e.stdout.toString());
     if (e.stderr) process.stderr.write(e.stderr.toString());
   }
+}
+
+// HARNESS TROUBLE IS EXIT 2, AND IT IS NOT A PASS EITHER. A smoke the runner
+// could not execute is UNVERIFIED — reporting it as a failure sends someone to
+// edit working code, and reporting it as a pass ships on a check that never ran.
+// Both directions are wrong, so it gets its own verdict and its own exit code.
+if (harnessTrouble.length) {
+  console.error(`\n❌ HARNESS FAILURE — the runner could not execute `
+    + `${harnessTrouble.length} of ${smokes.length} smoke(s). These are NOT check `
+    + `results and NOT passes; they are UNVERIFIED:`);
+  for (const t of harnessTrouble) {
+    console.error(`   ${t.smoke}: signal=${t.signal || '-'} status=${t.status === undefined ? '-' : t.status} `
+      + `code=${t.code || '-'} killed=${t.killed} — ${t.message}`);
+  }
+  if (failed) {
+    console.error(`   (plus ${failed} genuine check failure(s) above.)`);
+  }
+  console.error('   Re-run. If it recurs on the same smoke, it is that smoke; if it '
+    + 'moves between runs, it is the runner or the machine.');
+  process.exit(2);
 }
 
 if (failed) {

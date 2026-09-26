@@ -1612,7 +1612,14 @@ async function ensureFreePeriodGrant(userId, { isPaid }) {
   } catch (e) {
     // A credits failure must never fail a render. The unlanded row remains
     // queryable (provider_ok=false) so this is not silent.
-    console.error('[free-credits] grant failed (non-fatal):', e && (e.code || e.message));
+    // CARRIES ITS EVIDENCE, for the same reason the seed's does: three backfill
+    // targets logged a bare `RC_ERROR` and the status, message and endpoint were
+    // all available on the error and all discarded.
+    console.error('[free-credits] grant failed (non-fatal): %s%s%s%s',
+      (e && (e.code || e.message)) || 'unknown',
+      e && e.status ? ` status=${e.status}` : '',
+      e && e.rcMessage ? ` rc="${String(e.rcMessage).slice(0, 120)}"` : '',
+      e && e.rcMethod ? ` call=${e.rcMethod} ${e.rcPath}` : '');
     return skip('exception');
   }
 }
