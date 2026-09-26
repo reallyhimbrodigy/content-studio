@@ -1500,7 +1500,14 @@ async function ensureCompSeedGrant(userId, profileRow) {
           .eq('user_id', uid).eq('period', period);
         return error ? { error } : {};
       },
-      getBalance: (uid) => _credits.getBalance(uid),
+      // ABSENT-TOLERANT, and this is the fix for the two accounts the first live
+      // run could not seed. 2efb75dd and f71fde91 threw RC_ERROR because GET
+      // /virtual_currencies has no customer to answer for, and the throw landed
+      // BEFORE the credit() that would have created one — so the row retried
+      // forever and the grant could never happen. A 404 is a balance of zero;
+      // every other status still throws, because a RevenueCat outage read as
+      // "absent" would grant a second time to everybody.
+      getBalance: (uid) => _credits.getBalanceOrAbsent(uid),
       credit: (uid, amount) => _credits.credit(uid, amount),
     },
   });
@@ -1581,7 +1588,15 @@ async function ensureFreePeriodGrant(userId, { isPaid }) {
     // Delta is computed from the LIVE balance, which is what makes a retry of a
     // never-landed row safe: if the credit actually succeeded last time, the
     // balance already reflects it and the delta is 0.
-    const bal = await _credits.getBalance(userId);
+    // ABSENT-TOLERANT for the same reason as the seed, and it matters MORE here
+    // because of the 503 guard above: a user with no RevenueCat customer used to
+    // get skip('exception') and a 402; with rollBlocksDebit that became a
+    // RETRYABLE 503 that can never succeed, because the read that fails is the
+    // one blocking the grant that would fix it. 3 of the 19 backfill targets
+    // failed this way on the first live pass. A 404 is a zero balance and the
+    // grant proceeds, creating the customer at a POSITIVE balance — which is also
+    // Zac's rule that a customer must never be created by a debit.
+    const bal = await _credits.getBalanceOrAbsent(userId);
     const delta = _freeCredits.topUpDelta(bal.balance);
     if (delta > 0) await _credits.credit(userId, delta);
 
