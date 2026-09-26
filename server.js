@@ -1508,6 +1508,10 @@ async function ensureCompSeedGrant(userId, profileRow) {
       // every other status still throws, because a RevenueCat outage read as
       // "absent" would grant a second time to everybody.
       getBalance: (uid) => _credits.getBalanceOrAbsent(uid),
+      // Only called when the read reported an absent customer. Measured
+      // 2026-09-26: the transactions POST 404s for a customer RevenueCat has
+      // never seen, so the create has to precede the grant.
+      ensureCustomer: (uid) => _credits.ensureCustomer(uid),
       credit: (uid, amount) => _credits.credit(uid, amount),
     },
   });
@@ -1598,6 +1602,16 @@ async function ensureFreePeriodGrant(userId, { isPaid }) {
     // Zac's rule that a customer must never be created by a debit.
     const bal = await _credits.getBalanceOrAbsent(userId);
     const delta = _freeCredits.topUpDelta(bal.balance);
+    // SAME REPAIR AS THE SEED, and it matters more here because this path runs on
+    // every render: a brand-new user whose client has not yet initialised the
+    // RevenueCat SDK has no customer, the grant 404s, and with rollBlocksDebit
+    // above that becomes a RETRYABLE 503 on their FIRST render. 3 users hit it in
+    // one sweep. The customer is created by a GRANT, at a positive balance —
+    // never by a debit.
+    if (bal.customerAbsent === true) {
+      const _made = await _credits.ensureCustomer(userId);
+      console.log('  [free-credits] customer %s for userId=%s', _made, String(userId).slice(0, 8));
+    }
     if (delta > 0) await _credits.credit(userId, delta);
 
     await supabaseAdmin.from('free_credit_periods')
