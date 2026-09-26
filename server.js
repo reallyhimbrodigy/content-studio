@@ -339,6 +339,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const REVENUECAT_API_BASE = 'https://api.revenuecat.com/v2';
 const _credits = require('./lib/credits');
 const _freeCredits = require('./lib/free-credits');
+const _creditSeed = require('./lib/credit-seed');
 const _darkRefusals = require('./lib/dark-refusals');
 // Default OFF. A debit that can 402 every user in the product is armed by
 // an explicit env flip, after balances are verified -- not by a merge.
@@ -1154,6 +1155,235 @@ async function resolveEntitlementTierMap(projectId, secret) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * THE SERVER-SIDE CREDIT SWEEP — Zac's (b) and (d), in one bounded pass.
+ *
+ * NOT A SHELL SCRIPT, at Zac's instruction, and the reason is worth keeping:
+ * scripts/grant-credits.js needs the RevenueCat key, the key lives in the Render
+ * environment, and reaching it means a Render Shell. This process already HAS
+ * the key. A sweep that runs here needs no shell, no operator, and no second
+ * copy of the grant rule.
+ *
+ * TWO PASSES, TWO POPULATIONS, ONE PRE-EXISTING GRANT PATH EACH:
+ *
+ *   SEED     accounts entitled by us and unknown to RevenueCat, which RC will
+ *            never grant. -> ensureCompSeedGrant  (period 'comp-seed')
+ *   BACKFILL free-tier rows whose grant never landed, plus device claims with no
+ *            period row at all. -> ensureFreePeriodGrant  (period 'YYYY-MM')
+ *
+ * NEITHER PASS REIMPLEMENTS A GRANT. Both call the shipped function, so the
+ * sweep cannot drift from the live path — and the live path keeps every guard it
+ * already has: the PK claim, the live-balance delta, provider_ok only after 2xx.
+ * A backfill with its own copy of the rule is a second authority on how much a
+ * user is owed, and when the two disagree nothing says which is right.
+ *
+ * RESUMABLE BY CONSTRUCTION. The population is defined by the ABSENCE of a
+ * landed row, so a pass that dies halfway leaves the rest selected by the same
+ * query next time. There is no cursor to lose.
+ *
+ * RATE LIMITED FOR RC. RevenueCat rate-limits virtual-currency endpoints to
+ * 480 req/min and each account costs at most two calls (getBalance + credit).
+ * SWEEP_SPACING_MS between accounts holds the worst case near 400/min with a
+ * margin, and the hard cap means a schema surprise cannot fan out.
+ *
+ * COUNTS ONLY IN THE LOG. No email, no name, no device id; user ids truncated
+ * to 8 — the same rule as verify-grants and the route ring.
+ */
+const SWEEP_SPACING_MS = 150;
+const SWEEP_HARD_CAP = 60;
+
+async function runCreditSeedSweep({ dryRun = true, cap = SWEEP_HARD_CAP, log = console } = {}) {
+  const t0 = Date.now();
+  const out = {
+    mode: dryRun ? 'DRY' : 'RUN',
+    seed: { candidates: 0, granted: 0, credits: 0, skipped: 0, failed: 0 },
+    backfill: { candidates: 0, granted: 0, credits: 0, skipped: 0, failed: 0 },
+    state: 'MEASURED',
+  };
+  if (!supabaseAdmin) { out.state = 'UNMEASURED'; out.reason = 'no_db'; return out; }
+  if (!_credits.isConfigured()) { out.state = 'UNMEASURED'; out.reason = 'credits_not_configured'; return out; }
+  // A sweep that cannot reach RC must not report a clean zero. UNMEASURED, not
+  // 0 granted — "a clean zero is guilty until proven innocent", and a sweep is
+  // exactly where an unreachable provider renders as nothing to do.
+  if (_rcHealthProbe.value !== 'ok') { out.state = 'UNMEASURED'; out.reason = 'rc_unreachable'; return out; }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ── PASS 1: SEED ─────────────────────────────────────────────────────────
+  //
+  // THE SQL IS A PREFILTER, NOT THE RULE. seedNeed is the rule, and it runs on
+  // every candidate below. If the two ever disagree the row is SKIPPED with
+  // seedNeed's reason, because a narrow SQL predicate drifting from the real
+  // eligibility test is how a money path comes to have two authorities.
+  try {
+    const { data: cands, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, tier, comp_pro, pro_until, rc_product_id, rc_app_user_id')
+      .is('rc_product_id', null)
+      .is('rc_app_user_id', null)
+      .or(`comp_pro.eq.true,pro_until.gt.${new Date().toISOString()}`)
+      .limit(cap);
+    if (error) throw new Error(`seed candidate read failed: ${error.message}`);
+    const rows = cands || [];
+    // The seed row each candidate may already have, read in ONE query rather
+    // than N — and read here rather than trusted from the pass, because
+    // ensureCompSeedGrant reads it again authoritatively before it spends.
+    const { data: existing } = await supabaseAdmin
+      .from('free_credit_periods').select('user_id, provider_ok')
+      .eq('period', _creditSeed.SEED_PERIOD);
+    const landed = new Set((existing || []).filter((r) => r.provider_ok === true).map((r) => r.user_id));
+
+    for (const row of rows) {
+      const need = _creditSeed.seedNeed(row, isProfilePro);
+      if (!need.seed) { out.seed.skipped += 1; continue; }
+      if (landed.has(row.id)) { out.seed.skipped += 1; continue; }
+      out.seed.candidates += 1;
+      if (dryRun) continue;
+      const r = await ensureCompSeedGrant(row.id, row);
+      if (r.seeded) { out.seed.granted += 1; out.seed.credits += r.granted; }
+      else if (String(r.reason || '').startsWith('exception')
+               || String(r.reason || '').endsWith('_failed')) out.seed.failed += 1;
+      else out.seed.skipped += 1;
+      await sleep(SWEEP_SPACING_MS);
+    }
+  } catch (e) {
+    out.seed.failed += 1;
+    out.state = 'PARTIAL';
+    log.error('[credit-sweep] seed pass FAILED:', e && (e.code || e.message));
+  }
+
+  // ── PASS 2: BACKFILL the free side ───────────────────────────────────────
+  //
+  // MEASURED 2026-09-25 before this shipped: 8 free_credit_periods rows with
+  // provider_ok=false, and 11 device-claim users with no period row at all.
+  // NOT 2,713 — that number was mine, from counting free_credit_grants (the
+  // DEVICE ledger, which has no landed flag because landing was never its job)
+  // and reading profiles.rc_app_user_id as "has an RC customer" when it is the
+  // subscription webhook's column. The sentence is kept rather than replaced:
+  // a corrected justification is the one the next agent re-derives instead of
+  // checking.
+  try {
+    const period = _freeCredits.periodKey();
+    const { data: unlanded, error: e1 } = await supabaseAdmin
+      .from('free_credit_periods').select('user_id')
+      .eq('period', period).eq('provider_ok', false).limit(cap);
+    if (e1) throw new Error(`unlanded read failed: ${e1.message}`);
+
+    // Device claims with no row for this period. Bounded by `cap` on purpose:
+    // this is O(claims) and the claim table is the one that grows.
+    const { data: claims, error: e2 } = await supabaseAdmin
+      .from('free_credit_grants').select('user_id')
+      .not('user_id', 'is', null).limit(2000);
+    if (e2) throw new Error(`claim read failed: ${e2.message}`);
+    const { data: haveRow, error: e3 } = await supabaseAdmin
+      .from('free_credit_periods').select('user_id').eq('period', period).limit(5000);
+    if (e3) throw new Error(`period read failed: ${e3.message}`);
+    const have = new Set((haveRow || []).map((r) => r.user_id));
+
+    const targets = [];
+    for (const r of (unlanded || [])) targets.push(r.user_id);
+    for (const r of (claims || [])) {
+      if (!have.has(r.user_id) && !targets.includes(r.user_id)) targets.push(r.user_id);
+      if (targets.length >= cap) break;
+    }
+    out.backfill.candidates = targets.length;
+    if (!dryRun) {
+      for (const uid of targets) {
+        // isPaid:false — every target here is a FREE-side row by construction:
+        // a device claim or a free period row. A paid account's allowance is
+        // RevenueCat's and pass 1 owns the ones RC will never grant.
+        const r = await ensureFreePeriodGrant(uid, { isPaid: false });
+        if (r.granted > 0) { out.backfill.granted += 1; out.backfill.credits += r.granted; }
+        else if (String(r.reason || '').endsWith('_failed')
+                 || String(r.reason || '') === 'exception') out.backfill.failed += 1;
+        else out.backfill.skipped += 1;
+        await sleep(SWEEP_SPACING_MS);
+      }
+    }
+  } catch (e) {
+    out.backfill.failed += 1;
+    out.state = 'PARTIAL';
+    log.error('[credit-sweep] backfill pass FAILED:', e && (e.code || e.message));
+  }
+
+  out.ms = Date.now() - t0;
+  log.log('[credit-sweep] %s state=%s seed{cand=%s granted=%s credits=%s skip=%s fail=%s} '
+    + 'backfill{cand=%s granted=%s credits=%s skip=%s fail=%s} %sms',
+    out.mode, out.state,
+    out.seed.candidates, out.seed.granted, out.seed.credits, out.seed.skipped, out.seed.failed,
+    out.backfill.candidates, out.backfill.granted, out.backfill.credits,
+    out.backfill.skipped, out.backfill.failed, out.ms);
+  return out;
+}
+
+
+/**
+ * SEED THE ALLOWANCE FOR AN ACCOUNT REVENUECAT WILL NEVER GRANT.
+ *
+ * A THIN ADAPTER, DELIBERATELY. Every decision and the whole sequence live in
+ * lib/credit-seed.js runSeed, which takes its side effects as injected
+ * dependencies so a check can drive the real shipped code against a FAILING
+ * RevenueCat. This function supplies the real implementations and adds no rule
+ * of its own — a rule added here would be back inside a module no check can
+ * import, which is how the first draft came to be provable only by source order.
+ *
+ * THE COHORT lib/credits.js NAMED AND NOBODY SERVED. Its own comment says a
+ * comped account is "fully paid everywhere in this server", that the free roll
+ * skips them (isPaid -> skip('paid_tier')), that they have no subscription to
+ * renew, and that they "would sit at zero FOREVER once the debit arms". The
+ * debit armed. MEASURED on the live table 2026-09-25: 10 profiles are entitled
+ * by us and unknown to RevenueCat (rc_product_id IS NULL AND rc_app_user_id IS
+ * NULL) — 7 comp_pro, 3 pro_until-only — and ZERO of the 10 has ever had a
+ * free_credit_periods row of any kind. Two of them are the demo accounts.
+ *
+ * WHY THE SYMPTOM WAS A BLANK AND NOT A ZERO, which is why it survived a month
+ * of being looked at: RevenueCat omits a currency with no transactions from GET
+ * /virtual_currencies, so getBalance returns found:false — not balance 0 — and a
+ * client that renders a number only on found:true renders nothing at all.
+ */
+async function ensureCompSeedGrant(userId, profileRow) {
+  if (!supabaseAdmin) return { granted: 0, reason: 'no_db', seeded: false };
+  if (!_credits.isConfigured()) {
+    return { granted: 0, reason: 'credits_not_configured', seeded: false };
+  }
+  return _creditSeed.runSeed({
+    userId,
+    profileRow,
+    deps: {
+      // isProfilePro, NOT isUserPro. lib/entitlement exports `isUserPro` and
+      // server.js imports it RENAMED. The first draft of this path called the
+      // export name, which node --check accepts and which throws at runtime
+      // inside runSeed's own try/catch — so the seed would have returned
+      // skip('exception:...') on every account, forever, while reading as wired.
+      isPro: isProfilePro,
+      creditTierFor: _credits.creditTierFor,
+      tierAllowance: _credits.TIER_ALLOWANCE,
+      // Presence is not reachability — the same gate the free roll and the
+      // `credits` health flag use.
+      rcHealthy: _rcHealthProbe.value === 'ok',
+      readSeedRow: async (uid, period) => {
+        const { data, error } = await supabaseAdmin
+          .from('free_credit_periods').select('user_id, period, provider_ok')
+          .eq('user_id', uid).eq('period', period).maybeSingle();
+        return error ? { error } : { row: data || null };
+      },
+      insertSeedRow: async (uid, period) => {
+        const { error } = await supabaseAdmin.from('free_credit_periods')
+          .insert({ user_id: uid, period, amount: 0, provider_ok: false });
+        return error ? { error } : {};
+      },
+      markLanded: async (uid, period, { amount, balanceBefore }) => {
+        const { error } = await supabaseAdmin.from('free_credit_periods')
+          .update({ provider_ok: true, amount, balance_before: balanceBefore })
+          .eq('user_id', uid).eq('period', period);
+        return error ? { error } : {};
+      },
+      getBalance: (uid) => _credits.getBalance(uid),
+      credit: (uid, amount) => _credits.credit(uid, amount),
+    },
+  });
 }
 
 /**
@@ -7915,7 +8145,27 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             // This is the O(active) half of the no-cron design: the check runs
             // once per render, and the (user_id, period) PK makes it a no-op for
             // every render after the first of a period. Never throws.
-            await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
+            const _roll = await ensureFreePeriodGrant(authUser.id, { isPaid: entitlement.isPro });
+            // TOLD NO versus COULD NOT ASK, ON THE SPEND PATH (Zac's (c)).
+            // The roll never throws; it returns a reason. Ignoring that reason
+            // meant a roll that FAILED — RC unreachable, a read that errored —
+            // was followed by a debit against a balance we had just failed to
+            // establish, and RC's documented 422 became
+            //   402 "You've used all 1 videos in your plan this month."
+            // to a user who had never been granted anything. MEASURED: 4
+            // distinct users in 7 days carry a debited job with no landed grant.
+            //
+            // REFUSE BEFORE SPENDING, with the 503 this site already has for an
+            // outage, so the client retries and the grant lands on the next
+            // pass. A 402 is a claim about the user's balance and we are not
+            // entitled to make one we could not read.
+            if (_freeCredits.rollBlocksDebit(_roll && _roll.reason)) {
+              console.error('  [credits] roll could not establish a grant (%s) — 503, not 402, userId=%s',
+                (_roll && _roll.reason) || 'no_reason', String(authUser.id).slice(0, 8));
+              return { status: 503, body: {
+                error: 'credits_unavailable', kind: 'credits', retryable: true,
+              } };
+            }
             // ONE SOURCE IS A BATCH OF ONE. Routed through debitSources so the
             // ten-source path and the single-source path are the SAME code,
             // exercised on every render today rather than first meeting real
@@ -9827,6 +10077,54 @@ if (require.main === module) {
   }
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
+
+  // ── THE CREDIT SWEEP'S TRIGGER ───────────────────────────────────────────
+  //
+  // ONE ENV VAR, THREE STATES, AND THE DEFAULT IS OFF:
+  //   unset / anything else -> does not run. Shipping dark is the default for
+  //                            anything that spends money.
+  //   CREDIT_SEED_SWEEP=dry -> counts the population and writes NOTHING.
+  //   CREDIT_SEED_SWEEP=run -> grants.
+  //
+  // WHY BOOT AND NOT AN ENDPOINT. The only authenticated internal surface here
+  // takes `x-modal-secret`, whose value lives in the Render environment — so
+  // triggering it from outside needs the secret, which is the Render-Shell
+  // problem this sweep exists to avoid. Boot is the one moment the process can
+  // authorise itself, and setting the variable is a deploy, which is the action
+  // anyway.
+  //
+  // SAFE TO LEAVE SET, and that is the point rather than an accident. The
+  // population is defined by the ABSENCE of a landed row, so once every account
+  // is seeded the query returns nothing and the pass costs one SELECT and zero
+  // RevenueCat calls. A comp account added next month is then seeded by the next
+  // deploy with no one remembering to do anything — the same self-healing
+  // property that made the free roll lazy instead of a cron.
+  //
+  // DELAYED 20s so it cannot compete with the boot's own health probe: the sweep
+  // refuses to run while _rcHealthProbe is not 'ok', and at t=0 it has not run
+  // yet. Reporting UNMEASURED because we asked too early would be a clean zero
+  // that means nothing.
+  {
+    const _mode = String(process.env.CREDIT_SEED_SWEEP || '').trim().toLowerCase();
+    if (_mode === 'dry' || _mode === 'run') {
+      setTimeout(() => {
+        runCreditSeedSweep({ dryRun: _mode === 'dry' })
+          .then((r) => {
+            // PRINTED IN THE COMMIT THAT ADDS IT. runCreditSeedSweep logs its own
+            // one-liner; this second line exists so a sweep that returns
+            // UNMEASURED says WHY, which the counts alone cannot.
+            if (r.state !== 'MEASURED') {
+              console.error('[credit-sweep] state=%s reason=%s — nothing was granted and that is NOT a zero',
+                r.state, r.reason || 'see_pass_errors');
+            }
+          })
+          .catch((e) => console.error('[credit-sweep] crashed:', e && (e.message || e)));
+      }, 20 * 1000);
+      console.log('[credit-sweep] armed mode=%s — one pass 20s after boot', _mode.toUpperCase());
+    } else {
+      console.log('[credit-sweep] dark (CREDIT_SEED_SWEEP unset) — set to "dry" to count or "run" to grant');
+    }
+  }
 
   // Generalized refund leg (Wave 1): worker marks (INTEGRITY_TRIP /
   // designed_rejection:true on result), app refunds — single-writer law.
