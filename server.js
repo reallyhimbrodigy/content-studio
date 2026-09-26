@@ -488,7 +488,8 @@ async function routeForNewJobAsync(userId, opts = {}) {
     _rd.record({ jobId, userId, pipeline, route: d.route, reason: d.reason,
                  stage: d.stage, source: d.rampSource || d.source || null,
                  dbState: d.dbState || null,
-                 statusWhy: _statusWhy, state: d.state || _statusState || null });
+                 statusWhy: _statusWhy, state: d.state || _statusState || null,
+                 balancePath: d.balancePath || null });
     return pipeline;
   } catch (e) {
     // A ROUTING DECISION MUST NEVER FAIL A CUSTOMER'S JOB. chatcut-routing
