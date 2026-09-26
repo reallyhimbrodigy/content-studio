@@ -4118,7 +4118,13 @@ const server = http.createServer((req, res) => {
     return m ? m[1].slice(0, 40) : null;
   }
 
-  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null, parentJobId = null, rootJobId = null }) {
+  // `mark` IS OPTIONAL AND DEFAULTS TO A NO-OP, because the re-edit caller does not
+  // pass one and a required timing hook would make an instrument able to fail a
+  // render. It exists so the phases INSIDE this function are attributable: the
+  // caller's single `insert` phase read 1591-3492ms while Postgres reported the
+  // INSERT at mean 47ms, and one number over a classifier call plus a database
+  // write cannot say which to fix.
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput, clientJobId, clientMessageId = null, demo = false, appVersion = null, sourceType = null, sourceDuration = null, creditsDebited = null, pipeline = null, parentJobId = null, rootJobId = null, mark = () => {} }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
@@ -4137,24 +4143,26 @@ const server = http.createServer((req, res) => {
     // ROUTER CONSERVATISM: it may act only on what today is silently dropped
     // or unsafely rendered. An in-scope brief is never touched.
     let negotiationDecision = null;
-    try {
-      // UNSAFE IS NEVER REGEX-ONLY. The pattern is an early refuse; the model
-      // adjudicates every brief the pattern passed, in whatever language it
-      // was written. 15.2% of briefs are not English and an English pattern is
-      // structurally blind to them — verified: it passes "tire a roupa dela"
-      // and "iske kapde hata do". Fails CLOSED: an unreachable adjudicator
-      // yields REVIEW_UNAVAILABLE, never a false all-clear.
-      negotiationDecision = await negotiation.classifyWithSafety(vibeInput, { hasInScopeAsks: true });
-      // THE SHADOW ROW, and the console line until the table exists. Both, not
-      // either: the table is the queryable record for the 24-hour read, and
-      // the log line is what survives if the migration has not been applied.
-      // A write failure here NEVER costs a render — it is logged and dropped.
-      if (negotiationDecision) {
+    // ── THE RECORDING, IN ONE COPY, BECAUSE TWO PATHS NOW REACH IT ──────────
+    //
+    // Armed, the decision is awaited and recorded inline. Dark, it is recorded
+    // when it resolves, after this function has already returned. Two copies of
+    // the shadow-row builder is how one of them stops matching the other — the
+    // same mistake that let /account_status authenticate while /run_agentic went
+    // anonymous to the same container.
+    const _recordNegotiation = (decision) => {
+      if (!decision) return;
+      try {
+        // THE SHADOW ROW, and the console line until the table exists. Both, not
+        // either: the table is the queryable record for the 24-hour read, and
+        // the log line is what survives if the migration has not been applied.
+        // A write failure here NEVER costs a render — it is logged and dropped.
+        {
         const crypto = require('crypto');
         const row = {
           request_hash: crypto.createHash('sha256').update(String(vibeInput)).digest('hex'),
           client_job_id: clientJobId || null,
-          verdict: negotiationDecision.verdict,
+          verdict: decision.verdict,
           // UNRECOGNISED TAGS RIDE IN classes UNDER A SENTINEL, so a model that
           // starts inventing a tag is visible as a RATE and not as a comment
           // (Zac, 2026-09-20). Measured the day this landed: the model emitted
@@ -4163,14 +4171,14 @@ const server = http.createServer((req, res) => {
           // "!" prefix cannot collide with a real class (the enum is
           // lowercase words) and needs no migration; scoreboard.js reports the
           // share of rows carrying one.
-          classes: (negotiationDecision.oos || []).concat(
-            (negotiationDecision.oos_unrecognised || []).map(t => '!' + t)),
-          sentence: negotiationDecision.sentence || null,
-          safety_state: (negotiationDecision.safety && negotiationDecision.safety.state) || 'REVIEW_UNAVAILABLE',
-          decider: (negotiationDecision.safety && negotiationDecision.safety.by) || null,
-          uncertain: !!(negotiationDecision.safety && negotiationDecision.safety.uncertain),
-          degraded: !!negotiationDecision.degraded,
-          language: (negotiationDecision.safety && negotiationDecision.safety.language) || null,
+          classes: (decision.oos || []).concat(
+            (decision.oos_unrecognised || []).map(t => '!' + t)),
+          sentence: decision.sentence || null,
+          safety_state: (decision.safety && decision.safety.state) || 'REVIEW_UNAVAILABLE',
+          decider: (decision.safety && decision.safety.by) || null,
+          uncertain: !!(decision.safety && decision.safety.uncertain),
+          degraded: !!decision.degraded,
+          language: (decision.safety && decision.safety.language) || null,
           flag_state: negotiation.flagOn() ? 'ON' : 'DARK',
         };
         supabaseAdmin.from('negotiation_decisions').insert(row).then(({ error }) => {
@@ -4179,35 +4187,104 @@ const server = http.createServer((req, res) => {
       }
       // THE OUTAGE ALERT. Throttled in the classifier to one per window: a
       // Haiku outage is one event, and 90 pages for it is the same as none.
-      if (negotiationDecision && negotiationDecision.alert) {
+      if (decision && decision.alert) {
         try {
           const { sendOwnerAlert } = require('./services/pushNotifier');
           sendOwnerAlert({
             title: '[ALERT] safety review unavailable',
-            body: negotiationDecision.alert.detail,
+            body: decision.alert.detail,
           });
         } catch (e) { console.error('[negotiate] owner alert failed:', e && e.message); }
       }
-      if (negotiationDecision && negotiationDecision.verdict !== 'PASS') {
+      if (decision && decision.verdict !== 'PASS') {
         console.log('[negotiate]', JSON.stringify({
           flag: negotiation.flagOn() ? 'ON' : 'DARK',
-          verdict: negotiationDecision.verdict,
-          oos: negotiationDecision.oos,
-          would_say: negotiationDecision.sentence,
-          safety: negotiationDecision.safety
-            ? { state: negotiationDecision.safety.state, unsafe: negotiationDecision.safety.unsafe,
-                by: negotiationDecision.safety.by, language: negotiationDecision.safety.language,
-                uncertain: negotiationDecision.safety.uncertain }
+          verdict: decision.verdict,
+          oos: decision.oos,
+          would_say: decision.sentence,
+          safety: decision.safety
+            ? { state: decision.safety.state, unsafe: decision.safety.unsafe,
+                by: decision.safety.by, language: decision.safety.language,
+                uncertain: decision.safety.uncertain }
             : null,
           client_job_id: clientJobId || null,
         }));
       }
+      } catch (err) {
+        // A CLASSIFIER FAULT MUST NEVER COST A RENDER. Any throw here is logged
+        // and the job proceeds exactly as it would have without this block.
+        console.error('[negotiate] recording threw, proceeding unchanged:', err && err.message);
+      }
+    };
+
+    // ── THE MODEL CALL LEAVES THE CRITICAL PATH WHILE IT IS DARK ────────────
+    //
+    // MEASURED 2026-09-26: the `insert` phase of post_to_dispatch_ms read
+    // 1591-3492ms across seven clean jobs. Zac's pg_stat_statements puts the
+    // video_jobs INSERT at mean 47ms / max 565ms over 269 calls, so ~95% of that
+    // phase was never Postgres — it was this await. A Haiku round trip, on every
+    // job, in the path between a customer pressing go and their render starting.
+    //
+    // THE DESIGN ALREADY FORBADE THIS AND THE CODE DID IT ANYWAY. Three comments
+    // in this file and its classifier say dispatch must not depend on the model:
+    // "DISPATCH NEVER DEPENDS ON THE MODEL BEING UP", "A classifier outage must
+    // not become a product outage", "dispatch anyway". All three are about the
+    // model's VERDICT. Awaiting it made dispatch depend on its LATENCY instead —
+    // a dependency nobody declared, in a block whose every comment disclaims one.
+    //
+    // SO THE AWAIT NOW FOLLOWS THE FLAG, because that is what the flag means:
+    //   ARMED -> the verdict gates the render (the live path at the end of this
+    //            block returns before any job row exists), so it MUST be awaited.
+    //            Arming trades latency for a refusal, deliberately.
+    //   DARK  -> the verdict cannot change what is dispatched. Every consumer is
+    //            a shadow row, an owner alert, or a log line. So it is started
+    //            and not awaited, and the recording happens when it lands.
+    //
+    // WHAT THIS COSTS, stated rather than buried: while dark, a shadow row can be
+    // lost if the process exits between dispatch and the model returning. That is
+    // one observation record, not a customer-facing fact, and the alternative was
+    // charging every customer ~2s for it. The regex arm is unaffected either way —
+    // classifyWithSafety returns a REFUSE from the pattern without ever calling
+    // the model, so pattern-unsafe briefs are decided at the same speed as before.
+    mark('validate');
+    const _negArmed = negotiation.flagOn();
+    let _negPromise = null;
+    try {
+      // UNSAFE IS NEVER REGEX-ONLY. The pattern is an early refuse; the model
+      // adjudicates every brief the pattern passed, in whatever language it
+      // was written. 15.2% of briefs are not English and an English pattern is
+      // structurally blind to them — verified: it passes "tire a roupa dela"
+      // and "iske kapde hata do". Fails CLOSED: an unreachable adjudicator
+      // yields REVIEW_UNAVAILABLE, never a false all-clear.
+      _negPromise = negotiation.classifyWithSafety(vibeInput, { hasInScopeAsks: true });
     } catch (err) {
-      // A CLASSIFIER FAULT MUST NEVER COST A RENDER. Any throw here is logged
-      // and the job proceeds exactly as it would have without this block.
+      // A synchronous throw from the classifier (a bad brief type, a missing
+      // module) must not cost a render either.
       console.error('[negotiate] classifier threw, proceeding unchanged:', err && err.message);
+      _negPromise = null;
+    }
+    if (_negPromise && _negArmed) {
+      try {
+        negotiationDecision = await _negPromise;
+        _recordNegotiation(negotiationDecision);
+      } catch (err) {
+        console.error('[negotiate] classifier threw, proceeding unchanged:', err && err.message);
+        negotiationDecision = null;
+      }
+    } else if (_negPromise) {
+      // FIRE AND FORGET, WITH A CATCH. An unhandled rejection is fatal on Node
+      // 18+, and this is the job-create path.
+      _negPromise.then(_recordNegotiation)
+        .catch((err) => console.error('[negotiate] classifier threw (dark, off the '
+          + 'critical path), proceeding unchanged:', err && err.message));
+      // STAYS NULL, AND THAT IS THE CORRECT READING: the live path below asks
+      // whether a verdict is available to refuse on, and while dark there is
+      // deliberately none at this point in time.
       negotiationDecision = null;
     }
+    // ARMED this carries the Haiku round trip; DARK it must be ~0. That is the
+    // whole before/after, and it is printed rather than argued.
+    mark('negotiate');
     if (negotiation.flagOn() && negotiationDecision
         && negotiationDecision.verdict !== 'PASS') {
       // LIVE PATH — not reachable while the flag is off. No job row, no
@@ -4275,6 +4352,7 @@ const server = http.createServer((req, res) => {
     if (parentJobId) insertRow.parent_job_id = parentJobId;
     if (rootJobId) insertRow.root_job_id = rootJobId;
 
+    mark('pre_db');
     const { data, error } = await supabaseAdmin
       .from('video_jobs')
       .insert(insertRow)
@@ -8684,8 +8762,12 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             // The route decision, stored as a fact rather than inferred later.
             pipeline: _pipeline,
             creditsDebited: _creditsDebited,
+            // THE SAME RECORDER, so the phases inside the insert land on the same
+            // line as the phases around it. A second timing mechanism would be a
+            // second clock to reconcile.
+            mark: _mark,
           });
-          _mark('insert');
+          _mark('db_write');
           } catch (e) {
             if (_monthlyClaimed) {
               await releaseMonthlyUsage(authUser.id, _monthlyCap.USAGE_KIND);
