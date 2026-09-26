@@ -8411,54 +8411,105 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
               return { job: existing, replayed: true };
             }
           }
-          if (supabaseAdmin && !isDemo) {
+          // ── THE FOUR INDEPENDENT GUARD READS RUN AT ONCE ──────────────────
+          //
+          // MEASURED: pre_insert was 838-1460ms across seven clean jobs. It is about
+          // a dozen SEQUENTIAL Supabase round trips from Render/Oregon, and eight of
+          // them are these four guards' selects — every one a READ, none depending on
+          // any other's result. Serialised, they cost the sum of the latencies; the
+          // work itself is trivial and Postgres is not the constraint.
+          //
+          // ALL FOUR ARE PURE SELECTS. Verified per file, not assumed:
+          // spend-guard.js is 3 selects and no writes, source-presence.js is 2 and no
+          // writes, inFlightJobCount is 2 selects. Nothing here mutates, so starting
+          // them together cannot reorder a side effect.
+          //
+          // THE REFUSAL ORDER IS UNCHANGED, AND THAT IS THE LOAD-BEARING PART. The
+          // reads happen concurrently; the DECISIONS are still read in the original
+          // sequence — spend 429, then refund 429, then pending 503/402, then dead
+          // source 409 — so a user who would have seen one refusal still sees exactly
+          // that one. Reordering these would silently change which error a
+          // doubly-capped account gets, and that is a product decision, not a
+          // latency one.
+          //
+          // allSettled, NOT all: inFlightJobCount is FAIL-CLOSED (a throw must become
+          // 503 pending_check_failed) while the two guards are fail-open internally.
+          // Promise.all would collapse those three different failure contracts into
+          // one rejection and lose the distinction that each was written to preserve.
+          //
+          // WHAT CHANGES, stated rather than buried: when an early guard refuses, the
+          // later reads have already been started and still run. That is extra READ
+          // load on the refusal path only — no writes, no charge, no job row. One
+          // visible consequence: a doubly-capped account can now page the owner on
+          // both the spend and refund threads where before the first refusal hid the
+          // second. Both pages are true when both fire, so this is more information,
+          // not a false one.
+          const _guardsApply = Boolean(supabaseAdmin && !isDemo);
+          const _mkAlert = (title, threadId) => (msg) => sendOwnerAlert({
+            ownerUserId: SUBMISSION_OWNER_USER_ID,
+            title,
+            body: String(msg).slice(0, 180),
+            threadId,
+            supabaseAdmin,
+          }).catch(() => {});
+          const [_rGuard, _rRej, _rPend, _rDead] = await Promise.allSettled([
             // SPEND GUARD (Zac 2026-08-03): per-account daily render cap (50) +
             // two-tier global breaker (alert 1500 / halt 3000, raised 2026-08-04 for
             // the surge; env-overridable), DB-counted, fail-open.
             // Inside the lock + AFTER the idempotency replay above, so retries never
             // count. Blocks with 429 + a user-facing message; pages the owner.
-            const _guard = await checkSpendGuards({
-              supabaseAdmin,
-              userId: authUser.id,
-              alert: (msg) => sendOwnerAlert({
-                ownerUserId: SUBMISSION_OWNER_USER_ID,
-                title: '🚨 [Promptly] spend guard',
-                body: String(msg).slice(0, 180),
-                threadId: 'spend-guard',
-                supabaseAdmin,
-              }).catch(() => {}),
-            });
+            _guardsApply ? checkSpendGuards({
+              supabaseAdmin, userId: authUser.id,
+              alert: _mkAlert('🚨 [Promptly] spend guard', 'spend-guard'),
+            }) : null,
+            // REFUND-FARMING CONTROL: bound designed-rejection attempts BY DESIGN
+            // (not the coincidental 50/day spend cap). User-fault codes only, so an
+            // infra-failure streak never blocks a legitimate user. Fail-open.
+            _guardsApply ? checkRejectionAttemptCap({
+              supabaseAdmin, userId: authUser.id,
+              alert: _mkAlert('🚨 [Promptly] refund guard', 'refund-guard'),
+            }) : null,
+            // Same account-global in-flight definition the upload doors use.
+            // Wrapped so a SYNCHRONOUS throw becomes a rejected promise rather than
+            // escaping before allSettled can see it.
+            _guardsApply
+              ? Promise.resolve().then(() => inFlightJobCount(authUser.id)) : null,
+            // ── DEAD SOURCE KEY: reject at CREATION, ABOVE the charge ───────
+            // A key that has ALREADY failed HEAD can never succeed — retrying it
+            // buys another 600s wait and another refund. Our first paying
+            // subscriber created three jobs against one such key over 6.5 hours
+            // and was refunded three times. Rejected here, above the charge
+            // block, so no credit is claimed and none has to be unwound. The copy
+            // names the only action that works: a fresh pick mints a fresh key.
+            Promise.resolve().then(
+              () => findDeadSourceJob(supabaseAdmin, authUser.id, videoUrl)),
+          ]);
+          _mark('guards');
+
+          if (_guardsApply) {
+            // A REJECTION HERE IS RETHROWN, not swallowed: checkSpendGuards is
+            // fail-open internally, so reaching a rejection means something above it
+            // broke, and today that reached the handler's own catch. Same contract.
+            if (_rGuard.status === 'rejected') throw _rGuard.reason;
+            const _guard = _rGuard.value;
             if (!_guard.allow) {
               console.warn('  [spend-guard] blocked render userId=%s code=%s', authUser.id, _guard.code);
               return { status: 429, body: { error: _guard.code, message: _guard.message } };
             }
-            // REFUND-FARMING CONTROL: bound designed-rejection attempts BY DESIGN
-            // (not the coincidental 50/day spend cap). User-fault codes only, so an
-            // infra-failure streak never blocks a legitimate user. Fail-open.
-            const _rej = await checkRejectionAttemptCap({
-              supabaseAdmin,
-              userId: authUser.id,
-              alert: (msg) => sendOwnerAlert({
-                ownerUserId: SUBMISSION_OWNER_USER_ID,
-                title: '🚨 [Promptly] refund guard',
-                body: String(msg).slice(0, 180),
-                threadId: 'refund-guard',
-                supabaseAdmin,
-              }).catch(() => {}),
-            });
+            if (_rRej.status === 'rejected') throw _rRej.reason;
+            const _rej = _rRej.value;
             if (!_rej.allow) {
               console.warn('  [refund-guard] blocked userId=%s code=%s', authUser.id, _rej.code);
               return { status: 429, body: { error: _rej.code, message: _rej.message } };
             }
-            let pendingCount;
-            try {
-              // Same account-global in-flight definition the upload doors use.
-              pendingCount = await inFlightJobCount(authUser.id);
-            } catch (pendingErr) {
+            // FAIL-CLOSED, unchanged: an unknown in-flight count must never let a
+            // free account open a second render.
+            if (_rPend.status === 'rejected') {
               console.error('  [paywall] pending-count failed, refusing action',
-                { userId: authUser.id, error: pendingErr.message });
+                { userId: authUser.id, error: (_rPend.reason && _rPend.reason.message) || 'unknown' });
               return { status: 503, body: { error: 'pending_check_failed' } };
             }
+            const pendingCount = _rPend.value;
             // Concurrency cap == the tier's parallel/upload cap: 10 paid / 1 trial.
             // Pre-flip this is exactly today's `isPro ? 10 : 1`.
             const concurrencyCap = wallCaps.uploadMax;
@@ -8477,15 +8528,9 @@ function _resolveCreditsSwitch({ envOn, requireDebit }) {
             }
           }
 
-          // ── DEAD SOURCE KEY: reject at CREATION, ABOVE the charge ───────
-          // A key that has ALREADY failed HEAD can never succeed — retrying it
-          // buys another 600s wait and another refund. Our first paying
-          // subscriber created three jobs against one such key over 6.5 hours
-          // and was refunded three times. Rejected here, above the charge
-          // block, so no credit is claimed and none has to be unwound. The copy
-          // names the only action that works: a fresh pick mints a fresh key.
           {
-            const _dead = await findDeadSourceJob(supabaseAdmin, authUser.id, videoUrl);
+            if (_rDead.status === 'rejected') throw _rDead.reason;
+            const _dead = _rDead.value;
             if (_dead) {
               console.log('  [source] REJECT at creation userId=%s — this exact source URL '
                 + 'already failed to upload (job %s); a retry would poll a key that does not exist',
