@@ -217,6 +217,58 @@ class AuthService {
         }
     }
 
+    /// Set when the reset page hands control back, read once by the sign-in
+    /// screen. PERSISTED, because the hop can arrive at a COLD launch: the app
+    /// may not have been running when the browser opened the scheme, and a
+    /// flag held only in memory would be gone before any view could read it.
+    static let passwordUpdatedKey = "password_updated_banner"
+    /// The address to prefill. Kept separately from the session because the
+    /// whole point is that the session is being torn down.
+    static let lastEmailKey = "last_signed_in_email"
+
+    /// THE PASSWORD CHANGED SOMEWHERE ELSE, SO THIS DEVICE IS DONE.
+    ///
+    /// Ruled: land on sign-in with the email prefilled and one line saying
+    /// why. NOT a silent re-validate — a reset revokes the sessions this
+    /// device holds, so "still signed in" is at best briefly true and at worst
+    /// a UI that works until the next call fails for a reason nobody can
+    /// explain. Signing out immediately is the honest end state, and the
+    /// banner is what stops it reading as being logged out at random.
+    func handlePasswordUpdatedElsewhere() {
+        if let email = currentUser?.email, !email.isEmpty {
+            UserDefaults.standard.set(email, forKey: Self.lastEmailKey)
+        }
+        UserDefaults.standard.set(true, forKey: Self.passwordUpdatedKey)
+        signOut()
+        // SIGNING OUT IS NOT THE SAME AS LANDING ON SIGN-IN.
+        //
+        // AuthView is presented by AuthGate, not by the absence of a session —
+        // so signOut alone drops through to an anonymous session and the chat
+        // screen, which is exactly what the first run of this produced: a cold
+        // return showed chat with a credits badge, and nothing told the user
+        // their password had changed. The gate has to be asked.
+        Task { @MainActor in AuthGate.shared.presentForSignIn() }
+    }
+
+    /// RE-READ THE SESSION AFTER SOMETHING OUTSIDE THE APP CHANGED IT.
+    ///
+    /// A password reset completed in the browser revokes the sessions this
+    /// device is holding. `getValidToken` only refreshes inside five minutes of
+    /// expiry, so an unexpired-but-revoked token looks perfectly good to it —
+    /// the app would keep showing a signed-in UI until some unrelated call
+    /// failed, at a moment that explains nothing to the user.
+    ///
+    /// Forcing the refresh asks the only question that matters: does the server
+    /// still accept us? A refusal signs out cleanly, which is the honest end
+    /// state for someone who has just changed their password elsewhere.
+    func revalidateAfterExternalChange() async {
+        guard storedRefreshToken != nil else { return }
+        if await forceRefreshToken() == nil {
+            print("[auth] revalidate after external change: refresh refused — signing out")
+            signOut()
+        }
+    }
+
     // MARK: - Auth Actions
 
     // MARK: - Passwordless OTP

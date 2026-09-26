@@ -733,6 +733,28 @@ struct PromptlyApp: App {
             // (custom scheme today; universal links when provisioned) persists
             // pre-auth and claims at sign-in. Non-referral URLs are ignored.
             .onOpenURL { url in
+                // THE RETURN HOP FROM THE PASSWORD RESET PAGE.
+                //
+                // B2's usepromptly.app/reset-password sets the new password in
+                // the browser, then hops to `app.usepromptly.ios://open`. The
+                // scheme is the app's own (there is no `promptly://`), and the
+                // https link cannot do this job: the live AASA admits only
+                // "/" with ?ref=, so a universal link on /reset-password opens
+                // Safari, not the app.
+                //
+                // CHANGING A PASSWORD REVOKES THE OTHER SESSIONS. So the one
+                // thing this must do is re-validate, not assume: a user who
+                // just reset lands here holding a token the server has already
+                // stopped accepting, and without this they would look signed in
+                // until their next API call failed for a reason the UI could
+                // not explain.
+                if url.scheme?.lowercased() == "app.usepromptly.ios",
+                   (url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+                       .lowercased() == "open" {
+                    Analytics.track("password_reset_return", props: [:], durable: true)
+                    AuthService.shared.handlePasswordUpdatedElsewhere()
+                    return
+                }
                 ReferralService.shared.handleIncomingURL(url)
             }
             // Post-auth landing reset (build 217): every sign-in lands on chat

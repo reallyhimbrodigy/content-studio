@@ -4,6 +4,11 @@ import CryptoKit
 
 struct AuthView: View {
     @State private var email = ""
+    /// Shown once after a password reset completed in the browser. Read from
+    /// UserDefaults rather than passed in, because the return hop can arrive at
+    /// a COLD launch — the app may not have been running when the browser
+    /// opened the scheme, so there is no live object to hand it to.
+    @State private var passwordUpdated = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     // non-nil → present the OTP sheet. Carries WHICH PATH MINTED THE CODE,
@@ -33,6 +38,22 @@ struct AuthView: View {
 
     private enum Field: Hashable { case email }
 
+    @Environment(\.scenePhase) private var authScenePhase
+
+    /// CONSUMED ON READ. The banner answers one return; leaving the flag set
+    /// would show it on every later visit to this screen, where it would be a
+    /// claim about something that did not just happen.
+    private func consumePasswordUpdatedFlag() {
+        let d = UserDefaults.standard
+        if d.bool(forKey: AuthService.passwordUpdatedKey) {
+            passwordUpdated = true
+            d.set(false, forKey: AuthService.passwordUpdatedKey)
+        }
+        if email.isEmpty, let last = d.string(forKey: AuthService.lastEmailKey), !last.isEmpty {
+            email = last
+        }
+    }
+
     var body: some View {
         ZStack {
             backgroundLayer
@@ -44,6 +65,21 @@ struct AuthView: View {
 
                     logoMark
                         .padding(.bottom, 4)
+
+                    // ONE LINE, AND ONLY AFTER A RESET. Without it, being
+                    // signed out on return reads as the app losing the session
+                    // at random — which is the same screen a bug produces.
+                    if passwordUpdated {
+                        Text("Password updated — sign in")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.92))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color.white.opacity(0.10)))
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+                            .accessibilityIdentifier("auth.passwordUpdated")
+                            .transition(.opacity)
+                    }
 
                     titleBlock
 
@@ -102,6 +138,15 @@ struct AuthView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // BOTH ARRIVAL SHAPES. A COLD launch reaches this screen for the first
+        // time, so onAppear is the only hook that runs. A BACKGROUNDED app is
+        // already showing it when the browser hands control back, and onAppear
+        // will not fire again — the scenePhase flip is the one that does.
+        // Either alone leaves half the returns without a banner.
+        .onAppear { consumePasswordUpdatedFlag() }
+        .onChange(of: authScenePhase) { _, phase in
+            if phase == .active { consumePasswordUpdatedFlag() }
+        }
         .fullScreenCover(item: $otpPresentation) { presentation in
             OtpInputView(email: presentation.email,
                          codeIsLinkToken: presentation.isLinkToken) {
